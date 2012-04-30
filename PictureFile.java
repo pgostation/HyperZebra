@@ -1,6 +1,8 @@
 import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
@@ -12,6 +14,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 
 import javax.swing.JFileChooser;
 
@@ -369,6 +372,13 @@ public class PictureFile {
 		BufferedImage img = null;
 		BufferedImage jpegimg = null;
 		int jpgHeight = 0;
+
+		Graphics2D g = null;
+		int px = 0;
+		int py = 10;
+		int fontsize = 12;
+
+		System.out.println("-------");
 		while(true){
 			int opcode;
 			try {
@@ -383,7 +393,7 @@ public class PictureFile {
 			boolean packbits_flag=false;
 			boolean fullcolor_flag=false;
 			boolean rgnmask_flag=false;
-			//System.out.println("opcode:"+opcode);
+			System.out.println("opcode:0x"+ Integer.toHexString( opcode ));
 			if(opcode==0x8200||opcode==0x8201){
 				//JPEG
 				int filelen = (readOpcode(stream,2)<<16)+readOpcode(stream,2);//00 00 53 60
@@ -423,7 +433,14 @@ public class PictureFile {
 				//ロングコメント
 				opcode = readOpcode(stream,2);
 				int length = readOpcode(stream,2);
-				for(int i=0;i<length;i++){readOpcode(stream,1);}
+				byte[] b = new byte[length];
+				for(int i=0;i<length;i++){b[i] = (byte)readOpcode(stream,1);}
+				String s="";
+				try {
+					s = new String(b, "US-ASCII");
+				} catch (UnsupportedEncodingException e) {
+				}
+				System.out.println("long comment:"+s);
 				continue;
 			}
 			else if(opcode==0x00ff||opcode==0xffff){
@@ -454,6 +471,174 @@ public class PictureFile {
 				readOpcode(stream,2);
 				continue;
 			}
+			else if(opcode==0x0009){
+				//ペンパターン
+				int[]penptn = new int[8];
+				for(int i=0;i<8;i++){penptn[i] = readOpcode(stream,1);}
+				continue;
+			}
+			else if(opcode==0x0022){
+				//ペン位置
+				int penX = (short)readOpcode(stream,2);
+				int penY = (short)readOpcode(stream,2);
+				byte penX2 = (byte)readOpcode(stream,1);
+				byte penY2 = (byte)readOpcode(stream,1);
+				System.out.println("penX:"+penX+" penY:"+penY+" penX2:"+penX2+" penY2:"+penY2);
+				if(img==null) {
+					img = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_ARGB);
+					g = img.createGraphics();
+				}
+				g.drawLine(penX, penY, penX+penX2, penY+penY2);
+				px = penX+penX2;
+				py = penY+penY2;
+				continue;
+			}
+			else if(opcode==0x0007){
+				//ペンサイズ
+				int penSizeX = readOpcode(stream,2);
+				int penSizeY = readOpcode(stream,2);
+				g.setStroke(new BasicStroke((penSizeX+penSizeY)/2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+				continue;
+			}
+			else if(opcode==0x001a){
+				//RGBcolor｜前景色（RGB）
+				int cr = readOpcode(stream,2);
+				int cg = readOpcode(stream,2);
+				int cb = readOpcode(stream,2);
+				g.setColor(new Color(cr/256,cg/256,cb/256));
+				continue;
+			}
+			else if(opcode==0x001b){
+				//RGBcolor｜背景色（RGB）
+				int cr = readOpcode(stream,2);
+				int cg = readOpcode(stream,2);
+				int cb = readOpcode(stream,2);
+				g.setBackground(new Color(cr/256,cg/256,cb/256));
+				continue;
+			}
+			else if(opcode==0x002c){
+				//フォント (2+データ長)
+				int length = readOpcode(stream,2);
+				byte[] b = new byte[length];
+				for(int i=0;i<length;i++){b[i] = (byte)readOpcode(stream,1);}
+				String s="";
+				try {
+					s = new String(b, "SJIS");
+				} catch (UnsupportedEncodingException e) {
+				}
+				System.out.println("font:'"+s+"' at "+px+","+py);
+				//g.drawString(s,px,py);
+				continue;
+			}
+			else if(opcode==0x0003){
+				//書体ID
+				readOpcode(stream,2);
+				continue;
+			}
+			else if(opcode==0x0004){
+				//文字形状
+				readOpcode(stream,2);
+				continue;
+			}
+			else if(opcode==0x000d){
+				//文字サイズ
+				fontsize = readOpcode(stream,2);
+				g.setFont(new Font("", 0, fontsize));
+				continue;
+			}
+			else if(opcode==0x002e){
+				//? 文字に関する何か
+				int length = readOpcode(stream,2);
+				for(int i=0;i<length;i++){readOpcode(stream,1);}
+				px=0;py=0;//###
+				continue;
+			}
+			else if(opcode==0x0028){
+				//文字列描画
+				int ddx = readOpcode(stream,2);
+				int ddy = readOpcode(stream,2);
+				int count = readOpcode(stream,1);
+				byte[] b = new byte[count];
+				for(int i=0;i<count;i++){b[i] = (byte)readOpcode(stream,1);}
+				String s="";
+				try {
+					s = new String(b, "SJIS");
+				} catch (UnsupportedEncodingException e) {
+				}
+				System.out.println("drawString28:'"+s+"' at "+(ddx)+","+(ddy));
+				do{
+					String s2 = s;
+					if((s.indexOf('\r')>-1)) s2 = s.substring(0,s.indexOf('\r'));
+					g.drawString(s2,ddx,ddy+fontsize);
+					s = s.substring(s.indexOf('\r')+1);
+					ddy = ddy+fontsize;
+				}while((s.indexOf('\r')>-1));
+				continue;
+			}
+			else if(opcode==0x0029){
+				//文字列描画（水平相対座標）
+				int dx = readOpcode(stream,1);
+				int count = readOpcode(stream,1);
+				byte[] b = new byte[count];
+				for(int i=0;i<count;i++){b[i] = (byte)readOpcode(stream,1);}
+				String s="";
+				try {
+					s = new String(b, "SJIS");
+				} catch (UnsupportedEncodingException e) {
+				}
+				System.out.println("drawString29:'"+s+"' at "+(px+dx)+","+(py));
+				do{
+					String s2 = s;
+					if((s.indexOf('\r')>-1)) s2 = s.substring(0,s.indexOf('\r'));
+					g.drawString(s2,px+dx,py+fontsize);
+					s = s.substring(s.indexOf('\r')+1);
+					py = py+fontsize;
+				}while((s.indexOf('\r')>-1));
+				continue;
+			}
+			else if(opcode==0x002a){
+				//文字列描画（垂直相対座標）
+				int dy = readOpcode(stream,1);
+				int count = readOpcode(stream,1);
+				byte[] b = new byte[count];
+				for(int i=0;i<count;i++){b[i] = (byte)readOpcode(stream,1);}
+				String s="";
+				try {
+					s = new String(b, "SJIS");
+				} catch (UnsupportedEncodingException e) {
+				}
+				System.out.println("drawString2a:'"+s+"' at "+(px)+","+(py+dy));
+				do{
+					String s2 = s;
+					if((s.indexOf('\r')>-1)) s2 = s.substring(0,s.indexOf('\r'));
+					g.drawString(s2,px,py+dy+fontsize);
+					s = s.substring(s.indexOf('\r')+1);
+					py = py+fontsize;
+				}while((s.indexOf('\r')>-1));
+				continue;
+			}
+			else if(opcode==0x002b){
+				//文字列描画（水平垂直相対座標）
+				int dx = readOpcode(stream,1);
+				int dy = readOpcode(stream,1);
+				int count = readOpcode(stream,1);
+				byte[] b = new byte[count];
+				for(int i=0;i<count;i++){b[i] = (byte)readOpcode(stream,1);}
+				String s="";
+				try {
+					s = new String(b, "SJIS");
+				} catch (UnsupportedEncodingException e) {
+				}
+				System.out.println("drawString2b:'"+s+"' at "+(px+dx)+","+(py+dy));
+				do{
+					String s2 = s;
+					if((s.indexOf('\r')>-1)) s2 = s.substring(0,s.indexOf('\r'));
+					g.drawString(s2,px+dx,py+dy+fontsize);
+					s = s.substring(s.indexOf('\r')+1);
+					py = py+fontsize;
+				}while((s.indexOf('\r')>-1));
+				continue;
+			}
 			else{
 				//不明
 				continue;
@@ -465,13 +650,13 @@ public class PictureFile {
 			
 			if(img==null) {
 				img = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_ARGB);
-				Graphics2D g = img.createGraphics();
+				g = img.createGraphics();
 				g.setColor(new Color(255,255,255));
 				g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				g.fillRect(0,0, size.width, size.height);
 			}
 			if(jpegimg!=null){
-				Graphics2D g = img.createGraphics();
+				//Graphics2D g = img.createGraphics();
 				g.drawImage(jpegimg, 0,jpgHeight-jpegimg.getHeight(),null);
 			}
 			DataBuffer db = img.getRaster().getDataBuffer();
@@ -711,39 +896,93 @@ public class PictureFile {
 				}
 			}
 			else if(!bitmap_flag&&packbits_flag){
+				System.out.println("packbits-pixmap");
+				System.out.println("bpp:"+bpp);
+				System.out.println("ispalette:"+(palette!=null));
+				System.out.println("rowBytes:"+rowBytes);
 				//圧縮PixMap
 				int dlen = 1;
 				if(rowBytes>=251) dlen=2;
 				for(int v=0; v<bbottom-btop; v++){
+					//System.out.println(v+"<"+(bbottom-btop));
 					byte[] data = new byte[rowBytes];
 					int offset = 0;
 					//packBitsを展開
 					int packsize = readOpcode(stream,dlen);
-					for(int i=0; i<packsize; i++){
-						int dsize = readOpcode(stream,1);
-						if(dsize>=128) {
-							//同じデータが連続する場合
-							dsize = 256-dsize+1;
-							int src = readOpcode(stream,1);
-							i++;
-							for(int j=0; j<dsize && j+offset<data.length; j++){ data[j+offset] = (byte)src; }
-							offset += dsize;
-						}
-						else {
-							//データそのまま
-							dsize++;
-							for(int j=0; j<dsize; j++){
-								if(rowBytes<=j+offset){
-									//System.out.println("!");
-									continue;
+					//System.out.println("packsize:"+packsize);
+					if(bpp==16){ //16bitのpackbitsは違うらしい
+						for(int i=0; i<packsize; i++){
+							int dsize = readOpcode(stream,1);
+							if(dsize>=128) {	
+								//同じデータが連続する場合
+								//System.out.println("renzoku dsize:"+dsize);
+								dsize = 256-dsize+1;
+								int src1 = readOpcode(stream,1);
+								int src2 = readOpcode(stream,1);
+								i+=2;
+								for(int j=0; j<dsize*2 && j+offset<data.length; j++){
+									data[j+offset] = (byte)src1;
+									j++;
+									data[j+offset] = (byte)src2;
 								}
-								try { data[j+offset] = (byte)stream.read();i++; }
-								catch (IOException e) {}
+								offset += dsize*2;
 							}
-							offset += dsize;
+							else {
+								//データそのまま
+								//System.out.println("sonomama dsize:"+dsize);
+								dsize++;
+								for(int j=0; j<dsize*2; j++){
+									if(rowBytes<=j+offset){
+										//System.out.println("over rowBytes2!");
+										continue;
+									}
+									try { data[j+offset] = (byte)stream.read();i++; }
+									catch (IOException e) {}
+									//System.out.println("data["+(j+offset)+"]:"+data[j+offset]);
+								}
+								offset += dsize*2;
+							}
 						}
 					}
-					if(v+dtop>=size.height) break;
+					else{ //16bit以外のpackbits
+						for(int i=0; i<packsize; i++){
+							int dsize = readOpcode(stream,1);
+							if(dsize>=128) {
+								//System.out.println("renzoku dsize:"+dsize);
+								//同じデータが連続する場合
+								dsize = 256-dsize+1;
+								int src = readOpcode(stream,1);
+								//System.out.println("src:"+src);
+								i++;
+								if(rowBytes<dsize+offset){
+									//System.out.println("over rowBytes1!");
+									continue;
+								}
+								for(int j=0; j<dsize && j+offset<data.length; j++){ data[j+offset] = (byte)src; }
+								offset += dsize;
+							}
+							else {
+								//データそのまま
+								//System.out.println("sonomama dsize:"+dsize);
+								dsize++;
+								for(int j=0; j<dsize; j++){
+									if(rowBytes<=j+offset){
+										//System.out.println("over rowBytes2!");
+										continue;
+									}
+									try { data[j+offset] = (byte)stream.read();i++; }
+									catch (IOException e) {}
+									//System.out.println("data["+(j+offset)+"]:"+data[j+offset]);
+								}
+								offset += dsize;
+							}
+						}
+					} //packbits終了
+					
+					if(v+dtop>=size.height) {
+						//System.out.println("v+dtop("+(v+dtop)+") > "+size.height);
+						break;
+					}
 					for(int h=0; h<bright-bleft; h++){
 						if(h+dleft>=size.width) break;
 						int pix = 0;
@@ -761,17 +1000,17 @@ public class PictureFile {
 							idx = (data[h])&0xFF;
 						}
 						else if(bpp==16){
-							int pix16 = (data[h*2]<<8)+data[h*2+1];
-							int cr = (pix16>>11)&0x1F;
-							int cg = (pix16>> 5)&0x3F;
-							int cb = (pix16    )&0x1F;
-							cr *= 0xFF/0x1F;
-							cg *= 0xFF/0x3F;
-							cb *= 0xFF/0x1F;
-							pix = 0xFF000000+cr<<16+cg<<8+cb;
+							int pix16 = ((0xFF&data[h*2])<<8)+(0xFF&data[h*2+1]);
+							int cr = (pix16>>10)&0x1F;
+							int cg = (pix16>> 5)&0x1F;
+							int cb = (pix16>> 0)&0x1F;
+							cr = cr*0xFF/0x1F;
+							cg = cg*0xFF/0x1F;
+							cb = cb*0xFF/0x1F;
+							pix = 0xFF000000|(cr<<16)|(cg<<8)|cb;
 						}
 						else if(bpp==32){
-							pix = 0xFF000000+(data[h]<<16)+(data[h+(bright-bleft)]<<8)+data[h+(bright-bleft)*2];
+							pix = 0xFF000000|((0xFF&data[h])<<16)|((0xFF&data[h+(bright-bleft)])<<8)|(0xFF&(data[h+(bright-bleft)*2]));
 						}
 						if(fullcolor_flag){
 							if(trans_mode==36 && pix==0xFFFFFFFF){
@@ -804,6 +1043,9 @@ public class PictureFile {
 							}
 						}
 						if(jpegimg==null){
+							//if((v+dtop)%100==5){
+								//System.out.println((h+dleft)+","+(v+dtop)+" "+Integer.toHexString(pix));
+							//}
 							db.setElem((v+dtop)*size.width+(h+dleft), pix);
 						}
 					}
