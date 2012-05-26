@@ -631,6 +631,9 @@ public class AuthDialog extends JDialog
 				jbtn = new JButton(PCARD.pc.intl.getDialogText("Size…"));
 				jbtn.addActionListener(stacklistener);
 				buttonPanel.add(jbtn);
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Card List…"));
+				jbtn.addActionListener(stacklistener);
+				buttonPanel.add(jbtn);
 				
 				buttonPanel.setPreferredSize(new Dimension(w, 24+8));
 			}
@@ -947,6 +950,15 @@ public class AuthDialog extends JDialog
 			}
 			else if(cmd.equals("Size…")){
 				new SizeDialog(AuthDialog.authDialog);
+			}
+			else if(cmd.equals("Card List…")){
+				String str = "";
+				for(int i=0;i<PCARD.pc.stack.cardIdList.size();i++){
+					int id = PCARD.pc.stack.cardIdList.get(i);
+					OCard card = PCARD.pc.stack.GetCardbyId(id);
+					str += "card("+ i +") id:"+ id +" name:"+card.name+" btns:"+card.btnList.size()+" flds:"+card.fldList.size()+"\n";
+				}
+				new GScrollDialog(null, str, null, null, null, "OK");
 			}
 			else{
 				System.out.println("AuthTool AuthStackListener actionPerformed Error!!");

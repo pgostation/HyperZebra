@@ -103,7 +103,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	static String AppName = "HyperZebra";
 	
 	static String version="3.0";
-	static String longVersion="3.0a2";
+	static String longVersion="3.0a3";
 	GMenu menu;
 	GMenu paintMenu;
 	GMsg msg;

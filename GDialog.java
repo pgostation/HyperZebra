@@ -129,8 +129,8 @@ class GScrollDialog extends JDialog implements ActionListener {
 			text2 += texts2[i]+"\n";
 		}
 		JTextArea area = new JTextArea(text2);
-		//String[] texts = text2.split("\n");
-		//area.setSize(380, 18+18*texts.length);
+		String[] texts = text2.split("\n");
+		area.setSize(380, 18+18*texts.length);
 		//area.setPreferredSize(new Dimension(380, 18+18*texts.length));
 		area.setMargin(new Insets(16,16,2,16));
 		area.setLineWrap(true);

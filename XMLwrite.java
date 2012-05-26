@@ -46,9 +46,19 @@ public class XMLwrite {
 				stack.bgCacheList.get(i).writeXML(writer);
 				stack.bgCacheList.get(i).changed = false;
 			}
-			for(int i=0 ;i<stack.cdCacheList.size(); i++){
+			/*for(int i=0 ;i<stack.cdCacheList.size(); i++){
 				stack.cdCacheList.get(i).writeXML(writer);
 				stack.cdCacheList.get(i).changed = false;
+			}*/ //‚±‚ê‚Å‚Í‡”Ô‚ª‹¶‚Á‚Ä‚µ‚Ü‚¤
+			for(int i=0 ;i<stack.cardIdList.size(); i++){
+				int id = stack.cardIdList.get(i);
+				for(int j=0 ;j<stack.cdCacheList.size(); j++){
+					if(stack.cdCacheList.get(j).id == id){
+						stack.cdCacheList.get(j).writeXML(writer);
+						stack.cdCacheList.get(j).changed = false;
+						break;
+					}
+				}
 			}
 	        stack.rsrc.writeXML(writer);
 	        stack.rsrc.writePLTEXML(writer);

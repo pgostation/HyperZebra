@@ -5724,7 +5724,7 @@ public class TTalk extends Thread {
 			}
 		}
 		
-		//3.指数
+		//3.べき乗
 		for(int i=end; i>=start; i--) {
 			if(typeAry[i]==wordType.OPERATOR) {
 				if(stringList.get(i)=="^") {
@@ -6555,6 +6555,25 @@ public class TTalk extends Thread {
 				return objres;
 			}
 		}
+		if(0==str.compareToIgnoreCase("prev") || 0==str.compareToIgnoreCase("previous")){
+			if(0==str2.compareToIgnoreCase("cd") || 0==str2.compareToIgnoreCase("card"))
+			{
+				objres.cnt = 2;
+				int id;
+				int i;
+				for(i=0; i<PCARD.pc.stack.cardIdList.size();i++){
+					if(PCARD.pc.stack.curCard!=null && PCARD.pc.stack.curCard.id == PCARD.pc.stack.cardIdList.get(i))
+						break;
+				}
+				if(i==0) i=PCARD.pc.stack.cardIdList.size()-1;
+				else{
+					i--;
+				}
+				id = PCARD.pc.stack.cardIdList.get(i);
+				objres.obj = PCARD.pc.stack.GetCardbyId(id);
+				return objres;
+			}
+		}
 		if(0==str.compareToIgnoreCase("window")) {
 			for(int i=0; i<OWindow.list.size(); i++){
 				if(!str2.equals("") && 
@@ -6884,7 +6903,7 @@ public class TTalk extends Thread {
 			if(id!=0) {
 				objres.cnt = next-start+1;
 				objres.obj = PCARD.pc.stack.GetCardbyId(id);
-				if(objres.obj==null) throw new xTalkException("idが"+number+"のカードはありません");
+				if(objres.obj==null) throw new xTalkException("idが"+id+"のカードはありません");
 				//System.out.println("getObjectFromList:"+(System.currentTimeMillis()-timestart));
 				return objres;
 			}

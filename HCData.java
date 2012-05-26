@@ -25,7 +25,7 @@ public class HCData {
 		
 		try {
 			while(dis.available()>0){
-				int blockSize = readCode(dis, 4);
+				int blockSize = readCode(dis, 2); //int blockSize = readCode(dis, 4);‚¸‚ê‚é‚Ì‚Å2ŒÂ‚µ‚©“Ç‚Ü‚È‚¢‚æ‚¤‚É‚µ‚Ä‚â‚Á‚½
 				int typeCode = readCode(dis, 4);
 
 				if(stack.totalSize>0){
