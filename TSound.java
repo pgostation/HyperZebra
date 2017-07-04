@@ -26,7 +26,7 @@ public class TSound implements LineListener {
     
     private void setNoteFreq() {
 	    if(note_freq[0] != 1.0) {
-	        // ”¼‰¹(2‚Ì12æª)‚ğŒvZ
+	        // åŠéŸ³(2ã®12ä¹—æ ¹)ã‚’è¨ˆç®—
 	        double r = Math.pow(2.0, 1.0 / 12.0);
 	        note_freq[0] = 1.0;
 	        for (int i = 1; i < 12; i++) {
@@ -44,7 +44,7 @@ public class TSound implements LineListener {
     	
     	if(note_freq[0] != 1.0) setNoteFreq();
     	
-    	//3˜A•„
+    	//3é€£ç¬¦
     	if(neiro[5].contains("3")){
     		if(neiro[5].contains("....")) neiro[5] = "....";
     		else if(neiro[5].contains("...")) neiro[5] = "...";
@@ -55,7 +55,7 @@ public class TSound implements LineListener {
     		Play(stack, soundRsrc, neiro, tempo, vol);
     	}
     	
-    	//’·‚³ŒvZ(•b)
+    	//é•·ã•è¨ˆç®—(ç§’)
     	double length = 0.0;
 		if(neiro[4].equalsIgnoreCase("w")) length = 240.0/tempo;
 		else if(neiro[4].equalsIgnoreCase("h")) length = 120.0/tempo;
@@ -67,7 +67,7 @@ public class TSound implements LineListener {
 		else if(!neiro[1].equals("")) length = 60.0/tempo;
 		if(neiro[5].equals("....")) length *= 1.5*1.5*1.5*1.5;
 		if(neiro[5].equals("...")) length *= 1.5*1.5*1.5;
-		if(neiro[5].equals("..")) length *= 1.5*1.5;//1.75”{‚¶‚á‚È‚¢‚æ‚¤‚¾B
+		if(neiro[5].equals("..")) length *= 1.5*1.5;//1.75å€ã˜ã‚ƒãªã„ã‚ˆã†ã ã€‚
 		if(neiro[5].equals(".")) length *= 1.5;
 
 		AudioInputStream sound = null;
@@ -76,7 +76,7 @@ public class TSound implements LineListener {
 			String path = stack.rsrc.getFilePathAll(rsrcid, "sound");
 			sound = AudioSystem.getAudioInputStream(new File(path/*stack.file.getParent()+File.separatorChar+fileName*/));
 		} catch (UnsupportedAudioFileException e) {
-			//throw new xTalkException("ƒTƒEƒ“ƒh\""+soundRsrc+"\"‚Ì‰¹ºƒtƒ@ƒCƒ‹‚É‘Î‰‚µ‚Ä‚¢‚Ü‚¹‚ñ");
+			//throw new xTalkException("ã‚µã‚¦ãƒ³ãƒ‰\""+soundRsrc+"\"ã®éŸ³å£°ãƒ•ã‚¡ã‚¤ãƒ«ã«å¯¾å¿œã—ã¦ã„ã¾ã›ã‚“");
 			return false;
 		} catch (Exception e) {
 			/*String path = (PCARDFrame.pc.stack.file.getParent()+File.separatorChar+"resource"+File.separatorChar+soundRsrc);
@@ -90,11 +90,11 @@ public class TSound implements LineListener {
 					try {
 			    		sound = AudioSystem.getAudioInputStream(new File(cpath+".wav"));
 					} catch (FileNotFoundException e4) {
-						throw new xTalkException("ƒTƒEƒ“ƒh\""+soundRsrc+"\"‚ª‚ ‚è‚Ü‚¹‚ñ");
+						throw new xTalkException("ã‚µã‚¦ãƒ³ãƒ‰\""+soundRsrc+"\"ãŒã‚ã‚Šã¾ã›ã‚“");
 					} catch (IOException e4) {
-						throw new xTalkException("ƒTƒEƒ“ƒh\""+soundRsrc+"\"‚ğŠJ‚¯‚Ü‚¹‚ñ");
+						throw new xTalkException("ã‚µã‚¦ãƒ³ãƒ‰\""+soundRsrc+"\"ã‚’é–‹ã‘ã¾ã›ã‚“");
 					} catch (UnsupportedAudioFileException e4) {
-						throw new xTalkException("ƒTƒEƒ“ƒh\""+soundRsrc+"\"‚Ì‰¹ºƒtƒ@ƒCƒ‹‚É‘Î‰‚µ‚Ä‚¢‚Ü‚¹‚ñ");
+						throw new xTalkException("ã‚µã‚¦ãƒ³ãƒ‰\""+soundRsrc+"\"ã®éŸ³å£°ãƒ•ã‚¡ã‚¤ãƒ«ã«å¯¾å¿œã—ã¦ã„ã¾ã›ã‚“");
 					}
 				//}
 			//}
@@ -140,7 +140,7 @@ public class TSound implements LineListener {
 				format = new AudioFormat(fileFormat.getEncoding(), newSampRate, fileFormat.getSampleSizeInBits(),
 						fileFormat.getChannels(), fileFormat.getFrameSize(), newFrameRate, fileFormat.isBigEndian());
 
-				//’·‚³
+				//é•·ã•
 				int nLength = voiceData.length;
 				if( length!=0.0 || neiro[1].equalsIgnoreCase("r") ){
 					nLength = (int)(length*format.getSampleRate())*format.getFrameSize();
@@ -205,7 +205,7 @@ public class TSound implements LineListener {
     		name = "";
     	}
     }
-	//todo: ‰¹—Ê’²®
+	//todo: éŸ³é‡èª¿æ•´
     
 	@Override
 	public void update(LineEvent event) {

@@ -16,7 +16,7 @@ public class GPictWindow extends JDialog {
 		super(owner);
 		this.name = name;
 
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		if(bi!=null){
 			label = new MyLabel3(name, bi);
 			getContentPane().add(label);

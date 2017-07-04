@@ -57,8 +57,8 @@ public class IconEditor extends PCARDFrame {
 	private static final long serialVersionUID = 1L;
 	IconEditor iconeditor;
 	Rsrc rsrc;
-	int rsrcid; //Œ»İ‚ÌidB‰Â•ÏB
-	int orgrsrcid; //Å‰‚ÉŠJ‚¢‚½‚Æ‚«‚É‹L˜^B•s•ÏB
+	int rsrcid; //ç¾åœ¨ã®idã€‚å¯å¤‰ã€‚
+	int orgrsrcid; //æœ€åˆã«é–‹ã„ãŸã¨ãã«è¨˜éŒ²ã€‚ä¸å¤‰ã€‚
 	JTextField namefld;
 	JTextField idfld;
 	JFrame owner;
@@ -97,7 +97,7 @@ public class IconEditor extends PCARDFrame {
 
 		System.gc();
 		
-		//‰æ‘œ‚ğ“Ç‚İ‚Ş
+		//ç”»åƒã‚’èª­ã¿è¾¼ã‚€
 		BufferedImage bi = null;
 		BufferedImage srcimg = rsrc.getImage(id, type);
 		if(srcimg==null){
@@ -134,7 +134,7 @@ public class IconEditor extends PCARDFrame {
 		setBounds(owner.getX()+owner.getWidth()/2-w/2,owner.getY()+owner.getHeight()/2-h/2,w,h);
 		
     	{
-    		//ƒyƒCƒ“ƒg—pƒoƒbƒtƒ@
+    		//ãƒšã‚¤ãƒ³ãƒˆç”¨ãƒãƒƒãƒ•ã‚¡
     		mainImg = bi;
     		bgImg = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_BYTE_GRAY );
 			Graphics2D g = (Graphics2D) bgImg.getGraphics();
@@ -325,7 +325,7 @@ public class IconEditor extends PCARDFrame {
 	    	mainPane.setLayout(null);
 	    	mainPane.setPreferredSize(new Dimension(bi.getWidth()*bit, bi.getHeight()*bit));
 	    	mainPane.setBounds(0, 0, bi.getWidth()*bit, bi.getHeight()*bit);
-	    	mainPane.setOpaque(false); //‹÷‚Ì‰æ‘œ‚ªÁ‚¦‚È‚¢‚Ì‚ğ—}~B
+	    	mainPane.setOpaque(false); //éš…ã®ç”»åƒãŒæ¶ˆãˆãªã„ã®ã‚’æŠ‘æ­¢ã€‚
 			scrollpane.setViewportView(mainPane);
 			
 			IconGUI gui = new IconGUI(this);
@@ -369,7 +369,7 @@ public class IconEditor extends PCARDFrame {
 			id = Integer.valueOf(this.idfld.getText());
 		}catch(Exception e2){ }
 		
-		//–¼‘O‚Æid‚ğ”½‰f
+		//åå‰ã¨idã‚’åæ˜ 
 		{
 			Rsrc.rsrcClass iconres;
 
@@ -443,7 +443,7 @@ public class IconEditor extends PCARDFrame {
 				typeeditor.selectedId = new int[1];
 				typeeditor.selectedId[0] = id;
 				int scroll = typeeditor.scrollpane.getVerticalScrollBar().getValue();
-				//ŠJ‚«’¼‚·
+				//é–‹ãç›´ã™
 				typeeditor.open(typeeditor.pcard, scroll );
 			}
 			else{
@@ -473,7 +473,7 @@ public class IconEditor extends PCARDFrame {
 			jfld.setPreferredSize(new Dimension(fldWidth, jfld.getPreferredSize().height));
 			jfld.setName(name);
 			
-			//textfield‚É•s—v‚ÈƒtƒH[ƒJƒX‚ğæ‚ç‚ê‚È‚¢‚æ‚¤‚É‚·‚é
+			//textfieldã«ä¸è¦ãªãƒ•ã‚©ãƒ¼ã‚«ã‚¹ã‚’å–ã‚‰ã‚Œãªã„ã‚ˆã†ã«ã™ã‚‹
 			jfld.setFocusable(false);
 			for(int i=0; i<textfields.length; i++){
 				if(textfields[i]==null) {
@@ -680,7 +680,7 @@ class IEActionListener implements ActionListener
 	}
 	
 	public boolean ChangeTool(String cmd) {
-		//‘O‚Ìƒc[ƒ‹‚ÌI—¹ˆ—
+		//å‰ã®ãƒ„ãƒ¼ãƒ«ã®çµ‚äº†å‡¦ç†
 		if(owner.tool!=null){
 			owner.tool.end();
 		}
@@ -755,7 +755,7 @@ class IEActionListener implements ActionListener
 			}
 		}*/
 		else{
-			return false;//Œ©‚Â‚©‚ç‚È‚¢
+			return false;//è¦‹ã¤ã‹ã‚‰ãªã„
 		}
 		
 		return true;
@@ -764,7 +764,6 @@ class IEActionListener implements ActionListener
 	
 
 class IEMenu {
-	private static final long serialVersionUID = 1L;
 	static JMenuItem undoMenu = null;
 	static JMenuItem redoMenu = null;
 	static IconEditor owner;
@@ -784,7 +783,7 @@ class IEMenu {
 		
 		listener = new IEMenuListener(in_owner);
 		
-    	// ƒƒjƒ…[ƒo[‚Ìİ’è
+    	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãƒãƒ¼ã®è¨­å®š
 		JMenuBar mb=new JMenuBar();
 		owner.setJMenuBar(mb);
 		
@@ -797,12 +796,12 @@ class IEMenu {
 		}
 		int s_shift = s+InputEvent.SHIFT_MASK;
 
-	    // Fileƒƒjƒ…[
+	    // Fileãƒ¡ãƒ‹ãƒ¥ãƒ¼
 	    m=new JMenu(PCARD.pc.intl.getText("File"));
 	    mb.add(m);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Close")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, s));mi.addActionListener(listener);
 
-	    // Editƒƒjƒ…[
+	    // Editãƒ¡ãƒ‹ãƒ¥ãƒ¼
 	    m=new JMenu(PCARD.pc.intl.getText("Edit"));
 	    mb.add(m);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Undo Paint")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));mi.addActionListener(listener);
@@ -815,12 +814,12 @@ class IEMenu {
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Paste Picture")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, s));mi.addActionListener(listener);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Clear Selection")));mi.addActionListener(listener);
 	    m.addSeparator();
-	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Image Sizec")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, s));mi.addActionListener(listener);
+	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Image Sizeâ€¦")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, s));mi.addActionListener(listener);
 	    if(owner.type.equals("cursor")){
-	    	m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Hot Spotc")));mi.addActionListener(listener);
+	    	m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Hot Spotâ€¦")));mi.addActionListener(listener);
 	    }
 
-	    // Paintƒƒjƒ…[
+	    // Paintãƒ¡ãƒ‹ãƒ¥ãƒ¼
 	    m=new JMenu(PCARD.pc.intl.getText("Paint"));
 	    mb.add(m);
 	    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Select")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, s));mi.addActionListener(listener);
@@ -839,10 +838,10 @@ class IEMenu {
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Expand Selection")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 	    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Add to Protect Area")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 	    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Discard Protect Area")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Color Convertc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Filterc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Blending Modec")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Scale Selectionc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Color Convertâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Filterâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Blending Modeâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Scale Selectionâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 	    m.addSeparator();
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Fill")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Invert")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
@@ -868,7 +867,7 @@ class IEMenu {
 	}
 }
 
-//ƒƒjƒ…[“®ì
+//ãƒ¡ãƒ‹ãƒ¥ãƒ¼å‹•ä½œ
 class IEMenuListener implements ActionListener {
 	IconEditor editor;
 	
@@ -880,11 +879,11 @@ class IEMenuListener implements ActionListener {
 		String in_cmd = e.getActionCommand();
 		String cmd = PCARD.pc.intl.getEngText(in_cmd);
 		
-		if(cmd.equalsIgnoreCase("Image Sizec")){
+		if(cmd.equalsIgnoreCase("Image Sizeâ€¦")){
 			editor.save();
 			new IconSizeDialog(editor);
 		}
-		else if(cmd.equalsIgnoreCase("Hot Spotc")){
+		else if(cmd.equalsIgnoreCase("Hot Spotâ€¦")){
 			new HotSpotDialog(editor);
 		}
 		else if(cmd.equalsIgnoreCase("Close")){
@@ -910,7 +909,7 @@ class IconSizeDialog extends JDialog implements ActionListener {
 		editor = owner;
 		getContentPane().setLayout(new BorderLayout());
 
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		JPanel topPanel = new JPanel();
 		topPanel.setLayout(new GridLayout(2,1));
 		topPanel.setPreferredSize(new Dimension(200,80));
@@ -945,7 +944,7 @@ class IconSizeDialog extends JDialog implements ActionListener {
 			topPanel.add(panel);
 		}
 		
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		JPanel btmPanel = new JPanel();
 		getContentPane().add("South",btmPanel);
 
@@ -964,7 +963,7 @@ class IconSizeDialog extends JDialog implements ActionListener {
 		}
 
 		setBounds(owner.getX()+owner.getWidth()/2-120,owner.getY()+owner.getHeight()/2-120,240,160);
-		setUndecorated(true);//ƒ^ƒCƒgƒ‹ƒo[”ñ•\¦
+		setUndecorated(true);//ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼éè¡¨ç¤º
 		
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
@@ -1013,7 +1012,7 @@ class HotSpotDialog extends JDialog implements ActionListener {
 		editor = owner;
 		getContentPane().setLayout(new BorderLayout());
 
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		JPanel topPanel = new JPanel();
 		topPanel.setLayout(new GridLayout(2,1));
 		topPanel.setPreferredSize(new Dimension(200,80));
@@ -1050,7 +1049,7 @@ class HotSpotDialog extends JDialog implements ActionListener {
 			topPanel.add(panel);
 		}
 		
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		JPanel btmPanel = new JPanel();
 		getContentPane().add("South",btmPanel);
 
@@ -1069,7 +1068,7 @@ class HotSpotDialog extends JDialog implements ActionListener {
 		}
 
 		setBounds(owner.getX()+owner.getWidth()/2-120,owner.getY()+owner.getHeight()/2-120,240,160);
-		setUndecorated(true);//ƒ^ƒCƒgƒ‹ƒo[”ñ•\¦
+		setUndecorated(true);//ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼éè¡¨ç¤º
 		
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {

@@ -25,7 +25,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JViewport;
 
 
-//ƒyƒCƒ“ƒg‚Ìƒƒjƒ…[“®ì
+//ãƒšã‚¤ãƒ³ãƒˆæ™‚ã®ãƒ¡ãƒ‹ãƒ¥ãƒ¼å‹•ä½œ
 class GMenuPaint implements ActionListener {
 	@Override
 	public void actionPerformed (ActionEvent e) {
@@ -47,9 +47,9 @@ class GMenuPaint implements ActionListener {
 		
 		if(cmd.equalsIgnoreCase("Undo Paint")){
 			PaintTool.owner.tool.clear();
-			//redoBuf‚ÉƒCƒ[ƒW‚ğˆÚ‚·
+			//redoBufã«ã‚¤ãƒ¡ãƒ¼ã‚¸ã‚’ç§»ã™
 			PaintTool.owner.redoBuf.setData(PaintTool.owner.getSurface().getData());
-			//mainImg‚ÉundoBuf‚ğ‘‚­
+			//mainImgã«undoBufã‚’æ›¸ã
 			PaintTool.owner.getSurface().setData(PaintTool.owner.undoBuf.getData());
 
 			if(PaintTool.owner == PCARDFrame.pc){
@@ -68,7 +68,7 @@ class GMenuPaint implements ActionListener {
 		}
 		else if(cmd.equalsIgnoreCase("Redo Paint")){
 			setUndo();
-			//mainImg‚ÉredoBuf‚ğ‘‚­
+			//mainImgã«redoBufã‚’æ›¸ã
 			PaintTool.owner.getSurface().setData(PaintTool.owner.redoBuf.getData());
 
 			/*Graphics g = PaintTool.owner.mainPane.getGraphics();
@@ -81,7 +81,7 @@ class GMenuPaint implements ActionListener {
 			PaintTool.antialias = !PaintTool.antialias;
 			GMenu.changeSelected("Paint","Antialias",PaintTool.antialias);
 		}
-		else if(cmd.equalsIgnoreCase("Save as ppmc")){
+		else if(cmd.equalsIgnoreCase("Save as ppmâ€¦")){
 			PaintTool.owner.tool.end();
 			PaintTool.owner.tool.clear();
 			PictureFile.saveAsPpm(PaintTool.owner.getSurface(), null);
@@ -259,14 +259,14 @@ class GMenuPaint implements ActionListener {
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				
-				//‚Ü‚¸V‚µ‚¢ƒoƒbƒtƒ@‚ğì¬‚µ‚ÄƒNƒŠƒA
+				//ã¾ãšæ–°ã—ã„ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 				BufferedImage bi2 = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 				Graphics2D dst_g = bi2.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 				dst_g.fill(rect);
 				
-				//‘I‘ğ—Ìˆæ‚Ì¶‰E”½“]
+				//é¸æŠé ˜åŸŸã®å·¦å³åè»¢
 				Graphics2D dst_g2 = bi2.createGraphics();
 				AffineTransform af = new AffineTransform();
 				af.scale(-1.0f, 1.0f);
@@ -285,14 +285,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBitsƒNƒŠƒA
+					//newSrcBitsã‚¯ãƒªã‚¢
 					BufferedImage newbi = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newbi.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à”½“]‚³‚¹‚é
+					//srcBitsã‚‚åè»¢ã•ã›ã‚‹
 					Rectangle srcRect = tl.getSelectedRect();
 					
 					af = new AffineTransform();
@@ -315,14 +315,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBitsƒNƒŠƒA
+					//newSrcBitsã‚¯ãƒªã‚¢
 					BufferedImage newbi = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newbi.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à”½“]‚³‚¹‚é
+					//srcBitsã‚‚åè»¢ã•ã›ã‚‹
 					Rectangle srcRect = tl.getSelectedRect();
 					
 					af = new AffineTransform();
@@ -341,24 +341,24 @@ class GMenuPaint implements ActionListener {
 					smarttl.movePoint.x += oldLeft-flipLeft;
 				}
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.redoBuf = bi2;
 				
 				PaintTool.owner.mainPane.repaint();
 				
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚Ì¶‰E”½“]
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã®å·¦å³åè»¢
 				setUndo();
 				
-				//‚Ü‚¸redoBuf‚ğƒNƒŠƒA
+				//ã¾ãšredoBufã‚’ã‚¯ãƒªã‚¢
 				BufferedImage bi = PaintTool.owner.redoBuf;
 				Graphics2D dst_g = bi.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 				dst_g.fill(rect);
 				
-				//¶‰E”½“]
+				//å·¦å³åè»¢
 				Graphics2D dst_g2 = bi.createGraphics();
 				AffineTransform af = new AffineTransform();
 				af.scale(-1.0f, 1.0f);
@@ -366,11 +366,11 @@ class GMenuPaint implements ActionListener {
 				dst_g2.transform(af);
 				dst_g2.drawImage(PaintTool.owner.getSurface(), 0, 0, null);
 				
-				//redoBuf‚ÆmainImg‚ğ“ü‚ê‘Ö‚¦
+				//redoBufã¨mainImgã‚’å…¥ã‚Œæ›¿ãˆ
 				BufferedImage savebi = PaintTool.owner.getSurface();
 				PaintTool.owner.redoBuf = savebi;
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.setSurface(bi);
 				PaintTool.owner.mainPane.repaint();
 			}
@@ -383,14 +383,14 @@ class GMenuPaint implements ActionListener {
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				
-				//‚Ü‚¸V‚µ‚¢ƒoƒbƒtƒ@‚ğì¬‚µ‚ÄƒNƒŠƒA
+				//ã¾ãšæ–°ã—ã„ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 				BufferedImage bi2 = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 				Graphics2D dst_g = bi2.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 				dst_g.fill(rect);
 				
-				//‘I‘ğ—Ìˆæ‚Ìã‰º”½“]
+				//é¸æŠé ˜åŸŸã®ä¸Šä¸‹åè»¢
 				Graphics2D dst_g2 = bi2.createGraphics();
 				AffineTransform af = new AffineTransform();
 				af.scale(1.0f, -1.0f);
@@ -407,14 +407,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBitsƒNƒŠƒA
+					//newSrcBitsã‚¯ãƒªã‚¢
 					BufferedImage newbi = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newbi.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à”½“]‚³‚¹‚é
+					//srcBitsã‚‚åè»¢ã•ã›ã‚‹
 					Rectangle srcRect = tl.getSelectedRect();
 					
 					af = new AffineTransform();
@@ -437,14 +437,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBitsƒNƒŠƒA
+					//newSrcBitsã‚¯ãƒªã‚¢
 					BufferedImage newbi = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newbi.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à”½“]‚³‚¹‚é
+					//srcBitsã‚‚åè»¢ã•ã›ã‚‹
 					Rectangle srcRect = tl.getSelectedRect();
 					
 					af = new AffineTransform();
@@ -463,7 +463,7 @@ class GMenuPaint implements ActionListener {
 					smarttl.movePoint.y += oldTop-flipTop;
 				}
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.redoBuf = bi2;
 				
 				PaintTool.owner.mainPane.repaint();
@@ -471,17 +471,17 @@ class GMenuPaint implements ActionListener {
 				bi.flush();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚Ìã‰º”½“]
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã®ä¸Šä¸‹åè»¢
 				setUndo();
 				
-				//‚Ü‚¸redoBuf‚ğƒNƒŠƒA
+				//ã¾ãšredoBufã‚’ã‚¯ãƒªã‚¢
 				BufferedImage bi = PaintTool.owner.redoBuf;
 				Graphics2D dst_g = bi.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 				dst_g.fill(rect);
 				
-				//ã‰º”½“]
+				//ä¸Šä¸‹åè»¢
 				Graphics2D dst_g2 = bi.createGraphics();
 				AffineTransform af = new AffineTransform();
 				af.scale(1.0f, -1.0f);
@@ -489,16 +489,16 @@ class GMenuPaint implements ActionListener {
 				dst_g2.transform(af);
 				dst_g2.drawImage(PaintTool.owner.getSurface(), 0, 0, null);
 				
-				//redoBuf‚ÆmainImg‚ğ“ü‚ê‘Ö‚¦
+				//redoBufã¨mainImgã‚’å…¥ã‚Œæ›¿ãˆ
 				BufferedImage savebi = PaintTool.owner.getSurface();
 				PaintTool.owner.redoBuf = savebi;
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.setSurface(bi);
 				PaintTool.owner.mainPane.repaint();
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Color Convertc")){
+		else if(cmd.equalsIgnoreCase("Color Convertâ€¦")){
 			
 			new ColorConvertDialog(PaintTool.owner);
 		}
@@ -510,14 +510,14 @@ class GMenuPaint implements ActionListener {
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				
-				//‚Ü‚¸V‚µ‚¢ƒoƒbƒtƒ@‚ğì¬‚µ‚ÄƒNƒŠƒA
+				//ã¾ãšæ–°ã—ã„ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 				BufferedImage bi2 = new BufferedImage(bi.getHeight(), bi.getWidth(), BufferedImage.TYPE_INT_ARGB);
 				Graphics2D dst_g = bi2.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getHeight(), bi.getWidth());
 				dst_g.fill(rect);
 				
-				//‘I‘ğ—Ìˆæ‚Ì¶‰ñ“]
+				//é¸æŠé ˜åŸŸã®å·¦å›è»¢
 				Graphics2D dst_g2 = bi2.createGraphics();
 				AffineTransform af = new AffineTransform();
 				Rectangle srcRect = (Rectangle)tl.getSelectedRect().clone();
@@ -532,7 +532,7 @@ class GMenuPaint implements ActionListener {
 					((SelectTool)tl).moveRect.width = srcRect.height;
 					((SelectTool)tl).moveRect.height = srcRect.width;
 					
-					//•½sˆÚ“®
+					//å¹³è¡Œç§»å‹•
 					((SelectTool)tl).moveRect.x += (srcRect.width-srcRect.height)/2;
 					((SelectTool)tl).moveRect.y -= (srcRect.width-srcRect.height)/2;
 				}
@@ -542,14 +542,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBits‚ğì¬‚µ‚ÄƒNƒŠƒA
+					//newSrcBitsã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 					BufferedImage newSrcBits = new BufferedImage(bi.getHeight(), bi.getWidth(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newSrcBits.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,newSrcBits.getHeight(), newSrcBits.getWidth());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à‰ñ“]‚³‚¹‚é
+					//srcBitsã‚‚å›è»¢ã•ã›ã‚‹
 					af = new AffineTransform();
 					af.setToRotation(Math.PI*3.0/2.0, srcRect2.x+srcRect2.width/2, srcRect2.x+srcRect2.width/2);
 					LassoTool lassotl = (LassoTool)tl;
@@ -559,7 +559,7 @@ class GMenuPaint implements ActionListener {
 					lassotl.srcbits.flush();
 					lassotl.srcbits = newSrcBits;
 					
-					//•½sˆÚ“®
+					//å¹³è¡Œç§»å‹•
 					lassotl.movePoint.x += srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 					lassotl.movePoint.y -= srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 				}
@@ -569,14 +569,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBits‚ğì¬‚µ‚ÄƒNƒŠƒA
+					//newSrcBitsã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 					BufferedImage newSrcBits = new BufferedImage(bi.getHeight(), bi.getWidth(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newSrcBits.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,newSrcBits.getHeight(), newSrcBits.getWidth());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à‰ñ“]‚³‚¹‚é
+					//srcBitsã‚‚å›è»¢ã•ã›ã‚‹
 					af = new AffineTransform();
 					af.setToRotation(Math.PI*3.0/2.0, srcRect2.x+srcRect2.width/2, srcRect2.x+srcRect2.width/2);
 					SmartSelectTool smarttl = (SmartSelectTool)tl;
@@ -586,12 +586,12 @@ class GMenuPaint implements ActionListener {
 					smarttl.srcbits.flush();
 					smarttl.srcbits = newSrcBits;
 					
-					//•½sˆÚ“®
+					//å¹³è¡Œç§»å‹•
 					smarttl.movePoint.x += srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 					smarttl.movePoint.y -= srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 				}
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.redoBuf = bi2;
 				
 				PaintTool.owner.mainPane.repaint();
@@ -599,28 +599,28 @@ class GMenuPaint implements ActionListener {
 				bi.flush();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚Ì¶‰ñ“]
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã®å·¦å›è»¢
 				setUndo();
 				
-				//‚Ü‚¸redoBuf‚ğƒNƒŠƒA
+				//ã¾ãšredoBufã‚’ã‚¯ãƒªã‚¢
 				BufferedImage bi = PaintTool.owner.redoBuf;
 				Graphics2D dst_g = bi.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 				dst_g.fill(rect);
 				
-				//¶‰ñ“]
+				//å·¦å›è»¢
 				Graphics2D dst_g2 = bi.createGraphics();
 				AffineTransform af = new AffineTransform();
 				af.setToRotation(Math.PI*3.0/2.0, bi.getWidth()/2, bi.getHeight()/2);
 				dst_g2.transform(af);
 				dst_g2.drawImage(PaintTool.owner.getSurface(), 0, 0, null);
 				
-				//redoBuf‚ÆmainImg‚ğ“ü‚ê‘Ö‚¦
+				//redoBufã¨mainImgã‚’å…¥ã‚Œæ›¿ãˆ
 				BufferedImage savebi = PaintTool.owner.getSurface();
 				PaintTool.owner.redoBuf = savebi;
 				
-				//ƒCƒ[ƒW‚ğV‚µ‚­‚·‚é
+				//ã‚¤ãƒ¡ãƒ¼ã‚¸ã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.setSurface(bi);
 				PaintTool.owner.mainPane.repaint();
 			}
@@ -633,14 +633,14 @@ class GMenuPaint implements ActionListener {
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				
-				//‚Ü‚¸V‚µ‚¢ƒoƒbƒtƒ@‚ğì¬‚µ‚ÄƒNƒŠƒA
+				//ã¾ãšæ–°ã—ã„ãƒãƒƒãƒ•ã‚¡ã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 				BufferedImage bi2 = new BufferedImage(bi.getHeight(), bi.getWidth(), BufferedImage.TYPE_INT_ARGB);
 				Graphics2D dst_g = bi2.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getHeight(), bi.getWidth());
 				dst_g.fill(rect);
 				
-				//‘I‘ğ—Ìˆæ‚Ì‰E‰ñ“]
+				//é¸æŠé ˜åŸŸã®å³å›è»¢
 				Graphics2D dst_g2 = bi2.createGraphics();
 				AffineTransform af = new AffineTransform();
 				Rectangle srcRect = (Rectangle)tl.getSelectedRect().clone();
@@ -655,7 +655,7 @@ class GMenuPaint implements ActionListener {
 					((SelectTool)tl).moveRect.width = srcRect.height;
 					((SelectTool)tl).moveRect.height = srcRect.width;
 					
-					//•½sˆÚ“®
+					//å¹³è¡Œç§»å‹•
 					((SelectTool)tl).moveRect.x += (srcRect.width-srcRect.height)/2;
 					((SelectTool)tl).moveRect.y -= (srcRect.width-srcRect.height)/2;
 				}
@@ -665,14 +665,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBits‚ğì¬‚µ‚ÄƒNƒŠƒA
+					//newSrcBitsã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 					BufferedImage newSrcBits = new BufferedImage(bi.getHeight(), bi.getWidth(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newSrcBits.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,newSrcBits.getHeight(), newSrcBits.getWidth());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à‰ñ“]‚³‚¹‚é
+					//srcBitsã‚‚å›è»¢ã•ã›ã‚‹
 					af = new AffineTransform();
 					af.setToRotation(Math.PI/2.0, srcRect2.y+srcRect2.height/2, srcRect2.y+srcRect2.height/2);
 					LassoTool lassotl = (LassoTool)tl;
@@ -682,7 +682,7 @@ class GMenuPaint implements ActionListener {
 					lassotl.srcbits.flush();
 					lassotl.srcbits = newSrcBits;
 					
-					//•½sˆÚ“®
+					//å¹³è¡Œç§»å‹•
 					lassotl.movePoint.x += srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 					lassotl.movePoint.y -= srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 				}
@@ -692,14 +692,14 @@ class GMenuPaint implements ActionListener {
 					dst_g2.transform(af);
 					dst_g2.drawImage(bi, 0, 0, null);
 
-					//newSrcBits‚ğì¬‚µ‚ÄƒNƒŠƒA
+					//newSrcBitsã‚’ä½œæˆã—ã¦ã‚¯ãƒªã‚¢
 					BufferedImage newSrcBits = new BufferedImage(bi.getHeight(), bi.getWidth(), BufferedImage.TYPE_INT_ARGB);
 					Graphics2D newsrcbits_g = newSrcBits.createGraphics();
 					newsrcbits_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					Rectangle2D.Double nrect = new Rectangle2D.Double(0,0,newSrcBits.getHeight(), newSrcBits.getWidth());
 					newsrcbits_g.fill(nrect);
 					
-					//srcBits‚à‰ñ“]‚³‚¹‚é
+					//srcBitsã‚‚å›è»¢ã•ã›ã‚‹
 					af = new AffineTransform();
 					af.setToRotation(Math.PI/2.0, srcRect2.y+srcRect2.height/2, srcRect2.y+srcRect2.height/2);
 					SmartSelectTool smarttl = (SmartSelectTool)tl;
@@ -709,12 +709,12 @@ class GMenuPaint implements ActionListener {
 					smarttl.srcbits.flush();
 					smarttl.srcbits = newSrcBits;
 					
-					//•½sˆÚ“®
+					//å¹³è¡Œç§»å‹•
 					smarttl.movePoint.x += srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 					smarttl.movePoint.y -= srcRect.x-srcRect.y+(srcRect.width-(srcRect.height))/2;
 				}
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.redoBuf = bi2;
 				
 				PaintTool.owner.mainPane.repaint();
@@ -722,33 +722,33 @@ class GMenuPaint implements ActionListener {
 				bi.flush();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚Ì‰E‰ñ“]
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã®å³å›è»¢
 				setUndo();
 				
-				//‚Ü‚¸redoBuf‚ğƒNƒŠƒA
+				//ã¾ãšredoBufã‚’ã‚¯ãƒªã‚¢
 				BufferedImage bi = PaintTool.owner.redoBuf;
 				Graphics2D dst_g = bi.createGraphics();
 				dst_g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 				Rectangle2D.Double rect = new Rectangle2D.Double(0,0,bi.getWidth(), bi.getHeight());
 				dst_g.fill(rect);
 				
-				//‰E‰ñ“]
+				//å³å›è»¢
 				Graphics2D dst_g2 = bi.createGraphics();
 				AffineTransform af = new AffineTransform();
 				af.setToRotation(Math.PI/2.0, bi.getWidth()/2, bi.getHeight()/2);
 				dst_g2.transform(af);
 				dst_g2.drawImage(PaintTool.owner.getSurface(), 0, 0, null);
 				
-				//redoBuf‚ÆmainImg‚ğ“ü‚ê‘Ö‚¦
+				//redoBufã¨mainImgã‚’å…¥ã‚Œæ›¿ãˆ
 				BufferedImage savebi = PaintTool.owner.getSurface();
 				PaintTool.owner.redoBuf = savebi;
 				
-				//ƒCƒ[ƒW‚ğV‚µ‚­‚·‚é
+				//ã‚¤ãƒ¡ãƒ¼ã‚¸ã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.setSurface(bi);
 				PaintTool.owner.mainPane.repaint();
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Embossc")){
+		else if(cmd.equalsIgnoreCase("Embossâ€¦")){
 			
 			new EmbossDialog(PaintTool.owner);
 		}
@@ -757,11 +757,11 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ
+				//é¸æŠç¯„å›²
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 
-				//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+				//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 				int biwidth = bi.getWidth();
 				int biheight = bi.getHeight();
 				if(PaintTool.owner.tool.getClass()==SelectTool.class){
@@ -775,7 +775,7 @@ class GMenuPaint implements ActionListener {
 				bigbi.createGraphics().drawImage(bi, 2,biheight+2,biwidth+2,biheight+4, 0,biheight-2,biwidth,biheight, null);
 				bigbi.createGraphics().drawImage(bi, 2,2, null);
 				
-				//ƒtƒBƒ‹ƒ^[ˆ—
+				//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 				final float[] operator={
 						0.00f, 0.01f, 0.02f, 0.01f, 0.00f,
 						0.01f, 0.03f, 0.08f, 0.03f, 0.01f,
@@ -790,7 +790,7 @@ class GMenuPaint implements ActionListener {
 				BufferedImage newimg = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 				newimg.createGraphics().drawImage(bignewimg, -2,-2, null);
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.redoBuf = newimg;
 				
 				if(PaintTool.owner.tool.getClass()==LassoTool.class ||
@@ -811,7 +811,7 @@ class GMenuPaint implements ActionListener {
 						for(int h=0; h<width; h++){
 							int c = mskbuf.getElem(0, h+v*width);
 							if((c&0xFF000000) == 0){
-								//ˆÚ“®‚µ‚½•”•ª‚ğ“§–¾‚É‚·‚é
+								//ç§»å‹•ã—ãŸéƒ¨åˆ†ã‚’é€æ˜ã«ã™ã‚‹
 								if(!PaintTool.editBackground){
 									movbuf.setElem(h+v*width, 0x00FFFFFF);
 								}else{
@@ -830,12 +830,12 @@ class GMenuPaint implements ActionListener {
 				bi.flush();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚Ì‚Ú‚©‚µ
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã®ã¼ã‹ã—
 				setUndo();
 				
 				BufferedImage bi = PaintTool.owner.getSurface();
 
-				//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+				//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 				BufferedImage bigbi = new BufferedImage(bi.getWidth()+4, bi.getHeight()+4, BufferedImage.TYPE_INT_ARGB);
 				bigbi.createGraphics().drawImage(bi, 0,2,2,bi.getHeight()+2, 0,0,2,bi.getHeight(), null);
 				bigbi.createGraphics().drawImage(bi, bi.getWidth()+2,2,bi.getWidth()+4,bi.getHeight()+2, bi.getWidth()-2,0,bi.getWidth(),bi.getHeight(), null);
@@ -843,7 +843,7 @@ class GMenuPaint implements ActionListener {
 				bigbi.createGraphics().drawImage(bi, 2,bi.getHeight()+2,bi.getWidth()+2,bi.getHeight()+4, 0,bi.getHeight()-2,bi.getWidth(),bi.getHeight(), null);
 				bigbi.createGraphics().drawImage(bi, 2,2, null);
 
-				//ƒtƒBƒ‹ƒ^[ˆ—
+				//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 				final float[] operator={
 						0.00f, 0.01f, 0.02f, 0.01f, 0.00f,
 						0.01f, 0.03f, 0.08f, 0.03f, 0.01f,
@@ -858,7 +858,7 @@ class GMenuPaint implements ActionListener {
 				BufferedImage newimg = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 				newimg.createGraphics().drawImage(bignewimg, -2,-2, null);
 				
-				//ƒCƒ[ƒW‚ğV‚µ‚­‚·‚é
+				//ã‚¤ãƒ¡ãƒ¼ã‚¸ã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.setSurface(newimg);
 				PaintTool.owner.mainPane.repaint();
 			}
@@ -868,11 +868,11 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ
+				//é¸æŠç¯„å›²
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 
-				//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+				//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 				int biwidth = bi.getWidth();
 				int biheight = bi.getHeight();
 				if(PaintTool.owner.tool.getClass()==SelectTool.class){
@@ -886,7 +886,7 @@ class GMenuPaint implements ActionListener {
 				bigbi.createGraphics().drawImage(bi, 2,biheight+2,biwidth+2,biheight+4, 0,biheight-2,biwidth,biheight, null);
 				bigbi.createGraphics().drawImage(bi, 2,2, null);
 				
-				//ƒtƒBƒ‹ƒ^[ˆ—
+				//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 				final float[] operator={
 						-0.00f, -0.01f, -0.02f, -0.01f, -0.00f,
 						-0.01f, -0.03f, -0.08f, -0.03f, -0.01f,
@@ -901,7 +901,7 @@ class GMenuPaint implements ActionListener {
 				BufferedImage newimg = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 				newimg.createGraphics().drawImage(bignewimg, -2,-2, null);
 				
-				//‘I‘ğ—Ìˆæ‚ğV‚µ‚­‚·‚é
+				//é¸æŠé ˜åŸŸã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.redoBuf = newimg;
 
 				if(PaintTool.owner.tool.getClass()==LassoTool.class ||
@@ -922,7 +922,7 @@ class GMenuPaint implements ActionListener {
 						for(int h=0; h<width; h++){
 							int c = mskbuf.getElem(0, h+v*width);
 							if((c&0xFF000000) == 0){
-								//ˆÚ“®‚µ‚½•”•ª‚ğ“§–¾‚É‚·‚é
+								//ç§»å‹•ã—ãŸéƒ¨åˆ†ã‚’é€æ˜ã«ã™ã‚‹
 								if(!PaintTool.editBackground){
 									movbuf.setElem(h+v*width, 0x00FFFFFF);
 								}else{
@@ -941,12 +941,12 @@ class GMenuPaint implements ActionListener {
 				bi.flush();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚ÌƒVƒƒ[ƒv
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã®ã‚·ãƒ£ãƒ¼ãƒ—
 				setUndo();
 				
 				BufferedImage bi = PaintTool.owner.getSurface();
 
-				//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+				//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 				BufferedImage bigbi = new BufferedImage(bi.getWidth()+4, bi.getHeight()+4, BufferedImage.TYPE_INT_ARGB);
 				bigbi.createGraphics().drawImage(bi, 0,2,2,bi.getHeight()+2, 0,0,2,bi.getHeight(), null);
 				bigbi.createGraphics().drawImage(bi, bi.getWidth()+2,2,bi.getWidth()+4,bi.getHeight()+2, bi.getWidth()-2,0,bi.getWidth(),bi.getHeight(), null);
@@ -954,7 +954,7 @@ class GMenuPaint implements ActionListener {
 				bigbi.createGraphics().drawImage(bi, 2,bi.getHeight()+2,bi.getWidth()+2,bi.getHeight()+4, 0,bi.getHeight()-2,bi.getWidth(),bi.getHeight(), null);
 				bigbi.createGraphics().drawImage(bi, 2,2, null);
 
-				//ƒtƒBƒ‹ƒ^[ˆ—
+				//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 				final float[] operator={
 						-0.00f, -0.01f, -0.02f, -0.01f, -0.00f,
 						-0.01f, -0.03f, -0.08f, -0.03f, -0.01f,
@@ -969,7 +969,7 @@ class GMenuPaint implements ActionListener {
 				BufferedImage newimg = new BufferedImage(bi.getWidth(), bi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 				newimg.createGraphics().drawImage(bignewimg, -2,-2, null);
 				
-				//ƒCƒ[ƒW‚ğV‚µ‚­‚·‚é
+				//ã‚¤ãƒ¡ãƒ¼ã‚¸ã‚’æ–°ã—ãã™ã‚‹
 				PaintTool.owner.setSurface(newimg);
 				PaintTool.owner.mainPane.repaint();
 			}
@@ -979,7 +979,7 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ
+				//é¸æŠç¯„å›²
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				if(bi.hasTileWriters())
@@ -990,7 +990,7 @@ class GMenuPaint implements ActionListener {
 					bi = bi2;
 				}
 				
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				int width = bi.getWidth();
 				int height = bi.getHeight();
@@ -1026,12 +1026,12 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚ÌF”½“]
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã®è‰²åè»¢
 				setUndo();
 				
 				BufferedImage bi = PaintTool.owner.getSurface();
 
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				int width = bi.getWidth();
 				int height = bi.getHeight();
@@ -1051,7 +1051,7 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ‚ğˆÃ‚­‚·‚é
+				//é¸æŠç¯„å›²ã‚’æš—ãã™ã‚‹
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				if(bi.hasTileWriters())
@@ -1062,7 +1062,7 @@ class GMenuPaint implements ActionListener {
 					bi = bi2;
 				}
 				
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				int width = bi.getWidth();
 				int height = bi.getHeight();
@@ -1107,12 +1107,12 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚ğˆÃ‚­‚·‚é
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã‚’æš—ãã™ã‚‹
 				setUndo();
 				
 				BufferedImage bi = PaintTool.owner.getSurface();
 
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				int width = bi.getWidth();
 				int height = bi.getHeight();
@@ -1141,7 +1141,7 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ‚ğ–¾‚é‚­‚·‚é
+				//é¸æŠç¯„å›²ã‚’æ˜ã‚‹ãã™ã‚‹
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				if(bi.hasTileWriters())
@@ -1152,7 +1152,7 @@ class GMenuPaint implements ActionListener {
 					bi = bi2;
 				}
 				
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				int width = bi.getWidth();
 				int height = bi.getHeight();
@@ -1197,12 +1197,12 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚ğ–¾‚é‚­‚·‚é
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã‚’æ˜ã‚‹ãã™ã‚‹
 				setUndo();
 				
 				BufferedImage bi = PaintTool.owner.getSurface();
 
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				int width = bi.getWidth();
 				int height = bi.getHeight();
@@ -1231,7 +1231,7 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ‚ğ‰º‚É‚ ‚é‚à‚Ì‚É‚·‚é
+				//é¸æŠç¯„å›²ã‚’ä¸‹ã«ã‚ã‚‹ã‚‚ã®ã«ã™ã‚‹
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi;
 				if(tl.getClass()==LassoTool.class){
@@ -1256,7 +1256,7 @@ class GMenuPaint implements ActionListener {
 				System.out.println("rect1:"+rect1);
 				System.out.println("rect2:"+rect2);
 				
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				DataBuffer maindb = PaintTool.owner.getSurface().getRaster().getDataBuffer();
 				int width = bi.getWidth();
@@ -1265,7 +1265,7 @@ class GMenuPaint implements ActionListener {
 				int mainheight = PaintTool.owner.getSurface().getHeight();
 				
 				if(tl.getClass()==SelectTool.class){
-					//‹éŒ`‘I‘ğƒc[ƒ‹
+					//çŸ©å½¢é¸æŠãƒ„ãƒ¼ãƒ«
 					for(int v=0; v<rect1.height; v++){
 						for(int h=0; h<rect1.width; h++){
 							//if((0xFF000000&db.getElem(h+v*width))!=0){
@@ -1280,7 +1280,7 @@ class GMenuPaint implements ActionListener {
 					}
 				}
 				else{
-					//“Š‚°“ê‚©©“®‘I‘ğƒc[ƒ‹
+					//æŠ•ã’ç¸„ã‹è‡ªå‹•é¸æŠãƒ„ãƒ¼ãƒ«
 					for(int v=0; v<height; v++){
 						for(int h=0; h<width; h++){
 							if((0xFF000000&db.getElem(h+v*width))!=0){
@@ -1298,7 +1298,7 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//‘I‘ğ”ÍˆÍ‚ª‚ ‚è‚Ü‚¹‚ñ!
+				//é¸æŠç¯„å›²ãŒã‚ã‚Šã¾ã›ã‚“!
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Fill")){
@@ -1306,7 +1306,7 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ‚ğ“h‚è‚Â‚Ô‚µ
+				//é¸æŠç¯„å›²ã‚’å¡—ã‚Šã¤ã¶ã—
 				toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				if(bi.hasTileWriters())
@@ -1321,9 +1321,9 @@ class GMenuPaint implements ActionListener {
 					bi.createGraphics().fillRect(0,0,tl.getSelectedRect().width, tl.getSelectedRect().height);
 				}
 				
-				//ˆ—
+				//å‡¦ç†
 
-				//ƒpƒ^[ƒ“‚ğ“K—p
+				//ãƒ‘ã‚¿ãƒ¼ãƒ³ã‚’é©ç”¨
 				PaintTool.setPattern(false);
 				DataBuffer fillbuf = bi.getRaster().getDataBuffer();
 				DataBuffer patbuf = PaintTool.pat.getRaster().getDataBuffer();
@@ -1342,7 +1342,7 @@ class GMenuPaint implements ActionListener {
 					}
 				}
 				
-				//ƒOƒ‰ƒf[ƒVƒ‡ƒ“‚ğ“K—p(ƒpƒ^[ƒ“‚Æ‚Ì•¹—p‚Í•s‰Â)
+				//ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã‚’é©ç”¨(ãƒ‘ã‚¿ãƒ¼ãƒ³ã¨ã®ä½µç”¨ã¯ä¸å¯)
 				if(PaintTool.owner.grad.use){
 					PaintBucketTool.gradfill(bi, PaintTool.owner.grad.color1, PaintTool.owner.grad.color2, PaintTool.owner.grad.angle );
 				}
@@ -1371,15 +1371,15 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//ƒT[ƒtƒF[ƒX‘S‘Ì‚ğ“h‚è‚Â‚Ô‚µ
+				//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹å…¨ä½“ã‚’å¡—ã‚Šã¤ã¶ã—
 				setUndo();
 				
 				BufferedImage bi = PaintTool.owner.getSurface();
 				bi.createGraphics().fillRect(0,0,bi.getWidth(),bi.getHeight());
 
-				//ˆ—
+				//å‡¦ç†
 
-				//ƒpƒ^[ƒ“‚ğ“K—p
+				//ãƒ‘ã‚¿ãƒ¼ãƒ³ã‚’é©ç”¨
 				PaintTool.setPattern(false);
 				DataBuffer fillbuf = bi.getRaster().getDataBuffer();
 				DataBuffer patbuf = PaintTool.pat.getRaster().getDataBuffer();
@@ -1398,7 +1398,7 @@ class GMenuPaint implements ActionListener {
 					}
 				}
 				
-				//ƒOƒ‰ƒf[ƒVƒ‡ƒ“‚ğ“K—p(ƒpƒ^[ƒ“‚Æ‚Ì•¹—p‚Í•s‰Â)
+				//ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã‚’é©ç”¨(ãƒ‘ã‚¿ãƒ¼ãƒ³ã¨ã®ä½µç”¨ã¯ä¸å¯)
 				if(PaintTool.owner.grad.use){
 					PaintBucketTool.gradfill(bi, PaintTool.owner.grad.color1, PaintTool.owner.grad.color2, PaintTool.owner.grad.angle );
 				}
@@ -1411,9 +1411,9 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ‚Ì”’F‚ğ“§–¾‚É‚·‚é
+				//é¸æŠç¯„å›²ã®ç™½è‰²ã‚’é€æ˜ã«ã™ã‚‹
 				
-				//ˆ—
+				//å‡¦ç†
 				if(PaintTool.owner.tool.getClass()==SelectTool.class){
 					toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 					BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
@@ -1464,7 +1464,7 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//‘I‘ğ”ÍˆÍ–³‚µ
+				//é¸æŠç¯„å›²ç„¡ã—
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Opaque")){
@@ -1472,9 +1472,9 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ‚Ì“§–¾‚ğ”’F‚É‚·‚é
+				//é¸æŠç¯„å›²ã®é€æ˜ã‚’ç™½è‰²ã«ã™ã‚‹
 				
-				//ˆ—
+				//å‡¦ç†
 				if(PaintTool.owner.tool.getClass()==SelectTool.class){
 					toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 					BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
@@ -1529,7 +1529,7 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//‘I‘ğ”ÍˆÍ–³‚µ
+				//é¸æŠç¯„å›²ç„¡ã—
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Reverse Selection")){
@@ -1539,7 +1539,7 @@ class GMenuPaint implements ActionListener {
 				(PaintTool.owner.tool.getClass()==LassoTool.class ||
 				PaintTool.owner.tool.getClass()==SmartSelectTool.class))
 			{
-				//‘I‘ğ”ÍˆÍ‚ğ‹t“]‚µA‚»‚Ì‰æ‘œ‚Í‰º‚É‚ ‚é‚à‚Ì‚É‚·‚é
+				//é¸æŠç¯„å›²ã‚’é€†è»¢ã—ã€ãã®ç”»åƒã¯ä¸‹ã«ã‚ã‚‹ã‚‚ã®ã«ã™ã‚‹
 				
 				BufferedImage srcbits = null;
 				if(PaintTool.owner.tool.getClass()==LassoTool.class){
@@ -1561,7 +1561,7 @@ class GMenuPaint implements ActionListener {
 				Rectangle rect1 = tl.getSelectedRect();
 				Rectangle rect2 = tl.getMoveRect();
 				
-				//‹t“]ˆ—
+				//é€†è»¢å‡¦ç†
 				DataBuffer srcdb = srcbits.getRaster().getDataBuffer();
 				DataBuffer newdb = newbi.getRaster().getDataBuffer();
 				int width = newbi.getWidth();
@@ -1591,7 +1591,7 @@ class GMenuPaint implements ActionListener {
 				}
 				
 
-				//ƒsƒbƒNƒAƒbƒv
+				//ãƒ”ãƒƒã‚¯ã‚¢ãƒƒãƒ—
 				BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
 				if(bi.hasTileWriters())
 				{
@@ -1601,7 +1601,7 @@ class GMenuPaint implements ActionListener {
 					bi = bi2;
 				}
 				
-				//ˆ—
+				//å‡¦ç†
 				DataBuffer redodb = bi.getRaster().getDataBuffer();
 				DataBuffer maindb = PaintTool.owner.getSurface().getRaster().getDataBuffer();
 				width = bi.getWidth();
@@ -1628,10 +1628,10 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//‘I‘ğ”ÍˆÍ‚ª‚ ‚è‚Ü‚¹‚ñ!
+				//é¸æŠç¯„å›²ãŒã‚ã‚Šã¾ã›ã‚“!
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Scale Selectionc")){
+		else if(cmd.equalsIgnoreCase("Scale Selectionâ€¦")){
 
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 				((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
@@ -1641,7 +1641,7 @@ class GMenuPaint implements ActionListener {
 				}
 			}
 			else{
-				//‘I‘ğ”ÍˆÍ‚ª‚ ‚è‚Ü‚¹‚ñ!
+				//é¸æŠç¯„å›²ãŒã‚ã‚Šã¾ã›ã‚“!
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Opaque")){
@@ -1649,9 +1649,9 @@ class GMenuPaint implements ActionListener {
 			if(PaintTool.owner.tool instanceof toolSelectInterface &&
 					((toolSelectInterface)PaintTool.owner.tool).getSelectedSurface(PaintTool.owner)!=null)
 			{
-				//‘I‘ğ”ÍˆÍ‚Ì“§–¾‚ğ”’F‚É‚·‚é
+				//é¸æŠç¯„å›²ã®é€æ˜ã‚’ç™½è‰²ã«ã™ã‚‹
 				
-				//ˆ—
+				//å‡¦ç†
 				if(PaintTool.owner.tool.getClass()==SelectTool.class){
 					toolSelectInterface tl = (toolSelectInterface)PaintTool.owner.tool;
 					BufferedImage bi = tl.getSelectedSurface(PaintTool.owner);
@@ -1706,7 +1706,7 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//‘I‘ğ”ÍˆÍ–³‚µ
+				//é¸æŠç¯„å›²ç„¡ã—
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Expand Selection")){
@@ -1717,7 +1717,7 @@ class GMenuPaint implements ActionListener {
 
 				if(PaintTool.owner.tool.getClass()==SelectTool.class)
 				{
-					//‘I‘ğ”ÍˆÍ‚ğ1pixelŠg‘å
+					//é¸æŠç¯„å›²ã‚’1pixelæ‹¡å¤§
 					SelectTool tool = (SelectTool)PaintTool.owner.tool;
 					tool.moveRect.x--;
 					tool.moveRect.y--;
@@ -1739,7 +1739,7 @@ class GMenuPaint implements ActionListener {
 				else if((PaintTool.owner.tool.getClass()==LassoTool.class ||
 						PaintTool.owner.tool.getClass()==SmartSelectTool.class))
 				{
-					//‘I‘ğ”ÍˆÍ‚ğ1pixelŠg‘å
+					//é¸æŠç¯„å›²ã‚’1pixelæ‹¡å¤§
 					
 					BufferedImage srcbits = null;
 					if(PaintTool.owner.tool.getClass()==LassoTool.class){
@@ -1760,7 +1760,7 @@ class GMenuPaint implements ActionListener {
 					newg.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 					newg.fillRect(0,0,newbi.getWidth(), newbi.getHeight());
 					
-					//ˆ—
+					//å‡¦ç†
 					DataBuffer srcdb = srcbits.getRaster().getDataBuffer();
 					DataBuffer newdb = newbi.getRaster().getDataBuffer();
 					int width = srcbits.getWidth();
@@ -1801,14 +1801,14 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.mainPane.repaint();
 			}
 			else{
-				//‘I‘ğ”ÍˆÍ‚ª‚ ‚è‚Ü‚¹‚ñ!
+				//é¸æŠç¯„å›²ãŒã‚ã‚Šã¾ã›ã‚“!
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Filterc")){
+		else if(cmd.equalsIgnoreCase("Filterâ€¦")){
 			
 			new PaintFilter(PaintTool.owner);
 		}
-		else if(cmd.equalsIgnoreCase("Blending Modec")){
+		else if(cmd.equalsIgnoreCase("Blending Modeâ€¦")){
 			
 			PaintBlendDialog.showPaintBlendDialog(PaintTool.owner);
 		}
@@ -1832,7 +1832,7 @@ class GMenuPaint implements ActionListener {
 	}
 	
 	
-	//ƒNƒŠƒbƒvƒ{[ƒh‚É‰æ‘œ‚ğƒRƒs[
+	//ã‚¯ãƒªãƒƒãƒ—ãƒœãƒ¼ãƒ‰ã«ç”»åƒã‚’ã‚³ãƒ”ãƒ¼
 	public static void setClipboardImage(BufferedImage img, int width, int height) {
 		Toolkit kit = Toolkit.getDefaultToolkit();
 		Clipboard clip = kit.getSystemClipboard();
@@ -1897,7 +1897,7 @@ class GMenuPaint implements ActionListener {
 	
 	
 	static public void setUndo(){
-		//undoBuf‚ÉƒCƒ[ƒW‚ğˆÚ‚·
+		//undoBufã«ã‚¤ãƒ¡ãƒ¼ã‚¸ã‚’ç§»ã™
 		PaintTool.owner.undoBuf.setData(PaintTool.owner.getSurface().getData());
 		
 		//PCARD.pc.redoBuf = null;

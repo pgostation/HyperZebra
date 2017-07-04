@@ -19,10 +19,10 @@ public class HyperZebra{
 		PCARD.main(args);
     }
 
-    @SuppressWarnings({ "deprecation", "restriction" })
+    //@SuppressWarnings({ "deprecation", "restriction" })
 	static
     void installMacHandler(){
-		if(GMenu.isMacOSX()){
+		/*if(GMenu.isMacOSX()){
 			try{
 			//Mac Application Menu
 			com.apple.eawt.Application fApplication = com.apple.eawt.Application.getApplication();
@@ -33,8 +33,8 @@ public class HyperZebra{
 					@Override
 					public void handleAbout(com.apple.eawt.ApplicationEvent e) {
 					//showAbout();
-						/*new GDialog(null, AppName+" "+PCARD.longVersion,
-								null,"OK",null,null);*/
+						//new GDialog(null, AppName+" "+PCARD.longVersion,
+						//		null,"OK",null,null);
 						try {
 							TTalk.doScriptforMenu("about this");
 						} catch (xTalkException e2) {
@@ -92,6 +92,6 @@ public class HyperZebra{
 			}catch(Exception e){
 				
 			}
-		}
+		}*/
     }
 }

@@ -21,7 +21,7 @@ import javax.sound.sampled.AudioSystem;
 
 
 public class HCResource {	
-	//AppleDoubleHeaderFile‚Ì’†‚ÉƒŠƒ\[ƒXƒtƒH[ƒN‚Ìƒf[ƒ^‚ª‚ ‚é
+	//AppleDoubleHeaderFileã®ä¸­ã«ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ã®ãƒ‡ãƒ¼ã‚¿ãŒã‚ã‚‹
 	public static boolean readAppleDoubleHeader(DataInputStream dis, OStack stack){
 		//System.out.println("readAppleDoubleHeader");
 		
@@ -42,9 +42,9 @@ public class HCResource {
 			theOffset += 12;
 			
 			if(entryId == 2){
-				//ƒŠƒ\[ƒXƒtƒH[ƒN‚ÌID
+				//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ã®ID
 				
-				//ƒŠƒ\[ƒXƒtƒH[ƒN‚Ü‚Å“Ç‚İ”ò‚Î‚·
+				//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ã¾ã§èª­ã¿é£›ã°ã™
 				int length = (entryOffset-theOffset);
 				for(int j=0; j<length; j++){
 					try {
@@ -54,7 +54,7 @@ public class HCResource {
 					}
 				}
 				
-				//ƒŠƒ\[ƒXƒtƒH[ƒN•”•ª‚ğ“Ç‚İ‚Ş
+				//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯éƒ¨åˆ†ã‚’èª­ã¿è¾¼ã‚€
 				byte[] b = new byte[entryLength];
 				for(int j=0; j<entryLength; j++){
 					try {
@@ -64,10 +64,10 @@ public class HCResource {
 					}
 				}
 				
-				//ƒŠƒ\[ƒXƒtƒH[ƒN‚Ìƒf[ƒ^‚ğ‰ğÍ
+				//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’è§£æ
 				readResourceFork(b, stack);
 
-				java.lang.System.gc();//GC‚ğ‚È‚é‚×‚­ŒÄ‚Ô
+				java.lang.System.gc();//GCã‚’ãªã‚‹ã¹ãå‘¼ã¶
 				
 				break;
 			}else{
@@ -107,7 +107,7 @@ public class HCResource {
 	}
 
 	
-	//ƒŠƒ\[ƒXƒtƒH[ƒN“à‚ÉŠeƒŠƒ\[ƒX‚Ìƒf[ƒ^‚ªŠÜ‚Ü‚ê‚é
+	//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯å†…ã«å„ãƒªã‚½ãƒ¼ã‚¹ã®ãƒ‡ãƒ¼ã‚¿ãŒå«ã¾ã‚Œã‚‹
 	static boolean readResourceFork(byte[] b, OStack stack){
 		//System.out.println("readResourceFork");
 		
@@ -138,7 +138,7 @@ public class HCResource {
 		
         for (int i = 0; i < typesCount && offset+8<=b.length; i++) {
     		//System.out.println("========");
-    		//Šeƒ^ƒCƒv‚ÆŒÂ”AˆÊ’u
+    		//å„ã‚¿ã‚¤ãƒ—ã¨å€‹æ•°ã€ä½ç½®
     		offset = typeListOffset + 8*i;
         	String type = str4(b,offset);
     		//System.out.println("type:"+type);
@@ -149,14 +149,14 @@ public class HCResource {
         	int rsrcoffset = u2(b,offset)+ typeListOffset - 2;
         	offset+=2;
 
-        	//ŠeƒŠƒ\[ƒX‚Ìƒwƒbƒ_[
+        	//å„ãƒªã‚½ãƒ¼ã‚¹ã®ãƒ˜ãƒƒãƒ€ãƒ¼
     		offset = rsrcoffset;
             for (int j=0; j<count; j++) {
     			stack.bar.setValue(stack.barOffset+(25*i)/typesCount+(25*1)*j/count/typesCount);
     			stack.bar.setString("Converting "+type+" resource "+j +"/"+ count);
     			stack.bar.paintImmediately(stack.bar.getBounds());
         		//System.out.println("====");
-            	//ƒwƒbƒ_•”•ª
+            	//ãƒ˜ãƒƒãƒ€éƒ¨åˆ†
             	int id = s2(b,offset);
             	offset+=2;
             	int nameoffset = s2(b,offset);
@@ -172,7 +172,7 @@ public class HCResource {
             	offset+=3;
                 offset+=4; //reserved
 
-                //–¼‘O
+                //åå‰
                 String name = "";
                 if (nameoffset >= 0) {
                     int namelen = u1(b,nameoffset);
@@ -181,7 +181,7 @@ public class HCResource {
                 }
         		//System.out.println("name:"+name);
         		
-        		//ƒf[ƒ^
+        		//ãƒ‡ãƒ¼ã‚¿
                 int datalen = u4(b,dataoffset);
                 readResourceData(stack, b, dataoffset+4, datalen, type, id, name);
             }
@@ -238,7 +238,7 @@ public class HCResource {
 	}
 	
 	
-	//ŠeƒŠƒ\[ƒX‚Ìƒf[ƒ^‚ğƒtƒ@ƒCƒ‹‚É•ÏŠ·‚·‚é
+	//å„ãƒªã‚½ãƒ¼ã‚¹ã®ãƒ‡ãƒ¼ã‚¿ã‚’ãƒ•ã‚¡ã‚¤ãƒ«ã«å¤‰æ›ã™ã‚‹
 	private static void readResourceData(OStack stack,
 			byte[] in_b, int start, int datalen,
 			String type, int id, String name)
@@ -248,7 +248,7 @@ public class HCResource {
 		byte[] b = new byte[datalen];
 		System.arraycopy(in_b, start, b, 0, datalen);
 		
-		//ƒtƒ@ƒCƒ‹‚É•ÏŠ·
+		//ãƒ•ã‚¡ã‚¤ãƒ«ã«å¤‰æ›
 		String filename = null;
 		String mytype = type;
 		if(type.equals("ICON")){
@@ -268,7 +268,7 @@ public class HCResource {
 			mytype = "sound";
 		}
 		else if(type.equals("CURS")){
-			//CURS‚ÍŠÖ”“à‚Å“o˜^‚·‚é
+			//CURSã¯é–¢æ•°å†…ã§ç™»éŒ²ã™ã‚‹
 			filename = null;
 			convertCURS2Cursor(b, parentPath, id, name, stack.rsrc);
 		}
@@ -288,7 +288,7 @@ public class HCResource {
 		    stack.rsrc.plteList.add(plteOwner);
 		}
 		else if(type.equals("XCMD") || type.equals("xcmd") || type.equals("XFCN") || type.equals("xfcn")){
-			//XCMD‚ÍŠÖ”“à‚Å“o˜^‚·‚é
+			//XCMDã¯é–¢æ•°å†…ã§ç™»éŒ²ã™ã‚‹
 			convertXCMD2file(b, type, id, name, stack);
 		}
 		else{
@@ -297,7 +297,7 @@ public class HCResource {
     		//System.out.println("Error: Unknown resource type \""+type+"\"");
 		}
 		
-		//ƒŠƒ\[ƒX‚Æ‚µ‚Ä“o˜^
+		//ãƒªã‚½ãƒ¼ã‚¹ã¨ã—ã¦ç™»éŒ²
 		if(filename!=null){
 			stack.rsrc.addResource(id, mytype, name, filename);
 		}
@@ -308,8 +308,8 @@ public class HCResource {
 	//-----------
 	private static String convertICON2PNG(byte[] b, String parentPath, int id)
 	{
-		//ƒAƒCƒRƒ“ƒf[ƒ^‚Ìæ‚è‚İ
-		//’P‚È‚é32*32bit‚ÌŒÅ’èƒf[ƒ^
+		//ã‚¢ã‚¤ã‚³ãƒ³ãƒ‡ãƒ¼ã‚¿ã®å–ã‚Šè¾¼ã¿
+		//å˜ãªã‚‹32*32bitã®å›ºå®šãƒ‡ãƒ¼ã‚¿
 		BufferedImage bi = new BufferedImage(32,32,BufferedImage.TYPE_INT_ARGB);
 		DataBuffer db = bi.getRaster().getDataBuffer();
 		for(int y=0; y<32; y++){
@@ -320,7 +320,7 @@ public class HCResource {
 			}
 		}
 
-		//ü•Ó‚Ì”’F‚ğ“§–¾‰»
+		//å‘¨è¾ºã®ç™½è‰²ã‚’é€æ˜åŒ–
 		for(int y=0; y<32; y++){
 			int x=0;
 			if(db.getElem(0, y*32+x)==0xFFFFFFFF){
@@ -342,7 +342,7 @@ public class HCResource {
 			}
 		}
 		
-		//PNGŒ`®‚É•ÏŠ·‚µ‚Äƒtƒ@ƒCƒ‹‚É•Û‘¶
+		//PNGå½¢å¼ã«å¤‰æ›ã—ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜
 		File ofile=new File(parentPath+File.separatorChar+"ICON_"+id+".png");
 		try {
 			ImageIO.write(bi, "png", ofile);
@@ -351,7 +351,7 @@ public class HCResource {
 		}
 
 		if(ofile.exists()){
-			//•ÏŠ·¬Œ÷
+			//å¤‰æ›æˆåŠŸ
 			return ofile.getName();
 		}
 		
@@ -386,84 +386,83 @@ public class HCResource {
 	//-----------
 	// cicn
 	//-----------
-	@SuppressWarnings("unused")
 	private static String convertcicn2PNG(byte[] b, String parentPath, int id)
 	{
 		BufferedImage bi;
 		int offset = 0;
 
-		//ƒJƒ‰[ƒAƒCƒRƒ“ƒf[ƒ^‚Ìæ‚è‚İ
+		//ã‚«ãƒ©ãƒ¼ã‚¢ã‚¤ã‚³ãƒ³ãƒ‡ãƒ¼ã‚¿ã®å–ã‚Šè¾¼ã¿
 		{
 			//iconPMap
-			int baseAddr = u4(b,offset);
+			/*int baseAddr =*/ u4(b,offset);
 			offset+=4;
 			int rowBytes = 0x7FFF & u2(b,offset);
 			offset+=2;
 
-			int top = u2(b,offset);
+			/*int top =*/ u2(b,offset);
 			offset+=2;
-			int left = u2(b,offset);
+			/*int left =*/ u2(b,offset);
 			offset+=2;
 			int bottom = u2(b,offset);
 			offset+=2;
 			int right = u2(b,offset);
 			offset+=2;
-			int pmVersion = u2(b,offset);
+			/*int pmVersion =*/ u2(b,offset);
 			offset+=2;
 			int packType = u2(b,offset);
 			offset+=2;
 			int packSize = u4(b,offset);
 			offset+=4;
-			int hRes = u4(b,offset);
+			/*int hRes =*/ u4(b,offset);
 			offset+=4;
-			int vRes = u4(b,offset);
+			/*int vRes =*/ u4(b,offset);
 			offset+=4;
-			int pixelType = u2(b,offset);
+			/*int pixelType =*/ u2(b,offset);
 			offset+=2;
 			int pixelSize = u2(b,offset);
 			offset+=2;
-			int cmpCount = u2(b,offset);
+			/*int cmpCount =*/ u2(b,offset);
 			offset+=2;
-			int cmpSize = u2(b,offset);
+			/*int cmpSize =*/ u2(b,offset);
 			offset+=2;
-			int planeBytes = u4(b,offset);
+			/*int planeBytes =*/ u4(b,offset);
 			offset+=4;
 
-			int ctabhandle = u4(b,offset);
+			/*int ctabhandle =*/ u4(b,offset);
 			offset+=4;
-			int pmreserved = u4(b,offset);
+			/*int pmreserved =*/ u4(b,offset);
 			offset+=4;
 			
 			//maskBMap
-			int mbaseAddr = u4(b,offset);
+			/*int mbaseAddr =*/ u4(b,offset);
 			offset+=4;
 			int mrowBytes = 0x7FFF & u2(b,offset);
 			offset+=2;
 
-			int mtop = u2(b,offset);
+			/*int mtop =*/ u2(b,offset);
 			offset+=2;
-			int mleft = u2(b,offset);
+			/*int mleft =*/ u2(b,offset);
 			offset+=2;
-			int mbottom = u2(b,offset);
+			/*int mbottom =*/ u2(b,offset);
 			offset+=2;
-			int mright = u2(b,offset);
+			/*int mright =*/ u2(b,offset);
 			offset+=2;
 
 			//int mrowBytes = (mright+7)/8;
 			
 			//iconBMap
-			int ibaseAddr = u4(b,offset);
+			/*int ibaseAddr =*/ u4(b,offset);
 			offset+=4;
 			int irowBytes = 0x7FFF & u2(b,offset);
 			offset+=2;
 
-			int itop = u2(b,offset);
+			/*int itop =*/ u2(b,offset);
 			offset+=2;
-			int ileft = u2(b,offset);
+			/*int ileft =*/ u2(b,offset);
 			offset+=2;
-			int ibottom = u2(b,offset);
+			/*int ibottom =*/ u2(b,offset);
 			offset+=2;
-			int iright = u2(b,offset);
+			/*int iright =*/ u2(b,offset);
 			offset+=2;
 
 			//int irowBytes = (iright+7)/8;
@@ -471,7 +470,7 @@ public class HCResource {
 			//int iconData = u4(b,offset);
 			//offset+=4;
 			
-			//‰æ‘œƒf[ƒ^
+			//ç”»åƒãƒ‡ãƒ¼ã‚¿
 			BufferedImage maskbi = new BufferedImage(right,bottom,BufferedImage.TYPE_INT_ARGB);
 			DataBuffer maskdb = maskbi.getRaster().getDataBuffer();
 			for(int y=0; y<bottom; y++){
@@ -490,7 +489,7 @@ public class HCResource {
 				}
 			}	
 
-			//‰æ‘œƒf[ƒ^
+			//ç”»åƒãƒ‡ãƒ¼ã‚¿
 			bi = new BufferedImage(right,bottom,BufferedImage.TYPE_INT_ARGB);
 			DataBuffer monodb = bi.getRaster().getDataBuffer();
 			for(int y=0; y<bottom; y++){
@@ -507,12 +506,12 @@ public class HCResource {
 			}
 
 			if(offset+1<b.length){
-				int iconData = u4(b,offset);
+				/*int iconData =*/ u4(b,offset);
 				offset+=4;
-				//cTableƒwƒbƒ_
-				int ctSeed = u4(b,offset);
+				//cTableãƒ˜ãƒƒãƒ€
+				/*int ctSeed =*/ u4(b,offset);
 				offset+=4;
-				int ctFlag = u2(b,offset);
+				/*int ctFlag =*/ u2(b,offset);
 				offset+=2;
 				int ctSize = u2(b,offset);
 				offset+=2;
@@ -537,7 +536,7 @@ public class HCResource {
 					}
 				}
 		
-				//‰æ‘œƒf[ƒ^
+				//ç”»åƒãƒ‡ãƒ¼ã‚¿
 				bi = new BufferedImage(right,bottom,BufferedImage.TYPE_INT_ARGB);
 				DataBuffer db = bi.getRaster().getDataBuffer();
 				for(int y=0; y<bottom; y++){
@@ -548,12 +547,12 @@ public class HCResource {
 						}
 					}
 					else{
-						//packBits‚ğ“WŠJ
+						//packBitsã‚’å±•é–‹
 						for(int i=0; i<packSize; i++){
 							int dsize = 0x00FF&b[offset];offset++;
 							int doffset = 0;
 							if(dsize>=128) {
-								//“¯‚¶ƒf[ƒ^‚ª˜A‘±‚·‚éê‡
+								//åŒã˜ãƒ‡ãƒ¼ã‚¿ãŒé€£ç¶šã™ã‚‹å ´åˆ
 								dsize = 256-dsize+1;
 								int src = b[offset];offset++;
 								i++;
@@ -561,7 +560,7 @@ public class HCResource {
 								doffset += dsize;
 							}
 							else {
-								//ƒf[ƒ^‚»‚Ì‚Ü‚Ü
+								//ãƒ‡ãƒ¼ã‚¿ãã®ã¾ã¾
 								dsize++;
 								for(int j=0; j<dsize; j++){
 									if(rowBytes<=j+doffset){
@@ -578,8 +577,8 @@ public class HCResource {
 					for(int x=0; x<right && x*pixelSize/8<rowBytes; x++){
 						int idx = data[x*pixelSize/8]&0x00FF;
 						if(pixelSize==1) idx = (idx>>(7-x%8))&0x01;
-						if(pixelSize==2) idx = (idx>>(3-x%4))&0x03;
-						if(pixelSize==4) idx = (idx>>(1-x%2))&0x0F;
+						if(pixelSize==2) idx = (idx>>(6-2*(x%4)))&0x03;
+						if(pixelSize==4) idx = (idx>>(4-4*(x%2)))&0x0F;
 						if(idx>=palette.length || palette[idx]==null) idx = 0;
 						int pixel = palette[idx];
 						db.setElem((y*right)+x, pixel);
@@ -589,10 +588,9 @@ public class HCResource {
 				bi = OCard.makeAlphaImage(bi, maskbi);
 			}
 		}
-		
 	
 		
-		//PNGŒ`®‚É•ÏŠ·‚µ‚Äƒtƒ@ƒCƒ‹‚É•Û‘¶
+		//PNGå½¢å¼ã«å¤‰æ›ã—ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜
 		File ofile=new File(parentPath+File.separatorChar+"cicn_"+id+".png");
 		try {
 			ImageIO.write(bi, "png", ofile);
@@ -601,7 +599,7 @@ public class HCResource {
 		}
 
 		if(ofile.exists()){
-			//•ÏŠ·¬Œ÷
+			//å¤‰æ›æˆåŠŸ
 			return ofile.getName();
 		}
 		
@@ -616,7 +614,7 @@ public class HCResource {
 	{
 		byte[] header = new byte[512];
 		
-		//FileOutputStreamì¬
+		//FileOutputStreamä½œæˆ
 		File ofile=new File(parentPath+File.separatorChar+"PICT_"+id+".pict");
 		FileOutputStream stream = null;
 		try {
@@ -628,16 +626,22 @@ public class HCResource {
 			return null;
 		}
 
-		//512byte‚Ìƒwƒbƒ_[‚ğ’Ç‰Á‚µ‚Äƒtƒ@ƒCƒ‹‚É•Û‘¶
+		//512byteã®ãƒ˜ãƒƒãƒ€ãƒ¼ã‚’è¿½åŠ ã—ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜
 		try {
 			stream.write(header);
 			stream.write(b);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		
+		try {
+			stream.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 
 		if(ofile.exists()){
-			//•ÏŠ·¬Œ÷
+			//å¤‰æ›æˆåŠŸ
 			return ofile.getName();
 		}
 		
@@ -677,13 +681,15 @@ public class HCResource {
 
 	private static final long initMono = 0x0080;
 	private static final long initStereo = 0x00C0;
+	private static final long initMACE3 = 0x0300;
+	private static final long initMACE6 = 0x0400;
 	
 	
 	private static String convertSND2AIFF(byte[] b, String parentPath, int id)
 	{
 		//System.out.println("SND_"+id+".aiff");
 		
-		//FileInputStreamì¬
+		//FileInputStreamä½œæˆ
 		FileOutputStream stream = null;
 		File ofile=new File(parentPath+File.separatorChar+"SND_"+id+".aiff");
 		try {
@@ -696,7 +702,7 @@ public class HCResource {
 		}
 		
 		
-		//ƒfƒoƒbƒO•\¦
+		//ãƒ‡ãƒãƒƒã‚°è¡¨ç¤º
 		/*for(int i=0; i<b.length; ){
 			String str1="";
 			String str2="";
@@ -717,6 +723,7 @@ public class HCResource {
 		//System.out.println("format:"+format);
 		offset +=2;
 		if(format==1){
+			int initMACE = 0;
 			/*int numModifiers =*/ u2(b,offset);
 			//System.out.println("numModifiers:"+numModifiers);
 			offset +=2;
@@ -730,33 +737,41 @@ public class HCResource {
 			//System.out.println("modInit:"+modInit);
 			offset +=4;
 			int channel = 1;
-			if(modInit==initMono){
+			if((modInit&initMono)==initMono){
 				//System.out.println("initMono!");
 				channel = 1;
 			}
-			if(modInit==initStereo){
+			if((modInit&initStereo)==initStereo){
 				//System.out.println("initStereo!");
 				channel = 2;
 			}
+			if((modInit&initMACE3)==initMACE3){
+				//System.out.println("initMAC3!");
+				initMACE = 3;
+			}
+			if((modInit&initMACE6)==initMACE6){
+				//System.out.println("initMAC6!");
+				initMACE = 6;
+			}
 			int numCommands = u2(b,offset);
-			//System.out.println("numCommands:"+numCommands);
+			System.out.println("numCommands:"+numCommands);
 			offset +=2;
 			
 			//SndCommand & data
 			for(int n=0; n<numCommands; n++){
-				//System.out.println("b[0]:"+b[offset]);
-				//System.out.println("b[1]:"+b[offset+1]);
+				System.out.println("b[0]:"+b[offset]);
+				System.out.println("b[1]:"+b[offset+1]);
 				int sndcmd_cmd = s2(b,offset);
-				//System.out.println("sndcmd_cmd:"+sndcmd_cmd);
+				System.out.println("sndcmd_cmd:"+sndcmd_cmd);
 				offset +=2;
 				if((0x00FF&sndcmd_cmd)==bufferCmd){
 					//System.out.println("bufferCmd!");
 				}
-				/*int sndcmd_param1 =*/ u2(b,offset);
-				//System.out.println("sndcmd_param1:"+sndcmd_param1);
+				int sndcmd_param1 = u2(b,offset);
+				System.out.println("sndcmd_param1:"+sndcmd_param1);
 				offset +=2;
 				int sndcmd_param2 = u4(b,offset);
-				//System.out.println("sndcmd_param2:"+sndcmd_param2);
+				System.out.println("sndcmd_param2:"+sndcmd_param2);
 				offset +=4;
 				
 				if((0x00FF&sndcmd_cmd)==bufferCmd){
@@ -784,7 +799,7 @@ public class HCResource {
 					//System.out.println("baseFrequency:"+baseFrequency);
 					int dataOffset = in_offset;
 
-					//AIFFŒ`®‚É•ÏŠ·
+					//AIFFå½¢å¼ã«å¤‰æ›
 					AudioFormat af = new AudioFormat(sampleRate/65536.0f, 8, channel,
 							false/*signed*/, true/*big-endian*/);
 					InputStream in = new ByteArrayInputStream(b, dataOffset, length);
@@ -793,6 +808,90 @@ public class HCResource {
 					try {
 						AudioSystem.write(ais, type, ofile);
 						ais.close();
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
+				
+				if(initMACE>0 || sndcmd_cmd==-32687){
+					int sampleRate = 11025*65536;
+					int dataOffset = 54;//offset+22;
+					int length = b.length - dataOffset;
+					//AIFFå½¢å¼ã«å¤‰æ›
+					AudioFormat af = new AudioFormat(sampleRate/65536.0f, 8, channel,
+							false/*signed*/, true/*big-endian*/);
+					InputStream in = new ByteArrayInputStream(b, dataOffset, length);
+					AudioInputStream ais = new AudioInputStream(in, af, length);
+					AudioFileFormat.Type type = AudioFileFormat.Type.AIFF;
+					try {
+						AudioSystem.write(ais, type, ofile);
+						ais.close();
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+					
+					//åœ§ç¸®ã•ã‚ŒãŸéŸ³å£°ã®å ´åˆã¯ãƒ‡ãƒ¼ã‚¿ã‚’æ›¸ãè¾¼ã¿ç›´ã™
+					try {
+						RandomAccessFile raf = new RandomAccessFile(ofile,"rw");
+						
+						//'FORM'ã®ckSizeã‚’åœ§ç¸®ãƒ˜ãƒƒãƒ€åˆ†å¢—ã‚„ã™
+						raf.seek(4);
+						byte[] ckSizeByte = new byte[4];
+						raf.read(ckSizeByte, 0, 4);
+						System.out.println("ckSizeByte:"+ckSizeByte[0]+","+ckSizeByte[1]+","+ckSizeByte[2]+","+ckSizeByte[3]);
+						int ckSize = (((int)(0x00FF&ckSizeByte[0]))<<24) +
+							(((int)(0x00FF&ckSizeByte[1]))<<16) +
+							(((int)(0x00FF&ckSizeByte[2]))<<8) +
+							(((int)(0x00FF&ckSizeByte[3]))<<0);
+						System.out.println("ckSize:"+ckSize);
+						ckSize += 16;
+						raf.seek(4);
+						byte[] ckSizeByte2 = new byte[]{
+								(byte)(0xFF&(ckSize>>24)), (byte)(0xFF&(ckSize>>16)), (byte)(0xFF&(ckSize>>8)), (byte)(0xFF&ckSize)};
+						System.out.println("ckSizeByte2:"+ckSizeByte2[0]+","+ckSizeByte2[1]+","+ckSizeByte2[2]+","+ckSizeByte2[3]);
+						raf.write(ckSizeByte2, 0, 4);
+						
+						//'AIFF'->'AIFC'
+						raf.seek(11);
+						raf.write((byte)'C');
+
+						//'COMM'ã®ckSizeã‚’åœ§ç¸®ãƒ˜ãƒƒãƒ€åˆ†å¢—ã‚„ã™
+						raf.seek(12+4);
+						byte[] cmSizeByte = new byte[4];
+						raf.read(cmSizeByte, 0, 4);
+						System.out.println("cmSizeByte:"+cmSizeByte[0]+","+cmSizeByte[1]+","+cmSizeByte[2]+","+cmSizeByte[3]);
+						int cmSize = (((int)(0x00FF&cmSizeByte[0]))<<24) +
+							(((int)(0x00FF&cmSizeByte[1]))<<16) +
+							(((int)(0x00FF&cmSizeByte[2]))<<8) +
+							(((int)(0x00FF&cmSizeByte[3]))<<0);
+						System.out.println("cmSize:"+cmSize);
+						cmSize += 16;
+						raf.seek(12+4);
+						byte[] cmSizeByte2 = new byte[]{
+								(byte)(0xFF&(cmSize>>24)), (byte)(0xFF&(cmSize>>16)), (byte)(0xFF&(cmSize>>8)), (byte)(0xFF&cmSize)};
+						System.out.println("cmSizeByte2:"+cmSizeByte2[0]+","+cmSizeByte2[1]+","+cmSizeByte2[2]+","+cmSizeByte2[3]);
+						raf.write(cmSizeByte2, 0, 4);
+						
+						//'SSND'ã®å‰ã«åœ§ç¸®æƒ…å ±ã‚’å…¥ã‚Œã‚‹
+						raf.seek(38);
+						byte[] saveHeader = new byte[16];
+						raf.read(saveHeader, 0, 16);
+						raf.seek(38);
+						byte[] typebyte;
+						if(initMACE == 3){
+							typebyte = "MAC3MACE 3-to-1\0".getBytes();
+						}else{
+							typebyte = "MAC6MACE 6-to-1\0".getBytes();
+						}
+						raf.write(typebyte);
+						raf.write(saveHeader);
+						
+						//éŸ³å£°ãƒ‡ãƒ¼ã‚¿ã‚’å…¥ã‚Œã‚‹
+						//length = Math.min(length, b.length-dataOffset);
+						raf.write(b, dataOffset, b.length-dataOffset);
+						raf.close();
+					} catch (FileNotFoundException e) {
+						e.printStackTrace();
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
@@ -854,7 +953,7 @@ public class HCResource {
 					int channel = 1;
 					int length = numofSamples;
 					
-					//AIFFŒ`®‚É•ÏŠ·
+					//AIFFå½¢å¼ã«å¤‰æ›
 					AudioFormat af = new AudioFormat(sampleRate/65536.0f, 8, channel,
 							false/*signed*/, true/*big-endian*/);
 					InputStream in = new ByteArrayInputStream(b, dataOffset, length);
@@ -871,11 +970,11 @@ public class HCResource {
 					}
 					
 					if(baseNote>32767){
-						//ˆ³k‚³‚ê‚½‰¹º‚Ìê‡‚Íƒf[ƒ^‚ğ‘‚«‚İ’¼‚·
+						//åœ§ç¸®ã•ã‚ŒãŸéŸ³å£°ã®å ´åˆã¯ãƒ‡ãƒ¼ã‚¿ã‚’æ›¸ãè¾¼ã¿ç›´ã™
 						try {
 							RandomAccessFile raf = new RandomAccessFile(ofile,"rw");
 							
-							//'FORM'‚ÌckSize‚ğˆ³kƒwƒbƒ_•ª‘‚â‚·
+							//'FORM'ã®ckSizeã‚’åœ§ç¸®ãƒ˜ãƒƒãƒ€åˆ†å¢—ã‚„ã™
 							raf.seek(4);
 							byte[] ckSizeByte = new byte[4];
 							raf.read(ckSizeByte, 0, 4);
@@ -896,7 +995,7 @@ public class HCResource {
 							raf.seek(11);
 							raf.write((byte)'C');
 
-							//'COMM'‚ÌckSize‚ğˆ³kƒwƒbƒ_•ª‘‚â‚·
+							//'COMM'ã®ckSizeã‚’åœ§ç¸®ãƒ˜ãƒƒãƒ€åˆ†å¢—ã‚„ã™
 							raf.seek(12+4);
 							byte[] cmSizeByte = new byte[4];
 							raf.read(cmSizeByte, 0, 4);
@@ -913,7 +1012,7 @@ public class HCResource {
 							//System.out.println("cmSizeByte2:"+cmSizeByte2[0]+","+cmSizeByte2[1]+","+cmSizeByte2[2]+","+cmSizeByte2[3]);
 							raf.write(cmSizeByte2, 0, 4);
 							
-							//'SSND'‚Ì‘O‚Éˆ³kî•ñ‚ğ“ü‚ê‚é
+							//'SSND'ã®å‰ã«åœ§ç¸®æƒ…å ±ã‚’å…¥ã‚Œã‚‹
 							raf.seek(38);
 							byte[] saveHeader = new byte[16];
 							raf.read(saveHeader, 0, 16);
@@ -927,7 +1026,7 @@ public class HCResource {
 							raf.write(typebyte);
 							raf.write(saveHeader);
 							
-							//‰¹ºƒf[ƒ^‚ğ“ü‚ê‚é
+							//éŸ³å£°ãƒ‡ãƒ¼ã‚¿ã‚’å…¥ã‚Œã‚‹
 							length = Math.min(length, b.length-dataOffset);
 							raf.write(b, dataOffset, length);
 							raf.close();
@@ -948,7 +1047,7 @@ public class HCResource {
 		}
 		
 		if(ofile.exists()){
-			//•ÏŠ·¬Œ÷
+			//å¤‰æ›æˆåŠŸ
 			return ofile.getName();
 		}
 		
@@ -962,8 +1061,8 @@ public class HCResource {
 	private static void convertCURS2Cursor(byte[] b, String parentPath, int id,
 			String name, Rsrc rsrc)
 	{
-		//ƒJ[ƒ\ƒ‹ƒf[ƒ^‚Ìæ‚è‚İ
-		//16*16bit‚Ì‰æ‘œAƒ}ƒXƒNAPointŒ^
+		//ã‚«ãƒ¼ã‚½ãƒ«ãƒ‡ãƒ¼ã‚¿ã®å–ã‚Šè¾¼ã¿
+		//16*16bitã®ç”»åƒã€ãƒã‚¹ã‚¯ã€Pointå‹
 		
 		BufferedImage bi = new BufferedImage(16,16,BufferedImage.TYPE_INT_ARGB);
 		DataBuffer db = bi.getRaster().getDataBuffer();
@@ -982,7 +1081,7 @@ public class HCResource {
 			}
 		}
 		
-		//PNGŒ`®‚É•ÏŠ·‚µ‚Äƒtƒ@ƒCƒ‹‚É•Û‘¶
+		//PNGå½¢å¼ã«å¤‰æ›ã—ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜
 		File ofile=new File(parentPath+File.separatorChar+"CURS_"+id+".png");
 		try {
 			ImageIO.write(bi, "png", ofile);
@@ -991,7 +1090,7 @@ public class HCResource {
 		}
 
 		if(ofile.exists()){
-			//•ÏŠ·¬Œ÷
+			//å¤‰æ›æˆåŠŸ
 			int y = u2(b,(16*16*2)/8);
 			int x = u2(b,(16*16*2)/8);
 			rsrc.addResource(id, "cursor", name, ofile.getName(),
@@ -1007,11 +1106,11 @@ public class HCResource {
 	@SuppressWarnings("unused")
 	private static void convertFONT2PNG(byte[] b, String parentPath, int id, String name, Rsrc rsrc)
 	{
-		//ƒtƒHƒ“ƒgƒf[ƒ^‚Ìæ‚è‚İ
+		//ãƒ•ã‚©ãƒ³ãƒˆãƒ‡ãƒ¼ã‚¿ã®å–ã‚Šè¾¼ã¿
 		int offset = 0;
 		
 		if(b.length==0) {
-			//ƒtƒHƒ“ƒg–¼‚Ì‚½‚ß‚¾‚¯‚Éì‚ç‚ê‚éƒ_ƒ~[
+			//ãƒ•ã‚©ãƒ³ãƒˆåã®ãŸã‚ã ã‘ã«ä½œã‚‰ã‚Œã‚‹ãƒ€ãƒŸãƒ¼
 			rsrc.addResource(id, "font", name, "", "0", "0");
 			return;
 		}
@@ -1092,7 +1191,7 @@ public class HCResource {
 			}
 		}
 		
-		//PNGŒ`®‚É•ÏŠ·‚µ‚Äƒtƒ@ƒCƒ‹‚É•Û‘¶
+		//PNGå½¢å¼ã«å¤‰æ›ã—ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜
 		File ofile=new File(parentPath+File.separatorChar+"FONT_"+id+".png");
 		try {
 			ImageIO.write(bi, "png", ofile);
@@ -1101,7 +1200,7 @@ public class HCResource {
 		}
 
 		if(ofile.exists()){
-			//•ÏŠ·¬Œ÷
+			//å¤‰æ›æˆåŠŸ
 			int x = firstChar;
 			int y = lastChar;
 			rsrc.addFontResource(id, "font", name, ofile.getName(),
@@ -1145,7 +1244,7 @@ public class HCResource {
 			e.printStackTrace();
 		}
 		
-		//XCMDƒ}ƒbƒv‚É’Ç‰Á
+		//XCMDãƒãƒƒãƒ—ã«è¿½åŠ 
 		Rsrc.xcmdClass xcmd = new Rsrc.xcmdClass(
 				Integer.toString(id), funcStr, name, path, "mac"+platform, Integer.toString(b.length));
 		stack.rsrc.addXcmd(xcmd);
@@ -1314,7 +1413,7 @@ public class HCResource {
 		}
 
 		if(file.exists()){
-			//•ÏŠ·¬Œ÷
+			//å¤‰æ›æˆåŠŸ
 			return file.getName();
 		}
 		

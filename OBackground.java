@@ -10,13 +10,13 @@ import javax.xml.stream.XMLStreamWriter;
 
 
 public class OBackground extends OCardBase {
-	//ƒvƒƒpƒeƒB
+	//ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	Boolean cantDelete=false;
 	Boolean cantModify=false;
 	Boolean dontSearch=false;
-	//number (ƒXƒ^ƒbƒN‚Ìî•ñ‚©‚ç‹‚ß‚é)
+	//number (ã‚¹ã‚¿ãƒƒã‚¯ã®æƒ…å ±ã‹ã‚‰æ±‚ã‚ã‚‹)
 	
-	//’Ç‰ÁƒvƒƒpƒeƒB
+	//è¿½åŠ ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	OCard viewCard;
 	
 	//toc.xml
@@ -37,7 +37,7 @@ public class OBackground extends OCardBase {
 		name=in;
 	}
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public static OBackground getOBackground(OStack st, OCard cd, int bgId, boolean dataonly) throws xTalkException {
 		//System.out.println("bgid="+bgId);
 		
@@ -47,7 +47,7 @@ public class OBackground extends OCardBase {
 			if(st==cd.stack && bgId==bg.id){
 				if(dataonly) return bg;
 				else {
-					//ƒVƒFƒA[ƒh‚µ‚Ä‚È‚¢ƒeƒLƒXƒg
+					//ã‚·ã‚§ã‚¢ãƒ¼ãƒ‰ã—ã¦ãªã„ãƒ†ã‚­ã‚¹ãƒˆ
 					for(int j=0; j<cd.bgfldList.size(); j++){
 						OField fld = bg.GetBgFldbyId(cd.bgfldList.get(j).id);
 						if(fld != null && fld.sharedText == false){
@@ -62,7 +62,7 @@ public class OBackground extends OCardBase {
 		}
 		
 		if(st.firstBg>0 && bgId!=st.firstBg){
-			//HCƒXƒ^ƒbƒN‚ğƒRƒ“ƒo[ƒg‚·‚é‚Æbg‚ª‘¶İ‚µ‚È‚¢‚±‚Æ‚ª‚ ‚é‚½‚ßAÅ‰‚Ìbg‚Å‘ã—p
+			//HCã‚¹ã‚¿ãƒƒã‚¯ã‚’ã‚³ãƒ³ãƒãƒ¼ãƒˆã™ã‚‹ã¨bgãŒå­˜åœ¨ã—ãªã„ã“ã¨ãŒã‚ã‚‹ãŸã‚ã€æœ€åˆã®bgã§ä»£ç”¨
 			return getOBackground(st, cd, st.firstBg, dataonly);
 		}
 		
@@ -81,7 +81,7 @@ public class OBackground extends OCardBase {
 
 		id=bgId;
 		{
-			throw new xTalkException("‚»‚Ìid‚ÌƒoƒbƒNƒOƒ‰ƒEƒ“ƒh‚Ìƒf[ƒ^ƒtƒ@ƒCƒ‹‚ª‚ ‚è‚Ü‚¹‚ñ");
+			throw new xTalkException("ãã®idã®ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ã®ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚¡ã‚¤ãƒ«ãŒã‚ã‚Šã¾ã›ã‚“");
 		}
 	}
 	
@@ -386,7 +386,7 @@ public class OBackground extends OCardBase {
 		
 		int offset = 50;
 		
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		id = HCData.readCode(dis, 4);
 		//System.out.println("id:"+id);
 		if(id<0 || id >= 2265535){
@@ -458,7 +458,7 @@ public class OBackground extends OCardBase {
 			//System.out.println("==content "+i+"==");
 			
 			int pid;
-			{//ƒAƒ‰ƒCƒƒ“ƒg’²®
+			{//ã‚¢ãƒ©ã‚¤ãƒ¡ãƒ³ãƒˆèª¿æ•´
 				pid = HCData.readCode(dis, 1);
 				while(pid<=i){
 					pid = (pid<<8) + HCData.readCode(dis, 1);
@@ -507,7 +507,7 @@ public class OBackground extends OCardBase {
 				contLen -= formattingLength;
 			}
 
-			//ƒeƒLƒXƒg
+			//ãƒ†ã‚­ã‚¹ãƒˆ
 			resultStr contentResult;
 			if(orgcontLen%2==1){
 				//System.out.println("readText(contLen+1="+(contLen+1)+")");
@@ -575,7 +575,7 @@ public class OBackground extends OCardBase {
 			System.out.println("padding:"+padding);
 		}*/
 		
-		//ƒXƒNƒŠƒvƒg
+		//ã‚¹ã‚¯ãƒªãƒ—ãƒˆ
 		String[] scriptAry = scriptStr.split("\n");
 		for(int i=0; i<scriptAry.length; i++)
 		{
@@ -592,16 +592,16 @@ public class OBackground extends OCardBase {
 	{
 		bg.picture = new OPicture(bg);
 
-		//bg‚Ìê‡‚ÍƒsƒNƒ`ƒƒ‚ª‚È‚­‚Ä‚à”’‚Å•K‚¸•`‰æ‚µ‚È‚­‚Ä‚Í‚¢‚¯‚È‚¢
+		//bgã®å ´åˆã¯ãƒ”ã‚¯ãƒãƒ£ãŒãªãã¦ã‚‚ç™½ã§å¿…ãšæç”»ã—ãªãã¦ã¯ã„ã‘ãªã„
 		bg.label = MyLabel.getMyBgLabel(bg);
 		bg.label.setBounds(0,0,bg.stack.width,bg.stack.height);
 		PCARD.pc.mainPane.add(bg.label);
 		
-		//ƒsƒNƒ`ƒƒ“Ç‚İ‚İ(pbm)
+		//ãƒ”ã‚¯ãƒãƒ£èª­ã¿è¾¼ã¿(pbm)
 		if(bg.bitmapName!=null){
 			String path = (bg.stack.file.getParent()+File.separatorChar+bg.bitmapName);
 			bg.pict = PictureFile.loadPbm(path);
-			if(bg.pict==null){//“Ç‚İ‚Ü‚ê‚é‚Ü‚Å‘Ò‚Â
+			if(bg.pict==null){//èª­ã¿è¾¼ã¾ã‚Œã‚‹ã¾ã§å¾…ã¤
 				for(int i=0; HCData.threadList!=null&&i<HCData.threadList.size(); i++){
 					Thread p = HCData.threadList.get(i);
 					if(p!=null && p.getName().equals(bg.bitmapName)){
@@ -634,10 +634,10 @@ public class OBackground extends OCardBase {
 			return bg;
 		}
 		
-		//ƒsƒNƒ`ƒƒ“Ç‚İ‚İ
+		//ãƒ”ã‚¯ãƒãƒ£èª­ã¿è¾¼ã¿
 		File file=new File(bg.stack.file.getParent()+"/resource/bgp"+bg.id+".png");
 		//bg.showPict = false;
-		bg.label = MyLabel.getMyBgLabel(bg);//bg‚Í‚±‚êˆÈãŒã‚ë‚ª‚È‚¢‚Ì‚Åƒ‰ƒxƒ‹•K{
+		bg.label = MyLabel.getMyBgLabel(bg);//bgã¯ã“ã‚Œä»¥ä¸Šå¾Œã‚ãŒãªã„ã®ã§ãƒ©ãƒ™ãƒ«å¿…é ˆ
 		bg.label.setBounds(0,0,bg.stack.width,bg.stack.height);
 		PCARD.pc.mainPane.add(bg.label);
 		try {
@@ -663,7 +663,7 @@ class OBgButtonData {
 
 	OCardBase card;
 	OButton btn;
-	boolean check_hilite = false; //ƒnƒCƒ‰ƒCƒgî•ñ‚ğƒJ[ƒh‚²‚Æ‚É‚Â
+	boolean check_hilite = false; //ãƒã‚¤ãƒ©ã‚¤ãƒˆæƒ…å ±ã‚’ã‚«ãƒ¼ãƒ‰ã”ã¨ã«æŒã¤
 	int id;
 	
 

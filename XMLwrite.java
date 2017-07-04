@@ -46,19 +46,22 @@ public class XMLwrite {
 				stack.bgCacheList.get(i).writeXML(writer);
 				stack.bgCacheList.get(i).changed = false;
 			}
-			/*for(int i=0 ;i<stack.cdCacheList.size(); i++){
-				stack.cdCacheList.get(i).writeXML(writer);
-				stack.cdCacheList.get(i).changed = false;
-			}*/ //‚±‚ê‚Å‚Í‡”Ô‚ª‹¶‚Á‚Ä‚µ‚Ü‚¤
-			for(int i=0 ;i<stack.cardIdList.size(); i++){
-				int id = stack.cardIdList.get(i);
-				for(int j=0 ;j<stack.cdCacheList.size(); j++){
-					if(stack.cdCacheList.get(j).id == id){
-						stack.cdCacheList.get(j).writeXML(writer);
-						stack.cdCacheList.get(j).changed = false;
-						break;
+			if(stack.cardIdList.size()>=stack.cdCacheList.size()){
+				for(int i=0 ;i<stack.cardIdList.size(); i++){
+					int id = stack.cardIdList.get(i);
+					for(int j=0 ;j<stack.cdCacheList.size(); j++){
+						if(stack.cdCacheList.get(j).id == id){
+							stack.cdCacheList.get(j).writeXML(writer);
+							stack.cdCacheList.get(j).changed = false;
+							break;
+						}
 					}
 				}
+			}else{
+				for(int i=0 ;i<stack.cdCacheList.size(); i++){
+					stack.cdCacheList.get(i).writeXML(writer);
+					stack.cdCacheList.get(i).changed = false;
+				} //ã“ã‚Œã§ã¯é †ç•ªãŒç‹‚ã£ã¦ã—ã¾ã†
 			}
 	        stack.rsrc.writeXML(writer);
 	        stack.rsrc.writePLTEXML(writer);
@@ -88,19 +91,19 @@ public class XMLwrite {
 	}
 	
 	class saveThread extends Thread{
-		//‰É‚È‚Æ‚«‚Í•ÏX‚ðŠÄŽ‹
+		//æš‡ãªã¨ãã¯å¤‰æ›´ã‚’ç›£è¦–
 		public void run(){
 			setName("saveXMLThread");
 			setPriority(MIN_PRIORITY);
 			
 			if(!stack.file.exists()){
-				//xmlƒtƒ@ƒCƒ‹‚ª‚È‚¢‚Æ‚«‚Í‘¦ì¬
+				//xmlãƒ•ã‚¡ã‚¤ãƒ«ãŒãªã„ã¨ãã¯å³ä½œæˆ
 				saveStackNow();
 			}
 			
 			while(true){
 				try{
-					sleep(1000);//1•b1‰ñ
+					sleep(1000);//1ç§’1å›ž
 				} catch (InterruptedException e) {
 			        //this.interrupt();
 				}

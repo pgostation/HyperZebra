@@ -26,12 +26,12 @@ public class VariableWatcher extends JDialog
 	{
 		super(/*PCARD.pc*/);
 		
-		//ƒIƒuƒWƒFƒNƒg‚ğƒEƒBƒ“ƒhƒEƒŠƒXƒg‚É“o˜^
+		//ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã‚’ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ãƒªã‚¹ãƒˆã«ç™»éŒ²
 		setTitle("VariableWatcher");
 		new OWindow(this);
 	    watcherWindow = this;
 		
-	    //ƒe[ƒuƒ‹‚ğ—pˆÓ
+	    //ãƒ†ãƒ¼ãƒ–ãƒ«ã‚’ç”¨æ„
 		String[][] tabledata = { {"it", ""} };
 
 		JTable table = new JTable(tabledata, columnNames);
@@ -39,11 +39,11 @@ public class VariableWatcher extends JDialog
 	    table.setEnabled(false);
 		table.setDefaultRenderer(Object.class, new MultiLineCellRenderer());
 	    
-	    //ƒXƒNƒ[ƒ‹
+	    //ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«
 	    scrollpane = new JScrollPane(table);
 	    add(scrollpane);
 	    
-	    //ƒEƒBƒ“ƒhƒEˆÊ’u‚ÆƒTƒCƒYİ’è
+	    //ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ä½ç½®ã¨ã‚µã‚¤ã‚ºè¨­å®š
 	    setBounds(0,0,320,240);
 	    setLocationRelativeTo(null);
 	}

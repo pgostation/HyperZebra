@@ -10,7 +10,7 @@ import java.awt.image.DataBuffer;
 import javax.swing.JPanel;
 
 
-//ƒJ[ƒhƒsƒNƒ`ƒƒ‚ÆƒoƒbƒNƒOƒ‰ƒEƒ“ƒhƒsƒNƒ`ƒƒ‚ğ•\¦‚·‚éƒpƒlƒ‹
+//ã‚«ãƒ¼ãƒ‰ãƒ”ã‚¯ãƒãƒ£ã¨ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ãƒ”ã‚¯ãƒãƒ£ã‚’è¡¨ç¤ºã™ã‚‹ãƒ‘ãƒãƒ«
 class MyPanel extends JPanel{
 	private static final long serialVersionUID = 1L;
 	PCARDFrame owner;
@@ -60,7 +60,7 @@ class MyPanel extends JPanel{
 	
 	@Override
 	protected void paintComponent(Graphics g){
-		//ƒyƒCƒ“ƒgƒc[ƒ‹—pƒƒCƒ“•`‰æ•”
+		//ãƒšã‚¤ãƒ³ãƒˆãƒ„ãƒ¼ãƒ«ç”¨ãƒ¡ã‚¤ãƒ³æç”»éƒ¨
 		if(owner.tool!=null){
 			if(!PaintTool.editBackground){
 				mainPaneDraw(g, owner.bgImg);
@@ -76,7 +76,7 @@ class MyPanel extends JPanel{
 			{
 				BufferedImage flowImage = owner.redoBuf;
 				
-				//ƒuƒŒƒ“ƒhƒ‚[ƒh
+				//ãƒ–ãƒ¬ãƒ³ãƒ‰ãƒ¢ãƒ¼ãƒ‰
 				if(owner.blendMode!=blendMode.Copy || owner.blendLevel!=100){
 					Point offset = new Point(0,0);
 					if(owner.tool.getClass()==SelectTool.class){
@@ -116,7 +116,7 @@ class MyPanel extends JPanel{
 					flowImage = newImage;
 				}
 				
-				//‘I‘ğ”ÍˆÍ‚ğ•`‰æ
+				//é¸æŠç¯„å›²ã‚’æç”»
 				if(owner.tool.getClass()==SelectTool.class){
 					SelectTool tl = (SelectTool)owner.tool;
 					if(tl.move){
@@ -175,7 +175,7 @@ class MyPanel extends JPanel{
 	
 	void mainPaneDraw(Graphics g, BufferedImage img){
 		if(owner.bit > 1){
-			//Šg‘å•\¦
+			//æ‹¡å¤§è¡¨ç¤º
 			g.drawImage(img, ((int)owner.bitLeft)*(-owner.bit),
 					((int)owner.bitTop)*(-owner.bit),
 					((int)owner.bitLeft)*(-owner.bit)+owner.bgImg.getWidth()*owner.bit,
@@ -189,7 +189,7 @@ class MyPanel extends JPanel{
 	
 	public void mainPaneDraw(Graphics g, BufferedImage img, int x, int y, int width, int height){
 		if(owner.bit > 1){
-			//Šg‘å•\¦
+			//æ‹¡å¤§è¡¨ç¤º
 			g.drawImage(img, x*owner.bit-(int)owner.bitLeft*owner.bit,
 					y*owner.bit-(int)owner.bitTop*owner.bit,
 					x*owner.bit-(int)owner.bitLeft*owner.bit+width*owner.bit,
@@ -298,7 +298,7 @@ class MyPanel extends JPanel{
 	private static void copyImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//copyƒ‚[ƒh‚ÍF‚ğ•Ï‚¦‚é‚¾‚¯
+		//copyãƒ¢ãƒ¼ãƒ‰ã¯è‰²ã‚’å¤‰ãˆã‚‹ã ã‘
 		
 		//DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -332,7 +332,7 @@ class MyPanel extends JPanel{
 	private static void blendImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//blendƒ‚[ƒh‚ÍƒAƒ‹ƒtƒ@’l‚ğ•Ï‚¦‚é‚¾‚¯
+		//blendãƒ¢ãƒ¼ãƒ‰ã¯ã‚¢ãƒ«ãƒ•ã‚¡å€¤ã‚’å¤‰ãˆã‚‹ã ã‘
 		
 		//DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -364,7 +364,7 @@ class MyPanel extends JPanel{
 	private static void addImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//addƒ‚[ƒh‚Í•‚ğ‹N“_‚É‚µ‚½‘«‚µZ
+		//addãƒ¢ãƒ¼ãƒ‰ã¯é»’ã‚’èµ·ç‚¹ã«ã—ãŸè¶³ã—ç®—
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -423,7 +423,7 @@ class MyPanel extends JPanel{
 	private static void subtractImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//subtractƒ‚[ƒh‚Í”’‚ğ‹N“_‚É‚µ‚½ˆø‚«Z
+		//subtractãƒ¢ãƒ¼ãƒ‰ã¯ç™½ã‚’èµ·ç‚¹ã«ã—ãŸå¼•ãç®—
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -482,7 +482,7 @@ class MyPanel extends JPanel{
 	private static void multiplyImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//multiplyƒ‚[ƒh‚Í•‚ğ‹N“_‚É‚µ‚½Š|‚¯Z
+		//multiplyãƒ¢ãƒ¼ãƒ‰ã¯é»’ã‚’èµ·ç‚¹ã«ã—ãŸæ›ã‘ç®—
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -538,7 +538,7 @@ class MyPanel extends JPanel{
 	private static void screenImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//screenƒ‚[ƒh‚ÍƒŒƒxƒ‹‚ğ‹N“_‚É‚µ‚½‘«‚µZ
+		//screenãƒ¢ãƒ¼ãƒ‰ã¯ãƒ¬ãƒ™ãƒ«ã‚’èµ·ç‚¹ã«ã—ãŸè¶³ã—ç®—
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -600,7 +600,7 @@ class MyPanel extends JPanel{
 	private static void darkenImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//darkenƒ‚[ƒh‚ÍˆÃ‚¢‚Ù‚¤‚ğc‚·
+		//darkenãƒ¢ãƒ¼ãƒ‰ã¯æš—ã„ã»ã†ã‚’æ®‹ã™
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -657,7 +657,7 @@ class MyPanel extends JPanel{
 	private static void lightenImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//lightenƒ‚[ƒh‚Í–¾‚é‚¢‚Ù‚¤‚ğc‚·
+		//lightenãƒ¢ãƒ¼ãƒ‰ã¯æ˜ã‚‹ã„ã»ã†ã‚’æ®‹ã™
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -712,7 +712,7 @@ class MyPanel extends JPanel{
 	private static void differenceImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//differenceƒ‚[ƒh‚Í·‚Ìâ‘Î’l
+		//differenceãƒ¢ãƒ¼ãƒ‰ã¯å·®ã®çµ¶å¯¾å€¤
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -766,7 +766,7 @@ class MyPanel extends JPanel{
 	private static void hueImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//hueƒ‚[ƒh‚ÍF‘Š‚Ì‚İ
+		//hueãƒ¢ãƒ¼ãƒ‰ã¯è‰²ç›¸ã®ã¿
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -809,7 +809,7 @@ class MyPanel extends JPanel{
 
 					Color.RGBtoHSB(red, green, blue, hsb);
 					Color.RGBtoHSB(sfc_red, sfc_green, sfc_blue, sfc_hsb);
-					sfc_hsb[0] = hsb[0]; //F‘Š‚Ì‚İ‘ã“ü
+					sfc_hsb[0] = hsb[0]; //è‰²ç›¸ã®ã¿ä»£å…¥
 					int rgb = Color.HSBtoRGB(sfc_hsb[0], sfc_hsb[1], sfc_hsb[2]);
 					
 					c = alpha + (0x00FFFFFF&rgb);
@@ -823,7 +823,7 @@ class MyPanel extends JPanel{
 	private static void colorImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//colorƒ‚[ƒh‚ÍF‘Š‚ÆÊ“x
+		//colorãƒ¢ãƒ¼ãƒ‰ã¯è‰²ç›¸ã¨å½©åº¦
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -866,8 +866,8 @@ class MyPanel extends JPanel{
 
 					Color.RGBtoHSB(red, green, blue, hsb);
 					Color.RGBtoHSB(sfc_red, sfc_green, sfc_blue, sfc_hsb);
-					sfc_hsb[0] = hsb[0]; //F‘Š‘ã“ü
-					sfc_hsb[1] = hsb[1]; //Ê“x‘ã“ü
+					sfc_hsb[0] = hsb[0]; //è‰²ç›¸ä»£å…¥
+					sfc_hsb[1] = hsb[1]; //å½©åº¦ä»£å…¥
 					int rgb = Color.HSBtoRGB(sfc_hsb[0], sfc_hsb[1], sfc_hsb[2]);
 					
 					c = alpha + (0x00FFFFFF&rgb);
@@ -881,7 +881,7 @@ class MyPanel extends JPanel{
 	private static void saturationImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//saturationƒ‚[ƒh‚ÍÊ“x
+		//saturationãƒ¢ãƒ¼ãƒ‰ã¯å½©åº¦
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -924,7 +924,7 @@ class MyPanel extends JPanel{
 
 					Color.RGBtoHSB(red, green, blue, hsb);
 					Color.RGBtoHSB(sfc_red, sfc_green, sfc_blue, sfc_hsb);
-					sfc_hsb[1] = hsb[1]; //Ê“x‘ã“ü
+					sfc_hsb[1] = hsb[1]; //å½©åº¦ä»£å…¥
 					int rgb = Color.HSBtoRGB(sfc_hsb[0], sfc_hsb[1], sfc_hsb[2]);
 					
 					c = alpha + (0x00FFFFFF&rgb);
@@ -938,7 +938,7 @@ class MyPanel extends JPanel{
 	private static void luminosityImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//luminosityƒ‚[ƒh‚Í–¾“x
+		//luminosityãƒ¢ãƒ¼ãƒ‰ã¯æ˜åº¦
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();
@@ -981,7 +981,7 @@ class MyPanel extends JPanel{
 
 					Color.RGBtoHSB(red, green, blue, hsb);
 					Color.RGBtoHSB(sfc_red, sfc_green, sfc_blue, sfc_hsb);
-					sfc_hsb[2] = hsb[2]; //–¾“x‘ã“ü
+					sfc_hsb[2] = hsb[2]; //æ˜åº¦ä»£å…¥
 					int rgb = Color.HSBtoRGB(sfc_hsb[0], sfc_hsb[1], sfc_hsb[2]);
 					
 					c = alpha + (0x00FFFFFF&rgb);
@@ -995,8 +995,8 @@ class MyPanel extends JPanel{
 	private static void alphaImage(BufferedImage newImage, BufferedImage flowImage,
 			BufferedImage surfaceImage, Point offset, int level)
 	{
-		//alpha channelƒ‚[ƒh‚Í”Z“x‚ğƒT[ƒtƒF[ƒX‚ÌƒAƒ‹ƒtƒ@ƒ`ƒƒƒ“ƒlƒ‹‚É“K—p
-		//ƒT[ƒtƒF[ƒX‚ğ•ÏX‚·‚é‚Ì‚Å“Á•Êˆµ‚¢‚ª•K—v
+		//alpha channelãƒ¢ãƒ¼ãƒ‰ã¯æ¿ƒåº¦ã‚’ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã®ã‚¢ãƒ«ãƒ•ã‚¡ãƒãƒ£ãƒ³ãƒãƒ«ã«é©ç”¨
+		//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã‚’å¤‰æ›´ã™ã‚‹ã®ã§ç‰¹åˆ¥æ‰±ã„ãŒå¿…è¦
 		
 		DataBuffer surfacebuf = surfaceImage.getRaster().getDataBuffer();
 		DataBuffer srcbuf = flowImage.getRaster().getDataBuffer();

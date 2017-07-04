@@ -12,9 +12,9 @@ import javax.xml.stream.XMLStreamReader;
 
 
 public class XMLRead {
-	//XMLƒtƒ@ƒCƒ‹“Ç‚İ‚İŠJn
+	//XMLãƒ•ã‚¡ã‚¤ãƒ«èª­ã¿è¾¼ã¿é–‹å§‹
 	public static boolean readToc(String xmlfile, OStack inStack) {
-    	//i’»•\¦‚ğŠJn
+    	//é€²æ—è¡¨ç¤ºã‚’é–‹å§‹
 		inStack.barDialog = new JDialog(inStack.pcard);
 		inStack.barDialog.setUndecorated(true);
 		inStack.bar = new JProgressBar();
@@ -38,7 +38,7 @@ public class XMLRead {
 	    try {
 	        stream = new BufferedInputStream(new FileInputStream(xmlfile));
 	        
-	        //DOCTYPE‚ÅƒGƒ‰[‚É‚È‚é‚½‚ß“Ç‚İ”ò‚Î‚·
+	        //DOCTYPEã§ã‚¨ãƒ©ãƒ¼ã«ãªã‚‹ãŸã‚èª­ã¿é£›ã°ã™
 	        {
 	        	StringBuffer s = new StringBuffer(128);
 	        	int i=0;
@@ -80,7 +80,7 @@ public class XMLRead {
 		            		OCard cd = new OCard(inStack);
 		            		reader = cd.readXML(reader);
 		            		inStack.AddNewCard(cd.id);
-		            		//inStack.cdCacheList.add(cd); //new OCard()‚Ì“_‚Å“o˜^‚³‚ê‚Ä‚¢‚é
+		            		//inStack.cdCacheList.add(cd); //new OCard()ã®æ™‚ç‚¹ã§ç™»éŒ²ã•ã‚Œã¦ã„ã‚‹
 		            	}else if(elm.equals("font")){
 		            		reader = inStack.readFontXML(reader);
 		            	}else if(elm.equals("nextStyleID")){
@@ -117,10 +117,10 @@ public class XMLRead {
     	    }
 	        result = true;
 	    } catch (FileNotFoundException ex) {
-	        System.err.println(xmlfile + " ‚ªŒ©‚Â‚©‚è‚Ü‚¹‚ñ");
+	        System.err.println(xmlfile + " ãŒè¦‹ã¤ã‹ã‚Šã¾ã›ã‚“");
 	    } catch (XMLStreamException ex) {
-	        System.err.println(xmlfile + " ‚Ì“Ç‚İ‚İ‚É¸”s‚µ‚Ü‚µ‚½");
-	        inStack.cantModify = true; //‰ó‚ê‚½ƒf[ƒ^‚Ì‘‚«‚İ‹Ö~
+	        System.err.println(xmlfile + " ã®èª­ã¿è¾¼ã¿ã«å¤±æ•—ã—ã¾ã—ãŸ");
+	        inStack.cantModify = true; //å£Šã‚ŒãŸãƒ‡ãƒ¼ã‚¿ã®æ›¸ãè¾¼ã¿ç¦æ­¢
 			ex.printStackTrace();
 	    } catch (IOException e) {
 			e.printStackTrace();
@@ -138,18 +138,20 @@ public class XMLRead {
 	            } catch (IOException ex) {}
 	        }
 	    }
-		//ƒ`ƒFƒbƒN
+		//ãƒã‚§ãƒƒã‚¯
 		if(inStack.firstCard!=0 && inStack.GetCardbyId(inStack.firstCard)==null){
 	        System.err.println("Error: First card is not found!");
-	        inStack.firstCard = inStack.GetCardbyNum(1).id;
+	        if(inStack.GetCardbyNum(1)!=null){
+	        	inStack.firstCard = inStack.GetCardbyNum(1).id;
+	        }
 		}else{
 			if(result==false){
 	    		new GDialog(inStack.pcard, PCARDFrame.pc.intl.getDialogText("Error occured at reading XML file."),null,"OK",null,null);
-	    		result = true;//“r’†‚Ü‚Å‚µ‚©“Ç‚ß‚È‚­‚Ä‚à‹­§“I‚ÉŠJ‚¢‚Ä‚İ‚é
+	    		result = true;//é€”ä¸­ã¾ã§ã—ã‹èª­ã‚ãªãã¦ã‚‚å¼·åˆ¶çš„ã«é–‹ã„ã¦ã¿ã‚‹
 			}
 			else if(completeFlag==false){
 	    		new GDialog(inStack.pcard, PCARDFrame.pc.intl.getDialogText("XML end tag is not found."),null,"OK",null,null);
-	    		result = true;//“r’†‚Ü‚Å‚µ‚©“Ç‚ß‚È‚­‚Ä‚à‹­§“I‚ÉŠJ‚¢‚Ä‚İ‚é
+	    		result = true;//é€”ä¸­ã¾ã§ã—ã‹èª­ã‚ãªãã¦ã‚‚å¼·åˆ¶çš„ã«é–‹ã„ã¦ã¿ã‚‹
 			}
 		}
 		
@@ -173,7 +175,7 @@ public class XMLRead {
         }
 	}
 
-	/* StackSmith“ú–{Œê•¶š‰»‚¯‘Î‰
+	/* StackSmithæ—¥æœ¬èªæ–‡å­—åŒ–ã‘å¯¾å¿œ
 	final static char[] macroman = {
 			0x00C4,0x00C5,0x00C7,0x00C9,0x00D1,0x00D6,0x00DC,0x00E1,// 80- 87 
 			0x00E0,0x00E2,0x00E4,0x00E3,0x00E5,0x00E7,0x00E9,0x00E8,// 88- 8F 

@@ -21,7 +21,7 @@ public class GMsg extends JDialog {
 		/*getContentPane().*/setLayout(null);//new BorderLayout());
 		//this.setBackground(Color.WHITE);
 		
-		//パネルを追加する
+		//繝代ロ繝ｫ繧定ｿｽ蜉縺吶ｋ
 		//JPanel topPanel = new JPanel();
 		//topPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		//getContentPane().add("North",topPanel);
@@ -42,7 +42,7 @@ public class GMsg extends JDialog {
 		
 		area.addKeyListener(new GMsgListener());
 		
-        addKeyListener(GUI.gui);//キー入力は共通で使う
+        addKeyListener(GUI.gui);//繧ｭ繝ｼ蜈･蜉帙�ｯ蜈ｱ騾壹〒菴ｿ縺�
 		
 		msg = this;
 		

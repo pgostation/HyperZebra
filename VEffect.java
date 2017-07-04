@@ -34,13 +34,13 @@ public class VEffect {
 			
 			/* to black1 white2 grey3 inverse4 */
 			if(toEffect==0){
-				//オフスクリーンに描画
+				//繧ｪ繝輔せ繧ｯ繝ｪ繝ｼ繝ｳ縺ｫ謠冗判
 				//PCARD.lockedScreen = false;
 				PCARDFrame.pc.mainPane.paint(offg);
 				PCARD.lockedScreen = true;
 			}
 			else if(toEffect==4){
-				//オフスクリーンに描画
+				//繧ｪ繝輔せ繧ｯ繝ｪ繝ｼ繝ｳ縺ｫ謠冗判
 				//PCARD.lockedScreen = false;
 				PCARDFrame.pc.mainPane.paint(offg);
 				PCARD.lockedScreen = true;
@@ -313,7 +313,7 @@ public class VEffect {
 			}
 		}
 		
-		//移動後のカードの表示
+		//遘ｻ蜍募ｾ後�ｮ繧ｫ繝ｼ繝峨�ｮ陦ｨ遉ｺ
 		PCARD.lockedScreen = false;
 		//PCARD.pc.mainPane.paintImmediately(0, 0, PCARD.pc.stack.width, PCARD.pc.stack.height);
 		PCARDFrame.pc.mainPane.repaint();

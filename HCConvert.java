@@ -25,7 +25,7 @@ public class HCConvert {
 	public static boolean openHCStack(String path, OStack stack) {
 		//System.out.println("openHCStack...");
 
-    	//i’»•\¦‚ğŠJn
+    	//é€²æ—è¡¨ç¤ºã‚’é–‹å§‹
 		stack.barDialog = new JDialog(stack.pcard);
 		stack.barDialog.setUndecorated(true);
 		stack.barDialog.getContentPane().setLayout(new BorderLayout());
@@ -41,10 +41,10 @@ public class HCConvert {
 		stack.bar.paintImmediately(stack.bar.getBounds());
 		stack.bar.setString("Make tar archive");
     	
-		//Java‚©‚çƒŠƒ\[ƒX‚ğ“Ç‚Ş‚½‚ß‚ÉAApple-DoubleƒtƒH[ƒ}ƒbƒg‚Åtar
+		//Javaã‹ã‚‰ãƒªã‚½ãƒ¼ã‚¹ã‚’èª­ã‚€ãŸã‚ã«ã€Apple-Doubleãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆã§tar
 		File tarFile = MakeAppleDoubleTar(path);
 		
-		//ƒfƒBƒŒƒNƒgƒŠ‚ğì¬
+		//ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã‚’ä½œæˆ
 		if(!CreateStackFolder(stack, path)){
     		tarFile.delete();
     		stack.barDialog.remove(stack.bar);
@@ -54,12 +54,12 @@ public class HCConvert {
 		
 		if(tarFile != null){
 			stack.bar.setString("readFromTar");
-			//tar‚³‚ê‚½ƒf[ƒ^ƒtƒH[ƒN‚ÆƒŠƒ\[ƒXƒtƒH[ƒN‚ğæ‚èo‚·
+			//tarã•ã‚ŒãŸãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯ã¨ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ã‚’å–ã‚Šå‡ºã™
 			if(!readFromTar(tarFile, stack)){
 				System.out.println("Error occured at read data from tar file.");
 			}
 			else{
-				//“Ç‚İ‚İ¬Œ÷
+				//èª­ã¿è¾¼ã¿æˆåŠŸ
 				tarFile.delete();
 				stack.barDialog.remove(stack.bar);
 				stack.barDialog.dispose();
@@ -72,7 +72,7 @@ public class HCConvert {
 				return true;
 			}
 		}
-		else{ //ƒŠƒ\[ƒXƒtƒH[ƒN–³‚µ‚Å’¼Ú“Ç‚İ‚Ş
+		else{ //ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ç„¡ã—ã§ç›´æ¥èª­ã¿è¾¼ã‚€
 			//System.out.println("Load File Direct");
 			stack.bar.setString("Load File Direct");
 			
@@ -84,15 +84,15 @@ public class HCConvert {
 				e.printStackTrace();
 			}
 
-			//ƒf[ƒ^ƒtƒH[ƒN“Ç‚İ‚İ
+			//ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯èª­ã¿è¾¼ã¿
 			if(dis==null || !HCData.readDataFork(dis, stack)){
 				System.out.println("Error occured at reading data from file.");
 	    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Error occured at reading HyperCard stack data."),
 	    				null,"OK",null,null);
 			}
 			else{
-				//ƒŠƒ\[ƒXƒtƒH[ƒN‚Á‚Û‚¢–¼‘O‚Ìƒtƒ@ƒCƒ‹‚ª‚ ‚ê‚ÎƒŠƒ\[ƒXƒtƒH[ƒN“Ç‚İ‚İ
-				//1.AppleDoubleHeader‚Ì‰ğ“€‚Ìƒtƒ@ƒCƒ‹
+				//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ã£ã½ã„åå‰ã®ãƒ•ã‚¡ã‚¤ãƒ«ãŒã‚ã‚Œã°ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯èª­ã¿è¾¼ã¿
+				//1.AppleDoubleHeaderã®è§£å‡æ™‚ã®ãƒ•ã‚¡ã‚¤ãƒ«
 				String searchPath = new File(path).getParent()+File.separatorChar+"._"+new File(path).getName();
 				File rsrcFile = new File(searchPath);
 				if(!rsrcFile.exists()){
@@ -107,7 +107,7 @@ public class HCConvert {
 						e.printStackTrace();
 					}
 
-					//AppleDouble‚Ìƒwƒbƒ_ƒtƒ@ƒCƒ‹‚Æ‚µ‚Ä“Ç‚İ‚İ
+					//AppleDoubleã®ãƒ˜ãƒƒãƒ€ãƒ•ã‚¡ã‚¤ãƒ«ã¨ã—ã¦èª­ã¿è¾¼ã¿
 					HCResource.readAppleDoubleHeader(rsrc_dis, stack);
 				}
 				else{
@@ -115,7 +115,7 @@ public class HCConvert {
 		    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Resource data is not found."),
 		    				null,"OK",null,null);
 				}
-				//ƒŠƒ\[ƒXƒtƒ@ƒCƒ‹‚ª‚È‚­‚Ä‚à¬Œ÷
+				//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚¡ã‚¤ãƒ«ãŒãªãã¦ã‚‚æˆåŠŸ
 				stack.barDialog.remove(stack.bar);
 				stack.barDialog.dispose();
 	
@@ -127,7 +127,7 @@ public class HCConvert {
 			}
 		}
 
-		//“Ç‚İ‚İƒGƒ‰[
+		//èª­ã¿è¾¼ã¿ã‚¨ãƒ©ãƒ¼
 		if(tarFile!=null){
 			tarFile.delete();
 		}
@@ -140,7 +140,7 @@ public class HCConvert {
 	public static boolean openMacBinaryStack(String path, OStack stack) {
 		//System.out.println("openMacBinaryHCStack...");
 
-    	//i’»•\¦‚ğŠJn
+    	//é€²æ—è¡¨ç¤ºã‚’é–‹å§‹
 		stack.barDialog = new JDialog(stack.pcard);
 		stack.barDialog.setUndecorated(true);
 		stack.bar = new JProgressBar();
@@ -154,18 +154,18 @@ public class HCConvert {
 		stack.barDialog.setVisible(true);
 		stack.bar.paintImmediately(stack.bar.getBounds());
 
-		//ƒfƒBƒŒƒNƒgƒŠ‚ğì¬
+		//ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã‚’ä½œæˆ
 		if(!CreateStackFolder(stack, path)){
     		stack.barDialog.remove(stack.bar);
     		stack.barDialog.dispose();
 		}
 
-		//MacBinary‚Í128ƒoƒCƒg‚Ìƒwƒbƒ_
-		//+ ƒf[ƒ^ƒtƒH[ƒN  (ƒf[ƒ^ƒtƒH[ƒN‚Ì’·‚³‚ğ128byte‚ÅØ‚èã‚°‚é)
-		//+ ƒŠƒ\[ƒXƒtƒH[ƒN
+		//MacBinaryã¯128ãƒã‚¤ãƒˆã®ãƒ˜ãƒƒãƒ€
+		//+ ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯  (ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯ã®é•·ã•ã‚’128byteã§åˆ‡ã‚Šä¸Šã’ã‚‹)
+		//+ ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯
 		//
-		//lzhŒ`®‚Ìƒtƒ@ƒCƒ‹‚ğ‰ğ“€‚·‚é‚ÆMacBinaryŒ`®‚¾‚Á‚½‚è‚·‚éB
-		//Windows”ÅStuffItExpander‚Å‚Í‰ğ“€Œã‚ÉMacBinary‚É‚·‚éƒIƒvƒVƒ‡ƒ“‚ª‚ ‚é
+		//lzhå½¢å¼ã®ãƒ•ã‚¡ã‚¤ãƒ«ã‚’è§£å‡ã™ã‚‹ã¨MacBinaryå½¢å¼ã ã£ãŸã‚Šã™ã‚‹ã€‚
+		//Windowsç‰ˆStuffItExpanderã§ã¯è§£å‡å¾Œã«MacBinaryã«ã™ã‚‹ã‚ªãƒ—ã‚·ãƒ§ãƒ³ãŒã‚ã‚‹
 		
 		FileInputStream fis = null;
 		try {
@@ -177,6 +177,7 @@ public class HCConvert {
 		byte[] header = new byte[128];
 		try {
 			fis.read(header, 0, 128);
+			fis.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -185,10 +186,10 @@ public class HCConvert {
 				((0x00FF&header[84])<<16)+
 				((0x00FF&header[85])<<8)+
 				((0x00FF&header[86]));
-			//ƒf[ƒ^ƒtƒH[ƒN•”•ª‚ğbyte”z—ñ‚É“Ç‚İ‚Ş
+			//ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯éƒ¨åˆ†ã‚’byteé…åˆ—ã«èª­ã¿è¾¼ã‚€
 			if(dataForkLen>100*1000*1000){
-				//100MˆÈã‚Ì‚Í‚¸‚ª‚È‚¢
-				dataForkLen = 10*1000*1000;//‚Æ‚è‚ ‚¦‚¸10M‚ÅB
+				//100Mä»¥ä¸Šã®ã¯ãšãŒãªã„
+				dataForkLen = 10*1000*1000;//ã¨ã‚Šã‚ãˆãš10Mã§ã€‚
 			}
 			byte[] dataBytes = new byte[dataForkLen];
 			try {
@@ -198,7 +199,7 @@ public class HCConvert {
 			}
 			DataInputStream dis = new DataInputStream(new ByteArrayInputStream(dataBytes));
 
-			//ƒf[ƒ^ƒtƒH[ƒN“Ç‚İ‚İ
+			//ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯èª­ã¿è¾¼ã¿
 			if(HCData.readDataFork(dis, stack)){
 				dataBytes = null;
 				
@@ -208,8 +209,8 @@ public class HCConvert {
 				((0x00FF&header[90]));
 
 				byte[] rsrcBytes = null;
-				if(rsrcForkLen>0){ //ƒŠƒ\[ƒXƒtƒH[ƒN‚ª‚ ‚é‚©H
-					//ƒf[ƒ^ƒtƒH[ƒN‚ÌŸ‚ÌƒuƒƒbƒN‚Ü‚Å“Ç‚İ”ò‚Î‚·
+				if(rsrcForkLen>0){ //ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ãŒã‚ã‚‹ã‹ï¼Ÿ
+					//ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯ã®æ¬¡ã®ãƒ–ãƒ­ãƒƒã‚¯ã¾ã§èª­ã¿é£›ã°ã™
 					byte[] nullBytes = new byte[128-((dataForkLen-1)%128+1)];
 					try {
 						fis.read(nullBytes, 0, 128-((dataForkLen-1)%128+1));
@@ -217,10 +218,10 @@ public class HCConvert {
 						e.printStackTrace();
 					}
 	
-					//ƒŠƒ\[ƒXƒtƒH[ƒN•”•ª‚ğbyte”z—ñ‚É“Ç‚İ‚Ş
+					//ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯éƒ¨åˆ†ã‚’byteé…åˆ—ã«èª­ã¿è¾¼ã‚€
 					if(rsrcForkLen>300*1000*1000){
-						//300MˆÈã‚Ì‚Í‚¸‚ª‚È‚¢
-						rsrcForkLen = 10*1000*1000;//‚Æ‚è‚ ‚¦‚¸10M‚ÅB
+						//300Mä»¥ä¸Šã®ã¯ãšãŒãªã„
+						rsrcForkLen = 10*1000*1000;//ã¨ã‚Šã‚ãˆãš10Mã§ã€‚
 					}
 					rsrcBytes = new byte[rsrcForkLen];
 					try {
@@ -253,7 +254,7 @@ public class HCConvert {
 			}
 		}
 		
-		//“Ç‚İ‚İƒGƒ‰[
+		//èª­ã¿è¾¼ã¿ã‚¨ãƒ©ãƒ¼
 		stack.barDialog.remove(stack.bar);
 		stack.barDialog.dispose();
 		return false;
@@ -265,7 +266,7 @@ public class HCConvert {
 		stack.bar.setString("Create a new folder");
 		stack.bar.paintImmediately(stack.bar.getBounds());
 		
-		//ƒfƒBƒŒƒNƒgƒŠ‚ğì¬
+		//ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã‚’ä½œæˆ
 		File newdir = new File(path+".hzb");
 		int i=2;
 		while(newdir.exists()){
@@ -285,7 +286,7 @@ public class HCConvert {
 	
 	
 	public static File MakeAppleDoubleTar(String path){
-		//MacOSX‚Å‚ ‚é‚±‚Æ
+		//MacOSXã§ã‚ã‚‹ã“ã¨
 		String os=System.getProperty("os.name");
         if(os!=null && os.startsWith("Mac OS X")){
         }
@@ -298,7 +299,7 @@ public class HCConvert {
     	String srcpath = path;
         String tarpath = path;
         for(int i=0; i<srcpath.length(); i++){
-        	if(srcpath.charAt(i)>=128 || srcpath.length()>=100-2){ //2byte•¶š‚âƒpƒX‚ªtar‚ÉŠi”[‚Å‚«‚é‚æ‚è’·‚©‚Á‚½‚ç
+        	if(srcpath.charAt(i)>=128 || srcpath.length()>=100-2){ //2byteæ–‡å­—ã‚„ãƒ‘ã‚¹ãŒtarã«æ ¼ç´ã§ãã‚‹ã‚ˆã‚Šé•·ã‹ã£ãŸã‚‰
         		String renameStr;
         		int j=1;
         		while(true){
@@ -312,9 +313,9 @@ public class HCConvert {
         		srcpath = renameStr;
         		
         		{
-        			//ƒRƒs[‚ğì‚é‚ÆƒŠƒ\[ƒXƒtƒH[ƒN‚ª¸‚í‚ê‚Ä‚µ‚Ü‚¤
+        			//ã‚³ãƒ”ãƒ¼ã‚’ä½œã‚‹ã¨ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ãŒå¤±ã‚ã‚Œã¦ã—ã¾ã†
         			
-	        		//“ú–{ŒêƒpƒX‘Îô‚Åƒeƒ“ƒ|ƒ‰ƒŠ‚ÉƒXƒ^ƒbƒN‚ÌƒRƒs[‚ğì‚é
+	        		//æ—¥æœ¬èªãƒ‘ã‚¹å¯¾ç­–ã§ãƒ†ãƒ³ãƒãƒ©ãƒªã«ã‚¹ã‚¿ãƒƒã‚¯ã®ã‚³ãƒ”ãƒ¼ã‚’ä½œã‚‹
 	        		/*srcpath = System.getProperty("java.io.tmpdir")+File.separatorChar+"hyperzebra_stack";
 	
 					try {
@@ -333,7 +334,7 @@ public class HCConvert {
 					}*/
         		}
 
-        		//“ú–{ŒêƒpƒX‘Îô‚Åƒeƒ“ƒ|ƒ‰ƒŠ‚ÉtarƒA[ƒJƒCƒu‚ğì‚é
+        		//æ—¥æœ¬èªãƒ‘ã‚¹å¯¾ç­–ã§ãƒ†ãƒ³ãƒãƒ©ãƒªã«tarã‚¢ãƒ¼ã‚«ã‚¤ãƒ–ã‚’ä½œã‚‹
         		tarpath = System.getProperty("java.io.tmpdir")+File.separatorChar+"hyperzebra_work";
         		break;
         	}
@@ -348,7 +349,7 @@ public class HCConvert {
     		i++;
     	}
     	
-        //Apple‚Ìtar‚Å•Û‘¶
+        //Appleã®tarã§ä¿å­˜
 		try{
 			ProcessBuilder pb = new ProcessBuilder("tar", "-cvf", path2+".tar", srcpath);
 			//ProcessBuilder pb = new ProcessBuilder("tar", "-cvf", path+".tar", path);
@@ -367,7 +368,7 @@ public class HCConvert {
 				}
 			}
 			if(!isSuccess){
-				//success‚µ‚È‚¢
+				//successã—ãªã„
 				//System.out.println("Error occured at creating tar archive.");
 			}
 		} catch (IOException e1) {
@@ -379,7 +380,7 @@ public class HCConvert {
 		}
 		
 		if(!srcpath.equals(path)){
-			//ƒtƒ@ƒCƒ‹‚ğˆÚ“®‚µ‚Ä‚¢‚½‚çŒ³‚É–ß‚·
+			//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ç§»å‹•ã—ã¦ã„ãŸã‚‰å…ƒã«æˆ»ã™
 			new File(srcpath).renameTo(new File(path));
 		}
 		
@@ -422,7 +423,7 @@ public class HCConvert {
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		}
-		//Apache ant‚Ìƒ‰ƒCƒuƒ‰ƒŠ‚Åtar‚ğˆµ‚¤
+		//Apache antã®ãƒ©ã‚¤ãƒ–ãƒ©ãƒªã§tarã‚’æ‰±ã†
 		if(tin==null) return false;
 		try {
 			MyTarEntry tarEnt = tin.getNextEntry();
@@ -435,14 +436,14 @@ public class HCConvert {
 				DataInputStream dis = new DataInputStream(new ByteArrayInputStream(data));
 
 				if(name.contains("._")){
-					//Apple Double Header File(ƒŠƒ\[ƒXƒtƒH[ƒN‚ğŠÜ‚Ş)
+					//Apple Double Header File(ãƒªã‚½ãƒ¼ã‚¹ãƒ•ã‚©ãƒ¼ã‚¯ã‚’å«ã‚€)
 					if(!HCResource.readAppleDoubleHeader(dis, stack)){
 						System.out.println("Error occured at reading resouce fork from tar file.");
 					}
 					stack.barOffset += 25;
 				}
 				else{
-					//ƒf[ƒ^ƒtƒH[ƒN
+					//ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚©ãƒ¼ã‚¯
 					if(!HCData.readDataFork(dis, stack)){
 						System.out.println("Error occured at reading data fork from tar file.");
 			    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Error occured at reading HyperCard stack data."),
@@ -474,7 +475,7 @@ public class HCConvert {
 			for(int i=0; i<size; i++){
 				bos.write(fis.read());
 			}
-			//ƒpƒfƒBƒ“ƒO
+			//ãƒ‘ãƒ‡ã‚£ãƒ³ã‚°
 			if(512-((size-1)%512+1)>0){
 				for(int i=0; i<512-((size-1)%512+1); i++){
 					fis.read();
@@ -483,7 +484,7 @@ public class HCConvert {
 		}
 		
 		public MyTarEntry getNextEntry() throws IOException{
-			//ƒwƒbƒ_512byte“Ç‚İ‚İ
+			//ãƒ˜ãƒƒãƒ€512byteèª­ã¿è¾¼ã¿
 			StringBuilder name = new StringBuilder(100);
 			for(int i=0; i<100; i++){
 				name.append((char)fis.read());
@@ -492,7 +493,7 @@ public class HCConvert {
 				fis.read();
 			}
 			if(name.toString().equals("")){
-				return null; //I’[‚Á‚Û‚¢
+				return null; //çµ‚ç«¯ã£ã½ã„
 			}
 			
 			StringBuilder sizeStrbldr = new StringBuilder(12);
@@ -514,14 +515,14 @@ public class HCConvert {
 			}
 			String sizeStr=sizeStrbldr.toString();
 			if(sizeStr.equals("")){
-				return null; //I’[‚Á‚Û‚¢
+				return null; //çµ‚ç«¯ã£ã½ã„
 			}
 			size = Integer.valueOf(sizeStr,8);
 			for(int i=0; i<512-100-24-11; i++){
 				fis.read();
 			}
 			
-			//MyTarEntryƒNƒ‰ƒX‚ğì¬‚µ‚Ä–¼‘O‚ÆƒTƒCƒY‚ğ•Ô‚·
+			//MyTarEntryã‚¯ãƒ©ã‚¹ã‚’ä½œæˆã—ã¦åå‰ã¨ã‚µã‚¤ã‚ºã‚’è¿”ã™
 			MyTarEntry entry = new MyTarEntry(name.toString(), size);
 			return entry;
 		}

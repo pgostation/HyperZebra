@@ -77,7 +77,7 @@ public class TextEditor extends JFrame {
 			obj.text = allStr;
 			area.savedScript();
 		} else {
-			System.out.println("ƒeƒLƒXƒg‚Ì•Û‘¶‚É¸”s‚µ‚Ü‚µ‚½");
+			System.out.println("ãƒ†ã‚­ã‚¹ãƒˆã®ä¿å­˜ã«å¤±æ•—ã—ã¾ã—ãŸ");
 		}
 	}*/
 }
@@ -162,7 +162,6 @@ class TEMenu {
 	/**
 	 * 
 	 */
-	private static final long serialVersionUID = 1L;
 	static JMenuItem undoMenu = null;
 	static JMenuItem redoMenu = null;
 	
@@ -171,7 +170,7 @@ class TEMenu {
 		
 		listener = new TEMenuListener();
 		
-    	// ƒƒjƒ…[ƒo[‚Ìİ’è
+    	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãƒãƒ¼ã®è¨­å®š
 		JMenuBar mb=new JMenuBar();
 		TextEditor.setJMenuBar(mb);
 		
@@ -183,9 +182,9 @@ class TEMenu {
 		}
 		int s_shift = s+InputEvent.SHIFT_MASK;
 
-	    // Fileƒƒjƒ…[
+	    // Fileãƒ¡ãƒ‹ãƒ¥ãƒ¼
 
-	    // Editƒƒjƒ…[
+	    // Editãƒ¡ãƒ‹ãƒ¥ãƒ¼
 	    m=new JMenu(PCARDFrame.pc.intl.getText("Edit"));
 	    mb.add(m);
 	    m.add(mi = new JMenuItem(PCARDFrame.pc.intl.getText("Undo")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));mi.addActionListener(listener);
@@ -200,7 +199,7 @@ class TEMenu {
 	}
 }
 
-//ƒƒjƒ…[“®ì
+//ãƒ¡ãƒ‹ãƒ¥ãƒ¼å‹•ä½œ
 class TEMenuListener implements ActionListener {
 	@Override
 	public void actionPerformed (ActionEvent e) {

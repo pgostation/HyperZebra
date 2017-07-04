@@ -31,7 +31,7 @@ import javax.swing.border.LineBorder;
 class AuthTool {
 	static authtoolInterface tool;
 
-	//static boolean editBackground;‚ÍPaintTool‚Ì‚à‚Ì‚ğ—¬—p‚·‚é
+	//static boolean editBackground;ã¯PaintToolã®ã‚‚ã®ã‚’æµç”¨ã™ã‚‹
 }
 
 
@@ -198,7 +198,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
     	
     	newButton = false;
     	if((e.getModifiersEx()&InputEvent.META_DOWN_MASK)>0 ||
-    			(e.getModifiersEx()&InputEvent.CTRL_DOWN_MASK)>0){ //V‹K“§–¾ƒ{ƒ^ƒ“
+    			(e.getModifiersEx()&InputEvent.CTRL_DOWN_MASK)>0){ //æ–°è¦é€æ˜ãƒœã‚¿ãƒ³
     		OCardBase cdbase = PCARDFrame.pc.stack.curCard;
 			if(PaintTool.editBackground){
 				cdbase = PCARDFrame.pc.stack.curCard.bg;
@@ -220,7 +220,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 				target = obtn.btn;
 	        	tgtOBtn = obtn;
 				
-				//ŠOŠÏ•ÏX
+				//å¤–è¦³å¤‰æ›´
 				{
 					obtn.btn.setBounds(x,y,2,2);
 					obtn.style = 1;
@@ -294,7 +294,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 				obtn.enabled = obtn2.enabled;
 				obtn.setVisible(obtn2.getVisible());
 				
-				//ŠOŠÏ•ÏX
+				//å¤–è¦³å¤‰æ›´
 				{
 					OButton.buildOButton(obtn);
 		        	tgtOBtn = obtn;
@@ -328,17 +328,17 @@ class ButtonGUI implements MouseListener, MouseMotionListener
     	else{
     		target = null;
     	}
-    	startx = x; //Å‰‚ÌˆÊ’u‚ğ‹L‰¯
+    	startx = x; //æœ€åˆã®ä½ç½®ã‚’è¨˜æ†¶
     	starty = y;
-    	offsetx = e.getX(); //ƒ|ƒCƒ“ƒ^‚Æ•”•i‚ÌƒIƒtƒZƒbƒg‚ğ‹L‰¯
+    	offsetx = e.getX(); //ãƒã‚¤ãƒ³ã‚¿ã¨éƒ¨å“ã®ã‚ªãƒ•ã‚»ãƒƒãƒˆã‚’è¨˜æ†¶
     	offsety = e.getY();
-    	lastx = x; //ƒTƒCƒY‚Ì•ÏX—p‚É‘O‰ñ‚ÌˆÊ’u‚ğ‹L‰¯
+    	lastx = x; //ã‚µã‚¤ã‚ºã®å¤‰æ›´ç”¨ã«å‰å›ã®ä½ç½®ã‚’è¨˜æ†¶
     	lasty = y;
 
 		isMouseDown = true;
 		
     	if(target!=null){
-    		//ƒhƒ‰ƒbƒO‚Ì•`‰æ‚ªd‚¢‚Ì‚ÅƒXƒŒƒbƒh“à‚Å‚Ô‚ñ‰ñ‚µ‚Ä‚İ‚é
+    		//ãƒ‰ãƒ©ãƒƒã‚°æ™‚ã®æç”»ãŒé‡ã„ã®ã§ã‚¹ãƒ¬ãƒƒãƒ‰å†…ã§ã¶ã‚“å›ã—ã¦ã¿ã‚‹
     		Thread p = new dragThread();
     		p.start();
     	}
@@ -346,13 +346,13 @@ class ButtonGUI implements MouseListener, MouseMotionListener
     
     @Override
 	public void mouseReleased(MouseEvent e) {
-    	Rectangle r = ((Component)e.getSource()).getBounds();
+    	/*Rectangle r = ((Component)e.getSource()).getBounds();
     	int x = e.getX()+r.x;
     	int y = e.getY()+r.y;
     	if((Component)e.getSource() == PCARDFrame.pc.getRootPane()){
     		x -= PCARDFrame.pc.toolbar.getTWidth();
     		y -= PCARDFrame.pc.toolbar.getTHeight()+PCARDFrame.pc.getInsets().top+PCARDFrame.pc.getJMenuBar().getHeight();
-    	}
+    	}*/
 
     	isMouseDown = false;
     	
@@ -368,7 +368,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
         	if(target.getClass() == MyCheck.class) obtn = ((MyCheck)target).btnData;
         	if(target.getClass() == MyPopup.class) obtn = ((MyPopup)target).btnData;
         	if(obtn!=null){
-            	//ƒ_ƒuƒ‹ƒNƒŠƒbƒN”»’è
+            	//ãƒ€ãƒ–ãƒ«ã‚¯ãƒªãƒƒã‚¯åˆ¤å®š
             	if (!newButton && e.getClickCount() >= 2){
             		AuthDialog.openAuthDialog(PCARDFrame.pc, "button", obtn);
             	}
@@ -422,7 +422,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 		    	if(target != null){
 			    	Rectangle newr = target.getBounds();
 		    		if(!sizeChange){
-			    		//ˆÚ“®
+			    		//ç§»å‹•
 		    			newr.x = x-offsetx;
 			    		newr.y = y-offsety;
 		    			if(GUI.key[11]>1){ //SHIFT
@@ -438,7 +438,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 			    		}
 		    		}
 		    		else{
-			    		//ƒTƒCƒY•ÏX
+			    		//ã‚µã‚¤ã‚ºå¤‰æ›´
 			    		if(sizeleft) {
 			    			newr.x += x - lastx;
 			    			newr.width -= x - lastx;
@@ -490,7 +490,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
     	if(target != null){
 	    	Rectangle newr = target.getBounds();
     		if(!sizeChange){
-	    		//ˆÚ“®
+	    		//ç§»å‹•
     			newr.x = x-offsetx;
 	    		newr.y = y-offsety;
     			if((e.getModifiersEx()&InputEvent.SHIFT_DOWN_MASK)>0){
@@ -504,7 +504,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 	    		target.setEnabled(false);
     		}
     		else{
-	    		//ƒTƒCƒY•ÏX
+	    		//ã‚µã‚¤ã‚ºå¤‰æ›´
     			newr.width += x - lastx;
 	    		newr.height += y - lasty;
 	    		target.setBounds(newr);
@@ -569,7 +569,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 						tgtOBtn.left+tgtOBtn.width+1, tgtOBtn.top+tgtOBtn.height);
 			}
 		}
-		else if(GUI.key[14]>0 && (GUI.key['+']>0)){ //ƒeƒ“ƒL[‚Ì+‚ÍƒVƒ‡[ƒgƒJƒbƒg‚ªŒø‚©‚È‚¢‚Ì‚Å‚±‚±‚É
+		else if(GUI.key[14]>0 && (GUI.key['+']>0)){ //ãƒ†ãƒ³ã‚­ãƒ¼ã®+ã¯ã‚·ãƒ§ãƒ¼ãƒˆã‚«ãƒƒãƒˆãŒåŠ¹ã‹ãªã„ã®ã§ã“ã“ã«
 			OButton obtn = tgtOBtn;
         	int i = ((OCardBase)obtn.parent).GetNumberof(obtn)-1;
         	int ip = ((OCardBase)obtn.parent).GetNumberofParts(obtn)-1;
@@ -585,10 +585,10 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 
 			OCard.reloadCurrentCard();
 			
-			//obtn‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+			//obtnã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 			ButtonGUI.gui.target = obtn.getComponent();
 		}
-		else if(GUI.key[14]>0 && (GUI.key['-']>0)){ //ƒeƒ“ƒL[‚Ì-‚ÍƒVƒ‡[ƒgƒJƒbƒg‚ªŒø‚©‚È‚¢‚Ì‚Å‚±‚±‚É
+		else if(GUI.key[14]>0 && (GUI.key['-']>0)){ //ãƒ†ãƒ³ã‚­ãƒ¼ã®-ã¯ã‚·ãƒ§ãƒ¼ãƒˆã‚«ãƒƒãƒˆãŒåŠ¹ã‹ãªã„ã®ã§ã“ã“ã«
 			OButton obtn = tgtOBtn;
         	int i = ((OCardBase)obtn.parent).GetNumberof(obtn)-1;
         	int ip = ((OCardBase)obtn.parent).GetNumberofParts(obtn)-1;
@@ -604,7 +604,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 			
 			OCard.reloadCurrentCard();
 			
-			//obtn‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+			//obtnã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 			ButtonGUI.gui.target = obtn.getComponent();
 		}
 	}
@@ -672,20 +672,22 @@ class MyButtonDropListener extends DropTargetAdapter {
 							baseid = Integer.valueOf(m.group(1));
 						}
 						int iconid = PCARDFrame.pc.stack.rsrc.getNewResourceId("icon", baseid);
-						//ƒtƒ@ƒCƒ‹‚ğƒRƒs[
+						//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚³ãƒ”ãƒ¼
 						String newFileName = "ICON_"+iconid+ext;
 						String newFilePath = PCARDFrame.pc.stack.file.getParent()+File.separatorChar+newFileName;
-						FileChannel srcChannel = new FileInputStream(path).getChannel();
-						FileChannel destChannel = new FileOutputStream(newFilePath).getChannel();
+						FileChannel srcChannel = null;
+						FileChannel destChannel = null;
 						try {
+							srcChannel = new FileInputStream(path).getChannel();
+							destChannel = new FileOutputStream(newFilePath).getChannel();
 							srcChannel.transferTo(0, srcChannel.size(), destChannel);
 						} finally {
 							srcChannel.close();
 							destChannel.close();
 						}
-						//ƒŠƒ\[ƒX‚É’Ç‰Á
+						//ãƒªã‚½ãƒ¼ã‚¹ã«è¿½åŠ 
 						PCARDFrame.pc.stack.rsrc.addResource(iconid, "icon", name, newFileName);
-						//ƒ{ƒ^ƒ“‚ÌƒAƒCƒRƒ“‚Éİ’è
+						//ãƒœã‚¿ãƒ³ã®ã‚¢ã‚¤ã‚³ãƒ³ã«è¨­å®š
 						/*Component component = ((DropTarget)e.getSource()).getComponent();
 						OButton obtn = ((MyButton)component).btnData;*/
 						OCardBase cdbase = PCARDFrame.pc.stack.curCard;
@@ -854,7 +856,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
     	
     	newField = false;
     	if((e.getModifiersEx()&InputEvent.META_DOWN_MASK)>0 ||
-    			(e.getModifiersEx()&InputEvent.CTRL_DOWN_MASK)>0){ //V‹KƒtƒB[ƒ‹ƒh
+    			(e.getModifiersEx()&InputEvent.CTRL_DOWN_MASK)>0){ //æ–°è¦ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰
     		OCardBase cdbase = PCARD.pc.stack.curCard;
 			if(PaintTool.editBackground){
 				cdbase = PCARD.pc.stack.curCard.bg;
@@ -877,7 +879,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 				target = ofld.fld;
 	        	tgtOFld = ofld;
 				
-				//ŠOŠÏ•ÏX
+				//å¤–è¦³å¤‰æ›´
 				{
 					ofld.fld.setBounds(x,y,2,2);
 					ofld.style = 1;
@@ -942,7 +944,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 				ofld.enabled = obtn2.enabled;
 				ofld.setVisible(obtn2.getVisible());
 				
-				//ŠOŠÏ•ÏX
+				//å¤–è¦³å¤‰æ›´
 				{
 					OField.buildOField(ofld);
 		        	tgtOFld = ofld;
@@ -971,30 +973,30 @@ class FieldGUI implements MouseListener, MouseMotionListener
     	else{
     		target = null;
     	}
-    	startx = x; //Å‰‚ÌˆÊ’u‚ğ‹L‰¯
+    	startx = x; //æœ€åˆã®ä½ç½®ã‚’è¨˜æ†¶
     	starty = y;
-    	offsetx = e.getX(); //ƒ|ƒCƒ“ƒ^‚Æ•”•i‚ÌƒIƒtƒZƒbƒg‚ğ‹L‰¯
+    	offsetx = e.getX(); //ãƒã‚¤ãƒ³ã‚¿ã¨éƒ¨å“ã®ã‚ªãƒ•ã‚»ãƒƒãƒˆã‚’è¨˜æ†¶
     	offsety = e.getY();
-    	lastx = x; //ƒTƒCƒY‚Ì•ÏX—p‚É‘O‰ñ‚ÌˆÊ’u‚ğ‹L‰¯
+    	lastx = x; //ã‚µã‚¤ã‚ºã®å¤‰æ›´ç”¨ã«å‰å›ã®ä½ç½®ã‚’è¨˜æ†¶
     	lasty = y;
 
 		isMouseDown = true;
 		
     	if(target!=null){
-    		//ƒhƒ‰ƒbƒO‚Ì•`‰æ‚ªd‚¢‚Ì‚ÅƒXƒŒƒbƒh“à‚Å‚Ô‚ñ‰ñ‚µ‚Ä‚İ‚é
+    		//ãƒ‰ãƒ©ãƒƒã‚°æ™‚ã®æç”»ãŒé‡ã„ã®ã§ã‚¹ãƒ¬ãƒƒãƒ‰å†…ã§ã¶ã‚“å›ã—ã¦ã¿ã‚‹
     		Thread p = new dragThread();
     		p.start();
     	}
     }
     
     public void mouseReleased(MouseEvent e) {
-    	Rectangle r = ((Component)e.getSource()).getBounds();
+    	/*Rectangle r = ((Component)e.getSource()).getBounds();
     	int x = e.getX()+r.x;
     	int y = e.getY()+r.y;
     	if((Component)e.getSource() == PCARD.pc.getRootPane()){
     		x -= PCARD.pc.toolbar.getTWidth();
     		y -= PCARD.pc.toolbar.getTHeight()+PCARD.pc.getInsets().top+PCARD.pc.getJMenuBar().getHeight();
-    	}
+    	}*/
     	
     	isMouseDown = false;
 
@@ -1006,7 +1008,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
         	else if(target.getClass() == MyScrollPane.class) ofld = ((MyScrollPane)target).fldData;
 
         	if(ofld!=null){
-            	//ƒ_ƒuƒ‹ƒNƒŠƒbƒN”»’è
+            	//ãƒ€ãƒ–ãƒ«ã‚¯ãƒªãƒƒã‚¯åˆ¤å®š
             	if (!newField && e.getClickCount() >= 2){
             		AuthDialog.openAuthDialog(PCARD.pc, "field", ofld);
             	}
@@ -1055,7 +1057,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 		    	if(target != null){
 			    	Rectangle newr = target.getBounds();
 		    		if(!sizeChange){
-			    		//ˆÚ“®
+			    		//ç§»å‹•
 		    			newr.x = x-offsetx;
 			    		newr.y = y-offsety;
 		    			if(GUI.key[11]>1){ //SHIFT
@@ -1069,7 +1071,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 			    		target.setEnabled(false);
 		    		}
 		    		else{
-			    		//ƒTƒCƒY•ÏX
+			    		//ã‚µã‚¤ã‚ºå¤‰æ›´
 			    		if(sizeleft) {
 			    			newr.x += x - lastx;
 			    			newr.width -= x - lastx;
@@ -1112,7 +1114,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
     	if(target != null){
 	    	Rectangle newr = target.getBounds();
     		if(!sizeChange){
-	    		//ˆÚ“®
+	    		//ç§»å‹•
     			newr.x = x-offsetx;
 	    		newr.y = y-offsety;
     			if((e.getModifiersEx()&InputEvent.SHIFT_DOWN_MASK)>0){
@@ -1125,7 +1127,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 	    		target.setBounds(newr);
     		}
     		else{
-	    		//ƒTƒCƒY•ÏX
+	    		//ã‚µã‚¤ã‚ºå¤‰æ›´
     			newr.width += x - lastx;
 	    		newr.height += y - lasty;
 	    		target.setBounds(newr);
@@ -1188,7 +1190,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 						tgtOFld.left+tgtOFld.width+1, tgtOFld.top+tgtOFld.height);
 			}
 		}
-		else if(GUI.key[14]>0 && (GUI.key['+']>0)){ //ƒeƒ“ƒL[‚Ì+‚ÍƒVƒ‡[ƒgƒJƒbƒg‚ªŒø‚©‚È‚¢‚Ì‚Å‚±‚±‚É
+		else if(GUI.key[14]>0 && (GUI.key['+']>0)){ //ãƒ†ãƒ³ã‚­ãƒ¼ã®+ã¯ã‚·ãƒ§ãƒ¼ãƒˆã‚«ãƒƒãƒˆãŒåŠ¹ã‹ãªã„ã®ã§ã“ã“ã«
 			OField ofld = tgtOFld;
         	int i = ((OCardBase)ofld.parent).GetNumberof(ofld)-1;
         	int ip = ((OCardBase)ofld.parent).GetNumberofParts(ofld)-1;
@@ -1204,10 +1206,10 @@ class FieldGUI implements MouseListener, MouseMotionListener
 
 			OCard.reloadCurrentCard();
 			
-			//ofld‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+			//ofldã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 			FieldGUI.gui.target = ofld.getComponent();
 		}
-		else if(GUI.key[14]>0 && (GUI.key['-']>0)){ //ƒeƒ“ƒL[‚Ì-‚ÍƒVƒ‡[ƒgƒJƒbƒg‚ªŒø‚©‚È‚¢‚Ì‚Å‚±‚±‚É
+		else if(GUI.key[14]>0 && (GUI.key['-']>0)){ //ãƒ†ãƒ³ã‚­ãƒ¼ã®-ã¯ã‚·ãƒ§ãƒ¼ãƒˆã‚«ãƒƒãƒˆãŒåŠ¹ã‹ãªã„ã®ã§ã“ã“ã«
 			OField ofld = tgtOFld;
         	int i = ((OCardBase)ofld.parent).GetNumberof(ofld)-1;
         	int ip = ((OCardBase)ofld.parent).GetNumberofParts(ofld)-1;
@@ -1223,7 +1225,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 			
 			OCard.reloadCurrentCard();
 			
-			//ofld‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+			//ofldã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 			FieldGUI.gui.target = ofld.getComponent();
 		}
 	}
@@ -1275,7 +1277,7 @@ class MyFieldDropListener extends DropTargetAdapter {
 						baseid = Integer.valueOf(m.group(1));
 					}
 					int rsrcid = PCARD.pc.stack.rsrc.getNewResourceId("pictfont", baseid);
-					//ƒtƒ@ƒCƒ‹‚ğƒRƒs[
+					//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚³ãƒ”ãƒ¼
 					String newFileName = "PICTFONT_"+rsrcid+ext;
 					String newFilePath = PCARD.pc.stack.file.getParent()+File.separatorChar+newFileName;
 					FileChannel srcChannel = new FileInputStream(path).getChannel();
@@ -1286,9 +1288,9 @@ class MyFieldDropListener extends DropTargetAdapter {
 						srcChannel.close();
 						destChannel.close();
 					}
-					//ƒŠƒ\[ƒX‚É’Ç‰Á
+					//ãƒªã‚½ãƒ¼ã‚¹ã«è¿½åŠ 
 					PCARD.pc.stack.rsrc.addResource(rsrcid, "pictfont", name, newFileName);
-					//ƒtƒB[ƒ‹ƒh‚ÌƒtƒHƒ“ƒg‚Éİ’è
+					//ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã®ãƒ•ã‚©ãƒ³ãƒˆã«è¨­å®š
 					Component component = ((DropTarget)e.getSource()).getComponent();
 					OField ofld = ((MyTextArea)component).fldData;
 					ofld.fontPict = bi;

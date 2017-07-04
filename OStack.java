@@ -27,8 +27,8 @@ import javax.xml.stream.XMLStreamWriter;
 public class OStack extends OObject {
 	PCARDFrame pcard;
 	
-	Charset charset= Charset.forName("UTF-8");//•¶šƒR[ƒh
-	String path="";//ƒXƒ^ƒbƒNƒtƒ@ƒCƒ‹‚ÌƒpƒX
+	Charset charset= Charset.forName("UTF-8");//æ–‡å­—ã‚³ãƒ¼ãƒ‰
+	String path="";//ã‚¹ã‚¿ãƒƒã‚¯ãƒ•ã‚¡ã‚¤ãƒ«ã®ãƒ‘ã‚¹
 	File file;
 	OCard curCard;
 	GButton GUI_btn;
@@ -45,19 +45,19 @@ public class OStack extends OObject {
 	XMLwrite saveXML;
 	ArrayList<OStack> usingStacks = new ArrayList<OStack>();
 
-	//i’»ƒ_ƒCƒAƒƒO
+	//é€²æ—ãƒ€ã‚¤ã‚¢ãƒ­ã‚°
 	JDialog barDialog;
 	JProgressBar bar;
 	int barOffset;
 	int totalSize;
 	
-	//ƒvƒƒpƒeƒB
+	//ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	boolean cantAbort=false;
 	boolean cantDelete=false;
 	boolean cantModify=false;
 	boolean cantPeek=false;
 	int firstCard;//toc.xml
-	int userLevel;//TODO:‚±‚ÌƒŒƒxƒ‹ˆÈ‰º‚É§ŒÀ
+	int userLevel;//TODO:ã“ã®ãƒ¬ãƒ™ãƒ«ä»¥ä¸‹ã«åˆ¶é™
 	private boolean privateAccess;//toc.xml
 	String createdByVersion;//toc.xml
 	String lastCompactedVersion;//toc.xml
@@ -73,10 +73,10 @@ public class OStack extends OObject {
 	Point scroll;
 	int firstBg;
 	
-	//’Ç‰ÁƒvƒƒpƒeƒB
+	//è¿½åŠ ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	boolean resizable=false;
 	
-	//ƒJ[ƒhî•ñ
+	//ã‚«ãƒ¼ãƒ‰æƒ…å ±
 	ArrayList<OCard> cdCacheList = new ArrayList<OCard>();
 	ArrayList<OBackground> bgCacheList = new ArrayList<OBackground>();
 	ArrayList<Integer> cardIdList = new ArrayList<Integer>();
@@ -156,7 +156,7 @@ public class OStack extends OObject {
 		pcard.setNewBounds();
 	}
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OStack(PCARDFrame pc) {
     	objectType="stack";
     	
@@ -180,7 +180,7 @@ public class OStack extends OObject {
 			//UIManager.setLookAndFeel("com.sun.java.swing.plaf.nimbus.NimbusLookAndFeel");
 			//UIManager.setLookAndFeel("com.apple.laf.AquaLookAndFeel");
 		} catch ( Exception e ) {
-			  System.out.println("LookAndFeelF" + e );
+			  System.out.println("LookAndFeelï¼š" + e );
 		}
 		
 		
@@ -251,7 +251,7 @@ public class OStack extends OObject {
 		PCARD.pc.msg.setBounds(PCARD.pc.getX()+PCARD.pc.getWidth()/2-240,PCARD.pc.getY()+PCARD.pc.getHeight(),480,28+PCARD.pc.getInsets().top);
 
 		
-		//1”Ô–Ú‚ÌƒJ[ƒh‚ğŠJ‚­
+		//1ç•ªç›®ã®ã‚«ãƒ¼ãƒ‰ã‚’é–‹ã
 		if(cardIdList.size()>=1){
 			mainPane.removeAll();
 			try {
@@ -279,8 +279,8 @@ public class OStack extends OObject {
 			TTalk.CallMessage("openCard",curCard);
 		}
 		
-		//•ÏXŠÄ‹&XML•Û‘¶‚ÌƒXƒŒƒbƒh‚ğ—§‚¿ã‚°‚Ä‚¨‚­
-		if(!System.getProperty("java.version").startsWith("1.5")){ //JRE1.5.x‚Í”ñ‘Î‰
+		//å¤‰æ›´ç›£è¦–&XMLä¿å­˜ã®ã‚¹ãƒ¬ãƒƒãƒ‰ã‚’ç«‹ã¡ä¸Šã’ã¦ãŠã
+		if(!System.getProperty("java.version").startsWith("1.5")){ //JRE1.5.xã¯éå¯¾å¿œ
 			saveXML = new XMLwrite(this);
 		}
     }
@@ -307,7 +307,7 @@ public class OStack extends OObject {
 
     	BufferedImage bi = null;
     	if(isUsingOnly==false){
-    		//‰æ‘œƒtƒ@ƒCƒ‹‚©‚Ç‚¤‚©
+    		//ç”»åƒãƒ•ã‚¡ã‚¤ãƒ«ã‹ã©ã†ã‹
 			try{
 				bi = PictureFile.loadPbm(inpath);
 				if(bi==null){
@@ -349,7 +349,7 @@ public class OStack extends OObject {
 			} catch (FileNotFoundException e) {
 			}
 			if(fstream != null){
-				//HCƒXƒ^ƒbƒN‚Æ‚µ‚Ä“Ç‚ñ‚Å‚İ‚é
+				//HCã‚¹ã‚¿ãƒƒã‚¯ã¨ã—ã¦èª­ã‚“ã§ã¿ã‚‹
 				int size = 0;
 				String STAKstr = "";
 				try {
@@ -364,7 +364,7 @@ public class OStack extends OObject {
 					e.printStackTrace();
 				}
 				if(STAKstr.equals("STAK")){
-					//‚±‚ê‚Í‚«‚Á‚ÆHyperCardƒXƒ^ƒbƒNƒtƒ@ƒCƒ‹
+					//ã“ã‚Œã¯ãã£ã¨HyperCardã‚¹ã‚¿ãƒƒã‚¯ãƒ•ã‚¡ã‚¤ãƒ«
 					if(true == HCConvert.openHCStack(path, this)){
 						if(PCARD.pc.stack.cdCacheList.size()>0){
 							PCARD.pc.successOpenFile();
@@ -373,7 +373,7 @@ public class OStack extends OObject {
 					}
 				}
 				else if(true/*path.substring(path.length()-4).equals(".bin")*/){
-					//MacBinaryŒ`®‚Å‚ÍH
+					//MacBinaryå½¢å¼ã§ã¯ï¼Ÿ
 					if(true == HCConvert.openMacBinaryStack(path, this)){
 						if(this.cdCacheList.size()>0){
 							PCARD.pc.successOpenFile();
@@ -382,7 +382,7 @@ public class OStack extends OObject {
 					}
 				}
 			}
-			//XMLŒ`®‚Æ‚µ‚Ä“Ç‚Ş
+			//XMLå½¢å¼ã¨ã—ã¦èª­ã‚€
 			if(System.getProperty("java.version").startsWith("1.5")){
 				new GDialog(PCARD.pc, PCARDFrame.pc.intl.getDialogText("This version of Java Runtime is not supported streaming API for XML."),
 						null,"OK",null,null);
@@ -557,9 +557,9 @@ public class OStack extends OObject {
 	
 	class styleClass{
 		int id;
-		int style;//-1‚È‚çƒ`ƒFƒ“ƒW‚µ‚È‚¢
-		int font;//-1‚È‚çƒ`ƒFƒ“ƒW‚µ‚È‚¢
-		int size;//-1‚È‚çƒ`ƒFƒ“ƒW‚µ‚È‚¢
+		int style;//-1ãªã‚‰ãƒã‚§ãƒ³ã‚¸ã—ãªã„
+		int font;//-1ãªã‚‰ãƒã‚§ãƒ³ã‚¸ã—ãªã„
+		int size;//-1ãªã‚‰ãƒã‚§ãƒ³ã‚¸ã—ãªã„
 		public styleClass(String id, String style, String font, String size){
 			this.id = Integer.valueOf(id);
 			this.style=0;
@@ -813,7 +813,7 @@ public class OStack extends OObject {
 	}
 
 	
-	//HC‚ÌƒXƒ^ƒbƒN‚ğ•ÏŠ·
+	//HCã®ã‚¹ã‚¿ãƒƒã‚¯ã‚’å¤‰æ›
 	@SuppressWarnings("unchecked")
 	public boolean readStackBlock(DataInputStream dis, int blockSize){
 		////System.out.println("readStackBlock");
@@ -822,7 +822,7 @@ public class OStack extends OObject {
 			return false;
 		}
 		
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		id = HCData.readCode(dis, 4);
 		//System.out.println("blockId:"+id); //always -1
 		/*String tygersStr =*/ HCData.readStr(dis, 4);
@@ -834,9 +834,9 @@ public class OStack extends OObject {
 		/*int stackSize =*/ HCData.readCode(dis, 4);
 		//System.out.println("stackSize:"+stackSize);
 		/*int something =*/ HCData.readCode(dis, 4);
-		//System.out.println("something:"+something); //wings‚Å‚Í2A“ì•û‚Å‚Í0A’¹‚Å‚à0A‚¤‚É‚å‚Å‚à0
+		//System.out.println("something:"+something); //wingsã§ã¯2ã€å—æ–¹ã§ã¯0ã€é³¥ã§ã‚‚0ã€ã†ã«ã‚‡ã§ã‚‚0
 		/*int tygers1Str =*/ HCData.readCode(dis, 4);
-		//System.out.println("tygersStr:"+tygers1Str); //’¹‚Å‚Í0A‚¤‚É‚å‚Å‚à0
+		//System.out.println("tygersStr:"+tygers1Str); //é³¥ã§ã¯0ã€ã†ã«ã‚‡ã§ã‚‚0
 		/*int numofBgs =*/ HCData.readCode(dis, 4);
 		//System.out.println("numofBgs:"+numofBgs);
 		firstBg = HCData.readCode(dis, 4);
@@ -936,7 +936,7 @@ public class OStack extends OObject {
 			//System.out.println("padding:"+padding);
 		}*/
 		
-		//ƒXƒNƒŠƒvƒg
+		//ã‚¹ã‚¯ãƒªãƒ—ãƒˆ
 		String[] scriptAry = scriptStr.split("\n");
 		for(int i=0; i<scriptAry.length; i++)
 		{
@@ -978,7 +978,7 @@ public class OStack extends OObject {
 		
 		int offset = 24;
 		
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		/*int blockId =*/ HCData.readCode(dis, 4);
 		//System.out.println("blockId:"+blockId);
 		/*int filler =*/ HCData.readCode(dis, 4);
@@ -1045,7 +1045,7 @@ public class OStack extends OObject {
 		if(blockSize>200000 || blockSize<24){
 			return false;
 		}
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		/*int blockId =*/ HCData.readCode(dis, 4);
 		//System.out.println("blockId:"+blockId);
 		/*String tygersStr =*/ HCData.readStr(dis, 6);
@@ -1076,7 +1076,7 @@ public class OStack extends OObject {
 				offset+=1;
 			}
 			
-			//ƒtƒHƒ“ƒgID‚Æ–¼‘O‚ğ“o˜^
+			//ãƒ•ã‚©ãƒ³ãƒˆIDã¨åå‰ã‚’ç™»éŒ²
 			fontList.add(new fontClass(fontId, nameResult.str));
 		}
 		
@@ -1099,7 +1099,7 @@ public class OStack extends OObject {
 			return false;
 		}
 		
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		listId = HCData.readCode(dis, 4);
 		//System.out.println("listId:"+listId);
 		/*int filler =*/ HCData.readCode(dis, 4);
@@ -1151,7 +1151,7 @@ public class OStack extends OObject {
 		
 		int offset = 24;
 		
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		int pageId = HCData.readCode(dis, 4);
 		//System.out.println("pageId:"+pageId);
 		/*int filler =*/ HCData.readCode(dis, 4);
@@ -1174,7 +1174,7 @@ public class OStack extends OObject {
 			offset+=4;
 			//System.out.println("cardId:"+cardId);
 			if(GetCardbyId(cardId)==null){
-				cardIdList.add(cardId); //card‚ÌidƒŠƒXƒg‚É’Ç‰Á
+				cardIdList.add(cardId); //cardã®idãƒªã‚¹ãƒˆã«è¿½åŠ 
 			}
 			if(pageEntrySize>4){
 				/*String something =*/ HCData.readStr(dis, pageEntrySize-4);
@@ -1200,7 +1200,7 @@ public class OStack extends OObject {
 		if(blockSize>200000 || blockSize<12){
 			return false;
 		}
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		/*int blockId =*/ HCData.readCode(dis, 4);
 		//System.out.println("blockId:"+blockId);
 		int remainLength = blockSize - 12;
@@ -1296,7 +1296,7 @@ public class OStack extends OObject {
 			int j;
 			for(j=0; j<list.size(); j++){
 				if(cd.bgid == list.get(j)){
-					break;//Šù‚É’T‚µ‚½bg‚Ìid
+					break;//æ—¢ã«æ¢ã—ãŸbgã®id
 				}
 			}
 			if(j<list.size()) continue;
@@ -1484,11 +1484,11 @@ public class OStack extends OObject {
     
 	
 	
-//‰Šú‚ÌƒIƒŠƒWƒiƒ‹ƒf[ƒ^ƒtƒ@ƒCƒ‹Œ`®‚É‚Â‚¢‚ÄF
+//åˆæœŸã®ã‚ªãƒªã‚¸ãƒŠãƒ«ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚¡ã‚¤ãƒ«å½¢å¼ã«ã¤ã„ã¦ï¼š
 	
-/* ƒeƒLƒXƒgƒtƒ@ƒCƒ‹‚ÉƒXƒ^ƒbƒN‚Ì‚ÌƒvƒƒpƒeƒBî•ñ‚ğ“ü‚ê‚é
+/* ãƒ†ã‚­ã‚¹ãƒˆãƒ•ã‚¡ã‚¤ãƒ«ã«ã‚¹ã‚¿ãƒƒã‚¯ã®ã®ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£æƒ…å ±ã‚’å…¥ã‚Œã‚‹
  * #charset:Shift_JIS
- * #name:xxx(Šî–{“I‚Éƒtƒ@ƒCƒ‹–¼‚Æ“¯‚¶)
+ * #name:xxx(åŸºæœ¬çš„ã«ãƒ•ã‚¡ã‚¤ãƒ«åã¨åŒã˜)
  * #left:0
  * #top:0
  * #width:512
@@ -1499,22 +1499,22 @@ public class OStack extends OObject {
  * #cd:12345
  * #cd:67890
  * 
- * #‚Í“ÁêƒR[ƒhB–¼‘O‚È‚Ç‚Å#‚ğg‚¢‚½‚¢‚Æ‚«‚Í##‚É‚·‚é
+ * #ã¯ç‰¹æ®Šã‚³ãƒ¼ãƒ‰ã€‚åå‰ãªã©ã§#ã‚’ä½¿ã„ãŸã„ã¨ãã¯##ã«ã™ã‚‹
  */
 	
 /*
- * ƒtƒ@ƒCƒ‹\¬‚Í..id‚ğxxxx‚Æ‚µ‚Ä
+ * ãƒ•ã‚¡ã‚¤ãƒ«æ§‹æˆã¯..idã‚’xxxxã¨ã—ã¦
  * 
- * ƒXƒ^ƒbƒN  –¼‘O.sta
- * BGî•ñ   resource/bgxxxx 
- * CDî•ñ   resource/cdxxxx <-ƒ{ƒ^ƒ“‚ÆƒtƒB[ƒ‹ƒh‚Ìî•ñ‚à“Ë‚Á‚Ş‚Ì‚Å‘å•Ï‚È‚±‚Æ‚É‚È‚é
+ * ã‚¹ã‚¿ãƒƒã‚¯  åå‰.sta
+ * BGæƒ…å ±   resource/bgxxxx 
+ * CDæƒ…å ±   resource/cdxxxx <-ãƒœã‚¿ãƒ³ã¨ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã®æƒ…å ±ã‚‚çªã£è¾¼ã‚€ã®ã§å¤§å¤‰ãªã“ã¨ã«ãªã‚‹
  * ICON    resource/iconxxxx.png
- * ICONm   resource/iconxxxx_mask.png ->•ÏŠ·‚³‚ê‚ÄÁ‚¦‚é 
+ * ICONm   resource/iconxxxx_mask.png ->å¤‰æ›ã•ã‚Œã¦æ¶ˆãˆã‚‹ 
  * PICT    resource/pictxxxx.png
- * PICTm   resource/pictxxxx_mask.png ->•ÏŠ·‚³‚ê‚ÄÁ‚¦‚é 
+ * PICTm   resource/pictxxxx_mask.png ->å¤‰æ›ã•ã‚Œã¦æ¶ˆãˆã‚‹ 
  * Snd     resource/sndxxxx.wav
  * CD pic  resource/cdpxxxx.png  
- * CD mask resource/cdpxxxx_mask.png ->•ÏŠ·‚³‚ê‚ÄÁ‚¦‚é
+ * CD mask resource/cdpxxxx_mask.png ->å¤‰æ›ã•ã‚Œã¦æ¶ˆãˆã‚‹
  * BG pic  resource/bgpxxxx.png  
  */
 }

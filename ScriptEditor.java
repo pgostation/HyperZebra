@@ -1556,7 +1556,6 @@ class SEMenu {
 	/**
 	 * 
 	 */
-	private static final long serialVersionUID = 1L;
 	static JMenuItem undoMenu = null;
 	static JMenuItem redoMenu = null;
 	

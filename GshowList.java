@@ -18,7 +18,7 @@ public class GshowList extends JDialog implements ActionListener, MouseListener 
 		super(owner,true);
 		getContentPane().setLayout(null);
 
-		//à–¾•¶
+		//èª¬æ˜æ–‡
 		JTextArea area = new JTextArea(text);
 		area.setBounds(8,8,304,32);
 		area.setMargin(new Insets(0,0,0,0));
@@ -27,14 +27,14 @@ public class GshowList extends JDialog implements ActionListener, MouseListener 
 		area.setFocusable(false);
 		getContentPane().add(area);
 
-		//ƒXƒNƒ[ƒ‹
+		//ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«
 		JScrollPane scrl = new JScrollPane();
 		scrl.setBounds(8,48,304,264);
 		scrl.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 		scrl.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		getContentPane().add(scrl);
 		
-		//ƒŠƒXƒg
+		//ãƒªã‚¹ãƒˆ
 		MyTextArea area2 = new MyTextArea(list);
 		area2.pr_scrl = scrl;
 		area2.setMargin(new Insets(0,0,0,0));
@@ -43,7 +43,7 @@ public class GshowList extends JDialog implements ActionListener, MouseListener 
 		area2.addMouseListener(this);
 		scrl.setViewportView(area2);
 		
-		//ƒ{ƒ^ƒ“
+		//ãƒœã‚¿ãƒ³
 		JButton btn=null;
 		int i=0;
 		for(; i<btnlist.length; i++){
@@ -65,7 +65,7 @@ public class GshowList extends JDialog implements ActionListener, MouseListener 
 		}else{
 			setBounds(owner.getX()+x,owner.getY()+y,420,320);
 		}
-		setUndecorated(true);//ƒ^ƒCƒgƒ‹ƒo[”ñ•\¦
+		setUndecorated(true);//ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼éè¡¨ç¤º
 		setVisible(true);
 	}
 

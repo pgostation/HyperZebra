@@ -18,7 +18,7 @@ public class GDialog extends JDialog implements ActionListener {
 		super(owner,true);
 		getContentPane().setLayout(new BorderLayout());
 
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		JPanel btmPanel = new JPanel();
 		getContentPane().add("South",btmPanel);
 		JPanel topPanel = new JPanel();
@@ -77,7 +77,7 @@ public class GDialog extends JDialog implements ActionListener {
 			setBounds(0,0,400,h+48);
 			setLocationRelativeTo(null);
 		}
-		setUndecorated(true);//ƒ^ƒCƒgƒ‹ƒo[”ñ•\¦
+		setUndecorated(true);//ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼éè¡¨ç¤º
 		
 		SwingUtilities.invokeLater(new Runnable() {
 			@Override
@@ -116,7 +116,7 @@ class GScrollDialog extends JDialog implements ActionListener {
 		super(owner,true);
 		getContentPane().setLayout(new BorderLayout());
 
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		JPanel btmPanel = new JPanel();
 		getContentPane().add("South",btmPanel);
 		//JPanel topPanel = new JPanel();
@@ -170,7 +170,7 @@ class GScrollDialog extends JDialog implements ActionListener {
 			setBounds(0,0,400,h+48);
 			setLocationRelativeTo(null);
 		}
-		setUndecorated(true);//ƒ^ƒCƒgƒ‹ƒo[”ñ•\¦
+		setUndecorated(true);//ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼éè¡¨ç¤º
 		
 		SwingUtilities.invokeLater(new Runnable() {
 			@Override
@@ -212,7 +212,7 @@ class GUxAnswer extends JDialog implements ActionListener {
 		super(owner,true);
 		getContentPane().setLayout(new BorderLayout());
 
-		//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+		//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 		JPanel btmPanel = new JPanel();
 		getContentPane().add("South",btmPanel);
 		JPanel topPanel = new JPanel();
@@ -222,7 +222,7 @@ class GUxAnswer extends JDialog implements ActionListener {
 		JPanel topPanel2 = new JPanel();
 		topPanel.add(topPanel2);
 		
-		//ƒAƒCƒRƒ““Ç‚İ‚İ
+		//ã‚¢ã‚¤ã‚³ãƒ³èª­ã¿è¾¼ã¿
 		String fileName = PCARD.pc.stack.rsrc.getFilePathAll(icons[0], "icon");
 		if(fileName!=null){
 			String path = (PCARD.pc.stack.file.getParent()+File.separatorChar+fileName);
@@ -231,7 +231,7 @@ class GUxAnswer extends JDialog implements ActionListener {
 			topPanel2.add(label);
 		}
 		
-		//ƒeƒLƒXƒg
+		//ãƒ†ã‚­ã‚¹ãƒˆ
 		String[] texts2 = text.split("\r");
 		String text2 = "";
 		for(int i=0; i<texts2.length; i++){
@@ -276,7 +276,7 @@ class GUxAnswer extends JDialog implements ActionListener {
 			setBounds(0,0,400,h+48);
 			setLocationRelativeTo(null);
 		}
-		setUndecorated(true);//ƒ^ƒCƒgƒ‹ƒo[”ñ•\¦
+		setUndecorated(true);//ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼éè¡¨ç¤º
 		
 		SwingUtilities.invokeLater(new Runnable() {
 			@Override

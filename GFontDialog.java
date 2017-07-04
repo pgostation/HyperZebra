@@ -24,9 +24,9 @@ public class GFontDialog extends JDialog implements ActionListener, MouseListene
 		getContentPane().setLayout(null);
 		setTitle(PCARD.pc.intl.getDialogText("Font"));
 		
-		//ƒTƒ“ƒvƒ‹•\¦
-		if(PCARD.pc.lang.equals("Japanese") || PCARD.pc.lang.equals("“ú–{Œê") ){
-			sampleArea = new MyTextArea("Sample Text\n‚±‚ê‚ÍƒTƒ“ƒvƒ‹‚Å‚·");
+		//ã‚µãƒ³ãƒ—ãƒ«è¡¨ç¤º
+		if(PCARD.pc.lang.equals("Japanese") || PCARD.pc.lang.equals("æ—¥æœ¬èª") ){
+			sampleArea = new MyTextArea("Sample Text\nã“ã‚Œã¯ã‚µãƒ³ãƒ—ãƒ«ã§ã™");
 		}else{
 			sampleArea = new MyTextArea("Sample Text");
 		}
@@ -40,14 +40,14 @@ public class GFontDialog extends JDialog implements ActionListener, MouseListene
 		setStyleSample(defaultFont, defaultSize, defaultStyle, defaultAlign);
 		getContentPane().add(sampleArea);
 
-		//ƒtƒHƒ“ƒg—pƒXƒNƒ[ƒ‹
+		//ãƒ•ã‚©ãƒ³ãƒˆç”¨ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«
 		JScrollPane scrl = new JScrollPane();
 		scrl.setBounds(4,96,192,156);
 		scrl.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 		scrl.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		getContentPane().add(scrl);
 		
-		//ƒtƒHƒ“ƒgƒŠƒXƒg
+		//ãƒ•ã‚©ãƒ³ãƒˆãƒªã‚¹ãƒˆ
 	    final String fontFamilyNames[] = GraphicsEnvironment
 	    	.getLocalGraphicsEnvironment()
 	    	.getAvailableFontFamilyNames();
@@ -64,21 +64,21 @@ public class GFontDialog extends JDialog implements ActionListener, MouseListene
 		fontarea.addMouseListener(this);
 		scrl.setViewportView(fontarea);
 		
-		//s‘I‘ğ
+		//è¡Œé¸æŠ
 	    for(int i=0; i<fontFamilyNames.length;i++) {
 	    	if(defaultFont.equals(fontFamilyNames[i])){
 	    	    lineSelect(i+1, fontarea);
 	    	}
 	    }
 
-		//ƒTƒCƒY—pƒXƒNƒ[ƒ‹
+		//ã‚µã‚¤ã‚ºç”¨ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«
 		JScrollPane sizeScrl = new JScrollPane();
 		sizeScrl.setBounds(200,96,54,156);
 		sizeScrl.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
 		sizeScrl.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		getContentPane().add(sizeScrl);
 		
-		//ƒTƒCƒYƒŠƒXƒg
+		//ã‚µã‚¤ã‚ºãƒªã‚¹ãƒˆ
 	    String sizeStrings = "";
 	    for(int i=1; i<=127;i++) {
 	    	sizeStrings += i+"\n";
@@ -92,16 +92,16 @@ public class GFontDialog extends JDialog implements ActionListener, MouseListene
 	    sizearea.addMouseListener(this);
 	    sizeScrl.setViewportView(sizearea);
 
-		//s‘I‘ğ
+		//è¡Œé¸æŠ
 	    lineSelect(defaultSize, sizearea);
 
-		//ƒpƒlƒ‹
+		//ãƒ‘ãƒãƒ«
 	    JPanel stylePanel = new JPanel();
 	    stylePanel.setBounds(254,96,140,156);
 	    stylePanel.setLayout(new GridLayout(7,1));
 	    getContentPane().add(stylePanel);
 		
-		//ƒXƒ^ƒCƒ‹
+		//ã‚¹ã‚¿ã‚¤ãƒ«
 	    JCheckBox check = new JCheckBox(PCARD.pc.intl.getDialogText("Bold"));
 		check.setSelected((defaultStyle&1)>0);
 		check.addActionListener(this);
@@ -140,7 +140,7 @@ public class GFontDialog extends JDialog implements ActionListener, MouseListene
 		selectedStyle = defaultStyle;
 
 		if(defaultAlign!=-1){
-			//ƒpƒlƒ‹
+			//ãƒ‘ãƒãƒ«
 		    JPanel alignPanel = new JPanel();
 		    alignPanel.setBounds(0,250,400,300);
 		    alignPanel.setLayout(new FlowLayout());

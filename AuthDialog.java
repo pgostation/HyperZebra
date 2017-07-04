@@ -21,9 +21,9 @@ import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-//î•ñƒ_ƒCƒAƒƒO‚ÉŠÖ‚·‚éƒR[ƒh
+//æƒ…å ±ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ã«é–¢ã™ã‚‹ã‚³ãƒ¼ãƒ‰
 
-//   ƒc[ƒ‹‚»‚Ì‚à‚Ì‚Ì‹@”\‚ÍGUI.java‚ÌButtonGUI‚È‚Ç‚É‚ ‚è‚Ü‚·
+//   ãƒ„ãƒ¼ãƒ«ãã®ã‚‚ã®ã®æ©Ÿèƒ½ã¯GUI.javaã®ButtonGUIãªã©ã«ã‚ã‚Šã¾ã™
 
 
 
@@ -79,7 +79,7 @@ public class AuthDialog extends JDialog
 			OButton obtn = (OButton)obj;
 			AuthButtonListener btnlistener = new AuthButtonListener();
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel namePanel = new JPanel();
 				authDialog.getContentPane().add(namePanel);
@@ -96,7 +96,7 @@ public class AuthDialog extends JDialog
 				namePanel.setPreferredSize(new Dimension(w, jfield.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel infoPanel = new JPanel();
 				infoPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -118,7 +118,7 @@ public class AuthDialog extends JDialog
 				infoPanel.setPreferredSize(new Dimension(w, 24*3));
 			}
 	
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel stylePanel = new JPanel();
 				stylePanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -147,7 +147,7 @@ public class AuthDialog extends JDialog
 				stylePanel.setPreferredSize(new Dimension(w, popup.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel famiPanel = new JPanel();
 				famiPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -167,7 +167,7 @@ public class AuthDialog extends JDialog
 				famiPanel.setPreferredSize(new Dimension(w, popup.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel propPanel = new JPanel();
 				propPanel.setLayout(new GridLayout(3,2));
@@ -203,7 +203,7 @@ public class AuthDialog extends JDialog
 				propPanel.setPreferredSize(new Dimension(w, check.getPreferredSize().height*3));
 			}
 	
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			/*{
 				JPanel emptyPanel = new JPanel();
 				authDialog.getContentPane().add(emptyPanel);
@@ -211,7 +211,7 @@ public class AuthDialog extends JDialog
 				emptyPanel.setPreferredSize(new Dimension(w, 8));
 			}*/
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel colorPanel = new JPanel();
 				authDialog.getContentPane().add(colorPanel);
@@ -225,30 +225,30 @@ public class AuthDialog extends JDialog
 				colorPanel.setPreferredSize(new Dimension(w, 32));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel buttonPanel = new JPanel();
 				buttonPanel.setLayout(new GridLayout(3,2));
 				authDialog.getContentPane().add(buttonPanel);
 	
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Fontc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Fontâ€¦"));
 				jbtn.addActionListener(btnlistener);
 				buttonPanel.add(jbtn);
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Iconc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Iconâ€¦"));
 				jbtn.addActionListener(btnlistener);
 				buttonPanel.add(jbtn);
-				/*jbtn = new JButton(PCARD.pc.intl.getDialogText("LinkToc"));
+				/*jbtn = new JButton(PCARD.pc.intl.getDialogText("LinkToâ€¦"));
 				jbtn.addActionListener(btnlistener);
 				jbtn.setEnabled(false);
 				buttonPanel.add(jbtn);
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Effectc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Effectâ€¦"));
 				jbtn.addActionListener(btnlistener);
 				jbtn.setEnabled(false);
 				buttonPanel.add(jbtn);*/
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptâ€¦"));
 				jbtn.addActionListener(btnlistener);
 				buttonPanel.add(jbtn);
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Contentc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Contentâ€¦"));
 				jbtn.addActionListener(btnlistener);
 				buttonPanel.add(jbtn);
 				
@@ -267,7 +267,7 @@ public class AuthDialog extends JDialog
 			
 			AuthFieldListener fldlistener = new AuthFieldListener(multiplelinesbtn, fixedlineheightbtn);
 
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel namePanel = new JPanel();
 				authDialog.getContentPane().add(namePanel);
@@ -284,7 +284,7 @@ public class AuthDialog extends JDialog
 				namePanel.setPreferredSize(new Dimension(w, jfield.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel infoPanel = new JPanel();
 				infoPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -306,7 +306,7 @@ public class AuthDialog extends JDialog
 				infoPanel.setPreferredSize(new Dimension(w, 24*3));
 			}
 	
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel stylePanel = new JPanel();
 				stylePanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -330,13 +330,13 @@ public class AuthDialog extends JDialog
 				stylePanel.setPreferredSize(new Dimension(w, popup.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel propPanel = new JPanel();
 				propPanel.setLayout(new GridLayout(6,2));
 				authDialog.getContentPane().add(propPanel);
 		
-				check = new JCheckBox(PCARD.pc.intl.getDialogText("Locked text"));
+				check = new JCheckBox(PCARD.pc.intl.getDialogText("Lock text"));
 				check.setSelected(ofld.enabled);
 				check.addActionListener(fldlistener);
 				propPanel.add(check);
@@ -387,14 +387,14 @@ public class AuthDialog extends JDialog
 				propPanel.setPreferredSize(new Dimension(w, check.getPreferredSize().height*5));
 			}
 	
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			/*{
 				JPanel emptyPanel = new JPanel();
 				authDialog.getContentPane().add(emptyPanel);
 				
 				emptyPanel.setPreferredSize(new Dimension(w, 8));
 			}*/
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel colorPanel = new JPanel();
 				authDialog.getContentPane().add(colorPanel);
@@ -408,16 +408,16 @@ public class AuthDialog extends JDialog
 				colorPanel.setPreferredSize(new Dimension(w, 32));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel buttonPanel = new JPanel();
 				buttonPanel.setLayout(new GridLayout(1,2));
 				authDialog.getContentPane().add(buttonPanel);
 	
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Fontc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Fontâ€¦"));
 				jbtn.addActionListener(fldlistener);
 				buttonPanel.add(jbtn);
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptâ€¦"));
 				jbtn.addActionListener(fldlistener);
 				buttonPanel.add(jbtn);
 				
@@ -430,7 +430,7 @@ public class AuthDialog extends JDialog
 			OCard ocard = (OCard)obj;
 			AuthCardListener cardlistener = new AuthCardListener();
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel namePanel = new JPanel();
 				authDialog.getContentPane().add(namePanel);
@@ -447,7 +447,7 @@ public class AuthDialog extends JDialog
 				namePanel.setPreferredSize(new Dimension(w, jfield.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel infoPanel = new JPanel();
 				infoPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -466,7 +466,7 @@ public class AuthDialog extends JDialog
 				infoPanel.setPreferredSize(new Dimension(w, 24*2));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel propPanel = new JPanel();
 				propPanel.setLayout(new GridLayout(4,1));
@@ -492,13 +492,13 @@ public class AuthDialog extends JDialog
 				propPanel.setPreferredSize(new Dimension(w, check.getPreferredSize().height*4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel buttonPanel = new JPanel();
 				//buttonPanel.setLayout(new GridLayout(1,1));
 				authDialog.getContentPane().add(buttonPanel);
 	
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptâ€¦"));
 				jbtn.addActionListener(cardlistener);
 				buttonPanel.add(jbtn);
 				
@@ -511,7 +511,7 @@ public class AuthDialog extends JDialog
 			OBackground obkgnd = (OBackground)obj;
 			AuthBgListener bglistener = new AuthBgListener();
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel namePanel = new JPanel();
 				authDialog.getContentPane().add(namePanel);
@@ -528,7 +528,7 @@ public class AuthDialog extends JDialog
 				namePanel.setPreferredSize(new Dimension(w, jfield.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel infoPanel = new JPanel();
 				infoPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -547,7 +547,7 @@ public class AuthDialog extends JDialog
 				infoPanel.setPreferredSize(new Dimension(w, 24*2));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel propPanel = new JPanel();
 				propPanel.setLayout(new GridLayout(3,1));
@@ -569,13 +569,13 @@ public class AuthDialog extends JDialog
 				propPanel.setPreferredSize(new Dimension(w, check.getPreferredSize().height*3));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel buttonPanel = new JPanel();
 				//buttonPanel.setLayout(new GridLayout(1,1));
 				authDialog.getContentPane().add(buttonPanel);
 	
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptâ€¦"));
 				jbtn.addActionListener(bglistener);
 				buttonPanel.add(jbtn);
 				
@@ -588,7 +588,7 @@ public class AuthDialog extends JDialog
 			OStack ostack = (OStack)obj;
 			AuthStackListener stacklistener = new AuthStackListener();
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel namePanel = new JPanel();
 				authDialog.getContentPane().add(namePanel);
@@ -605,7 +605,7 @@ public class AuthDialog extends JDialog
 				namePanel.setPreferredSize(new Dimension(w, jfield.getPreferredSize().height+4));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel infoPanel = new JPanel();
 				infoPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
@@ -619,19 +619,19 @@ public class AuthDialog extends JDialog
 				infoPanel.setPreferredSize(new Dimension(w, 64*1));
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			{
 				JPanel buttonPanel = new JPanel();
 				buttonPanel.setLayout(new GridLayout(1,2));
 				authDialog.getContentPane().add(buttonPanel);
 	
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Scriptâ€¦"));
 				jbtn.addActionListener(stacklistener);
 				buttonPanel.add(jbtn);
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Sizec"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Sizeâ€¦"));
 				jbtn.addActionListener(stacklistener);
 				buttonPanel.add(jbtn);
-				jbtn = new JButton(PCARD.pc.intl.getDialogText("Card Listc"));
+				jbtn = new JButton(PCARD.pc.intl.getDialogText("Card Listâ€¦"));
 				jbtn.addActionListener(stacklistener);
 				buttonPanel.add(jbtn);
 				
@@ -713,26 +713,26 @@ public class AuthDialog extends JDialog
 					((OButton)object).setIcon(((OButton)object).icon);
 				}
 			}
-			else if(cmd.equals("Fontc")){
+			else if(cmd.equals("Fontâ€¦")){
 				new GFontDialog(PCARD.pc, ((OButton)object).textFont, ((OButton)object).textSize, ((OButton)object).textStyle, ((OButton)object).textAlign);
 				((OButton)object).textSize = GFontDialog.selectedSize;
 				((OButton)object).textStyle = GFontDialog.selectedStyle;
 				((OButton)object).textAlign = GFontDialog.selectedAlign;
 				((OButton)object).setTextFont(GFontDialog.selectedFont);
 			}
-			else if(cmd.equals("Iconc")){
+			else if(cmd.equals("Iconâ€¦")){
 				new ResEdit(PCARD.pc, "icon", object);
 			}
-			else if(cmd.equals("LinkToc")){
+			else if(cmd.equals("LinkToâ€¦")){
 				
 			}
-			else if(cmd.equals("Effectc")){
+			else if(cmd.equals("Effectâ€¦")){
 				
 			}
-			else if(cmd.equals("Scriptc")){
+			else if(cmd.equals("Scriptâ€¦")){
 				ScriptEditor.openScriptEditor(PCARD.pc, object);
 			}
-			else if(cmd.equals("Contentc")){
+			else if(cmd.equals("Contentâ€¦")){
 				new TextEditor(PCARD.pc, object);
 			}
 			else{
@@ -837,14 +837,14 @@ public class AuthDialog extends JDialog
 					((OField)object).sharedText = ((JCheckBox)e.getSource()).isSelected();
 				}
 			}
-			else if(cmd.equals("Fontc")){
+			else if(cmd.equals("Fontâ€¦")){
 				new GFontDialog(PCARD.pc, ((OField)object).textFont, ((OField)object).textSize, ((OField)object).textStyle, ((OField)object).textAlign);
 				((OField)object).textSize = GFontDialog.selectedSize;
 				((OField)object).textStyle = GFontDialog.selectedStyle;
 				((OField)object).textAlign = GFontDialog.selectedAlign;
 				((OField)object).setTextFont(GFontDialog.selectedFont);
 			}
-			else if(cmd.equals("Scriptc")){
+			else if(cmd.equals("Scriptâ€¦")){
 				ScriptEditor.openScriptEditor(PCARD.pc, object);
 			}
 			else{
@@ -886,7 +886,7 @@ public class AuthDialog extends JDialog
 					((OCard)object).marked = ((JCheckBox)e.getSource()).isSelected();
 				}
 			}
-			else if(cmd.equals("Scriptc")){
+			else if(cmd.equals("Scriptâ€¦")){
 				ScriptEditor.openScriptEditor(PCARD.pc, object);
 			}
 			else{
@@ -923,7 +923,7 @@ public class AuthDialog extends JDialog
 					((OBackground)object).dontSearch = ((JCheckBox)e.getSource()).isSelected();
 				}
 			}
-			else if(cmd.equals("Scriptc")){
+			else if(cmd.equals("Scriptâ€¦")){
 				ScriptEditor.openScriptEditor(PCARD.pc, object);
 			}
 			else{
@@ -945,13 +945,13 @@ public class AuthDialog extends JDialog
 			}
 			String cmd = PCARD.pc.intl.getDialogEngText(in_cmd);
 
-			if(cmd.equals("Scriptc")){
+			if(cmd.equals("Scriptâ€¦")){
 				ScriptEditor.openScriptEditor(PCARD.pc, object);
 			}
-			else if(cmd.equals("Sizec")){
+			else if(cmd.equals("Sizeâ€¦")){
 				new SizeDialog(AuthDialog.authDialog);
 			}
-			else if(cmd.equals("Card Listc")){
+			else if(cmd.equals("Card Listâ€¦")){
 				String str = "";
 				for(int i=0;i<PCARD.pc.stack.cardIdList.size();i++){
 					int id = PCARD.pc.stack.cardIdList.get(i);
@@ -1004,7 +1004,7 @@ public class AuthDialog extends JDialog
 			super(owner, true);
 			getContentPane().setLayout(new BorderLayout());
 
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			JPanel topPanel = new JPanel();
 			topPanel.setLayout(new GridLayout(2,1));
 			topPanel.setPreferredSize(new Dimension(200,80));
@@ -1039,7 +1039,7 @@ public class AuthDialog extends JDialog
 				topPanel.add(panel);
 			}
 			
-			//ƒpƒlƒ‹‚ğ’Ç‰Á‚·‚é
+			//ãƒ‘ãƒãƒ«ã‚’è¿½åŠ ã™ã‚‹
 			JPanel btmPanel = new JPanel();
 			getContentPane().add("South",btmPanel);
 
@@ -1058,7 +1058,7 @@ public class AuthDialog extends JDialog
 			}
 
 			setBounds(owner.getX()+owner.getWidth()/2-120,owner.getY()+owner.getHeight()/2-120,240,160);
-			setUndecorated(true);//ƒ^ƒCƒgƒ‹ƒo[”ñ•\¦
+			setUndecorated(true);//ã‚¿ã‚¤ãƒˆãƒ«ãƒãƒ¼éè¡¨ç¤º
 			
 			SwingUtilities.invokeLater(new Runnable() {
 				public void run() {

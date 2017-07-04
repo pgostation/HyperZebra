@@ -31,44 +31,44 @@ public class TUtil {
 	static TUtil tutil = new TUtil();
 
 	
-	//HyperTalk“à‘ ŠÖ”
+	//HyperTalkå†…è”µé–¢æ•°
 	public static Result CallSystemFunction(String message, String[] params, OObject target, MemoryData memData, boolean isFunc)
 		throws xTalkException 
 	{
 		Result result = new Result();
-		result.ret = 1;//Œ©‚Â‚©‚ç‚È‚¯‚ê‚Î1
+		result.ret = 1;//è¦‹ã¤ã‹ã‚‰ãªã‘ã‚Œã°1
 		
 		message = message.toLowerCase();
 		
 		if(0==message.compareTo("trunc")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Integer.toString((int)v);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("round")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Integer.toString(IEEE_Round(v));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("abs")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(v-(int)v == 0){
 				result.theResult = Integer.toString((int)(v>0?v:-v));
@@ -78,21 +78,21 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("min")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			String[] vAry = params;
 			if(params[0].contains(",")) vAry = params[0].split(",");
 			try{v=Double.valueOf(vAry[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			for(int i=1; i<vAry.length; i++){
 				double v2;
 				try{v2=Double.valueOf(vAry[i]);}
 				catch(Exception e) { 
-					if(params[0].equals("‡")) v2 = Double.MAX_VALUE;
-					else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+					if(params[0].equals("âˆ")) v2 = Double.MAX_VALUE;
+					else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 				}
 				if(v2 < v) v = v2;
 			}
@@ -104,21 +104,21 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("max")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			String[] vAry = params;
 			if(params[0].contains(",")) vAry = params[0].split(",");
 			try{v=Double.valueOf(vAry[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			for(int i=1; i<vAry.length; i++){
 				double v2;
 				try{v2=Double.valueOf(vAry[i]);}
 				catch(Exception e) { 
-					if(params[0].equals("‡")) v2 = Double.MAX_VALUE;
-					else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+					if(params[0].equals("âˆ")) v2 = Double.MAX_VALUE;
+					else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 				}
 				if(v2 > v) v = v2;
 			}
@@ -130,16 +130,16 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("average")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			String[] vAry = params;
 			if(params[0].contains(",")) vAry = params[0].split(",");
 			try{v=Double.valueOf(vAry[0]);}
-			catch(Exception e) { throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");}
+			catch(Exception e) { throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");}
 			for(int i=1; i<vAry.length; i++){
 				double v2;
 				try{v2=Double.valueOf(vAry[i]);}
-				catch(Exception e) { throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");}
+				catch(Exception e) { throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");}
 				v += v2;
 			}
 			v /= vAry.length;
@@ -151,21 +151,21 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("sum")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			String[] vAry = params;
 			if(params[0].contains(",")) vAry = params[0].split(",");
 			try{v=Double.valueOf(vAry[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			for(int i=1; i<vAry.length; i++){
 				double v2;
 				try{v2=Double.valueOf(vAry[i]);}
 				catch(Exception e) { 
-					if(params[0].equals("‡")) v2 = Double.MAX_VALUE;
-					else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+					if(params[0].equals("âˆ")) v2 = Double.MAX_VALUE;
+					else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 				}
 				v += v2;
 			}
@@ -177,91 +177,91 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("random")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Integer.toString((int)(v*Math.random()+0.999999));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("sqrt")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Double.toString((Math.sqrt(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("sin")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Double.toString((Math.sin(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("cos")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Double.toString((Math.cos(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareToIgnoreCase("tan")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Double.toString((Math.tan(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("atan")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v;
 			try{v=Double.valueOf(params[0]);}
 			catch(Exception e) { 
-				if(params[0].equals("‡")) v = Double.MAX_VALUE;
-				else throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				if(params[0].equals("âˆ")) v = Double.MAX_VALUE;
+				else throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			result.theResult = Double.toString((Math.atan(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("chartonum")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			char c = 0;
 			if(params[0].length()>0) c = params[0].charAt(0);
 			result.theResult = Integer.toString((int)c);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("length")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			result.theResult = Integer.toString(params[0].length());
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("value")){
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			result.theResult = TTalk.Evalution(params[0], memData, null, null);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("param")){
 			//param of i
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			int i = Integer.valueOf(params[0])-1;
 			if(i>=0 && i<memData.params.length){
 				result.theResult = memData.params[i];
@@ -269,8 +269,8 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("annuity")){
-			//”N—¦ŒvZ(”N‹àŒ»‰¿ŒW”)
-			if(params.length<2) throw new xTalkException("ˆø”2‚Â‚ª•K—v‚Å‚·");
+			//å¹´ç‡è¨ˆç®—(å¹´é‡‘ç¾ä¾¡ä¿‚æ•°)
+			if(params.length<2) throw new xTalkException("å¼•æ•°2ã¤ãŒå¿…è¦ã§ã™");
 			double rate = Double.valueOf(params[0]);
 			double periods = Double.valueOf(params[1]);
 			//double base = 0.0;
@@ -287,7 +287,7 @@ public class TUtil {
 		}
 		else if(0==message.compareTo("compound")){
 			//
-			if(params.length<2) throw new xTalkException("ˆø”2‚Â‚ª•K—v‚Å‚·");
+			if(params.length<2) throw new xTalkException("å¼•æ•°2ã¤ãŒå¿…è¦ã§ã™");
 			double rate = Double.valueOf(params[0]);
 			double periods = Double.valueOf(params[1]);
 			double base = Math.pow((1+rate),periods);
@@ -295,48 +295,48 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("exp")){
-			//w”
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			//æŒ‡æ•°
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v = Double.valueOf(params[0]);
 			double base = Math.exp(v);
 			result.theResult = Double.toString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("exp1")){
-			//w”-1
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			//æŒ‡æ•°-1
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v = Double.valueOf(params[0]);
 			double base = Math.exp(v);
 			result.theResult = Double.toString(base-1.0);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("ln")){
-			//©‘R‘Î”
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			//è‡ªç„¶å¯¾æ•°
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v = Double.valueOf(params[0]);
 			double base = Math.log(v);
 			result.theResult = Double.toString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("ln1")){
-			//1‘«‚µ‚½”‚Ì©‘R‘Î”
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			//1è¶³ã—ãŸæ•°ã®è‡ªç„¶å¯¾æ•°
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v = Double.valueOf(params[0]);
 			double base = Math.log(1.0+v);
 			result.theResult = Double.toString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("exp2")){
-			//2‚Ìxæ
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			//2ã®xä¹—
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v = Double.valueOf(params[0]);
 			double base = Math.pow(2,v);
 			result.theResult = Double.toString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("log2")){
-			//2‚Ìxæ
-			if(params.length<1) throw new xTalkException("ˆø”‚ª•K—v‚Å‚·");
+			//2ã®xä¹—
+			if(params.length<1) throw new xTalkException("å¼•æ•°ãŒå¿…è¦ã§ã™");
 			double v = Double.valueOf(params[0]);
 			double base = Math.log(v)/Math.log(2);
 			result.theResult = Double.toString(base);
@@ -380,7 +380,7 @@ public class TUtil {
 		}
 		else if(0==message.compareTo("mouseclick")){
 			String v = GUI.mouseClicked?"true":"false";
-			GUI.mouseClicked = false;//ˆê“x“Ç‚ñ‚¾‚çfalse‚É–ß‚é
+			GUI.mouseClicked = false;//ä¸€åº¦èª­ã‚“ã ã‚‰falseã«æˆ»ã‚‹
 			result.theResult = v;
 		}
 		else if(0==message.compareTo("mouse")){
@@ -395,7 +395,7 @@ public class TUtil {
 	        result.theResult = Integer.toString(pointerInfo.getLocation().y-PCARD.pc.mainPane.getY()-PCARD.pc.getLocationOnScreen().y-PCARD.pc.getInsets().top);
 		}
 		else if(0==message.compareTo("mouseloc")){
-			//ƒJ[ƒh‚Ì¶ã‹N“_‚Ìƒ}ƒEƒXÀ•W
+			//ã‚«ãƒ¼ãƒ‰ã®å·¦ä¸Šèµ·ç‚¹ã®ãƒã‚¦ã‚¹åº§æ¨™
 	        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
 	        result.theResult = Integer.toString(pointerInfo.getLocation().x-PCARD.pc.mainPane.getX()-PCARD.pc.getLocationOnScreen().x)+","+
 			Integer.toString(pointerInfo.getLocation().y-PCARD.pc.mainPane.getY()-PCARD.pc.getLocationOnScreen().y-PCARD.pc.getInsets().top);
@@ -407,11 +407,11 @@ public class TUtil {
 			result.theResult = Integer.toString(GUI.clickV);
 		}
 		else if(0==message.compareTo("clickloc")){
-			//ƒJ[ƒh‚Ì¶ã‹N“_‚ÌƒNƒŠƒbƒNÀ•W
+			//ã‚«ãƒ¼ãƒ‰ã®å·¦ä¸Šèµ·ç‚¹ã®ã‚¯ãƒªãƒƒã‚¯åº§æ¨™
 			result.theResult = Integer.toString(GUI.clickH)+","+Integer.toString(GUI.clickV);
 		}
 		else if(0==message.compareTo("clickline")){
-			//ÅŒã‚ÉƒNƒŠƒbƒN‚µ‚½@s‘I‘ğ‰Â”\‚ÈƒtƒB[ƒ‹ƒh‚Æ‚»‚Ìs”
+			//æœ€å¾Œã«ã‚¯ãƒªãƒƒã‚¯ã—ãŸã€€è¡Œé¸æŠå¯èƒ½ãªãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã¨ãã®è¡Œæ•°
 			result.theResult = GUI.clickLine;
 		}
 		else if(0==message.compareTo("commandkey")||0==message.compareTo("cmdkey")){
@@ -431,7 +431,7 @@ public class TUtil {
 			result.theResult = Integer.toString(freesize);
 		}
 		else if(0==message.compareTo("stackspace")){
-			//ƒXƒ^ƒbƒNƒTƒCƒY‚Í’²‚×‚ç‚ê‚È‚¢‚İ‚½‚¢‚È‚Ì‚ÅŒÅ’è
+			//ã‚¹ã‚¿ãƒƒã‚¯ã‚µã‚¤ã‚ºã¯èª¿ã¹ã‚‰ã‚Œãªã„ã¿ãŸã„ãªã®ã§å›ºå®š
 			result.theResult = Integer.toString(128000);
 		}
 		else if(0==message.compareTo("diskspace")){
@@ -501,10 +501,10 @@ public class TUtil {
 		}
 		else if(0==message.compareTo("long date")){
 			Calendar cal = Calendar.getInstance();
-			//”N
+			//å¹´
 			int year = cal.get(Calendar.YEAR);
 			
-			//Œ
+			//æœˆ
 			int month = cal.get(Calendar.MONTH)+1;
 			String monthStr = null;
 			String[] month_ary = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
@@ -515,19 +515,19 @@ public class TUtil {
 				monthStr = month_ary[month];
 			}
 			
-			//“ú
+			//æ—¥
 			int date = cal.get(Calendar.DATE);
 			
-			//—j“ú
+			//æ›œæ—¥
 			int dow = cal.get(Calendar.DAY_OF_WEEK);
 			String[] youbi_ary = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
 			if(PCARD.pc.lang.equals("Japanese")){
-				youbi_ary = new String[]{"“ú—j“ú","Œ—j“ú","‰Î—j“ú","…—j“ú","–Ø—j“ú","‹à—j“ú","“y—j“ú"};
+				youbi_ary = new String[]{"æ—¥æ›œæ—¥","æœˆæ›œæ—¥","ç«æ›œæ—¥","æ°´æ›œæ—¥","æœ¨æ›œæ—¥","é‡‘æ›œæ—¥","åœŸæ›œæ—¥"};
 			}
 			String youbiStr = youbi_ary[dow-1];
 			
 			if(PCARD.pc.lang.equals("Japanese")){
-				result.theResult = year+"”N "+month+"Œ "+date+"“ú "+youbiStr;
+				result.theResult = year+"å¹´ "+month+"æœˆ "+date+"æ—¥ "+youbiStr;
 			}
 			else{
 				result.theResult = youbiStr+", "+monthStr+" "+date+", "+year;
@@ -557,7 +557,7 @@ public class TUtil {
 			result.theResult = tmpStr;
 		}
 		else if(0==message.compareTo("stacks")){
-			result.theResult = PCARD.pc.stack.path; //ˆê‚Â‚µ‚©‹N“®‚µ‚È‚¢
+			result.theResult = PCARD.pc.stack.path; //ä¸€ã¤ã—ã‹èµ·å‹•ã—ãªã„
 		}
 		else if(0==message.compareTo("suspended")){
 			result.theResult = PCARD.pc.isFocused()?"false":"true";
@@ -633,7 +633,7 @@ public class TUtil {
 			if(GUI.clickField!=null){
 				result.theResult = GUI.clickField.getSelectedText();
 			}
-			//“ü—ÍƒtƒH[ƒJƒX‚Ì‚ ‚éƒtƒB[ƒ‹ƒh‚ğŒŸõ‚µ‚Ä‘I‘ğƒeƒLƒXƒg‚ğ•Ô‚·
+			//å…¥åŠ›ãƒ•ã‚©ãƒ¼ã‚«ã‚¹ã®ã‚ã‚‹ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã‚’æ¤œç´¢ã—ã¦é¸æŠãƒ†ã‚­ã‚¹ãƒˆã‚’è¿”ã™
 			//cd
 			for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
 				OField field = PCARD.pc.stack.curCard.fldList.get(i);
@@ -664,7 +664,7 @@ public class TUtil {
 			}
 		}
 		//
-		//ƒvƒƒpƒeƒB‚àŠÖ”‚Æ“¯‚¶ˆµ‚¢B‚±‚¢‚Â‚ç‚Íset‚Å‚«‚éB
+		//ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£ã‚‚é–¢æ•°ã¨åŒã˜æ‰±ã„ã€‚ã“ã„ã¤ã‚‰ã¯setã§ãã‚‹ã€‚
 		//
 		else if(0==message.compareTo("userlevel")){
 			result.theResult = Integer.toString(PCARD.userLevel);
@@ -687,24 +687,24 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareToIgnoreCase("checkHCFont")){
-			//HomeƒXƒ^ƒbƒN‚ÌŠÖ”
-			result.theResult = ""; //‚Æ‚É‚©‚­empty‚Å
+			//Homeã‚¹ã‚¿ãƒƒã‚¯ã®é–¢æ•°
+			result.theResult = ""; //ã¨ã«ã‹ãemptyã§
 			result.ret = 0;
 		}
 		else{
-			System.out.println("–¢’è‹`‚ÌŠÖ”/ƒvƒƒpƒeƒB:"+message);
+			System.out.println("æœªå®šç¾©ã®é–¢æ•°/ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£:"+message);
 		}
 		
 		return result;
 	}
 	
 	
-	//ƒVƒXƒeƒ€ƒƒbƒZ[ƒW‚¨‚æ‚ÑXCMD,XFCN
+	//ã‚·ã‚¹ãƒ†ãƒ ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ãŠã‚ˆã³XCMD,XFCN
 	public static Result CallSystemMessage(String message, String[] params, OObject target, MemoryData memData, boolean isFunc)
 		throws xTalkException 
 	{
 		Result result = new Result();
-		result.ret = 1;//Œ©‚Â‚©‚ç‚È‚¯‚ê‚Î1
+		result.ret = 1;//è¦‹ã¤ã‹ã‚‰ãªã‘ã‚Œã°1
 
 		if(0==message.compareToIgnoreCase("mouseDown")){
 			result.ret = 0;
@@ -763,7 +763,7 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareToIgnoreCase("picture")){
-			//HomeƒXƒ^ƒbƒN‚ÌXCMD
+			//Homeã‚¹ã‚¿ãƒƒã‚¯ã®XCMD
 			String typeStr = "resource";
 			if(params.length>=2 && params[1].length()>0){
 				typeStr = params[1];
@@ -778,12 +778,12 @@ public class TUtil {
 			}
 			BufferedImage bi = null;
 			if(typeStr.equalsIgnoreCase("resource")){
-				//ƒŠƒ\[ƒX‚ğ’T‚·
+				//ãƒªã‚½ãƒ¼ã‚¹ã‚’æ¢ã™
 				int rsrcid = PCARD.pc.stack.rsrc.getRsrcIdAll(params[0],"picture");
 				bi = PCARD.pc.stack.rsrc.getImage(rsrcid,"picture");
 			}
 			else if(typeStr.equalsIgnoreCase("file")){
-				//ƒtƒ@ƒCƒ‹‚ğ’T‚·
+				//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’æ¢ã™
 				File file = new File(PCARD.pc.stack.file.getParent());
 				String path = (file.getParent()+File.separatorChar+params[0]);
 				bi = PictureFile.loadPICT(path);
@@ -812,8 +812,8 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(0==message.compareToIgnoreCase("palette")){
-			//HomeƒXƒ^ƒbƒN‚ÌXCMD
-			//PLTEƒŠƒ\[ƒX‚ğ’T‚·
+			//Homeã‚¹ã‚¿ãƒƒã‚¯ã®XCMD
+			//PLTEãƒªã‚½ãƒ¼ã‚¹ã‚’æ¢ã™
 			for(int i=0; i<PCARD.pc.stack.rsrc.plteList.size(); i++){
 				Rsrc.PlteClass plte = PCARD.pc.stack.rsrc.plteList.get(i);
 				if(plte.name.equalsIgnoreCase(params[0])){
@@ -822,15 +822,15 @@ public class TUtil {
 						bi = PCARD.pc.stack.rsrc.getImage(plte.id,"picture");
 					}
 					if(bi!=null){
-						//ƒIƒtƒZƒbƒg
+						//ã‚ªãƒ•ã‚»ãƒƒãƒˆ
 						BufferedImage nbi = new BufferedImage(bi.getWidth()-plte.pictHV.x, bi.getHeight()-plte.pictHV.y, BufferedImage.TYPE_INT_ARGB);
 						nbi.getGraphics().drawImage(bi, -plte.pictHV.x, -plte.pictHV.y, PCARD.pc);
-						//ƒEƒBƒ“ƒhƒEì¬
+						//ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ä½œæˆ
 						GPictWindow gpw = new GPictWindow(PCARD.pc, params[0], nbi, "document", true);
 						new OWindow(gpw);
 						gpw.setResizable(false);
 						gpw.setLayout(null);
-						//ƒ{ƒ^ƒ“ì¬
+						//ãƒœã‚¿ãƒ³ä½œæˆ
 						for(int j=0; j<plte.objList.size(); j++){
 							Rsrc.plteBtnObject obj = plte.objList.get(j);
 							AbstractButton btn;
@@ -870,8 +870,8 @@ public class TUtil {
 			else{
 				result = CallSystemFunction(message.toLowerCase(), params, target, memData, isFunc);
 				if(result.theResult==null || result.theResult.equals("")){
-					System.out.println("–¢’è‹`‚ÌŠÖ”:"+message);
-					throw new xTalkException(message+"‚ª‚í‚©‚è‚Ü‚¹‚ñ");
+					System.out.println("æœªå®šç¾©ã®é–¢æ•°:"+message);
+					throw new xTalkException(message+"ãŒã‚ã‹ã‚Šã¾ã›ã‚“");
 				}
 			}
 		}
@@ -894,7 +894,7 @@ public class TUtil {
 		}
 	}
 	
-	//‹ô”ŠÛ‚ß
+	//å¶æ•°ä¸¸ã‚
 	static int IEEE_Round(double v){
 		int i;
 		i=(int)v;
@@ -969,7 +969,7 @@ public class TUtil {
 			else return "";
 		}
 		else if(0==prpty.compareTo("selectedfield")){
-			//“ü—ÍƒtƒH[ƒJƒX‚Ì‚ ‚éƒtƒB[ƒ‹ƒh‚ğŒŸõ
+			//å…¥åŠ›ãƒ•ã‚©ãƒ¼ã‚«ã‚¹ã®ã‚ã‚‹ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã‚’æ¤œç´¢
 			//cd
 			for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
 				OField field = PCARD.pc.stack.curCard.fldList.get(i);
@@ -989,7 +989,7 @@ public class TUtil {
 			return "";
 		}
 		/*else if(0==prpty.compareTo("selectedbutton")){
-			//ƒtƒ@ƒ~ƒŠ[‚Ì’†‚Å‘I‘ğ‚³‚ê‚½ƒ{ƒ^ƒ“
+			//ãƒ•ã‚¡ãƒŸãƒªãƒ¼ã®ä¸­ã§é¸æŠã•ã‚ŒãŸãƒœã‚¿ãƒ³
 			return "";
 		}*/
 		else if(0==prpty.compareTo("autohilite")){
@@ -1030,13 +1030,13 @@ public class TUtil {
 			if(obj.objectType.equals("field")){
 				return (obj.enabled)?"true":"false";
 			}
-			else throw new xTalkException("lockText‚ÍƒtƒB[ƒ‹ƒh‚Ì‚İQÆ‚Å‚«‚Ü‚·");
+			else throw new xTalkException("lockTextã¯ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã®ã¿å‚ç…§ã§ãã¾ã™");
 		}
 		else if(0==prpty.compareTo("showpict")){
 			if(obj.objectType.equals("card")||obj.objectType.equals("background")){
 				return (((OCardBase)obj).showPict==true)?"true":"false";
 			}
-			else throw new xTalkException("showPict‚ÍƒJ[ƒh‚ÆƒoƒbƒNƒOƒ‰ƒEƒ“ƒh‚Ì‚İQÆ‚Å‚«‚Ü‚·");
+			else throw new xTalkException("showPictã¯ã‚«ãƒ¼ãƒ‰ã¨ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ã®ã¿å‚ç…§ã§ãã¾ã™");
 		}
 		else if(0==prpty.compareTo("short name")){
 			return obj.name;
@@ -1067,7 +1067,7 @@ public class TUtil {
 			if(fld!=null) return Integer.toString(((OCardBase) fld.parent).GetNumberof(fld));
 			if(btn!=null) return Integer.toString(((OCardBase) btn.parent).GetNumberof(btn));
 			else {
-				System.out.println("–¢’è‹`‚ÌƒIƒuƒWƒFƒNƒgƒvƒƒpƒeƒB:"+prpty);
+				System.out.println("æœªå®šç¾©ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆãƒ—ãƒ­ãƒ‘ãƒ†ã‚£:"+prpty);
 				return "";
 			}
 		}
@@ -1083,7 +1083,7 @@ public class TUtil {
 			if(obj.objectType.equals("stack")){
 				return "0";
 			}
-			else System.out.println("–¢’è‹`‚ÌƒIƒuƒWƒFƒNƒgƒvƒƒpƒeƒB:"+prpty);
+			else System.out.println("æœªå®šç¾©ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆãƒ—ãƒ­ãƒ‘ãƒ†ã‚£:"+prpty);
 		}
 		else if(0==prpty.compareTo("style")){
 			if(fld!=null) {
@@ -1113,7 +1113,7 @@ public class TUtil {
 				default: return "???";
 				}
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("textstyle")){
 			String styleStr="";
@@ -1143,19 +1143,19 @@ public class TUtil {
 				else styleStr = styleStr.substring(0,styleStr.length()-1);
 				return styleStr;
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("cantmodify")){
 			if(obj.objectType.equals("stack")){
 				return (((OStack)obj).cantModify==true)?"true":"false";
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("cantabort")){
 			if(obj.objectType.equals("stack")){
 				return (((OStack)obj).cantAbort==true)?"true":"false";
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("blendingmode")){
 			if(obj.objectType.equals("button")){
@@ -1163,13 +1163,13 @@ public class TUtil {
 				else if (((OButton)obj).blendMode==1) return "blend";
 				else return "";
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("blendinglevel")){
 			if(obj.objectType.equals("button")){
 				return Integer.toString(((OButton)obj).blendLevel);
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("color")){
 			if(obj.objectType.equals("button")){
@@ -1180,7 +1180,7 @@ public class TUtil {
 				Color col = ((OField)obj).color;
 				return col.getRed()*256+","+col.getGreen()*256+","+col.getBlue()*256;
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("backcolor")){
 			if(obj.objectType.equals("button")){
@@ -1191,7 +1191,7 @@ public class TUtil {
 				Color col = ((OField)obj).bgColor;
 				return col.getRed()*256+","+col.getGreen()*256+","+col.getBlue()*256;
 			}
-			else System.out.println("‚±‚ÌƒIƒuƒWƒFƒNƒg‚ÉƒvƒƒpƒeƒB"+prpty+"‚Í‚ ‚è‚Ü‚¹‚ñ");
+			else System.out.println("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã¯ã‚ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("size")){
 			File parent = new File(PCARD.pc.stack.file.getParent());
@@ -1205,7 +1205,7 @@ public class TUtil {
 			return Integer.toString(size);
 		}
 		else {
-			System.out.println("–¢’è‹`‚ÌƒIƒuƒWƒFƒNƒgƒvƒƒpƒeƒB:"+prpty);
+			System.out.println("æœªå®šç¾©ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆãƒ—ãƒ­ãƒ‘ãƒ†ã‚£:"+prpty);
 		}
 		return "";
 	}
@@ -1222,7 +1222,7 @@ public class TUtil {
 		OStack stk=null;*/
 
 		if(obj==null){
-			//HyperCard‚ÌƒvƒƒpƒeƒB
+			//HyperCardã®ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 			if(0==prpty.compareTo("scripttextfont")){
 				PCARD.scriptFont = value;
 			}
@@ -1230,7 +1230,7 @@ public class TUtil {
 				try{
 					PCARD.scriptFontSize = Integer.valueOf(value);
 				}catch(Exception err){
-					throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+					throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 				}
 			}
 			else if(0==prpty.compareTo("textfont")){
@@ -1258,7 +1258,7 @@ public class TUtil {
 				try{
 					PCARD.pc.textSize = Integer.valueOf(value);
 				}catch(Exception err){
-					throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+					throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 				}
 			}
 			else if(0==prpty.compareTo("itemdelimiter")){
@@ -1269,14 +1269,14 @@ public class TUtil {
 					TTalk.itemDelimiter = ",";
 				}
 				else {
-					throw new xTalkException("itemDelimiter‚É‚Í1•¶š‚ğİ’è‚µ‚Ä‚­‚¾‚³‚¢");
+					throw new xTalkException("itemDelimiterã«ã¯1æ–‡å­—ã‚’è¨­å®šã—ã¦ãã ã•ã„");
 				}
 			}
 			else if(0==prpty.compareTo("userlevel")){
 				try{
 					PCARD.userLevel = Integer.valueOf(value);
 				}catch(Exception err){
-					throw new xTalkException("userLevel‚É‚Í1‚©‚ç5‚Ì”’l‚ğw’è‚µ‚Ä‚­‚¾‚³‚¢");
+					throw new xTalkException("userLevelã«ã¯1ã‹ã‚‰5ã®æ•°å€¤ã‚’æŒ‡å®šã—ã¦ãã ã•ã„");
 				}
 			}
 			else if(0==prpty.compareTo("cursor")){
@@ -1330,7 +1330,7 @@ public class TUtil {
 							e.printStackTrace();
 						}
 					}else{
-						throw new xTalkException("ƒJ[ƒ\ƒ‹"+value+"‚ª‚ ‚è‚Ü‚¹‚ñ");
+						throw new xTalkException("ã‚«ãƒ¼ã‚½ãƒ«"+value+"ãŒã‚ã‚Šã¾ã›ã‚“");
 					}
 				}
 				if(cr!=null)
@@ -1363,7 +1363,7 @@ public class TUtil {
 				}else if(value.equalsIgnoreCase("false")){
 					TTalk.lockErrorDialogs = false;
 				}
-				else throw new xTalkException("‚±‚±‚É‚Í^‹U’l‚ª•K—v‚Å‚·");
+				else throw new xTalkException("ã“ã“ã«ã¯çœŸå½å€¤ãŒå¿…è¦ã§ã™");
 			}
 			else if(0==prpty.compareTo("dragspeed")){
 				TTalk.dragspeed = Integer.valueOf(value);
@@ -1374,9 +1374,9 @@ public class TUtil {
 				}else if(value.equalsIgnoreCase("false")){
 					PaintTool.editBackground = false;
 				}
-				else throw new xTalkException("‚±‚±‚É‚Í^‹U’l‚ª•K—v‚Å‚·");
+				else throw new xTalkException("ã“ã“ã«ã¯çœŸå½å€¤ãŒå¿…è¦ã§ã™");
 			}
-			else throw new xTalkException("ƒvƒƒpƒeƒB"+prpty+"‚ª‚í‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ãŒã‚ã‹ã‚Šã¾ã›ã‚“");
 			return;
 		}
 		
@@ -1407,7 +1407,7 @@ public class TUtil {
 					}
 				}
 			}
-			else throw new xTalkException("ƒ{ƒ^ƒ“ˆÈŠO‚É‚ÍƒAƒCƒRƒ“‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ãƒœã‚¿ãƒ³ä»¥å¤–ã«ã¯ã‚¢ã‚¤ã‚³ãƒ³ã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("visible")){
 			if(btn!=null){
@@ -1423,14 +1423,14 @@ public class TUtil {
 			}
 			else if(0==obj.objectType.compareTo("menubar")){
 				/*GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-				GraphicsDevice device = ge.getDefaultScreenDevice();  // GraphicsDevice‚Ìæ“¾
+				GraphicsDevice device = ge.getDefaultScreenDevice();  // GraphicsDeviceã®å–å¾—
 
 		        if (device.isFullScreenSupported()) {
-			        // ƒtƒ‹ƒXƒNƒŠ[ƒ“‰»I
+			        // ãƒ•ãƒ«ã‚¹ã‚¯ãƒªãƒ¼ãƒ³åŒ–ï¼
 			        device.setFullScreenWindow(PCARD.pc);
 		        }*/
 				
-				//‚±‚ê‚Å‚Íƒƒjƒ…[‚ğÁ‚¹‚È‚¢‚Ì‚ÅAƒƒjƒ…[‚ª‚È‚¢ƒEƒBƒ“ƒhƒE‚ğì‚Á‚Ä‚»‚¿‚ç‚ÉˆÚ“®‚Æ‚©HMac‚Å‚Í–³ˆÓ–¡‚¾‚ªB
+				//ã“ã‚Œã§ã¯ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’æ¶ˆã›ãªã„ã®ã§ã€ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãŒãªã„ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚’ä½œã£ã¦ãã¡ã‚‰ã«ç§»å‹•ã¨ã‹ï¼ŸMacã§ã¯ç„¡æ„å‘³ã ãŒã€‚
 				/*if(0==value.compareToIgnoreCase("true")){
 					PCARD.pc.setJMenuBar(PCARD.pc.menu.mb);
 				}else{
@@ -1467,10 +1467,10 @@ public class TUtil {
 					((OWindow)obj).gpw.setVisible(0==value.compareToIgnoreCase("true"));
 				}
 				else{
-					throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Í‰Â‹‚ğİ’è‚Å‚«‚Ü‚¹‚ñ??");
+					throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯å¯è¦–ã‚’è¨­å®šã§ãã¾ã›ã‚“??");
 				}
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Í‰Â‹‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯å¯è¦–ã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("enabled")){
 			if(btn!=null){
@@ -1482,7 +1482,7 @@ public class TUtil {
 			else if(obj.objectType.equals("menu")){
 				GMenu.changeMEnabled(value,0==value.compareToIgnoreCase("true"));
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íenabled‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯enabledã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("hilite") || 0==prpty.compareTo("highlight") || 0==prpty.compareTo("highlite") || 0==prpty.compareTo("hilight")){
 			if(btn!=null){
@@ -1491,7 +1491,7 @@ public class TUtil {
 			else if(fld!=null){
 				fld.setHilite(0==value.compareToIgnoreCase("true"));
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íhilite‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯hiliteã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("text")){
 			if(btn!=null) btn.setText(value);
@@ -1500,7 +1500,7 @@ public class TUtil {
 				OMenu om = (OMenu) obj;
 				om.menu.add(new JMenuItem(value));
 			}
-			else throw new xTalkException("ƒ{ƒ^ƒ“‚ÆƒtƒB[ƒ‹ƒhˆÈŠO‚É‚ÍƒeƒLƒXƒg‚ğŠi”[‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ãƒœã‚¿ãƒ³ã¨ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ä»¥å¤–ã«ã¯ãƒ†ã‚­ã‚¹ãƒˆã‚’æ ¼ç´ã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("name")){
 			if(btn!=null) btn.setName(value);
@@ -1513,7 +1513,7 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setTopLeft(v, btn.getTop());
 			else if(fld!=null) fld.setTopLeft(v, fld.getTop());
@@ -1526,10 +1526,10 @@ public class TUtil {
 					((OWindow)obj).gpw.setBounds(PCARD.pc.getX()+v, ((OWindow)obj).gpw.getY(), ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
 				}
 				else{
-					throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íleft‚ğİ’è‚Å‚«‚Ü‚¹‚ñ??");
+					throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯leftã‚’è¨­å®šã§ãã¾ã›ã‚“??");
 				}
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íleft‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯leftã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("top")){
 			int v;
@@ -1537,7 +1537,7 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setTopLeft(btn.getLeft(),v);
 			else if(fld!=null) fld.setTopLeft(fld.getLeft(),v);
@@ -1550,10 +1550,10 @@ public class TUtil {
 					((OWindow)obj).gpw.setBounds(((OWindow)obj).gpw.getX(), PCARD.pc.getY()+PCARD.pc.getInsets().top+v, ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
 				}
 				else{
-					throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Ítop‚ğİ’è‚Å‚«‚Ü‚¹‚ñ??");
+					throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯topã‚’è¨­å®šã§ãã¾ã›ã‚“??");
 				}
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Ítop‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯topã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("right")){
 			int v;
@@ -1561,12 +1561,12 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setTopLeft(v-btn.getWidth(), btn.getTop());
 			else if(fld!=null) fld.setTopLeft(v-fld.getWidth(), fld.getTop());
 			else if(cd!=null) PCARD.pc.stack.setTopLeft(v-PCARD.pc.stack.getWidth(), PCARD.pc.stack.getTop());
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íright‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯rightã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("bottom")){
 			int v;
@@ -1574,24 +1574,24 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setTopLeft(btn.getLeft(),v-btn.getHeight());
 			else if(fld!=null) fld.setTopLeft(fld.getLeft(),v-fld.getHeight());
 			else if(cd!=null) PCARD.pc.stack.setTopLeft(PCARD.pc.stack.getLeft(),v-PCARD.pc.stack.getHeight());
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íbottom‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯bottomã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("topleft")){
 			int v1, v2;
 			String[] strAry = value.split(",");
-			if(strAry.length!=2)throw new xTalkException("‚±‚±‚É‚ÍÀ•W‚ª•K—v‚Å‚·");
+			if(strAry.length!=2)throw new xTalkException("ã“ã“ã«ã¯åº§æ¨™ãŒå¿…è¦ã§ã™");
 			try{
 				double d = Double.valueOf(strAry[0]);
 				v1 = (int)d;
 				d = Double.valueOf(strAry[1]);
 				v2 = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setTopLeft(v1,v2);
 			else if(fld!=null) fld.setTopLeft(v1,v2);
@@ -1604,22 +1604,22 @@ public class TUtil {
 					((OWindow)obj).gpw.setBounds(PCARD.pc.getX()+v1, PCARD.pc.getY()+PCARD.pc.getInsets().top+v2, ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
 				}
 				else{
-					throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Ítopleft‚ğİ’è‚Å‚«‚Ü‚¹‚ñ??");
+					throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯topleftã‚’è¨­å®šã§ãã¾ã›ã‚“??");
 				}
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Ítopleft‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯topleftã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("loc") || 0==prpty.compareTo("location")){
 			int v1, v2;
 			String[] strAry = value.split(",");
-			if(strAry.length!=2)throw new xTalkException("‚±‚±‚É‚ÍÀ•W‚ª•K—v‚Å‚·");
+			if(strAry.length!=2)throw new xTalkException("ã“ã“ã«ã¯åº§æ¨™ãŒå¿…è¦ã§ã™");
 			try{
 				double d = Double.valueOf(strAry[0]);
 				v1 = (int)d;
 				d = Double.valueOf(strAry[1]);
 				v2 = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setTopLeft(v1-btn.getWidth()/2, v2-btn.getHeight()/2);
 			else if(fld!=null) fld.setTopLeft(v1-fld.getWidth()/2, v2-fld.getHeight()/2);
@@ -1641,7 +1641,7 @@ public class TUtil {
 				}
 			}
 			/*else{
-				throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íloc‚ğİ’è‚Å‚«‚Ü‚¹‚ñ??");
+				throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯locã‚’è¨­å®šã§ãã¾ã›ã‚“??");
 			}*/
 			/*else if(0==obj.objectType.compareTo("window")){
 				if(((OWindow)obj).frame!=null){
@@ -1651,7 +1651,7 @@ public class TUtil {
 					((OWindow)obj).gpw.setBounds(PCARD.pc.getX()+v1-((OWindow)obj).gpw.getWidth()/2, PCARD.pc.getY()+PCARD.pc.getInsets().top+v2-((OWindow)obj).gpw.getHeight()/2, ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
 				}
 				else{
-					throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íloc‚ğİ’è‚Å‚«‚Ü‚¹‚ñ??");
+					throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯locã‚’è¨­å®šã§ãã¾ã›ã‚“??");
 				}
 			}
 			else if(0==obj.objectType.compareTo("msg")){
@@ -1659,12 +1659,12 @@ public class TUtil {
 					GMsg.msg.setBounds(PCARD.pc.getX()+v1-GMsg.msg.getWidth()/2, PCARD.pc.getY()+PCARD.pc.getInsets().top+v2-GMsg.msg.getHeight()/2, GMsg.msg.getWidth(), GMsg.msg.getHeight());
 				}
 			}*/
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íloc‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯locã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("rect") || 0==prpty.compareTo("rectangle")){
 			int v1, v2, v3, v4;
 			String[] strAry = value.split(",");
-			if(strAry.length!=4)throw new xTalkException("‚±‚±‚É‚Í‹éŒ`w’è‚ª•K—v‚Å‚·");
+			if(strAry.length!=4)throw new xTalkException("ã“ã“ã«ã¯çŸ©å½¢æŒ‡å®šãŒå¿…è¦ã§ã™");
 			try{
 				double d = Double.valueOf(strAry[0]);
 				v1 = (int)d;
@@ -1675,7 +1675,7 @@ public class TUtil {
 				d = Double.valueOf(strAry[3]);
 				v4 = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setRect(v1,v2,v3,v4);
 			else if(fld!=null) fld.setRect(v1,v2,v3,v4);
@@ -1691,10 +1691,10 @@ public class TUtil {
 					((OWindow)obj).gpw.setBounds(PCARD.pc.getX()+v1,PCARD.pc.getY()+PCARD.pc.getInsets().top+v2,v3-v1,v4-v2);
 				}
 				else{
-					throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Írect‚ğİ’è‚Å‚«‚Ü‚¹‚ñ??");
+					throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯rectã‚’è¨­å®šã§ãã¾ã›ã‚“??");
 				}
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Írect‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯rectã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("width")){
 			int v;
@@ -1702,7 +1702,7 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setRect(btn.getLeft()+btn.getWidth()/2-v/2,btn.getTop(),btn.getLeft()+btn.getWidth()/2+(v+1)/2,btn.getTop()+btn.getHeight());
 			else if(fld!=null) fld.setRect(fld.getLeft()+fld.getWidth()/2-v/2,fld.getTop(),fld.getLeft()+fld.getWidth()/2+(v+1)/2,fld.getTop()+fld.getHeight());
@@ -1714,7 +1714,7 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(btn!=null) btn.setRect(btn.getLeft(),btn.getTop()+btn.getHeight()/2-v/2,btn.getLeft()+btn.getWidth(),btn.getTop()+btn.getHeight()/2+(v+1)/2);
 			else if(fld!=null) fld.setRect(fld.getLeft(),fld.getTop()+fld.getHeight()/2-v/2,fld.getLeft()+fld.getWidth(),fld.getTop()+fld.getHeight()/2+(v+1)/2);
@@ -1727,36 +1727,36 @@ public class TUtil {
 						PCARD.pc.setLocationRelativeTo(null);
 					}
 				}
-				else throw new xTalkException("‚±‚ÌƒEƒBƒ“ƒhƒE‚É‚Ízoomed‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+				else throw new xTalkException("ã“ã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã«ã¯zoomedã‚’è¨­å®šã§ãã¾ã›ã‚“");
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Ízoomed‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯zoomedã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("cantpeek")){
 			if(obj!=null&&obj.objectType.equals("stack")){
 				((OStack)obj).cantPeek = (0==value.compareToIgnoreCase("true"));
 				((OStack)obj).changed = true;
 			}
-			else throw new xTalkException("cantpeek‚ÍƒXƒ^ƒbƒNˆÈŠO‚Éİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("cantpeekã¯ã‚¹ã‚¿ãƒƒã‚¯ä»¥å¤–ã«è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("cantabort")){
 			if(obj!=null&&obj.objectType.equals("stack")){
 				((OStack)obj).cantAbort = (0==value.compareToIgnoreCase("true"));
 				((OStack)obj).changed = true;
 			}
-			else throw new xTalkException("cantabort‚ÍƒXƒ^ƒbƒNˆÈŠO‚Éİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("cantabortã¯ã‚¹ã‚¿ãƒƒã‚¯ä»¥å¤–ã«è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("cantdelete")){
 			if(obj!=null&&obj.objectType.equals("stack")){
 				((OStack)obj).cantDelete = (0==value.compareToIgnoreCase("true"));
 				((OStack)obj).changed = true;
 			}
-			else throw new xTalkException("cantdelete‚ÍƒXƒ^ƒbƒNˆÈŠO‚Éİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("cantdeleteã¯ã‚¹ã‚¿ãƒƒã‚¯ä»¥å¤–ã«è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("cantmodify")){
 			if(obj!=null&&obj.objectType.equals("stack")){
 				((OStack)obj).changed = true;
 				if(PCARD.pc.stack.saveXML!=null && PCARD.pc.stack.saveXML.saveThread!=null){
-					//cantmodify‚É‚µ‚½/ŠO‚µ‚½‚±‚Æ‚ğ•Û‘¶‚·‚é
+					//cantmodifyã«ã—ãŸ/å¤–ã—ãŸã“ã¨ã‚’ä¿å­˜ã™ã‚‹
 					PCARD.pc.stack.saveXML.saveThread.interrupt();
 					try {
 						Thread.sleep(100);
@@ -1765,7 +1765,7 @@ public class TUtil {
 				}
 				((OStack)obj).cantModify = (0==value.compareToIgnoreCase("true"));
 			}
-			else throw new xTalkException("cantmodify‚ÍƒXƒ^ƒbƒNˆÈŠO‚Éİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("cantmodifyã¯ã‚¹ã‚¿ãƒƒã‚¯ä»¥å¤–ã«è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("script")){
 			if(obj!=null){
@@ -1779,7 +1779,7 @@ public class TUtil {
 					//((OCardBase)obj).stack.pcard.repaint();
 					((OCardBase)obj).changed = true;
 				}
-				else throw new xTalkException("showPict‚ÍƒJ[ƒh‚ÆƒoƒbƒNƒOƒ‰ƒEƒ“ƒhˆÈŠO‚É‚Íİ’è‚Å‚«‚Ü‚¹‚ñ");
+				else throw new xTalkException("showPictã¯ã‚«ãƒ¼ãƒ‰ã¨ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ä»¥å¤–ã«ã¯è¨­å®šã§ãã¾ã›ã‚“");
 			}
 		}
 		else if(0==prpty.compareTo("textsize")){
@@ -1788,7 +1788,7 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(fld!=null) fld.setTextSize(v);
 		}
@@ -1798,40 +1798,40 @@ public class TUtil {
 				double d = Double.valueOf(value);
 				v = (int)d;
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(fld!=null) fld.setTextHeight(v);
 		}
 		else if(0==prpty.compareTo("audiolevel")){
-			//Movie XCMD‚ÌƒEƒBƒ“ƒhƒE—pƒvƒƒpƒeƒB(0-256)
+			//Movie XCMDã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ç”¨ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£(0-256)
 			int v;
 			if(value.equals("")) value="0";
 			try{
 				v = Integer.valueOf(value);
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(obj.objectType.equals("window") && ((OWindow)obj).mp3!=null) {
 				((OWindow)obj).mp3.setVolume(v);
 			}
-			else throw new xTalkException(obj.getShortName()+"‚É‚Íaudiolevel‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException(obj.getShortName()+"ã«ã¯audiolevelã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("timeformat")){
-			//Movie XCMD‚ÌƒEƒBƒ“ƒhƒE—pƒvƒƒpƒeƒB
+			//Movie XCMDã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ç”¨ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 		}
 		else if(0==prpty.compareTo("currtime")){
-			//Movie XCMD‚ÌƒEƒBƒ“ƒhƒE—pƒvƒƒpƒeƒB
+			//Movie XCMDã®ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ç”¨ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 			int v;
 			if(value.equals("")) value="0";
 			try{
 				v = Integer.valueOf(value);
 			}catch(Exception err){
-				throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+				throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 			}
 			if(obj.objectType.equals("window") && ((OWindow)obj).mp3!=null) {
 				((OWindow)obj).mp3.setTime(v);
 			}
-			else throw new xTalkException(obj.getShortName()+"‚É‚ÍcurrTime‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException(obj.getShortName()+"ã«ã¯currTimeã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(0==prpty.compareTo("scroll")){
 			if(fld!=null && fld.style==5) {
@@ -1840,7 +1840,7 @@ public class TUtil {
 					double d = Double.valueOf(value);
 					v = (int)d;
 				}catch(Exception err){
-					throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+					throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 				}
 				fld.setScroll(v);
 			}
@@ -1848,7 +1848,7 @@ public class TUtil {
 				int v1, v2;
 				String[] strAry = value.split(",");
 				if(strAry.length!=2){
-					throw new xTalkException("‚±‚±‚É‚ÍÀ•W‚ª•K—v‚Å‚·");
+					throw new xTalkException("ã“ã“ã«ã¯åº§æ¨™ãŒå¿…è¦ã§ã™");
 				}
 				try{
 					double d = Double.valueOf(strAry[0]);
@@ -1856,7 +1856,7 @@ public class TUtil {
 					d = Double.valueOf(strAry[1]);
 					v2 = (int)d;
 				}catch(Exception err){
-					throw new xTalkException("‚±‚±‚É‚Í”’l‚ª•K—v‚Å‚·");
+					throw new xTalkException("ã“ã“ã«ã¯æ•°å€¤ãŒå¿…è¦ã§ã™");
 				}
 				PCARD.pc.stack.setScroll(v1,v2);
 			}
@@ -1874,7 +1874,7 @@ public class TUtil {
 				else if(value.equalsIgnoreCase("popup")) btn.style=8;
 				else if(value.equalsIgnoreCase("radio")) btn.style=9;
 				else if(value.equalsIgnoreCase("checkbox")) btn.style=10;
-				else throw new xTalkException("‚±‚ÌƒXƒ^ƒCƒ‹‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+				else throw new xTalkException("ã“ã®ã‚¹ã‚¿ã‚¤ãƒ«ãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 				OCard.reloadCurrentCard();
 			}
 			else if(fld!=null) {
@@ -1884,10 +1884,10 @@ public class TUtil {
 				else if(value.equalsIgnoreCase("rectangle")) fld.style=3;
 				else if(value.equalsIgnoreCase("shadow")) fld.style=4;
 				else if(value.equalsIgnoreCase("scroll")) fld.style=5;
-				else throw new xTalkException("‚±‚ÌƒXƒ^ƒCƒ‹‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+				else throw new xTalkException("ã“ã®ã‚¹ã‚¿ã‚¤ãƒ«ãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 				OCard.reloadCurrentCard();
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚ÍƒXƒ^ƒCƒ‹‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯ã‚¹ã‚¿ã‚¤ãƒ«ã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else if(prpty.equals("showname")){
 			if(btn!=null) {
@@ -1904,7 +1904,7 @@ public class TUtil {
 			int v=0;
 			v = Integer.valueOf(value);
 			if(v<0 || v>100){		
-				throw new xTalkException(obj.getShortName()+"‚ÌƒvƒƒpƒeƒB"+prpty+"‚Ì’l‚ª•s³‚Å‚·");
+				throw new xTalkException(obj.getShortName()+"ã®ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ã®å€¤ãŒä¸æ­£ã§ã™");
 			}
 			if(btn!=null) btn.setBlendLevel(v);
 		}
@@ -1912,13 +1912,13 @@ public class TUtil {
 			int r=0,g=0,b=0;
 			String[] strs = value.split(",");
 			if(strs.length!=3){		
-				throw new xTalkException("F‚Ír,g,b‚Åw’è‚µ‚Ä‚­‚¾‚³‚¢");
+				throw new xTalkException("è‰²ã¯r,g,bã§æŒ‡å®šã—ã¦ãã ã•ã„");
 			}
 			r = Integer.valueOf(strs[0]);
 			g = Integer.valueOf(strs[1]);
 			b = Integer.valueOf(strs[2]);
 			if(r<0||r>65535 || g<0||g>65535 || b<0||b>65535){		
-				throw new xTalkException("F‚Í0‚©‚ç65535‚Ì”ÍˆÍ‚Åw’è‚µ‚Ä‚­‚¾‚³‚¢");
+				throw new xTalkException("è‰²ã¯0ã‹ã‚‰65535ã®ç¯„å›²ã§æŒ‡å®šã—ã¦ãã ã•ã„");
 			}
 			if(btn!=null) {
 				btn.setColor(new Color(r/256, g/256, b/256));
@@ -1932,13 +1932,13 @@ public class TUtil {
 			int r=0,g=0,b=0;
 			String[] strs = value.split(",");
 			if(strs.length!=3){		
-				throw new xTalkException("F‚Ír,g,b‚Åw’è‚µ‚Ä‚­‚¾‚³‚¢");
+				throw new xTalkException("è‰²ã¯r,g,bã§æŒ‡å®šã—ã¦ãã ã•ã„");
 			}
 			r = Integer.valueOf(strs[0]);
 			g = Integer.valueOf(strs[1]);
 			b = Integer.valueOf(strs[2]);
 			if(r<0||r>65535 || g<0||g>65535 || b<0||b>65535){		
-				throw new xTalkException("F‚Í0‚©‚ç65535‚Ì”ÍˆÍ‚Åw’è‚µ‚Ä‚­‚¾‚³‚¢");
+				throw new xTalkException("è‰²ã¯0ã‹ã‚‰65535ã®ç¯„å›²ã§æŒ‡å®šã—ã¦ãã ã•ã„");
 			}
 			if(btn!=null) {
 				btn.setBgColor(new Color(r/256, g/256, b/256));
@@ -1949,7 +1949,7 @@ public class TUtil {
 			OCard.reloadCurrentCard();
 		}
 		else if(prpty.equals("scale")){
-			//picture window‚ÌƒvƒƒpƒeƒB
+			//picture windowã®ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 			int v=0;
 			v = Integer.valueOf(value);
 			float vv=1;
@@ -1971,13 +1971,13 @@ public class TUtil {
 					((OWindow)obj).gpw.repaint();
 				}
 				else{
-					throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íscale‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+					throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯scaleã‚’è¨­å®šã§ãã¾ã›ã‚“");
 				}
 			}
-			else throw new xTalkException("‚±‚ÌƒIƒuƒWƒFƒNƒg‚É‚Íscale‚ğİ’è‚Å‚«‚Ü‚¹‚ñ");
+			else throw new xTalkException("ã“ã®ã‚ªãƒ–ã‚¸ã‚§ã‚¯ãƒˆã«ã¯scaleã‚’è¨­å®šã§ãã¾ã›ã‚“");
 		}
 		else{
-			throw new xTalkException(obj.getShortName()+"‚ÌƒvƒƒpƒeƒB"+prpty+"‚ª‚í‚©‚è‚Ü‚¹‚ñ");
+			throw new xTalkException(obj.getShortName()+"ã®ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£"+prpty+"ãŒã‚ã‹ã‚Šã¾ã›ã‚“");
 		}
 	}
 		
@@ -2002,9 +2002,9 @@ public class TUtil {
 				else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("close")) {
 					mode=2; next++;
 				}
-				else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+				else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("dissolve")) {
 			mode=3; next++; 
@@ -2014,7 +2014,7 @@ public class TUtil {
 			if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("blinds")) {
 				mode=4; next++;
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("checkerboard")) {
 			mode=5; next++;
@@ -2027,7 +2027,7 @@ public class TUtil {
 			else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("close")) {
 				mode=7; next++;
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("scroll")) {
 			next++;
@@ -2043,7 +2043,7 @@ public class TUtil {
 			else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("down")) {
 				mode=11; next++;
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("wipe")) {
 			next++;
@@ -2059,7 +2059,7 @@ public class TUtil {
 			else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("down")) {
 				mode=15; next++;
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("zoom")) {
 			next++;
@@ -2075,7 +2075,7 @@ public class TUtil {
 			else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("out")) {
 				mode=17; next++;
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("shrink")) {
 			next++;
@@ -2090,9 +2090,9 @@ public class TUtil {
 				else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("center")) {
 					mode=20; next++;
 				}
-				else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+				else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("stretch")) {
 			next++;
@@ -2107,9 +2107,9 @@ public class TUtil {
 				else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("center")) {
 					mode=23; next++;
 				}
-				else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+				else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		else if(0==strList.get(next).compareToIgnoreCase("push")) {
 			next++;
@@ -2125,7 +2125,7 @@ public class TUtil {
 			else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("down")) {
 				mode=27; next++;
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		
 		if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("to")) {
@@ -2145,7 +2145,7 @@ public class TUtil {
 			else if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("inverse")) {
 				to=4; next++;
 			}
-			else throw new xTalkException("‹ŠoŒø‰Ê‚ª•ª‚©‚è‚Ü‚¹‚ñ");
+			else throw new xTalkException("è¦–è¦šåŠ¹æœãŒåˆ†ã‹ã‚Šã¾ã›ã‚“");
 		}
 		
 		if(next<strList.size()&&0==strList.get(next).compareToIgnoreCase("fast")) {

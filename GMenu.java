@@ -40,11 +40,6 @@ import javax.xml.stream.XMLStreamWriter;
 
 
 public class GMenu {
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	
 	JMenuBar mb=new JMenuBar();
 
 	public static boolean changeMenuName(String menu, String item, String name){
@@ -82,14 +77,14 @@ public class GMenu {
 	public static JMenu searchMenu(JMenuBar mb, String menu){
 		if(mb==null) return null;
 		int count = mb.getMenuCount();
-		//‚»‚Ì‚Ü‚Ü’T‚·
+		//ãã®ã¾ã¾æ¢ã™
 		for(int i=0; i<count; i++){
 			JMenu m = mb.getMenu(i);
 			if(m.getText().equals(menu)){
 				return m;
 			}
 		}
-		//‰pŒêƒƒjƒ…[‚Å’T‚·
+		//è‹±èªãƒ¡ãƒ‹ãƒ¥ãƒ¼ã§æ¢ã™
 		for(int i=0; i<count; i++){
 			JMenu m = mb.getMenu(i);
 			if(PCARD.pc.intl.getEngText(m.getText()).equals(menu)){
@@ -103,7 +98,7 @@ public class GMenu {
 	public static JMenuItem searchMenuItem(JMenuBar mb, String menu, String item){
 		if(mb==null) return null;
 		int count = mb.getMenuCount();
-		//‚»‚Ì‚Ü‚Ü’T‚·
+		//ãã®ã¾ã¾æ¢ã™
 		for(int i=0; i<count; i++){
 			JMenu m = mb.getMenu(i);
 			if(m.getText().equals(menu)){
@@ -116,7 +111,7 @@ public class GMenu {
 				}
 			}
 		}
-		//‰pŒêƒƒjƒ…[‚Å’T‚·
+		//è‹±èªãƒ¡ãƒ‹ãƒ¥ãƒ¼ã§æ¢ã™
 		for(int i=0; i<count; i++){
 			JMenu m = mb.getMenu(i);
 			if(PCARD.pc.intl.getEngText(m.getText()).equals(menu)){
@@ -155,27 +150,27 @@ public class GMenu {
 		}
 
 	    if(mode==0){
-		    // Fileƒƒjƒ…[
+		    // Fileãƒ¡ãƒ‹ãƒ¥ãƒ¼
 		    m=new JMenu(PCARD.pc.intl.getText("File"));
 		    mb.add(m);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("New Stackc")));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Open Stackc")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("New Stackâ€¦")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Open Stackâ€¦")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));mi.addActionListener(listener);
 		    {
 				JMenu subm=new JMenu(PCARD.pc.intl.getText("Open Recent Stack"));
 				m.add(subm);
 		    }
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Close Stack")));mi.setEnabled(false);mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, s));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Save a Copyc")));mi.setEnabled(false);mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Save a Copyâ€¦")));mi.setEnabled(false);mi.addActionListener(listener);
 		    m.addSeparator();
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Compact Stack")));mi.setEnabled(false);mi.setEnabled(false);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Protect Stackc")));mi.setEnabled(false);mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Delete Stackc")));mi.setEnabled(false);mi.setEnabled(false);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Protect Stackâ€¦")));mi.setEnabled(false);mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Delete Stackâ€¦")));mi.setEnabled(false);mi.setEnabled(false);
 		    m.addSeparator();
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Printc")));mi.setEnabled(false);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Printâ€¦")));mi.setEnabled(false);
 
 			if(!isMacOSX()){
 				m.addSeparator();
-			    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("About "+PCARD.AppName+"c")));
+			    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("About "+PCARD.AppName+"â€¦")));
 			    mi.addActionListener(listener);
 			    
 				m.addSeparator();
@@ -184,7 +179,7 @@ public class GMenu {
 			    mi.addActionListener(listener);
 			}
 			
-		    // Editƒƒjƒ…[
+		    // Editãƒ¡ãƒ‹ãƒ¥ãƒ¼
 		    m=new JMenu(PCARD.pc.intl.getText("Edit"));
 		    mb.add(m);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Undo")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));mi.addActionListener(listener);
@@ -201,21 +196,21 @@ public class GMenu {
 		    m.addSeparator();
 		    m.add(cb = new JCheckBoxMenuItem(PCARD.pc.intl.getText("Background")));cb.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, s));cb.addActionListener(listener);
 		    m.addSeparator();
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Iconc")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, s));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Soundc")));mi.setEnabled(false);mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Resourcec")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Iconâ€¦")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, s));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Soundâ€¦")));mi.setEnabled(false);mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Resourceâ€¦")));mi.addActionListener(listener);
 	    }
 
 	    if(mode==1){
-	    	// Fileƒƒjƒ…[
+	    	// Fileãƒ¡ãƒ‹ãƒ¥ãƒ¼
 		    m=new JMenu(PCARD.pc.intl.getText("File"));
 		    mb.add(m);
 		    m.setEnabled(false);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Import Paintc")));mi.setEnabled(false);/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));*/mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Export Paintc")));mi.setEnabled(false);/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));*/mi.addActionListener(listener);
-		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Save as ppmc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));*/mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Import Paintâ€¦")));mi.setEnabled(false);/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));*/mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Export Paintâ€¦")));mi.setEnabled(false);/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));*/mi.addActionListener(listener);
+		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Save as ppmâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_O, s));*/mi.addActionListener(listener);
 		    
-		    // Editƒƒjƒ…[
+		    // Editãƒ¡ãƒ‹ãƒ¥ãƒ¼
 		    m=new JMenu(PCARD.pc.intl.getText("Edit"));
 		    mb.add(m);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Undo Paint")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));mi.addActionListener(listener);
@@ -229,12 +224,12 @@ public class GMenu {
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("New Card")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, s));mi.addActionListener(listener);
 		    m.addSeparator();
 		    m.add(cb = new JCheckBoxMenuItem(PCARD.pc.intl.getText("Background")));cb.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_B, s));cb.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Iconc")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, s));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Soundc")));mi.setEnabled(false);mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Resourcec")));mi.setEnabled(false);mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Iconâ€¦")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_I, s));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Soundâ€¦")));mi.setEnabled(false);mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Resourceâ€¦")));mi.setEnabled(false);mi.addActionListener(listener);
 	    }
 	    
-	    // Goƒƒjƒ…[
+	    // Goãƒ¡ãƒ‹ãƒ¥ãƒ¼
 	    m=new JMenu(PCARD.pc.intl.getText("Go"));
 	    mb.add(m);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Back")));mi.setEnabled(false);mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_DEAD_TILDE, s));mi.addActionListener(listener);
@@ -247,12 +242,12 @@ public class GMenu {
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Next")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_3, s));mi.addActionListener(listener);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Last")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_4, s));mi.addActionListener(listener);
 	    m.addSeparator();
-	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Findc")));mi.setEnabled(false);
+	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Findâ€¦")));mi.setEnabled(false);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Message")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_M, s));mi.addActionListener(listener);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Next Window")));mi.setEnabled(false);mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_L, s));mi.addActionListener(listener);
 	    
-	    // Toolƒƒjƒ…[
-	    m=new JMenu(PCARD.pc.intl.getText("Tool"));
+	    // Toolãƒ¡ãƒ‹ãƒ¥ãƒ¼
+	    m=new JMenu(PCARD.pc.intl.getText("Tools"));
 	    mb.add(m);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Show ToolBar")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_T, s));mi.addActionListener(listener);
 	    m.addSeparator();
@@ -278,16 +273,16 @@ public class GMenu {
 	    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("FreePolygon")));mi.setEnabled(false);mi.addActionListener(listener);
 	    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Spoit")));mi.setEnabled(false);mi.addActionListener(listener);
 	    
-		//0.ƒuƒ‰ƒEƒYƒ‚[ƒh
+		//0.ãƒ–ãƒ©ã‚¦ã‚ºãƒ¢ãƒ¼ãƒ‰
 	    if(mode==0){
-		    // Objectsƒƒjƒ…[
+		    // Objectsãƒ¡ãƒ‹ãƒ¥ãƒ¼
 		    m=new JMenu(PCARD.pc.intl.getText("Objects"));
 		    mb.add(m);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Button Infoc")));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Field Infoc")));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Card Infoc")));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Background Infoc")));mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Stack Infoc")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Button Infoâ€¦")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Field Infoâ€¦")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Card Infoâ€¦")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Background Infoâ€¦")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Stack Infoâ€¦")));mi.addActionListener(listener);
 		    m.addSeparator();
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Bring Closer")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_PLUS, s));mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Send Farther")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, s));mi.addActionListener(listener);
@@ -299,7 +294,7 @@ public class GMenu {
 	    }
 	    
 	    if(mode==1){
-		    // Paintƒƒjƒ…[
+		    // Paintãƒ¡ãƒ‹ãƒ¥ãƒ¼
 		    m=new JMenu(PCARD.pc.intl.getText("Paint"));
 		    mb.add(m);
 		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Select")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, s));mi.addActionListener(listener);
@@ -311,11 +306,11 @@ public class GMenu {
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Expand Selection")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Add to Protect Area")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Discard Protect Area")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Color Convertc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Embossc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Filterc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Blending Modec")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
-		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Scale Selectionc")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Color Convertâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Embossâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Filterâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Blending Modeâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Scale Selectionâ€¦")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 		    m.addSeparator();
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Fill")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Invert")));/*mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, s));*/mi.addActionListener(listener);
@@ -422,7 +417,7 @@ public class GMenu {
 		}
 		if(subm==null) return;
 		
-		//Å‹ßg‚Á‚½ƒXƒ^ƒbƒN
+		//æœ€è¿‘ä½¿ã£ãŸã‚¹ã‚¿ãƒƒã‚¯
 		File recentFile = new File("resource_trash"+File.separatorChar+"recent.txt");
 		if(recentFile.exists()){
 			FileInputStream fis = null;
@@ -492,13 +487,13 @@ class TearoffThread extends Thread
 	}
 }*/
 
-//ƒuƒ‰ƒEƒY‚Ìƒƒjƒ…[“®ì(ƒI[ƒTƒŠƒ“ƒOAƒyƒCƒ“ƒg‚Å‚àg‚¤)
+//ãƒ–ãƒ©ã‚¦ã‚ºæ™‚ã®ãƒ¡ãƒ‹ãƒ¥ãƒ¼å‹•ä½œ(ã‚ªãƒ¼ã‚µãƒªãƒ³ã‚°ã€ãƒšã‚¤ãƒ³ãƒˆã§ã‚‚ä½¿ã†)
 class GMenuBrowse implements ActionListener {
 	public void actionPerformed (ActionEvent e) {
 		String cmd = e.getActionCommand();
 		//System.out.println(cmd);
 		
-		//ƒXƒNƒŠƒvƒgÀs’†‚Íƒƒjƒ…[À{‚µ‚È‚¢
+		//ã‚¹ã‚¯ãƒªãƒ—ãƒˆå®Ÿè¡Œä¸­ã¯ãƒ¡ãƒ‹ãƒ¥ãƒ¼å®Ÿæ–½ã—ãªã„
 		if(TTalk.idle!=true) return;
 		
 		try{
@@ -523,7 +518,7 @@ class GMenuBrowse implements ActionListener {
 				PaintTool.saveCdPictures();
 			}
 			
-			if(cmd.equalsIgnoreCase("About "+PCARD.AppName+"c")){
+			if(cmd.equalsIgnoreCase("About "+PCARD.AppName+"â€¦")){
 				TTalk.doScriptforMenu("about this");
 			}
 			else if(cmd.equalsIgnoreCase("First")){
@@ -540,7 +535,7 @@ class GMenuBrowse implements ActionListener {
 			}
 			
 			if(PCARD.pc.tool != null){
-				//ƒyƒCƒ“ƒgƒc[ƒ‹‚Ìê‡‚Í‚±‚ê‚ÅFX‚â‚é
+				//ãƒšã‚¤ãƒ³ãƒˆãƒ„ãƒ¼ãƒ«ã®å ´åˆã¯ã“ã‚Œã§è‰²ã€…ã‚„ã‚‹
 				TBButtonListener.ChangeTool("DummyPaint", null);
 			}
 			else if(AuthTool.tool != null){
@@ -639,7 +634,7 @@ class GMenuBrowse implements ActionListener {
 				PCARD.pc.stack.scriptEditor.toFront();
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Button Infoc")){
+		else if(cmd.equalsIgnoreCase("Button Infoâ€¦")){
 			if(ButtonGUI.gui.target!=null){
 	    		OButton obtn = null;
 	    		Component target = ButtonGUI.gui.target;
@@ -656,7 +651,7 @@ class GMenuBrowse implements ActionListener {
 	    				null,"OK",null,null);
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Field Infoc")){
+		else if(cmd.equalsIgnoreCase("Field Infoâ€¦")){
 			if(FieldGUI.gui.target!=null){
 	    		OField obtn = null;
 	    		Component target = FieldGUI.gui.target;
@@ -669,13 +664,13 @@ class GMenuBrowse implements ActionListener {
 	    				null,"OK",null,null);
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Card Infoc")){
+		else if(cmd.equalsIgnoreCase("Card Infoâ€¦")){
 			AuthDialog.openAuthDialog(PCARD.pc, "card", PCARD.pc.stack.curCard);
 		}
-		else if(cmd.equalsIgnoreCase("Background Infoc")){
+		else if(cmd.equalsIgnoreCase("Background Infoâ€¦")){
 			AuthDialog.openAuthDialog(PCARD.pc, "background", PCARD.pc.stack.curCard.bg);
 		}
-		else if(cmd.equalsIgnoreCase("Stack Infoc")){
+		else if(cmd.equalsIgnoreCase("Stack Infoâ€¦")){
 			AuthDialog.openAuthDialog(PCARD.pc, "stack", PCARD.pc.stack);
 		}
 		else if(cmd.equalsIgnoreCase("New Button")){
@@ -716,7 +711,7 @@ class GMenuBrowse implements ActionListener {
 						GUI.removeAllListener();
 						ButtonGUI.gui.addListenerToParts();
 						
-						//obtn‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+						//obtnã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 						ButtonGUI.gui.target = obtn.getComponent();
 		        	}
 				}
@@ -749,7 +744,7 @@ class GMenuBrowse implements ActionListener {
 						GUI.removeAllListener();
 						FieldGUI.gui.addListenerToParts();
 						
-						//obtn‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+						//obtnã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 						FieldGUI.gui.target = obtn.getComponent();
 		        	}
 				}
@@ -789,7 +784,7 @@ class GMenuBrowse implements ActionListener {
 						GUI.removeAllListener();
 						ButtonGUI.gui.addListenerToParts();
 						
-						//obtn‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+						//obtnã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 						ButtonGUI.gui.target = obtn.getComponent();
 		        	}
 				}
@@ -822,7 +817,7 @@ class GMenuBrowse implements ActionListener {
 						GUI.removeAllListener();
 						FieldGUI.gui.addListenerToParts();
 						
-						//obtn‚Í¶‚«‚Ä‚¢‚é‚ªtarget‚Í‚¢‚È‚­‚È‚é‚Ì‚Åæ‚è’¼‚·
+						//obtnã¯ç”Ÿãã¦ã„ã‚‹ãŒtargetã¯ã„ãªããªã‚‹ã®ã§å–ã‚Šç›´ã™
 						FieldGUI.gui.target = obtn.getComponent();
 		        	}
 				}
@@ -865,7 +860,7 @@ class GMenuBrowse implements ActionListener {
 		else if(cmd.equalsIgnoreCase("Cut Button") || cmd.equalsIgnoreCase("Copy Button")){
 			if(AuthTool.tool.getClass()==ButtonTool.class){
 				if(ButtonGUI.gui.tgtOBtn!=null){
-					//XMLƒeƒLƒXƒg‚ğæ“¾
+					//XMLãƒ†ã‚­ã‚¹ãƒˆã‚’å–å¾—
 					XMLOutputFactory factory = XMLOutputFactory.newInstance();
 			        StringWriter stringWriter = new StringWriter();
 			        try {
@@ -904,15 +899,15 @@ class GMenuBrowse implements ActionListener {
 				            writer.writeCharacters("\n\t\t");
 			        	}
 			        	
-			        	//ƒ{ƒ^ƒ“î•ñ‚ğXML‚É‚·‚é
+			        	//ãƒœã‚¿ãƒ³æƒ…å ±ã‚’XMLã«ã™ã‚‹
 			            ButtonGUI.gui.tgtOBtn.writeXML(writer);
 			            
-			            //buttonclipƒ^ƒO‚ğ•Â‚¶‚é
+			            //buttonclipã‚¿ã‚°ã‚’é–‰ã˜ã‚‹
 			            writer.writeEndElement();
 			            
 				        writer.close();
 				        
-				        //ƒNƒŠƒbƒvƒ{[ƒh‚ÉƒRƒs[
+				        //ã‚¯ãƒªãƒƒãƒ—ãƒœãƒ¼ãƒ‰ã«ã‚³ãƒ”ãƒ¼
 				        {
 							Toolkit kit = Toolkit.getDefaultToolkit();
 							Clipboard clip = kit.getSystemClipboard();
@@ -922,7 +917,7 @@ class GMenuBrowse implements ActionListener {
 				        }
 				        
 				        if(cmd.equalsIgnoreCase("Cut Button")){
-				        	//ƒJƒbƒg‚Ì‚Æ‚«‚Ííœ‚·‚é
+				        	//ã‚«ãƒƒãƒˆã®ã¨ãã¯å‰Šé™¤ã™ã‚‹
 							((OCardBase)ButtonGUI.gui.tgtOBtn.parent).partsList.remove(ButtonGUI.gui.tgtOBtn);
 							((OCardBase)ButtonGUI.gui.tgtOBtn.parent).btnList.remove(ButtonGUI.gui.tgtOBtn);
 							if(ButtonGUI.gui.tgtOBtn.getComponent()!=null){
@@ -973,7 +968,7 @@ class GMenuBrowse implements ActionListener {
 		        	}
         			OButton btn = new OButton(cdbase, newid);
 				    try {
-				    	//clipoptionƒGƒŒƒƒ“ƒg‚ğ“Ç‚İo‚·
+				    	//clipoptionã‚¨ãƒ¬ãƒ¡ãƒ³ãƒˆã‚’èª­ã¿å‡ºã™
 				    	String iconpath = "";
 				    	String iconname = "";
 				    	String fontname = "";
@@ -1031,13 +1026,13 @@ class GMenuBrowse implements ActionListener {
             					path += File.separatorChar + fname;
             				}*/
 	            			if(!iconpath.equals(path)){
-	            				//‘¼‚ÌƒXƒ^ƒbƒN‚©‚ç‚ÌƒRƒs[‚Ìê‡ƒAƒCƒRƒ“ƒŠƒ\[ƒX‚àƒRƒs[‚·‚é
+	            				//ä»–ã®ã‚¹ã‚¿ãƒƒã‚¯ã‹ã‚‰ã®ã‚³ãƒ”ãƒ¼ã®å ´åˆã‚¢ã‚¤ã‚³ãƒ³ãƒªã‚½ãƒ¼ã‚¹ã‚‚ã‚³ãƒ”ãƒ¼ã™ã‚‹
 	            				if(PCARD.pc.stack.rsrc.getNameAll(btn.icon, "icon")!=null){
-		            				//ƒAƒCƒRƒ“‚ªŠù‚É‘¶İ‚µ‚Ä‚¢‚é‚Ì‚Å•Ê‚ÌID‚É‚·‚é
+		            				//ã‚¢ã‚¤ã‚³ãƒ³ãŒæ—¢ã«å­˜åœ¨ã—ã¦ã„ã‚‹ã®ã§åˆ¥ã®IDã«ã™ã‚‹
 		            				btn.icon = PCARD.pc.stack.rsrc.getNewResourceId("icon", btn.icon);
 		            			}
 		            			if(iconpath!=null && iconpath.length()>0 && new File(iconpath).exists()){
-		            				//ƒtƒ@ƒCƒ‹‚ğƒRƒs[
+		            				//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚³ãƒ”ãƒ¼
 		            				String srcfname = new File(iconpath).getName();
 		            				String ext = "";
 		            				if(srcfname.lastIndexOf(".")>=0){
@@ -1045,15 +1040,17 @@ class GMenuBrowse implements ActionListener {
 									}
 		    						String newFileName = "ICON_"+btn.icon+ext;
 		    						String newFilePath = PCARDFrame.pc.stack.file.getParent()+File.separatorChar+newFileName;
-		    						FileChannel srcChannel = new FileInputStream(iconpath).getChannel();
-		    						FileChannel destChannel = new FileOutputStream(newFilePath).getChannel();
+		    						FileChannel srcChannel = null;
+		    						FileChannel destChannel = null;
 		    						try {
+			    						srcChannel = new FileInputStream(iconpath).getChannel();
+			    						destChannel = new FileOutputStream(newFilePath).getChannel();
 		    							srcChannel.transferTo(0, srcChannel.size(), destChannel);
 		    						} finally {
 		    							srcChannel.close();
 		    							destChannel.close();
 		    						}
-		    						//ƒŠƒ\[ƒX‚É’Ç‰Á
+		    						//ãƒªã‚½ãƒ¼ã‚¹ã«è¿½åŠ 
 		    						PCARDFrame.pc.stack.rsrc.addResource(btn.icon, "icon", iconname, newFileName);
 		            			}
 	            			}
@@ -1075,7 +1072,7 @@ class GMenuBrowse implements ActionListener {
 		else if(cmd.equalsIgnoreCase("Cut Field") || cmd.equalsIgnoreCase("Copy Field")){
 			if(AuthTool.tool.getClass()==FieldTool.class){
 				if(FieldGUI.gui.tgtOFld!=null){
-					//XMLƒeƒLƒXƒg‚ğæ“¾
+					//XMLãƒ†ã‚­ã‚¹ãƒˆã‚’å–å¾—
 					XMLOutputFactory factory = XMLOutputFactory.newInstance();
 			        StringWriter stringWriter = new StringWriter();
 			        try {
@@ -1101,15 +1098,15 @@ class GMenuBrowse implements ActionListener {
 				            writer.writeCharacters("\n\t\t");
 			        	}
 			        	
-			        	//ƒtƒB[ƒ‹ƒhî•ñ‚ğXML‚É‚·‚é
+			        	//ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰æƒ…å ±ã‚’XMLã«ã™ã‚‹
 			        	FieldGUI.gui.tgtOFld.writeXML(writer);
 			            
-			            //fieldclipƒ^ƒO‚ğ•Â‚¶‚é
+			            //fieldclipã‚¿ã‚°ã‚’é–‰ã˜ã‚‹
 			            writer.writeEndElement();
 			            
 				        writer.close();
 				        
-				        //ƒNƒŠƒbƒvƒ{[ƒh‚ÉƒRƒs[
+				        //ã‚¯ãƒªãƒƒãƒ—ãƒœãƒ¼ãƒ‰ã«ã‚³ãƒ”ãƒ¼
 				        {
 							Toolkit kit = Toolkit.getDefaultToolkit();
 							Clipboard clip = kit.getSystemClipboard();
@@ -1119,7 +1116,7 @@ class GMenuBrowse implements ActionListener {
 				        }
 				        
 				        if(cmd.equalsIgnoreCase("Cut Field")){
-				        	//ƒJƒbƒg‚Ì‚Æ‚«‚Ííœ‚·‚é
+				        	//ã‚«ãƒƒãƒˆã®ã¨ãã¯å‰Šé™¤ã™ã‚‹
 							((OCardBase)FieldGUI.gui.tgtOFld.parent).partsList.remove(FieldGUI.gui.tgtOFld);
 							((OCardBase)FieldGUI.gui.tgtOFld.parent).fldList.remove(FieldGUI.gui.tgtOFld);
 							if(FieldGUI.gui.tgtOFld.getComponent()!=null){
@@ -1170,7 +1167,7 @@ class GMenuBrowse implements ActionListener {
 		        	}
         			OField fld = new OField(cdbase, newid);
 				    try {
-				    	//clipoptionƒGƒŒƒƒ“ƒg‚ğ“Ç‚İo‚·
+				    	//clipoptionã‚¨ãƒ¬ãƒ¡ãƒ³ãƒˆã‚’èª­ã¿å‡ºã™
 				    	String fontname = "";
 				    	String text = "";
 				    	while (reader.hasNext()) {
@@ -1251,7 +1248,7 @@ class GMenuBrowse implements ActionListener {
 				PCARD.pc.setTitle(titleName);
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Open Stackc")){
+		else if(cmd.equalsIgnoreCase("Open Stackâ€¦")){
 			/*FileDialog fd = new FileDialog(PCARD.pc , PCARD.pc.intl.getDialogText("Open Stack") , FileDialog.LOAD);
 			fd.setVisible(true);
 			if(fd.getFile()!=null){
@@ -1276,19 +1273,19 @@ class GMenuBrowse implements ActionListener {
 					//ok
 				}
 				else if(parentpath.length()>5 && parentpath.substring(parentpath.length()-4).equals(".hzb")){
-					// .hzb‚Ì’†‚É‚ ‚éƒtƒ@ƒCƒ‹‚ğŠJ‚­‚Æe‚ªŠJ‚­‚æ‚¤‚É‚·‚é
+					// .hzbã®ä¸­ã«ã‚ã‚‹ãƒ•ã‚¡ã‚¤ãƒ«ã‚’é–‹ãã¨è¦ªãŒé–‹ãã‚ˆã†ã«ã™ã‚‹
 					path = parentpath;
 				}
 				
 				TTalk.CallMessage("open stack \""+path+"\"", "", null, false, true);
 			}
 		}
-		else if(cmd.equalsIgnoreCase("New Stackc")){
+		else if(cmd.equalsIgnoreCase("New Stackâ€¦")){
 			/*FileDialog fd = new FileDialog(PCARD.pc , PCARD.pc.intl.getDialogText("New Stack") , FileDialog.SAVE);
 			fd.setVisible(true);
 			if(fd.getFile()!=null){
 				String path = fd.getDirectory()+fd.getFile();*/
-			//MacOSX‚Ì•W€ƒtƒ@ƒCƒ‹ƒ_ƒCƒAƒƒO‚ª–³—p‚Èã‘‚«Šm”F‚È‚Ç‚·‚é‚Ì‚Å©ì‚·‚é
+			//MacOSXã®æ¨™æº–ãƒ•ã‚¡ã‚¤ãƒ«ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ãŒç„¡ç”¨ãªä¸Šæ›¸ãç¢ºèªãªã©ã™ã‚‹ã®ã§è‡ªä½œã™ã‚‹
 			JFileChooser chooser = new JFileChooser();
 			if(PCARD.pc.stack!=null&&PCARD.pc.stack.file!=null){
 				chooser.setCurrentDirectory(new File(new File(PCARD.pc.stack.file.getParent()).getParent()));
@@ -1298,7 +1295,7 @@ class GMenuBrowse implements ActionListener {
 			chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 			chooser.setFileFilter(new FileFilter() {
 				public boolean accept(File f) {
-					//Šg’£q‚ªhzb‚Ì‚à‚Ì‚Í”ñ•\¦
+					//æ‹¡å¼µå­ãŒhzbã®ã‚‚ã®ã¯éè¡¨ç¤º
 					String name = f.getName();
 					int n = name.lastIndexOf('.');
 					if (n > 0) {
@@ -1320,7 +1317,7 @@ class GMenuBrowse implements ActionListener {
 			
 			int selected = chooser.showSaveDialog(PCARD.pc);
 			if (selected == JFileChooser.APPROVE_OPTION) {
-		    	//i’»•\¦‚ğŠJn
+		    	//é€²æ—è¡¨ç¤ºã‚’é–‹å§‹
 				PCARD.pc.stack.barDialog = new JDialog(PCARD.pc);
 				PCARD.pc.stack.barDialog.setUndecorated(true);
 				PCARD.pc.stack.barDialog.getContentPane().setLayout(new BorderLayout());
@@ -1338,7 +1335,7 @@ class GMenuBrowse implements ActionListener {
 				
 				String path = chooser.getSelectedFile().getPath();
 				
-				//Šg’£q hzb ‚ğ•t‚¯‚é
+				//æ‹¡å¼µå­ hzb ã‚’ä»˜ã‘ã‚‹
 				int n = path.lastIndexOf('.');
 				if (n > 0) {
 					String ext = path.substring(n);
@@ -1351,7 +1348,7 @@ class GMenuBrowse implements ActionListener {
 				
 				File f = new File(path);
 				if(f.exists()){
-					//ã‘‚«Šm”F
+					//ä¸Šæ›¸ãç¢ºèª
 		    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("This file name already exists. If you continue, the existing file will be replaced."),
 		    				null,PCARDFrame.pc.intl.getDialogText("Cancel"),"OK",null);
 					if(GDialog.clicked.equals(PCARDFrame.pc.intl.getDialogText("Cancel"))){
@@ -1373,14 +1370,14 @@ class GMenuBrowse implements ActionListener {
 				
 				PCARD.pc.setTitle("");
 				
-				if(f.mkdir()){ //ƒfƒBƒŒƒNƒgƒŠì¬
+				if(f.mkdir()){ //ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªä½œæˆ
 					PCARD.pc.stack.bar.setValue(10);
 					PCARD.pc.stack.bar.paintImmediately(PCARD.pc.stack.bar.getBounds());
 					
 					String xmlFilePath = f.getPath()+File.separatorChar+"_stack.xml";
 					File xmlFile = new File(xmlFilePath);
 					
-					//ƒXƒ^ƒbƒN‚ÌƒCƒ“ƒXƒ^ƒ“ƒX‚ğì¬
+					//ã‚¹ã‚¿ãƒƒã‚¯ã®ã‚¤ãƒ³ã‚¹ã‚¿ãƒ³ã‚¹ã‚’ä½œæˆ
 					OStack newStack = new OStack(PCARD.pc);
 					newStack.file = xmlFile;
 					newStack.rsrc = new Rsrc(newStack);
@@ -1388,7 +1385,7 @@ class GMenuBrowse implements ActionListener {
 					newStack.width = 640;
 					newStack.height = 480;
 					
-					//ƒJ[ƒh‚ÆƒoƒbƒNƒOƒ‰ƒEƒ“ƒh‚ÌƒCƒ“ƒXƒ^ƒ“ƒX‚ğì¬
+					//ã‚«ãƒ¼ãƒ‰ã¨ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ã®ã‚¤ãƒ³ã‚¹ã‚¿ãƒ³ã‚¹ã‚’ä½œæˆ
 					OCard cd = new OCard(newStack);
 					OBackground bg = new OBackground(newStack);
 
@@ -1435,7 +1432,7 @@ class GMenuBrowse implements ActionListener {
 					PCARD.pc.stack.bar.setValue(50);
 					PCARD.pc.stack.bar.paintImmediately(PCARD.pc.stack.bar.getBounds());
 					
-					//XML‘‚«‚İ
+					//XMLæ›¸ãè¾¼ã¿
 					XMLwrite xmlWrite = new XMLwrite(newStack);
 					xmlWrite.saveStackNow();
 					try {
@@ -1451,7 +1448,7 @@ class GMenuBrowse implements ActionListener {
 					PCARD.pc.stack.barDialog.remove(PCARD.pc.stack.bar);
 					PCARD.pc.stack.barDialog.dispose();
 					
-					//XML‚ğŠJ‚­
+					//XMLã‚’é–‹ã
 					TTalk.CallMessage("open stack \""+f.getPath()+"\"", "", null, false, true);
 					
 				}
@@ -1464,7 +1461,7 @@ class GMenuBrowse implements ActionListener {
 		else if(cmd.equalsIgnoreCase("New Card")){
 			if(PCARD.pc.stack.curCard==null) return;
 			
-			//ƒJ[ƒh‚ÌƒCƒ“ƒXƒ^ƒ“ƒX‚ğì¬
+			//ã‚«ãƒ¼ãƒ‰ã®ã‚¤ãƒ³ã‚¹ã‚¿ãƒ³ã‚¹ã‚’ä½œæˆ
 			OCard cd = new OCard(PCARD.pc.stack);
 
 			cd.id = (int)(Math.random()*100+1+PCARD.pc.stack.GetMaxCardId());
@@ -1477,13 +1474,13 @@ class GMenuBrowse implements ActionListener {
 		else if(cmd.equalsIgnoreCase("New Background")){
 			if(PCARD.pc.stack.curCard==null) return;
 			
-			//ƒoƒbƒNƒOƒ‰ƒEƒ“ƒh‚ÌƒCƒ“ƒXƒ^ƒ“ƒX‚ğì¬
+			//ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ã®ã‚¤ãƒ³ã‚¹ã‚¿ãƒ³ã‚¹ã‚’ä½œæˆ
 			OBackground bg = new OBackground(PCARD.pc.stack);
 			bg.id = (int)(Math.random()*100+1+PCARD.pc.stack.GetMaxCardId());
 			bg.changed = true;
 			PCARD.pc.stack.AddNewBg(bg);
 			
-			//ƒJ[ƒh‚ÌƒCƒ“ƒXƒ^ƒ“ƒX‚ğì¬
+			//ã‚«ãƒ¼ãƒ‰ã®ã‚¤ãƒ³ã‚¹ã‚¿ãƒ³ã‚¹ã‚’ä½œæˆ
 			OCard cd = new OCard(PCARD.pc.stack);
 			cd.id = (int)(Math.random()*100+1+PCARD.pc.stack.GetMaxCardId());
 			cd.bgid = bg.id;
@@ -1504,19 +1501,19 @@ class GMenuBrowse implements ActionListener {
 					if(i>0){
 						previd = PCARD.pc.stack.cardIdList.get(i-1);
 					}else{
-						//Å‰‚ÌƒJ[ƒh‚Ìê‡
+						//æœ€åˆã®ã‚«ãƒ¼ãƒ‰ã®å ´åˆ
 						previd = PCARD.pc.stack.cardIdList.get(i+1);
 						PCARD.pc.stack.firstCard = previd;
 						PCARD.pc.stack.firstBg = PCARD.pc.stack.GetCardbyId(previd).bgid;
 					}
-					//ƒJ[ƒhíœ
+					//ã‚«ãƒ¼ãƒ‰å‰Šé™¤
 					PCARD.pc.stack.cardIdList.remove(i);
 					
 				}
 			}
 			for(int i=0; i<PCARD.pc.stack.cdCacheList.size(); i++){
 				if(PCARD.pc.stack.cdCacheList.get(i).id == PCARD.pc.stack.curCard.id){
-					//ƒJ[ƒhíœ
+					//ã‚«ãƒ¼ãƒ‰å‰Šé™¤
 					PCARD.pc.stack.cdCacheList.remove(i);
 				}
 			}
@@ -1529,7 +1526,7 @@ class GMenuBrowse implements ActionListener {
 				}
 			}
 			if(!useBg){
-				//bgQÆ”‚ª0‚È‚Ì‚Åíœ‚·‚é
+				//bgå‚ç…§æ•°ãŒ0ãªã®ã§å‰Šé™¤ã™ã‚‹
 				for(int j=0; j<PCARD.pc.stack.bgCacheList.size(); j++){
 					if(PCARD.pc.stack.bgCacheList.get(j).id==bgid){
 						PCARD.pc.stack.bgCacheList.remove(j);
@@ -1542,13 +1539,13 @@ class GMenuBrowse implements ActionListener {
 				TTalk.CallMessage("go cd id "+previd, "", null, false, true);
 			}
 		}
-		else if(cmd.equalsIgnoreCase("Iconc")){
+		else if(cmd.equalsIgnoreCase("Iconâ€¦")){
 			new ResEdit(PCARD.pc, "icon", null);
 		}
-		else if(cmd.equalsIgnoreCase("Soundc")){
+		else if(cmd.equalsIgnoreCase("Soundâ€¦")){
 			new ResEdit(PCARD.pc, "sound", null);
 		}
-		else if(cmd.equalsIgnoreCase("Resourcec")){
+		else if(cmd.equalsIgnoreCase("Resourceâ€¦")){
 			new ResEditIndex(PCARD.pc);
 		}
 		else if(cmd.equalsIgnoreCase("Clear This Menu")){
@@ -1575,7 +1572,7 @@ class GMenuBrowse implements ActionListener {
 				}
 				TTalk.doScriptforMenu("closeStack");
 	
-				//ƒXƒ^ƒbƒN•Û‘¶‘Ò‚¿
+				//ã‚¹ã‚¿ãƒƒã‚¯ä¿å­˜å¾…ã¡
 				for(int j=0; j<100; j++){
 					boolean flag = false;
 					if(PCARD.pc.stack.changed){
@@ -1603,7 +1600,7 @@ class GMenuBrowse implements ActionListener {
 				}
 			}
 			
-			//I—¹
+			//çµ‚äº†
 			System.exit(0);
 		}
 		else{
@@ -1613,7 +1610,7 @@ class GMenuBrowse implements ActionListener {
 			    	return;
 				}
 			}
-			//‚Ç‚Ìƒƒjƒ…[‚É‚àˆê’v‚µ‚È‚¢
+			//ã©ã®ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã«ã‚‚ä¸€è‡´ã—ãªã„
 			{
 				GMenuPaint.doMenu(cmd);
 			}

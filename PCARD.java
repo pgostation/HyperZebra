@@ -51,7 +51,7 @@ class PCARDFrame extends JFrame {
 	int blendMode;
 	int blendLevel = 100;
 	
-	//ƒyƒCƒ“ƒg
+	//ãƒšã‚¤ãƒ³ãƒˆ
 	BufferedImage mainImg;
 	BufferedImage bgImg;
 	BufferedImage undoBuf;
@@ -103,13 +103,13 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	static String AppName = "HyperZebra";
 	
 	static String version="3.0";
-	static String longVersion="3.0a3";
+	static String longVersion="3.0a5";
 	GMenu menu;
 	GMenu paintMenu;
 	GMsg msg;
 	International intl;
 	String lang;
-	static boolean useDoubleBuffer = true;//ƒoƒbƒtƒ@‚ğƒIƒt‚É‚µ‚Äƒƒ‚ƒŠß–ñ‚Å‚«‚éH
+	static boolean useDoubleBuffer = true;//ãƒãƒƒãƒ•ã‚¡ã‚’ã‚ªãƒ•ã«ã—ã¦ãƒ¡ãƒ¢ãƒªç¯€ç´„ã§ãã‚‹ï¼Ÿ
 	Pidle pidle;
 	PaintIdle paidle;
 	DropTarget drop;
@@ -117,12 +117,12 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	GToolBar toolbar;
 	
 	
-    //ƒvƒƒpƒeƒB
+    //ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
     static boolean lockedScreen=false;
     static int visual=0;
     static int toVisual=0; /* to black1 white2 grey3 inverse4 */
     static int visSpd=3; /* very fast1 fast2 normal3 slow4 veryslow5 */
-    static int editMode = 0; //0:ƒuƒ‰ƒEƒWƒ“ƒO  1:ƒAƒEƒgƒ‰ƒCƒ“‹­’²
+    static int editMode = 0; //0:ãƒ–ãƒ©ã‚¦ã‚¸ãƒ³ã‚°  1:ã‚¢ã‚¦ãƒˆãƒ©ã‚¤ãƒ³å¼·èª¿
     static String scriptFont = "";
     static int scriptFontSize = 12;
     static int userLevel = 5;
@@ -144,7 +144,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 			pc.lang = "English";
 		}
 
-        // ƒEƒBƒ“ƒhƒEƒAƒCƒRƒ“‚Ìİ’è
+        // ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ã‚¢ã‚¤ã‚³ãƒ³ã®è¨­å®š
 		try {
 			Image icon = ImageIO.read(new File("."+File.separatorChar+"resource"+File.separatorChar+"icon.png"));
 	        pc.setIconImage(icon);
@@ -160,7 +160,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
     	pc.setLayout(new BorderLayout());
     	pc.mainPane = new MyPanel(pc);
     	pc.mainPane.setDoubleBuffered(useDoubleBuffer);
-    	//pc.setContentPane(pc.mainPane/*, BorderLayout.CENTER*/);//‚±‚¤‚·‚é‚Æƒc[ƒ‹ƒo[‚ª‚¨‚©‚µ‚­‚È‚é
+    	//pc.setContentPane(pc.mainPane/*, BorderLayout.CENTER*/);//ã“ã†ã™ã‚‹ã¨ãƒ„ãƒ¼ãƒ«ãƒãƒ¼ãŒãŠã‹ã—ããªã‚‹
     	pc.add(pc.mainPane, BorderLayout.CENTER);
     	
 		Cursor cr = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR);
@@ -191,7 +191,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		pc.setJMenuBar(menubar);
 		GMenu.menuUpdate(PCARD.pc.menu.mb);
 
-		TTalk.talk = new TTalk(); //TTalk‚ªˆÙíI—¹‚µ‚½‚Æ‚«‚Ì‚½‚ß‚ÉGUI.java‚ÉƒXƒŒƒbƒhÄ‹N“®ˆ—‚ ‚è
+		TTalk.talk = new TTalk(); //TTalkãŒç•°å¸¸çµ‚äº†ã—ãŸã¨ãã®ãŸã‚ã«GUI.javaã«ã‚¹ãƒ¬ãƒƒãƒ‰å†èµ·å‹•å‡¦ç†ã‚ã‚Š
 		TTalk.talk.start();
 		
 		String homepath = "./home";
@@ -222,7 +222,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 
     	HyperZebra.installMacHandler();
     	
-    	//idleˆ—
+    	//idleå‡¦ç†
     	pc.pidle = new Pidle();
     	pc.pidle.start();
     	
@@ -241,12 +241,12 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
     	PaintTool.owner = PCARDFrame.pc;
     	PCARDFrame.pc.stack.buildStackFile(false);
 
-    	//Å‹ßg‚Á‚½ƒXƒ^ƒbƒN‚É’Ç‰Á
+    	//æœ€è¿‘ä½¿ã£ãŸã‚¹ã‚¿ãƒƒã‚¯ã«è¿½åŠ 
     	if(PCARDFrame.pc.stack.path.startsWith("./home")){
     		return;
     	}
     	
-    	//‚Ü‚¸“Ç‚İ‚İ
+    	//ã¾ãšèª­ã¿è¾¼ã¿
     	File recentFile = new File("resource_trash"+File.separatorChar+"recent.txt");
     	String[] recents = new String[1];
     	if(recentFile.exists()){
@@ -267,7 +267,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 			}
     	}
     	
-    	//Å‰‚Ìs‚É’Ç‰Á
+    	//æœ€åˆã®è¡Œã«è¿½åŠ 
     	String path = PCARDFrame.pc.stack.path;
     	if(new File(path).getName().equals("_stack.xml") ||
     			new File(path).getName().equals("toc.xml")){
@@ -275,7 +275,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
     	}
     	recents[0] = path;
 
-    	//ƒtƒ@ƒCƒ‹‚É‘‚«o‚µ
+    	//ãƒ•ã‚¡ã‚¤ãƒ«ã«æ›¸ãå‡ºã—
     	{
     		FileOutputStream fos = null;
     		try {
@@ -410,10 +410,10 @@ class Pidle extends Thread {
 					}
 				}
 				GUI.keyEventCheck();
-				//PCARD.pc.stack.pcard.requestFocusInWindow(); //‚±‚ê‚·‚é‚ÆƒtƒB[ƒ‹ƒh‚É•¶š‘Å‚Ä‚È‚­‚È‚é
+				//PCARD.pc.stack.pcard.requestFocusInWindow(); //ã“ã‚Œã™ã‚‹ã¨ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã«æ–‡å­—æ‰“ã¦ãªããªã‚‹
 			}
 			try{
-				sleep(100);//1000msec‚É10‰ñ
+				sleep(100);//1000msecã«10å›
 			} catch (InterruptedException e) {
 		          Thread.currentThread().interrupt();
 			}

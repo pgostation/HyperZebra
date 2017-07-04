@@ -26,7 +26,7 @@ class CPButton extends JButton {
 	private static final long serialVersionUID = 1L;
 
     static CPButtonListener listener = new CPButtonListener();
-	JPopupMenu popup = new JPopupMenu(); // ƒ|ƒbƒvƒAƒbƒvƒƒjƒ…[‚ğ¶¬
+	JPopupMenu popup = new JPopupMenu(); // ãƒãƒƒãƒ—ã‚¢ãƒƒãƒ—ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’ç”Ÿæˆ
     Color color;
 	
 	CPButton(Color in_color, int y, int x, boolean isback){
@@ -60,7 +60,7 @@ class CPButton extends JButton {
         }
 	}
 
-	// ƒƒjƒ…[€–Ú‚ğ’Ç‰Á
+	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼é …ç›®ã‚’è¿½åŠ 
 	private JMenuItem addPopupMenuItem(String name, ActionListener al){
 		JMenuItem item = new JMenuItem(name);
 		item.addActionListener(al);
@@ -84,7 +84,7 @@ class CPButton extends JButton {
 		this.setIcon(new ImageIcon(bi));
 	}
 	
-	//paintComponent‚ğƒI[ƒo[ƒ‰ƒCƒh‚·‚é‚Æ•\¦‚ª•ö‚ê‚é
+	//paintComponentã‚’ã‚ªãƒ¼ãƒãƒ¼ãƒ©ã‚¤ãƒ‰ã™ã‚‹ã¨è¡¨ç¤ºãŒå´©ã‚Œã‚‹
     /*@Override
     protected void paintComponent(Graphics g) {
     }*/
@@ -163,7 +163,7 @@ class GradButton extends JButton {
 	private static final long serialVersionUID = 1L;
 
     static GradButtonListener listener = new GradButtonListener();
-	JPopupMenu popup = new JPopupMenu(); // ƒ|ƒbƒvƒAƒbƒvƒƒjƒ…[‚ğ¶¬
+	JPopupMenu popup = new JPopupMenu(); // ãƒãƒƒãƒ—ã‚¢ãƒƒãƒ—ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’ç”Ÿæˆ
     Color color1;
     Color color2;
     double angle;
@@ -201,7 +201,7 @@ class GradButton extends JButton {
         }
 	}
 	
-	// ƒƒjƒ…[€–Ú‚ğ’Ç‰Á
+	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼é …ç›®ã‚’è¿½åŠ 
 	private JMenuItem addPopupMenuItem(String name, ActionListener al){
 		JMenuItem item = new JMenuItem(name);
 		item.addActionListener(al);
@@ -222,7 +222,7 @@ class GradButton extends JButton {
 		}
 	}
 	
-	//paintComponent‚ğƒI[ƒo[ƒ‰ƒCƒh‚·‚é‚Æ•\¦‚ª•ö‚ê‚é
+	//paintComponentã‚’ã‚ªãƒ¼ãƒãƒ¼ãƒ©ã‚¤ãƒ‰ã™ã‚‹ã¨è¡¨ç¤ºãŒå´©ã‚Œã‚‹
     /*@Override
     protected void paintComponent(Graphics g) {
     }*/
@@ -272,7 +272,7 @@ class PatButton extends JButton {
 	private static final long serialVersionUID = 1L;
 
     static PatButtonListener listener = new PatButtonListener();
-	JPopupMenu popup = new JPopupMenu(); // ƒ|ƒbƒvƒAƒbƒvƒƒjƒ…[‚ğ¶¬
+	JPopupMenu popup = new JPopupMenu(); // ãƒãƒƒãƒ—ã‚¢ãƒƒãƒ—ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’ç”Ÿæˆ
     int pattern;
 	BufferedImage[] patterns = new BufferedImage[40];
 	
@@ -331,7 +331,7 @@ class PatButton extends JButton {
         			icon = new ImageIcon(patterns[i]);
         		}
         		else{
-    				//ƒpƒ^[ƒ“‚ğ./resource/‚©‚çæ‚Á‚Ä‚­‚é
+    				//ãƒ‘ã‚¿ãƒ¼ãƒ³ã‚’./resource/ã‹ã‚‰å–ã£ã¦ãã‚‹
 					String fname = "PAT_"+(i+1)+".png";
 		
 					File ifile = new File("."+File.separatorChar+"resource"+File.separatorChar+fname);
@@ -367,7 +367,7 @@ class PatButton extends JButton {
         }
 	}
 	
-	// ƒƒjƒ…[€–Ú‚ğ’Ç‰Á
+	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼é …ç›®ã‚’è¿½åŠ 
 	private JCheckBoxMenuItem addPopupMenuItem(String name, ImageIcon icon, ActionListener al){
 		JCheckBoxMenuItem item = new JCheckBoxMenuItem(name, icon);
 		item.addActionListener(al);
@@ -409,7 +409,7 @@ class TransButton extends JButton {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	JPopupMenu popup = new JPopupMenu(); // ƒ|ƒbƒvƒAƒbƒvƒƒjƒ…[‚ğ¶¬
+	JPopupMenu popup = new JPopupMenu(); // ãƒãƒƒãƒ—ã‚¢ãƒƒãƒ—ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’ç”Ÿæˆ
 	
 	TransButton(String in_text, int y, int x){
 		super();
@@ -445,7 +445,7 @@ class TransButton extends JButton {
         setFont(new Font("",0,10));
 	}
 	
-	// ƒƒjƒ…[€–Ú‚ğ’Ç‰Á
+	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼é …ç›®ã‚’è¿½åŠ 
 	private JMenuItem addPopupMenuItem(String name, ActionListener al, boolean check){
 		JCheckBoxMenuItem item = new JCheckBoxMenuItem(name);
 		item.addActionListener(al);

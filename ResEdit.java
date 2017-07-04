@@ -80,7 +80,7 @@ public class ResEdit {
 			pc.stack = new OStack(pc);
 		}
 		
-		//ŠeType‚²‚Æ‚ÉŠJ‚¢‚Ä‘I‘ğ‚·‚é
+		//å„Typeã”ã¨ã«é–‹ã„ã¦é¸æŠã™ã‚‹
 		if(type.equals("icon") || type.equals("cicn") || type.equals("picture") || type.equals("cursor")){
 			child = new IconTypeEditor(pc, type, object);
 		}
@@ -156,7 +156,7 @@ class ResTypeEditor extends JFrame {
 			scrollpane.setViewportView(contpane);
 		}
 		
-		//ƒAƒCƒRƒ“‘I‘ğƒ_ƒCƒAƒƒO‚Ì‚Æ‚«‚Íok button‚ğ•\¦
+		//ã‚¢ã‚¤ã‚³ãƒ³é¸æŠãƒ€ã‚¤ã‚¢ãƒ­ã‚°ã®ã¨ãã¯ok buttonã‚’è¡¨ç¤º
 		if(object!=null){
 			JPanel okPanel = new JPanel();
 			okPanel.setLayout(new FlowLayout());
@@ -185,7 +185,7 @@ class ResTypeEditor extends JFrame {
 		}
 		
 		if(object==null){
-			//ƒŠƒ\[ƒX‚ğƒ\[ƒg‚µ‚ÄƒŠƒXƒg‚É•Û‘¶
+			//ãƒªã‚½ãƒ¼ã‚¹ã‚’ã‚½ãƒ¼ãƒˆã—ã¦ãƒªã‚¹ãƒˆã«ä¿å­˜
 			int number = pc.stack.rsrc.getRsrcCount(type);
 			
 			rsrcAry = new Rsrc.rsrcClass[number];
@@ -195,7 +195,7 @@ class ResTypeEditor extends JFrame {
 			}
 			Arrays.sort(rsrcAry, new DataComparator());
 		}else{
-			//ƒŠƒ\[ƒX‚ğƒ\[ƒg‚µ‚ÄƒŠƒXƒg‚É•Û‘¶
+			//ãƒªã‚½ãƒ¼ã‚¹ã‚’ã‚½ãƒ¼ãƒˆã—ã¦ãƒªã‚¹ãƒˆã«ä¿å­˜
 			int number = pc.stack.rsrc.getRsrcCount(type);
 			int numberall = pc.stack.rsrc.getRsrcCountAll(type);
 			
@@ -360,7 +360,7 @@ class IconTypeEditor extends ResTypeEditor {
 			}
 			iconlabel.setHorizontalAlignment(SwingConstants.CENTER);
 			iconlabel.addMouseListener(listener);
-			//icon‚Í‚·‚×‚Ä“Ç‚İ‚ß‚È‚¢‚Ì‚ÅŒã‚Å•\¦‚·‚é
+			//iconã¯ã™ã¹ã¦èª­ã¿è¾¼ã‚ãªã„ã®ã§å¾Œã§è¡¨ç¤ºã™ã‚‹
 			panel.add("North", iconlabel);
 			
 			JLabel label = new JLabel(rsrc.id+" "+rsrc.name);
@@ -451,7 +451,7 @@ class IconTypeEditor extends ResTypeEditor {
 				int h = 110;
 				if(bi!=null && (bi.getWidth()<=w && bi.getHeight()<=h))
 				{
-					//‚»‚Ì‚Ü‚Ü‚Ì‘å‚«‚³
+					//ãã®ã¾ã¾ã®å¤§ãã•
 					//String filename = pcard.stack.rsrc.getFileName(Integer.valueOf(this.getName()), "icon");
 					//String path = pcard.stack.file.getParent()+File.separatorChar+filename;
 					setIcon(new ImageIcon(bi));
@@ -461,7 +461,7 @@ class IconTypeEditor extends ResTypeEditor {
 	    	    	return;
 		    	}
 				if(bi!=null && (bi.getWidth()>w || bi.getHeight()>h)){
-					//k¬•\¦
+					//ç¸®å°è¡¨ç¤º
 					float rate = (float)w/bi.getWidth();
 					if((float)h/bi.getHeight() < rate){
 						rate = (float)h/bi.getHeight();
@@ -469,7 +469,7 @@ class IconTypeEditor extends ResTypeEditor {
 					int nw = (int)(rate * bi.getWidth());
 					int nh = (int)(rate * bi.getHeight());
 					
-					//3”{‚Ì‘å‚«‚³‚Ì‰æ‘œ‚à—pˆÓ
+					//3å€ã®å¤§ãã•ã®ç”»åƒã‚‚ç”¨æ„
 					if(bi.getWidth()>nw*3){
 						this.bi = new BufferedImage(nw*3,nh*3,BufferedImage.TYPE_INT_ARGB);
 						Graphics2D g1 = (Graphics2D)this.bi.getGraphics();
@@ -484,7 +484,7 @@ class IconTypeEditor extends ResTypeEditor {
 					bi.flush();
 					bi = newbi;
 
-					//Œã‚©‚ç‚‰æ¿‚É‚·‚é
+					//å¾Œã‹ã‚‰é«˜ç”»è³ªã«ã™ã‚‹
 					if(updateThread==null || !updateThread.isAlive()){
 						updateThread = new lateUpdateThread();
 						updateThread.setButton(this);
@@ -523,7 +523,7 @@ class IconTypeEditor extends ResTypeEditor {
 		}
 		
 		public void run(){
-			//‚‰æ¿‚É‚·‚é
+			//é«˜ç”»è³ªã«ã™ã‚‹
 			setPriority(MIN_PRIORITY);
 
 			try{
@@ -541,7 +541,7 @@ class IconTypeEditor extends ResTypeEditor {
 			        this.interrupt();
 				}
 				
-				//‰æ–Êã‚ÉŒ©‚¦‚Ä‚¢‚é‚©H
+				//ç”»é¢ä¸Šã«è¦‹ãˆã¦ã„ã‚‹ã‹ï¼Ÿ
 				int top = button.owner.scrollpane.getVerticalScrollBar().getValue();
 				int bottom = top + button.owner.scrollpane.getHeight();
 				if(button.getParent().getBounds().y + button.getBounds().height > top &&
@@ -556,7 +556,7 @@ class IconTypeEditor extends ResTypeEditor {
 					}
 					int nw = (int)(rate * bi.getWidth());
 					int nh = (int)(rate * bi.getHeight());
-					//‚»‚±‚©‚ç‚«‚ê‚¢‚Ék¬
+					//ãã“ã‹ã‚‰ãã‚Œã„ã«ç¸®å°
 					Image img = bi.getScaledInstance(nw, -1, Image.SCALE_AREA_AVERAGING );
 					BufferedImage newbi = new BufferedImage(nw,nh,BufferedImage.TYPE_INT_ARGB);
 					Graphics2D g2 = (Graphics2D)newbi.getGraphics();
@@ -579,12 +579,12 @@ class IconTypeEditor extends ResTypeEditor {
 		@Override
 		public void mouseClicked(MouseEvent e) {
         	if (e.getClickCount() >= 2){
-        		//ƒ_ƒuƒ‹ƒNƒŠƒbƒN
+        		//ãƒ€ãƒ–ãƒ«ã‚¯ãƒªãƒƒã‚¯
         		if(pcard.stack.rsrc.rsrcIdMap.containsKey(type+editor.selectedId[0])){
-        			//ŠJ‚­
+        			//é–‹ã
         			new IconEditor(editor, pcard.stack.rsrc, type, editor.selectedId[0]);
         		}else{
-        			//‚±‚ÌƒXƒ^ƒbƒN‚ÌƒŠƒ\[ƒX‚Å‚È‚¢ê‡‚ÍƒRƒs[‚ğì‚é‚©q‚Ë‚é
+        			//ã“ã®ã‚¹ã‚¿ãƒƒã‚¯ã®ãƒªã‚½ãƒ¼ã‚¹ã§ãªã„å ´åˆã¯ã‚³ãƒ”ãƒ¼ã‚’ä½œã‚‹ã‹å°‹ã­ã‚‹
         			new GDialog(editor, PCARD.pc.intl.getDialogText("This resource is not in this stack. Make a copy?"), null, "Cancel", "OK", null);
         			if(GDialog.clicked.equals("OK")){
         				Rsrc.rsrcClass r = pcard.stack.rsrc.getResourceAll(editor.selectedId[0], type);
@@ -632,19 +632,19 @@ class IconTypeEditor extends ResTypeEditor {
     		IconButton btn = (IconButton)e.getSource();
     		IconTypeEditor editor = (IconTypeEditor)(btn.getRootPane().getParent());
   		  	if((e.getModifiersEx() & InputEvent.SHIFT_DOWN_MASK) != 0){
-    			//”ÍˆÍ‘I‘ğ
+    			//ç¯„å›²é¸æŠ
     			int selectid = Integer.valueOf(btn.getName());
     			int lastselectid = editor.selectedId[0];
     			int allnumber = rsrcAry.length;
     			for(int i=0; i<allnumber; i++){
     				Rsrc.rsrcClass rsrc = rsrcAry[i];
     				if((rsrc.id<=selectid) != (rsrc.id<=lastselectid)){
-    					//ˆê‚Â‚¸‚Â’Ç‰Á
+    					//ä¸€ã¤ãšã¤è¿½åŠ 
     	    			IconButton[] newSelectedButton = new IconButton[editor.selectedButton.length+1];
     		    		int[] newSelectedId = new int[editor.selectedButton.length+1];
     		    		System.arraycopy(editor.selectedButton, 0, newSelectedButton, 1, editor.selectedButton.length);
     		    		System.arraycopy(editor.selectedId, 0, newSelectedId, 1, editor.selectedButton.length);
-    		    		//ƒ{ƒ^ƒ“‚ğ’T‚·
+    		    		//ãƒœã‚¿ãƒ³ã‚’æ¢ã™
     		    		for(int j=0; j<contpane.getComponentCount(); j++){
     		    			JPanel panel = (JPanel)contpane.getComponent(i);
     		    			IconButton iconbutton = (IconButton)panel.getComponent(0);
@@ -662,7 +662,7 @@ class IconTypeEditor extends ResTypeEditor {
     		}
   		  	else if(((e.getModifiersEx() & InputEvent.META_DOWN_MASK) != 0) || 
   		  			((e.getModifiersEx() & InputEvent.CTRL_DOWN_MASK) != 0)){
-    			//’Ç‰Á‘I‘ğ
+    			//è¿½åŠ é¸æŠ
     			IconButton[] newSelectedButton = new IconButton[editor.selectedButton.length+1];
 	    		int[] newSelectedId = new int[editor.selectedButton.length+1];
 	    		System.arraycopy(editor.selectedButton, 0, newSelectedButton, 1, editor.selectedButton.length);
@@ -674,7 +674,7 @@ class IconTypeEditor extends ResTypeEditor {
 	    		((IconButton)(e.getSource())).setBorder(getSelectedBorder(96,96,128));
     		}
     		else{
-    			//ˆê‚Â‘I‘ğ
+    			//ä¸€ã¤é¸æŠ
 	    		if(editor.selectedButton!=null){
 	    			for(int i=0; i<editor.selectedButton.length; i++){
 	    				if(editor.selectedButton[i]!=null){
@@ -802,7 +802,7 @@ class IconTypeEditor extends ResTypeEditor {
 							if(pcard.stack.file!=null){ 
 								iconid = pcard.stack.rsrc.getNewResourceId(type, baseid);
 								
-								//ƒtƒ@ƒCƒ‹‚ğƒRƒs[
+								//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚³ãƒ”ãƒ¼
 								if(type.equals("icon")){
 									newFileName = "ICON_"+iconid+ext;
 								}else if(type.equals("cicn")){
@@ -815,9 +815,11 @@ class IconTypeEditor extends ResTypeEditor {
 									System.out.println("unknown resource type");
 								}
 								String newFilePath = pcard.stack.file.getParent()+File.separatorChar+newFileName;
-								FileChannel srcChannel = new FileInputStream(path).getChannel();
-								FileChannel destChannel = new FileOutputStream(newFilePath).getChannel();
+								FileChannel srcChannel = null;
+								FileChannel destChannel = null;
 								try {
+									srcChannel = new FileInputStream(path).getChannel();
+									destChannel = new FileOutputStream(newFilePath).getChannel();
 									srcChannel.transferTo(0, srcChannel.size(), destChannel);
 								} finally {
 									srcChannel.close();
@@ -828,7 +830,7 @@ class IconTypeEditor extends ResTypeEditor {
 								iconid = pcard.stack.rsrc.getNewResourceId(type,1);
 								newFileName = path;
 							}
-							//ƒŠƒ\[ƒX‚É’Ç‰Á
+							//ãƒªã‚½ãƒ¼ã‚¹ã«è¿½åŠ 
 							pcard.stack.rsrc.addResource(iconid, type, name, newFileName);
 						
 							editor.selectedId[j] = iconid;
@@ -839,7 +841,7 @@ class IconTypeEditor extends ResTypeEditor {
 							new GDialog(editor, str,null,"OK",null,null);
 				    	}
 					}
-					//ŠJ‚«’¼‚·
+					//é–‹ãç›´ã™
 					editor.open(pcard, 0);
 				}
 			} catch (Exception ex) {
@@ -883,7 +885,7 @@ class OtherTypeEditor extends ResTypeEditor {
 		int number = rsrcAry.length;
 		setTitle(type+"("+number+")");
 
-	    //ƒe[ƒuƒ‹‚ğ—pˆÓ
+	    //ãƒ†ãƒ¼ãƒ–ãƒ«ã‚’ç”¨æ„
 		String[][] tabledata = new String[number][3];
 			
 		for(int i=0; i<number; i++){
@@ -922,14 +924,13 @@ class REMenu {
 	/**
 	 * 
 	 */
-	private static final long serialVersionUID = 1L;
 	
 	public REMenu(JFrame owner){
 		ActionListener listener=null;
 		
 		listener = new REMenuListener(owner);
 		
-    	// ƒƒjƒ…[ƒo[‚Ìİ’è
+    	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼ãƒãƒ¼ã®è¨­å®š
 		JMenuBar mb=new JMenuBar();
 		owner.setJMenuBar(mb);
 		
@@ -940,7 +941,7 @@ class REMenu {
 			s = InputEvent.META_DOWN_MASK;
 		}
 
-	    // Fileƒƒjƒ…[
+	    // Fileãƒ¡ãƒ‹ãƒ¥ãƒ¼
 	    m=new JMenu(PCARDFrame.pc.intl.getText("File"));
 	    mb.add(m);
 	    
@@ -956,7 +957,7 @@ class REMenu {
 	    }
 	    m.add(mi = new JMenuItem(PCARDFrame.pc.intl.getText("Close")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, s));mi.addActionListener(listener);
 
-	    // Editƒƒjƒ…[
+	    // Editãƒ¡ãƒ‹ãƒ¥ãƒ¼
 	    m=new JMenu(PCARDFrame.pc.intl.getText("Edit"));
 	    mb.add(m);
 	    m.add(mi = new JMenuItem(PCARDFrame.pc.intl.getText("Cut")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_X, s));mi.addActionListener(listener);
@@ -968,7 +969,7 @@ class REMenu {
 	}
 }
 
-//ƒŠƒ\[ƒX•ÒW‚Ìƒƒjƒ…[“®ì
+//ãƒªã‚½ãƒ¼ã‚¹ç·¨é›†ã®ãƒ¡ãƒ‹ãƒ¥ãƒ¼å‹•ä½œ
 class REMenuListener implements ActionListener {
 	ResTypeEditor editor;
 	
@@ -1009,7 +1010,7 @@ class REMenuListener implements ActionListener {
 				newFileName = "dummy";
 				name = "dummy";
 			}
-			//ƒtƒ@ƒCƒ‹‚ğì¬
+			//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ä½œæˆ
 			if(editor.pcard.stack.file==null) return;
 			String newFilePath = editor.pcard.stack.file.getParent()+File.separatorChar+newFileName;
 			File newFile = new File(newFilePath);
@@ -1027,11 +1028,11 @@ class REMenuListener implements ActionListener {
 				System.out.println("unknown resource type..");
 			}
 			
-			//ƒŠƒ\[ƒX‚É’Ç‰Á
+			//ãƒªã‚½ãƒ¼ã‚¹ã«è¿½åŠ 
 			editor.pcard.stack.rsrc.addResource(rsrcid, editor.type, name, newFileName);
 			editor.selectedId = new int[1];
 			editor.selectedId[0] = rsrcid;
-			//ŠJ‚«’¼‚·
+			//é–‹ãç›´ã™
 			editor.open(editor.pcard, 0 );
 		}
 		else if(cmd.equals("Open")){
@@ -1048,7 +1049,7 @@ class REMenuListener implements ActionListener {
 			for(int i=0; i<number; i++){
 				Rsrc.rsrcClass rsrc = editor.rsrcAry[i];
 				if(editor.type.equals("icon")){
-					//ƒ{ƒ^ƒ“‚ğ’T‚·
+					//ãƒœã‚¿ãƒ³ã‚’æ¢ã™
 		    		for(int j=0; j<editor.contpane.getComponentCount(); j++){
 		    			JPanel panel = (JPanel)editor.contpane.getComponent(i);
 		    			IconTypeEditor.IconButton iconbutton = (IconTypeEditor.IconButton)panel.getComponent(0);
@@ -1075,7 +1076,7 @@ class REMenuListener implements ActionListener {
 				String attrStr = "";
 				if(new File("/Developer/Tools/GetFileInfo").exists()){
 					try {
-						//ƒoƒ“ƒhƒ‹‚©‚Ç‚¤‚©
+						//ãƒãƒ³ãƒ‰ãƒ«ã‹ã©ã†ã‹
 						ProcessBuilder pb = new ProcessBuilder("/Developer/Tools/GetFileInfo", getConvertPath(parentPath));
 						Process p = pb.start();
 						p.waitFor();
@@ -1107,7 +1108,7 @@ class REMenuListener implements ActionListener {
 						ProcessBuilder pb1 = new ProcessBuilder("/Developer/Tools/SetFile", "-a", notBundleAttr, "\""+parentPath+"\"");
 						pb1.start();
 					}*/
-					//"-R"‚ÍOSX10.6ˆÈã ƒoƒ“ƒhƒ‹‚Ì’†‚Í‚ ‚ç‚©‚¶‚ßŠJ‚¢‚Ä‚¨‚©‚È‚¢‚Æ•\¦‚Å‚«‚È‚¢
+					//"-R"ã¯OSX10.6ä»¥ä¸Š ãƒãƒ³ãƒ‰ãƒ«ã®ä¸­ã¯ã‚ã‚‰ã‹ã˜ã‚é–‹ã„ã¦ãŠã‹ãªã„ã¨è¡¨ç¤ºã§ããªã„
 					ProcessBuilder pb = new ProcessBuilder("open", "-R", filename);
 					pb.start();
 					/*if(isBundle){
@@ -1121,7 +1122,7 @@ class REMenuListener implements ActionListener {
 		}
 		else if(cmd.equals("Cut") || cmd.equals("Copy")){
 			if(editor.selectedId.length>0){
-		        //ƒtƒ@ƒCƒ‹‚ğƒRƒs[
+		        //ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚³ãƒ”ãƒ¼
 	            for(int i=0; i<editor.selectedId.length; i++)
 	        	{
 	            	Rsrc.rsrcClass rsrc;
@@ -1130,9 +1131,11 @@ class REMenuListener implements ActionListener {
 					String FilePath = editor.pcard.stack.file.getParent()+File.separatorChar+rsrc.filename;
 					String destFilePath = "resource_trash"+File.separatorChar+rsrc.filename;
 					try {
-		    		    FileChannel srcChannel = new FileInputStream(FilePath).getChannel();
-		    		    FileChannel destChannel = new FileOutputStream(destFilePath).getChannel();
+		    		    FileChannel srcChannel = null;
+		    		    FileChannel destChannel = null;
 		    		    try {
+			    		    srcChannel = new FileInputStream(FilePath).getChannel();
+			    		    destChannel = new FileOutputStream(destFilePath).getChannel();
 		    		        srcChannel.transferTo(0, srcChannel.size(), destChannel);
 		    		    } finally {
 		    		        srcChannel.close();
@@ -1145,7 +1148,7 @@ class REMenuListener implements ActionListener {
 					}
 	        	}
 		        
-				//XMLƒeƒLƒXƒg‚ğæ“¾
+				//XMLãƒ†ã‚­ã‚¹ãƒˆã‚’å–å¾—
 				XMLOutputFactory factory = XMLOutputFactory.newInstance();
 		        StringWriter stringWriter = new StringWriter();
 		        try {
@@ -1165,7 +1168,7 @@ class REMenuListener implements ActionListener {
 		            
 			        writer.close();
 			        
-			        //ƒNƒŠƒbƒvƒ{[ƒh‚ÉƒRƒs[(XML)
+			        //ã‚¯ãƒªãƒƒãƒ—ãƒœãƒ¼ãƒ‰ã«ã‚³ãƒ”ãƒ¼(XML)
 			        {
 						Toolkit kit = Toolkit.getDefaultToolkit();
 						Clipboard clip = kit.getSystemClipboard();
@@ -1248,14 +1251,14 @@ class REMenuListener implements ActionListener {
 						        }
 						    }
 					        if(isComplete){
-					        	//ƒŠƒ\[ƒX‚ğ’Ç‰Á
+					        	//ãƒªã‚½ãƒ¼ã‚¹ã‚’è¿½åŠ 
 					        	int id = editor.pcard.stack.rsrc.getNewResourceId(typeStr, origId);
 					        	
-		        				//ƒŠƒ\[ƒX‚Ìƒtƒ@ƒCƒ‹‚àƒRƒs[‚·‚é
+		        				//ãƒªã‚½ãƒ¼ã‚¹ã®ãƒ•ã‚¡ã‚¤ãƒ«ã‚‚ã‚³ãƒ”ãƒ¼ã™ã‚‹
 		        				String srcFilePath = "resource_trash"+File.separatorChar+fnameStr;
 		        				String newFileName = "dummy";
 		        				if(new File(srcFilePath).exists()){
-		            				//ƒtƒ@ƒCƒ‹‚ğƒRƒs[
+		            				//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ã‚³ãƒ”ãƒ¼
 		            				String ext = "";
 		            				if(fnameStr.lastIndexOf(".")>=0){
 										ext = fnameStr.substring(fnameStr.lastIndexOf("."));
@@ -1274,9 +1277,11 @@ class REMenuListener implements ActionListener {
 		            				}
 		    						newFileName = typePrefix+id+ext;
 		    						String newFilePath = editor.pcard.stack.file.getParent()+File.separatorChar+newFileName;
-		    						FileChannel srcChannel = new FileInputStream(srcFilePath).getChannel();
-		    						FileChannel destChannel = new FileOutputStream(newFilePath).getChannel();
+		    						FileChannel srcChannel = null;
+		    						FileChannel destChannel = null;
 		    						try {
+			    						srcChannel = new FileInputStream(srcFilePath).getChannel();
+			    						destChannel = new FileOutputStream(newFilePath).getChannel();
 		    							srcChannel.transferTo(0, srcChannel.size(), destChannel);
 		    						} finally {
 		    							srcChannel.close();
@@ -1284,10 +1289,10 @@ class REMenuListener implements ActionListener {
 		    						}
 		            			}
 		            			else{
-		            				//ƒtƒ@ƒCƒ‹‚ª‚È‚¢
+		            				//ãƒ•ã‚¡ã‚¤ãƒ«ãŒãªã„
 		            			}
 		        				
-		        				//ƒŠƒ\[ƒX‚É’Ç‰Á
+		        				//ãƒªã‚½ãƒ¼ã‚¹ã«è¿½åŠ 
 					        	editor.pcard.stack.rsrc.addResource(id, typeStr, nameStr, newFileName, leftStr, topStr, info);
 					        	
 					        	int[] oldSelId = editor.selectedId;
@@ -1305,7 +1310,7 @@ class REMenuListener implements ActionListener {
 			else if(editor.type.equals("icon")){
 				Image img = GMenuPaint.getClipboardImage();
 				if(img!=null){
-					//‰æ‘œ‚Ìê‡
+					//ç”»åƒã®å ´åˆ
 					
 					String newFileName = "dummy";
 					String name = "dummy";
@@ -1315,7 +1320,7 @@ class REMenuListener implements ActionListener {
 						newFileName = "ICON_"+rsrcid+".png";
 						name = "";
 					}
-					//ƒtƒ@ƒCƒ‹‚ğì¬
+					//ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ä½œæˆ
 					String newFilePath = editor.pcard.stack.file.getParent()+File.separatorChar+newFileName;
 					File newFile = new File(newFilePath);
 					if(editor.type.equals("icon")){
@@ -1326,7 +1331,7 @@ class REMenuListener implements ActionListener {
 						}
 					}
 					
-					//ƒŠƒ\[ƒX‚É’Ç‰Á
+					//ãƒªã‚½ãƒ¼ã‚¹ã«è¿½åŠ 
 					editor.pcard.stack.rsrc.addResource(rsrcid, "icon", name, newFileName);
 					editor.selectedId = new int[1];
 					editor.selectedId[0] = rsrcid;
@@ -1334,24 +1339,24 @@ class REMenuListener implements ActionListener {
 			}
 			
 			editor.scroll = editor.scrollpane.getVerticalScrollBar().getValue();
-			//ŠJ‚«’¼‚·
+			//é–‹ãç›´ã™
 			editor.open(editor.pcard, 0 );
 			OCard.reloadCurrentCard();
 		}
 		
 		if(cmd.equals("Delete") || cmd.equals("Cut")){
-			//íœ
+			//å‰Šé™¤
 			int number = editor.selectedId.length;
 			for(int i=0; i<number; i++){
 				editor.pcard.stack.rsrc.deleteResource(editor.type, editor.selectedId[i]);
 			}
-			//‘I‘ğ‰ğœ
+			//é¸æŠè§£é™¤
 			if(editor.type.equals("icon")){
 				((IconTypeEditor)editor).selectedButton = null;
 			}
 			editor.selectedId = new int[]{0};
 			editor.scroll = editor.scrollpane.getVerticalScrollBar().getValue();
-			//ŠJ‚«’¼‚·
+			//é–‹ãç›´ã™
 			editor.open(editor.pcard, 0 );
 			OCard.reloadCurrentCard();
 		}

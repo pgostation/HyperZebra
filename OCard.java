@@ -8,7 +8,7 @@ import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.lang.reflect.Field;
+//import java.lang.reflect.Field;
 
 import javax.imageio.ImageIO;
 import javax.swing.JLabel;
@@ -24,15 +24,15 @@ public class OCard extends OCardBase {
 	ArrayList<OBgButtonData> bgbtnList;
 	ArrayList<OBgFieldData> bgfldList;
 	
-	//ƒvƒƒpƒeƒB
+	//ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	Boolean cantDelete=false;
 	Boolean cantModify=false;
 	Boolean dontSearch=false;
 	Boolean marked=false;
-	//number (ƒXƒ^ƒbƒN‚Ìî•ñ‚©‚ç‹‚ß‚é)
-	//rect (ƒXƒ^ƒbƒNî•ñ)
+	//number (ã‚¹ã‚¿ãƒƒã‚¯ã®æƒ…å ±ã‹ã‚‰æ±‚ã‚ã‚‹)
+	//rect (ã‚¹ã‚¿ãƒƒã‚¯æƒ…å ±)
 	
-	//’Ç‰ÁƒvƒƒpƒeƒB
+	//è¿½åŠ ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	
 	//toc.xml
 	@SuppressWarnings("unused")
@@ -53,7 +53,7 @@ public class OCard extends OCardBase {
 		changed = true;
 	}
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public static OCard getOCard(OStack st, int cardId, boolean dataonly) throws xTalkException {
 		for(int i=0; i<st.cdCacheList.size(); i++){
 			OCard cd = st.cdCacheList.get(i);
@@ -83,7 +83,7 @@ public class OCard extends OCardBase {
 		this.bgfldList = new ArrayList<OBgFieldData>();
 		
 		{
-			throw new xTalkException("‚»‚Ìid‚ÌƒJ[ƒh‚Ìƒf[ƒ^ƒtƒ@ƒCƒ‹‚ª‚ ‚è‚Ü‚¹‚ñ");
+			throw new xTalkException("ãã®idã®ã‚«ãƒ¼ãƒ‰ã®ãƒ‡ãƒ¼ã‚¿ãƒ•ã‚¡ã‚¤ãƒ«ãŒã‚ã‚Šã¾ã›ã‚“");
 		}
 	}
 	
@@ -112,7 +112,7 @@ public class OCard extends OCardBase {
 	            if (eventType == XMLStreamReader.START_ELEMENT) {
 	            	String elm = reader.getLocalName().intern();
 	            	if(elm.equals("id")){ id = Integer.valueOf(reader.getElementText()); }
-	            	else if(elm.equals("filler1")){ filler1 = reader.getElementText(); } //marked‚©‚ÈH
+	            	else if(elm.equals("filler1")){ filler1 = reader.getElementText(); } //markedã‹ãªï¼Ÿ
 	            	else if(elm.equals("bitmap")){ bitmapName = reader.getElementText(); }
 	            	else if(elm.equals("cantDelete")){ cantDelete = XMLRead.bool(reader);reader.next(); }
 	            	else if(elm.equals("cantModify")){ cantModify = XMLRead.bool(reader);reader.next(); }
@@ -476,7 +476,7 @@ public class OCard extends OCardBase {
 	}
 
 
-	//HC‚ÌƒXƒ^ƒbƒN‚ğ•ÏŠ·
+	//HCã®ã‚¹ã‚¿ãƒƒã‚¯ã‚’å¤‰æ›
 	@SuppressWarnings("unchecked")
 	public boolean readCardBlock(DataInputStream dis, int blockSize){
 		//System.out.println("====readCardBlock====");
@@ -487,12 +487,16 @@ public class OCard extends OCardBase {
 		
 		int offset = 54;
 		
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		id = HCData.readCode(dis, 4);
 		//HCStackDebug.debuginfo("id:"+Integer.toString(id));
 		//System.out.println("id:"+id);
 		if(id<0 || id >= 2265535){
 			//System.out.println("!");
+		}
+		if(id==12332){
+			//debug
+			System.out.println("12332");
 		}
 		/*String tygersStr =*/ HCData.readStr(dis, 4);
 		//HCStackDebug.debuginfo("tygersStr:"+tygersStr);
@@ -571,11 +575,14 @@ public class OCard extends OCardBase {
 		}
 
 		for(int i=0; i<numofContents; i++){
+			if(blockSize - offset<0){
+				break;
+			}
 			//System.out.println("==cd content "+i+"==");
 			//HCStackDebug.debuginfo("==cd content "+i+"==");
 			
 			int pid;
-			/*{//ƒAƒ‰ƒCƒƒ“ƒg’²®
+			/*{//ã‚¢ãƒ©ã‚¤ãƒ¡ãƒ³ãƒˆèª¿æ•´
 				pid = HCData.readCode(dis, 1);
 				while(pid<=0 || (pid==255 && i<255) || (pid==254 && i<255)){
 					pid = (pid<<8) + HCData.readCode(dis, 1);
@@ -648,7 +655,7 @@ public class OCard extends OCardBase {
 				contLen -= formattingLength;
 			}
 			
-			//ƒeƒLƒXƒg
+			//ãƒ†ã‚­ã‚¹ãƒˆ
 			resultStr contentResult;
 			if(orgcontLen%2==1){
 				//System.out.println("readText(contLen+1="+(contLen+1)+")");
@@ -743,7 +750,7 @@ public class OCard extends OCardBase {
 			}
 		}
 		
-		//ƒXƒNƒŠƒvƒg
+		//ã‚¹ã‚¯ãƒªãƒ—ãƒˆ
 		String[] scriptAry = scriptStr.split("\n");
 		for(int i=0; i<scriptAry.length; i++)
 		{
@@ -760,12 +767,12 @@ public class OCard extends OCardBase {
 	{
 		cd.picture = new OPicture(cd);
 		
-		//ƒsƒNƒ`ƒƒ“Ç‚İ‚İ(pbm)
+		//ãƒ”ã‚¯ãƒãƒ£èª­ã¿è¾¼ã¿(pbm)
 		if(cd.bitmapName!=null){
 			String path = (cd.stack.file.getParent()+File.separatorChar+cd.bitmapName);
 			cd.pict = PictureFile.loadPbm(path);
 			if(cd.pict==null){
-				//“Ç‚İ‚Ü‚ê‚é‚Ü‚Å‘Ò‚Â
+				//èª­ã¿è¾¼ã¾ã‚Œã‚‹ã¾ã§å¾…ã¤
 				for(int i=0; HCData.threadList!=null&&i<HCData.threadList.size(); i++){
 					Thread p = HCData.threadList.get(i);
 					if(p!=null && p.getName().equals(cd.bitmapName)){
@@ -800,7 +807,7 @@ public class OCard extends OCardBase {
 			}
 		}
 
-		//ƒsƒNƒ`ƒƒ“Ç‚İ‚İ
+		//ãƒ”ã‚¯ãƒãƒ£èª­ã¿è¾¼ã¿
 		File file=new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".png");
 		try {
 			if(file.exists()) {
@@ -821,7 +828,7 @@ public class OCard extends OCardBase {
 				}
 			}
 		} catch (Exception err1) {
-			//ƒAƒ‹ƒtƒ@‚ğg—p‚µ‚½ƒsƒNƒ`ƒƒ‚ª–³‚¢ê‡‚Íƒ}ƒXƒN‰æ‘œ‚ğg—p‚µ‚Äì¬
+			//ã‚¢ãƒ«ãƒ•ã‚¡ã‚’ä½¿ç”¨ã—ãŸãƒ”ã‚¯ãƒãƒ£ãŒç„¡ã„å ´åˆã¯ãƒã‚¹ã‚¯ç”»åƒã‚’ä½¿ç”¨ã—ã¦ä½œæˆ
 			try {
 				cd.pict = ImageIO.read(new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+"_img.png"));
 				file=new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+"_mask.png");
@@ -892,7 +899,7 @@ public class OCard extends OCardBase {
 	static void reloadCurrentCard(){
 		if(PCARD.pc.stack.curCard==null) return;
 		
-		//‰æ–Êì‚è’¼‚µ
+		//ç”»é¢ä½œã‚Šç›´ã—
 		int id = PCARD.pc.stack.curCard.id;
 		PCARD.pc.stack.curCard.removeData();
 		if(PCARD.pc.stack.curCard.bg!=null) PCARD.pc.stack.curCard.bg.removeData();
@@ -905,7 +912,7 @@ public class OCard extends OCardBase {
 			e1.printStackTrace();
 		}
 		
-		//ƒoƒbƒNƒOƒ‰ƒEƒ“ƒh•ÒW‚Ìê‡AƒJ[ƒh‚ÌƒRƒ“ƒ|[ƒlƒ“ƒg‚ğŠO‚·
+		//ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ç·¨é›†ã®å ´åˆã€ã‚«ãƒ¼ãƒ‰ã®ã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆã‚’å¤–ã™
 		if(PaintTool.editBackground){
 			for(int i=0; i<PCARD.pc.stack.curCard.btnList.size(); i++){
 				PCARD.pc.mainPane.remove(PCARD.pc.stack.curCard.btnList.get(i).getComponent());
@@ -917,9 +924,9 @@ public class OCard extends OCardBase {
 		
 		PCARD.pc.mainPane.repaint();
 		
-		//ƒŠƒXƒi[‚à•t‚¯’¼‚µ
+		//ãƒªã‚¹ãƒŠãƒ¼ã‚‚ä»˜ã‘ç›´ã—
 		if(AuthTool.tool!=null){
-			//ƒI[ƒTƒŠƒ“ƒOƒ‚[ƒh
+			//ã‚ªãƒ¼ã‚µãƒªãƒ³ã‚°ãƒ¢ãƒ¼ãƒ‰
 			if(AuthTool.tool.getClass()==ButtonTool.class){
 				GUI.removeAllListener();
 				ButtonGUI.gui.addListenerToParts();
@@ -930,9 +937,9 @@ public class OCard extends OCardBase {
 				FieldGUI.gui.target = null;
 			}
 		}else if(PCARD.pc.tool!=null){
-			//ƒyƒCƒ“ƒgƒ‚[ƒh
+			//ãƒšã‚¤ãƒ³ãƒˆãƒ¢ãƒ¼ãƒ‰
 		}else{
-			//ƒuƒ‰ƒEƒYƒ‚[ƒh
+			//ãƒ–ãƒ©ã‚¦ã‚ºãƒ¢ãƒ¼ãƒ‰
 			GUI.removeAllListener();
 			GUI.addAllListener();
 			if(PCARD.pc.stack.addColor != null){
@@ -968,28 +975,28 @@ class MyLabel extends JLabel {
 	
 	
 	
-    @SuppressWarnings("restriction")
+    //@SuppressWarnings("restriction")
 	@Override
     protected void paintComponent(Graphics g) {
     	if(PCARD.pc.tool!=null)return;
     	if(cd.objectType.equals("card")&&PaintTool.editBackground)return;
-		Graphics mainpaneg = PCARD.pc.mainPane.getGraphics();
-		Graphics paneg = PCARD.pc.getContentPane().getGraphics();
-		Field f = null;
+		//Graphics mainpaneg = PCARD.pc.mainPane.getGraphics();
+		//Graphics paneg = PCARD.pc.getContentPane().getGraphics();
+		//Field f = null;
 		try {
-			f = sun.java2d.SunGraphics2D.class.getDeclaredField("surfaceData");
-			f.setAccessible(true);
+			//f = sun.java2d.SunGraphics2D.class.getDeclaredField("surfaceData");
+			//f.setAccessible(true);
 		} catch (SecurityException e) {
 			e.printStackTrace();
-		} catch (NoSuchFieldException e) {
-			e.printStackTrace();
+		//} catch (NoSuchFieldException e) {
+		//	e.printStackTrace();
 		}
 		try {
-			if(PCARD.lockedScreen&&(f.get(paneg)==f.get(g)||f.get(mainpaneg)==f.get(g))) return;//g.drawImage(VEffect.oldoff,0,0,PCARD.pc.mainPane);
+		//	if(PCARD.lockedScreen&&(f.get(paneg)==f.get(g)||f.get(mainpaneg)==f.get(g))) return;//g.drawImage(VEffect.oldoff,0,0,PCARD.pc.mainPane);
 		} catch (IllegalArgumentException e) {
 			e.printStackTrace();
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
+		//} catch (IllegalAccessException e) {
+		//	e.printStackTrace();
 		}
     	
 		if(!cd.showPict||cd.pict==null){
@@ -1004,7 +1011,7 @@ class MyLabel extends JLabel {
 		
 		g.drawImage(cd.pict,0,0,PCARD.pc.mainPane);
 
-		//addColor—p
+		//addColorç”¨
 		/*if(PCARD.pc.stack.addColor != null){
 			Graphics2D g2 = (Graphics2D) g;
 			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));

@@ -28,7 +28,7 @@ public class Rsrc {
 		this.ownerstack = owner;
 	}
 
-	//‚±‚ÌƒXƒ^ƒbƒN“à‚ÌƒŠƒ\[ƒX‚ğŒŸõ
+	//ã“ã®ã‚¹ã‚¿ãƒƒã‚¯å†…ã®ãƒªã‚½ãƒ¼ã‚¹ã‚’æ¤œç´¢
 	public int getRsrcId1(String name, String type){
 		rsrcClass r = rsrcNameMap.get(type+name.toLowerCase());
 		if(r!=null) return r.id;
@@ -61,7 +61,7 @@ public class Rsrc {
 	
 	
 
-	//using‚µ‚Ä‚¢‚éƒXƒ^ƒbƒN‚·‚×‚Ä‚ÌƒŠƒ\[ƒX‚ğŒŸõ
+	//usingã—ã¦ã„ã‚‹ã‚¹ã‚¿ãƒƒã‚¯ã™ã¹ã¦ã®ãƒªã‚½ãƒ¼ã‚¹ã‚’æ¤œç´¢
 	public int getRsrcIdAll(String name, String type){
 		rsrcClass r = rsrcNameMap.get(type+name.toLowerCase());
 		if(r!=null) return r.id;
@@ -226,7 +226,7 @@ public class Rsrc {
 	}
 
 	
-	// XML•Û‘¶
+	// XMLä¿å­˜
 	public void writeXML(XMLStreamWriter writer) throws XMLStreamException {
 		Iterator<rsrcClass> it = rsrcIdMap.values().iterator();
 		
@@ -669,7 +669,7 @@ public class Rsrc {
 	
 
 	//-------------
-	//AddColorŠÖ˜A
+	//AddColoré–¢é€£
 	//-------------
 	public XMLStreamReader readAddColorXML(XMLStreamReader reader, boolean isBg) throws Exception {
         String idStr = "0";
@@ -765,7 +765,7 @@ public class Rsrc {
 	
 	
 	public static void setEnabledACObj(int number, boolean enabled){
-		//addcolorClass‚ğ’T‚·
+		//addcolorClassã‚’æ¢ã™
 		ArrayList<addcolorClass> cdList = PCARD.pc.stack.rsrc.addcolorList;
 		addcolorClass accd = null;
 		for(int i=0; i<cdList.size(); i++){
@@ -998,7 +998,7 @@ public class Rsrc {
 	}
 	
 
-	// XML•Û‘¶
+	// XMLä¿å­˜
 	public void writeAddColorXML(XMLStreamWriter writer) throws XMLStreamException {
 		ArrayList<addcolorClass> cdList = PCARD.pc.stack.rsrc.addcolorList;
 		for(int i=0; i<cdList.size(); i++){
@@ -1009,7 +1009,7 @@ public class Rsrc {
 	
 	
 	//-------------
-	//PLTEŠÖ˜A
+	//PLTEé–¢é€£
 	//-------------
 	public XMLStreamReader readPlteXML(XMLStreamReader reader) throws Exception {
         int id = 0;
@@ -1243,7 +1243,7 @@ public class Rsrc {
 	}
 	
 
-	// XML•Û‘¶
+	// XMLä¿å­˜
 	public void writePLTEXML(XMLStreamWriter writer) throws XMLStreamException {
 		ArrayList<PlteClass> plteList = PCARD.pc.stack.rsrc.plteList;
 		for(int i=0; i<plteList.size(); i++){

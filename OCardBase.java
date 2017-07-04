@@ -14,7 +14,7 @@ public class OCardBase extends OObject {
 	
 	boolean changed;
 	
-	//ƒ{ƒ^ƒ“AƒtƒB[ƒ‹ƒhî•ñ
+	//ãƒœã‚¿ãƒ³ã€ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰æƒ…å ±
 	ArrayList<OObject> partsList;
 	ArrayList<OButton> btnList;
 	ArrayList<OField> fldList;
@@ -22,7 +22,7 @@ public class OCardBase extends OObject {
 
 	@Override
 	public void clean(){
-		//stack.mainPane.removeAll(); //‚·‚Å‚ÉV‚µ‚¢ƒXƒ^ƒbƒN‚ğ“Ç‚İ‚ñ‚Å‚¢‚é‚Ì‚Åremove‚µ‚Ä‚Í‚¢‚¯‚È‚¢
+		//stack.mainPane.removeAll(); //ã™ã§ã«æ–°ã—ã„ã‚¹ã‚¿ãƒƒã‚¯ã‚’èª­ã¿è¾¼ã‚“ã§ã„ã‚‹ã®ã§removeã—ã¦ã¯ã„ã‘ãªã„
 		stack = null;
 		pict = null;
 		label = null;

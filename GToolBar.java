@@ -255,7 +255,7 @@ class TBButton extends JToggleButton {
 	 */
 	private static final long serialVersionUID = 1L;
 
-	JPopupMenu popup = new JPopupMenu(); // ƒ|ƒbƒvƒAƒbƒvƒƒjƒ…[‚ğ¶¬
+	JPopupMenu popup = new JPopupMenu(); // ãƒãƒƒãƒ—ã‚¢ãƒƒãƒ—ãƒ¡ãƒ‹ãƒ¥ãƒ¼ã‚’ç”Ÿæˆ
     //Color color;
 	
 	TBButton(String in_text, int y, int x){
@@ -381,7 +381,7 @@ class TBButton extends JToggleButton {
 		}
 	}
 	
-	// ƒƒjƒ…[€–Ú‚ğ’Ç‰Á
+	// ãƒ¡ãƒ‹ãƒ¥ãƒ¼é …ç›®ã‚’è¿½åŠ 
 	private JMenuItem addPopupMenuItem(String name, ActionListener al, boolean check){
 		JCheckBoxMenuItem item = new JCheckBoxMenuItem(name);
 		item.addActionListener(al);
@@ -429,7 +429,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 		}
 		
 		if(arg0.getClickCount()==2){
-			//ƒ_ƒuƒ‹ƒNƒŠƒbƒN
+			//ãƒ€ãƒ–ãƒ«ã‚¯ãƒªãƒƒã‚¯
 			if(PCARD.pc.intl.getToolText("Eraser").equals(cmd)){
 				GMenuPaint.doMenu("Select All");
 				GMenuPaint.doMenu("Clear Selection");
@@ -493,7 +493,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 	
 	static public boolean ChangeTool(String cmd, ActionEvent ae) {
 		
-		//‘O‚Ìƒc[ƒ‹‚ÌI—¹ˆ—
+		//å‰ã®ãƒ„ãƒ¼ãƒ«ã®çµ‚äº†å‡¦ç†
 		if(PCARD.pc.tool!=null){
 			PCARD.pc.tool.end();
 			
@@ -506,7 +506,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 			AuthTool.tool.end();
 		}
 		
-		//ƒc[ƒ‹ƒo[‚ÌƒnƒCƒ‰ƒCƒg‚ğ•ÏX
+		//ãƒ„ãƒ¼ãƒ«ãƒãƒ¼ã®ãƒã‚¤ãƒ©ã‚¤ãƒˆã‚’å¤‰æ›´
 		if(PCARD.pc.stack!=null){
 			for(int i=0; i<PCARD.pc.toolbar.tb.getContentPane().getComponentCount(); i++){
 				JComponent component = (JComponent)PCARD.pc.toolbar.tb.getContentPane().getComponent(i);
@@ -529,7 +529,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 				PCARD.pc.intl.getToolEngText("Field").equalsIgnoreCase(cmd) )
 		{
 			if(PCARD.pc.tool!=null){
-				//ƒuƒ‰ƒEƒYƒc[ƒ‹‚É‚µ‚½‚Ì‚ÅƒyƒCƒ“ƒgƒ‚[ƒh‚©‚ç–ß‚·
+				//ãƒ–ãƒ©ã‚¦ã‚ºãƒ„ãƒ¼ãƒ«ã«ã—ãŸã®ã§ãƒšã‚¤ãƒ³ãƒˆãƒ¢ãƒ¼ãƒ‰ã‹ã‚‰æˆ»ã™
 				PCARD.pc.tool = null;
 				PCARD.pc.bit = 1;
 				PCARD.pc.getRootPane().removeMouseListener(paintGUI.gui);
@@ -545,14 +545,14 @@ class TBButtonListener implements ActionListener, MouseListener {
 				//PCARD.pc.pidle.start();
 				
 		    	{
-		    		//ƒyƒCƒ“ƒg—pƒoƒbƒtƒ@
+		    		//ãƒšã‚¤ãƒ³ãƒˆç”¨ãƒãƒƒãƒ•ã‚¡
 		    		PCARD.pc.mainImg = null;
 		    		PCARD.pc.bgImg = null;
 		    		PCARD.pc.undoBuf = null;
 		    		PCARD.pc.redoBuf = null;
 		    	}
 				
-				//‚±‚ê‚Å‚ÍØ‚è‘Ö‚í‚Á‚Ä‚­‚ê‚È‚¢
+				//ã“ã‚Œã§ã¯åˆ‡ã‚Šæ›¿ã‚ã£ã¦ãã‚Œãªã„
 				//PCARD.pc.setJMenuBar(PCARD.pc.menu.mb);
 		    	
 		    	GMenu.menuUpdate(PCARD.pc.menu.mb);
@@ -576,11 +576,11 @@ class TBButtonListener implements ActionListener, MouseListener {
 			PCARD.pc.mainPane.addMouseListener(ButtonGUI.gui);
 			PCARD.pc.mainPane.addMouseMotionListener(ButtonGUI.gui);
 
-			//ƒƒjƒ…[
+			//ãƒ¡ãƒ‹ãƒ¥ãƒ¼
 			{
 				GMenu.changeEnabled("Go","Background",true);
-				GMenu.changeEnabled("Objects","Button Infoc",true);
-				GMenu.changeEnabled("Objects","Field Infoc",false);
+				GMenu.changeEnabled("Objects","Button Infoâ€¦",true);
+				GMenu.changeEnabled("Objects","Field Infoâ€¦",false);
 				GMenu.changeEnabled("Objects","Bring Closer",true);
 				GMenu.changeEnabled("Objects","Send Farther",true);
 				
@@ -607,11 +607,11 @@ class TBButtonListener implements ActionListener, MouseListener {
 			PCARD.pc.mainPane.addMouseListener(FieldGUI.gui);
 			PCARD.pc.mainPane.addMouseMotionListener(FieldGUI.gui);
 
-			//ƒƒjƒ…[
+			//ãƒ¡ãƒ‹ãƒ¥ãƒ¼
 			{
 				GMenu.changeEnabled("Edit","Background",true);
-				GMenu.changeEnabled("Objects","Button Infoc",false);
-				GMenu.changeEnabled("Objects","Field Infoc",true);
+				GMenu.changeEnabled("Objects","Button Infoâ€¦",false);
+				GMenu.changeEnabled("Objects","Field Infoâ€¦",true);
 				GMenu.changeEnabled("Objects","Bring Closer",true);
 				GMenu.changeEnabled("Objects","Send Farther",true);
 				
@@ -628,7 +628,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 			return true;
 		}
 		else{
-			//ƒ{ƒ^ƒ“AƒtƒB[ƒ‹ƒhƒc[ƒ‹ˆÈŠO
+			//ãƒœã‚¿ãƒ³ã€ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ãƒ„ãƒ¼ãƒ«ä»¥å¤–
 			if(AuthDialog.authDialog!=null) AuthDialog.authDialog.dispose();
 			AuthDialog.authDialog = null;
 		}
@@ -639,7 +639,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 			AuthTool.tool = null;
 			TBCursor.changeCursor(PCARD.pc);
 
-			//ƒoƒbƒNƒOƒ‰ƒEƒ“ƒh•ÒWƒ‚[ƒh‚ğ‰ğœ
+			//ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ç·¨é›†ãƒ¢ãƒ¼ãƒ‰ã‚’è§£é™¤
 			{
 				PaintTool.editBackground = false;
 				String titleName = PCARD.pc.stack.name;
@@ -651,12 +651,12 @@ class TBButtonListener implements ActionListener, MouseListener {
 
 			OCard.reloadCurrentCard();
 			
-			//ƒƒjƒ…[
+			//ãƒ¡ãƒ‹ãƒ¥ãƒ¼
 			{
 				GMenu.changeEnabled("Edit","Background",false);
 				GMenu.changeSelected("Edit","Background",false);
-				GMenu.changeEnabled("Objects","Button Infoc",false);
-				GMenu.changeEnabled("Objects","Field Infoc",false);
+				GMenu.changeEnabled("Objects","Button Infoâ€¦",false);
+				GMenu.changeEnabled("Objects","Field Infoâ€¦",false);
 				GMenu.changeEnabled("Objects","Bring Closer",false);
 				GMenu.changeEnabled("Objects","Send Farther",false);
 			}
@@ -665,7 +665,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 		}
 
 		//
-		// ‚±‚±‚©‚ç‰º‚ÍƒyƒCƒ“ƒgƒc[ƒ‹
+		// ã“ã“ã‹ã‚‰ä¸‹ã¯ãƒšã‚¤ãƒ³ãƒˆãƒ„ãƒ¼ãƒ«
 		//
 
 		if(PCARD.pc.intl.getToolText("Select").equalsIgnoreCase(cmd) ||
@@ -736,17 +736,17 @@ class TBButtonListener implements ActionListener, MouseListener {
 			TBCursor.changeCursor(PCARD.pc);
 		}
 		else{
-			return false;//Œ©‚Â‚©‚ç‚È‚¢
+			return false;//è¦‹ã¤ã‹ã‚‰ãªã„
 		}
 
 		if(PCARD.pc.stack.curCard!=null && PCARD.pc.mainImg==null){
 	    	{
-	    		//ƒyƒCƒ“ƒg—pƒoƒbƒtƒ@
+	    		//ãƒšã‚¤ãƒ³ãƒˆç”¨ãƒãƒƒãƒ•ã‚¡
 	    		
 	    		PCARD.pc.mainImg = new BufferedImage(PCARD.pc.stack.width, PCARD.pc.stack.height, BufferedImage.TYPE_INT_ARGB );
 		
 	    		PCARD.pc.bgImg = new BufferedImage(PCARD.pc.stack.width, PCARD.pc.stack.height, BufferedImage.TYPE_INT_ARGB );
-				//‚±‚ê‚ğRGB‚É‚·‚é‚ÆundoBuf‚ÆŒİŠ·«‚ª‚Æ‚ê‚È‚¢
+				//ã“ã‚Œã‚’RGBã«ã™ã‚‹ã¨undoBufã¨äº’æ›æ€§ãŒã¨ã‚Œãªã„
 				Graphics g = PCARD.pc.bgImg.getGraphics();
 				g.setColor(Color.WHITE);
 				g.fillRect(0,0, PCARD.pc.stack.width, PCARD.pc.stack.height);
@@ -756,20 +756,20 @@ class TBButtonListener implements ActionListener, MouseListener {
 				PCARD.pc.redoBuf = new BufferedImage(PCARD.pc.stack.width, PCARD.pc.stack.height, BufferedImage.TYPE_INT_ARGB );
 	    	}
 	    	
-			//ƒJ[ƒhƒsƒNƒ`ƒƒ‚ğƒyƒCƒ“ƒg—pƒoƒbƒtƒ@‚ÖˆÚ“®
+			//ã‚«ãƒ¼ãƒ‰ãƒ”ã‚¯ãƒãƒ£ã‚’ãƒšã‚¤ãƒ³ãƒˆç”¨ãƒãƒƒãƒ•ã‚¡ã¸ç§»å‹•
 			PCARD.pc.mainImg.getGraphics().drawImage(PCARD.pc.stack.curCard.pict, 0, 0, PCARD.pc);
 			if(PCARD.pc.stack.curCard.bg!=null && PCARD.pc.stack.curCard.bg.pict!=null){
 				PCARD.pc.bgImg.getGraphics().drawImage(PCARD.pc.stack.curCard.bg.pict, 0, 0, PCARD.pc);
 			}
 			PCARD.pc.mainPane.repaint();
 			
-			//ƒyƒCƒ“ƒg—pƒŠƒXƒi[
+			//ãƒšã‚¤ãƒ³ãƒˆç”¨ãƒªã‚¹ãƒŠãƒ¼
 			GUI.removeAllListener();
 			paintGUI.gui.addListenerToParts();
 			PCARD.pc.mainPane.addMouseListener(paintGUI.gui);
 			PCARD.pc.mainPane.addMouseMotionListener(paintGUI.gui);
 			
-			//‚±‚ê‚Å‚ÍØ‚è‘Ö‚í‚Á‚Ä‚­‚ê‚È‚¢
+			//ã“ã‚Œã§ã¯åˆ‡ã‚Šæ›¿ã‚ã£ã¦ãã‚Œãªã„
 			//PCARD.pc.setJMenuBar(PCARD.pc.paintMenu.mb);
 
 	    	GMenu.menuUpdate(PCARD.pc.paintMenu.mb);
@@ -778,13 +778,13 @@ class TBButtonListener implements ActionListener, MouseListener {
 			/*PCARD.pc.paidle = new PaintIdle();
 			PCARD.pc.paidle.start();*/
 			
-			//ƒƒjƒ…[
+			//ãƒ¡ãƒ‹ãƒ¥ãƒ¼
 			{
 				GMenu.changeEnabled("Edit","Background",true);
 			}
 		}
 
-		//ƒtƒB[ƒ‹ƒh‚ÉƒtƒH[ƒJƒX‚ğ“n‚³‚È‚¢
+		//ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰ã«ãƒ•ã‚©ãƒ¼ã‚«ã‚¹ã‚’æ¸¡ã•ãªã„
 		if(PCARD.pc.stack.curCard!=null){
 			for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
 				PCARD.pc.stack.curCard.fldList.get(i).fld.setFocusable(false);

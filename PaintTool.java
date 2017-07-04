@@ -31,11 +31,12 @@ import javax.swing.JViewport;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
+/*
 import cello.jtablet.TabletManager;
 import cello.jtablet.event.TabletEvent;
 import cello.jtablet.event.TabletListener;
 import cello.jtablet.installer.JTabletExtension;
-
+*/
 
 public class PaintTool {
 	//static toolInterface tool = null;
@@ -44,11 +45,11 @@ public class PaintTool {
 	static float lasty[] = new float[2];
 	static long lastTime;
 	static boolean canTablet = false;
-	static MyTabletListener tabletListener;
+	//static MyTabletListener tabletListener;
 	static PCARDFrame owner;
 	
-	//ƒyƒCƒ“ƒgƒvƒƒpƒeƒB
-	static int brushSize = 3; //TODO static‚Å‚È‚¢‚æ‚¤‚É‚·‚é
+	//ãƒšã‚¤ãƒ³ãƒˆãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
+	static int brushSize = 3; //TODO staticã§ãªã„ã‚ˆã†ã«ã™ã‚‹
 	static float lineSize = 1;
 	static int alpha = 100;
 	static boolean antialias = false;
@@ -56,17 +57,17 @@ public class PaintTool {
 	static BufferedImage pat;
 	boolean fill;
 	static int smartSelectPercent = 5; //5%
-	//static boolean bit = false; //Šg‘å•\¦
+	//static boolean bit = false; //æ‹¡å¤§è¡¨ç¤º
 	//static float bitLeft = 0;
 	//static float bitTop = 0;
 
 	public static void tabletinit(){
-		 if (JTabletExtension.checkCompatibility(PaintTool.owner, "1.2.0")) {
+		 /*if (JTabletExtension.checkCompatibility(PaintTool.owner, "1.2.0")) {
 			 canTablet = true;
 			 if(tabletListener==null){
 				 tabletListener = new MyTabletListener();
 			 }
-	     }
+	     }*/
 		 
 		 if(!PCARD.pc.paidle.isAlive()){
 			 PCARD.pc.paidle = new PaintIdle();
@@ -76,12 +77,12 @@ public class PaintTool {
 	
 	public static void mouseUp(int x, int y){
 		if(owner.bit > 1){
-			//’[”Ø‚èÌ‚Ä
+			//ç«¯æ•°åˆ‡ã‚Šæ¨ã¦
 			PaintTool.owner.bitLeft = (float)(int)PaintTool.owner.bitLeft;
 			PaintTool.owner.bitTop = (float)(int)PaintTool.owner.bitTop;
 
 			if(owner.getClass()==IconEditor.class){
-				//ƒXƒNƒ[ƒ‹ƒo[‚ğg‚¤
+				//ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«ãƒãƒ¼ã‚’ä½¿ã†
 				((IconEditor)owner).scrollpane.getHorizontalScrollBar().setValue(((IconEditor)owner).scrollpane.getHorizontalScrollBar().getValue()+(int)PaintTool.owner.bitLeft*PaintTool.owner.bit);
 				((IconEditor)owner).scrollpane.getVerticalScrollBar().setValue(((IconEditor)owner).scrollpane.getVerticalScrollBar().getValue()+(int)PaintTool.owner.bitTop*PaintTool.owner.bit);
 				PaintTool.owner.bitLeft = 0;
@@ -170,7 +171,7 @@ public class PaintTool {
 			lasty[0] = y;
 
 			if(owner.getClass()==IconEditor.class){
-				//ƒXƒNƒ[ƒ‹ƒo[‚ğg‚¤
+				//ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«ãƒãƒ¼ã‚’ä½¿ã†
 				if(PaintTool.owner.bitLeft+((IconEditor)owner).scrollpane.getHorizontalScrollBar().getValue()/owner.bit<0){
 					PaintTool.owner.bitLeft = -((IconEditor)owner).scrollpane.getHorizontalScrollBar().getValue()/owner.bit;
 				}
@@ -219,7 +220,7 @@ public class PaintTool {
 	static public void setPattern(boolean invert){
 		BufferedImage patorg = PaintTool.owner.pat.patterns[PaintTool.owner.pat.pattern];
 		if(patorg==null){
-			//‚È‚¢ê‡
+			//ãªã„å ´åˆ
 			PaintTool.pat = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
 			Graphics g1 = PaintTool.pat.getGraphics();
 			g1.setColor(PaintTool.owner.fore.color);
@@ -259,7 +260,7 @@ public class PaintTool {
 		if(PaintTool.owner!=PCARDFrame.pc) return;
 		if(PCARD.pc.stack.curCard==null || PaintTool.owner.mainImg==null) return;
 		
-		//CardƒsƒNƒ`ƒƒ‚ª‘S•”“§–¾‚©‚Ç‚¤‚©‚ğ”»’è
+		//Cardãƒ”ã‚¯ãƒãƒ£ãŒå…¨éƒ¨é€æ˜ã‹ã©ã†ã‹ã‚’åˆ¤å®š
 		DataBuffer db = PaintTool.owner.mainImg.getRaster().getDataBuffer();
 		int width = PaintTool.owner.mainImg.getWidth();
 		boolean isTransparent = true;
@@ -273,7 +274,7 @@ public class PaintTool {
 			}
 		}
 
-		//CardƒsƒNƒ`ƒƒ
+		//Cardãƒ”ã‚¯ãƒãƒ£
 		if(isTransparent){
 			PaintTool.owner.stack.curCard.pict = null;
 			PaintTool.owner.stack.curCard.bitmapName = null;
@@ -284,7 +285,7 @@ public class PaintTool {
 			}
 			if(PaintTool.owner.stack.curCard.pict.getWidth()!=PaintTool.owner.stack.width ||
 					PaintTool.owner.stack.curCard.pict.getHeight()!=PaintTool.owner.stack.height	){
-				//ƒTƒCƒY•ÏX
+				//ã‚µã‚¤ã‚ºå¤‰æ›´
 				PaintTool.owner.stack.curCard.pict = new BufferedImage(PaintTool.owner.stack.width, PaintTool.owner.stack.height, BufferedImage.TYPE_INT_ARGB);
 			}
 			Graphics2D g = (Graphics2D) PaintTool.owner.stack.curCard.pict.getGraphics();
@@ -295,7 +296,7 @@ public class PaintTool {
 			g.drawImage(PaintTool.owner.mainImg, 0, 0, PaintTool.owner);
 		}
 
-		//BgƒsƒNƒ`ƒƒ‚ª‘S•”“§–¾‚©‚Ç‚¤‚©‚ğ”»’è
+		//Bgãƒ”ã‚¯ãƒãƒ£ãŒå…¨éƒ¨é€æ˜ã‹ã©ã†ã‹ã‚’åˆ¤å®š
 		DataBuffer bgdb = PaintTool.owner.bgImg.getRaster().getDataBuffer();
 		int bgwidth = PaintTool.owner.bgImg.getWidth();
 		boolean isWhite = true;
@@ -309,7 +310,7 @@ public class PaintTool {
 			}
 		}
 
-		//BgƒsƒNƒ`ƒƒ
+		//Bgãƒ”ã‚¯ãƒãƒ£
 		if(isWhite){
 			PaintTool.owner.stack.curCard.bg.pict = null;
 			PaintTool.owner.stack.curCard.bg.bitmapName = null;
@@ -320,7 +321,7 @@ public class PaintTool {
 			}
 			if(PaintTool.owner.stack.curCard.bg.pict.getWidth()!=PaintTool.owner.stack.width ||
 					PaintTool.owner.stack.curCard.bg.pict.getHeight()!=PaintTool.owner.stack.height	){
-				//ƒTƒCƒY•ÏX
+				//ã‚µã‚¤ã‚ºå¤‰æ›´
 				PaintTool.owner.stack.curCard.bg.pict = new BufferedImage(PaintTool.owner.stack.width, PaintTool.owner.stack.height, BufferedImage.TYPE_INT_ARGB);
 			}
 			Graphics2D g2 = (Graphics2D) PaintTool.owner.stack.curCard.bg.pict.getGraphics();
@@ -333,10 +334,10 @@ public class PaintTool {
 	}
 
 	static public void saveCdPictures(){
-		//ƒJ[ƒhƒsƒNƒ`ƒƒ‚ÉƒRƒs[
+		//ã‚«ãƒ¼ãƒ‰ãƒ”ã‚¯ãƒãƒ£ã«ã‚³ãƒ”ãƒ¼
 		PaintTool.toCdPict();
 		
-		//ƒtƒ@ƒCƒ‹•Û‘¶ (card)
+		//ãƒ•ã‚¡ã‚¤ãƒ«ä¿å­˜ (card)
 		if(PCARDFrame.pc.stack.curCard!=null && PCARDFrame.pc.stack.curCard.pict!=null){
 			if(PCARDFrame.pc.stack.curCard.bitmapName==null ||
 					PCARDFrame.pc.stack.curCard.bitmapName.length()==0 ||
@@ -353,7 +354,7 @@ public class PaintTool {
 			}
 		}
 		
-		//ƒtƒ@ƒCƒ‹•Û‘¶ (bg)
+		//ãƒ•ã‚¡ã‚¤ãƒ«ä¿å­˜ (bg)
 		if(PCARDFrame.pc.stack.curCard!=null && 
 			PCARDFrame.pc.stack.curCard.bg!=null &&
 			PCARDFrame.pc.stack.curCard.bg.pict!=null)
@@ -414,7 +415,7 @@ interface toolSelectInterface extends toolInterface{
 }
 
 //-------------------
-// ‰”•M
+// é‰›ç­†
 //-------------------
 class PencilTool implements toolInterface{
 	boolean invert;
@@ -547,11 +548,11 @@ class PencilTool implements toolInterface{
 			}
 		}
 		
-		//— ‰æ–Ê‚ğæ“¾
+		//è£ç”»é¢ã‚’å–å¾—
 		Graphics2D g2;
 		g2 = (Graphics2D) PaintTool.owner.getSurface().getGraphics();
 
-		//ü‚ğ— ‰æ–Ê‚É‘‚­
+		//ç·šã‚’è£ç”»é¢ã«æ›¸ã
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
 		float brushSize = 1;
 		g2.setStroke(new BasicStroke(brushSize, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
@@ -565,7 +566,7 @@ class PencilTool implements toolInterface{
 		Line2D.Double line = new Line2D.Double(PaintTool.lastx[0], PaintTool.lasty[0], x, y);
 		g2.draw(line);
 		
-		//ƒNƒŠƒbƒvƒTƒCƒY‚ğŒvZ
+		//ã‚¯ãƒªãƒƒãƒ—ã‚µã‚¤ã‚ºã‚’è¨ˆç®—
 		int left=0, right=0, top=0, bottom=0;
 		if(x<PaintTool.lastx[0]){
 			left = (int)(x-brushSize/2-1);
@@ -582,7 +583,7 @@ class PencilTool implements toolInterface{
 			bottom = (int)(y+brushSize/2+1);
 		}
 		
-		//”wŒi‰æ–Ê‚ğ•`‰æ
+		//èƒŒæ™¯ç”»é¢ã‚’æç”»
 		Graphics2D g3;
 		g3 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		g3.setClip(new Rectangle(left,top,right-left,bottom-top));
@@ -595,7 +596,7 @@ class PencilTool implements toolInterface{
 		Graphics2D g4 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		g4.setClip(new Rectangle(left,top,right-left,bottom-top));
 		
-		//ü•ª‚Ì‰æ–Ê‚ğ•`‰æ
+		//ç·šåˆ†ã®ç”»é¢ã‚’æç”»
 		//g4.drawImage(PaintTool.owner.getSurface(), 0, 0, PaintTool.owner.mainPane);
 		if(PaintTool.owner.bit>1)
 			PaintTool.owner.mainPane.repaint(
@@ -615,13 +616,13 @@ class PencilTool implements toolInterface{
 	
 	@Override
 	public void end(){
-		TabletManager.getDefaultManager().removeTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
+		//TabletManager.getDefaultManager().removeTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
 	}
 }
 
 
 //-------------------
-//   ƒuƒ‰ƒV
+//   ãƒ–ãƒ©ã‚·
 //-------------------
 class BrushTool implements toolTabletInterface{
 	Cursor cursor;
@@ -637,8 +638,8 @@ class BrushTool implements toolTabletInterface{
 		PaintTool.tabletinit();
 		
 		if(PaintTool.canTablet){
-			TabletManager.getDefaultManager().addTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
-			PaintTool.tabletListener.tool = this;
+			//TabletManager.getDefaultManager().addTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
+			//PaintTool.tabletListener.tool = this;
 		}
 		//PaintTool.owner.bit = 1;
 		//PaintTool.owner.mainPane.repaint();
@@ -646,16 +647,16 @@ class BrushTool implements toolTabletInterface{
 	
 	@Override
 	public void mouseUp(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return;
-		}
+		}*/
 		penUp(x, y, 0.5f, false);
 	}
 	
 	@Override
 	public void penUp(float x, float y, float pressure, boolean eraser){
 		if(PaintTool.alpha!=100 || eraser){
-			//ƒT[ƒtƒF[ƒX‚É‘‚«‚Ş
+			//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«æ›¸ãè¾¼ã‚€
 			Graphics2D g = (Graphics2D) PaintTool.owner.getSurface().getGraphics();
 			if(eraser){
 				DataBuffer srcdb = PaintTool.owner.redoBuf.getRaster().getDataBuffer();
@@ -687,9 +688,9 @@ class BrushTool implements toolTabletInterface{
 
 	@Override
 	public void mouseDown(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return;
-		}
+		}*/
 		penDown(x, y, 0.501f, false);
 	}
 	
@@ -720,9 +721,9 @@ class BrushTool implements toolTabletInterface{
 
 	@Override
 	public boolean mouseWithin(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return false;
-		}
+		}*/
 		return penWithin(x, y, 0.5f);
 	}
 	
@@ -732,9 +733,9 @@ class BrushTool implements toolTabletInterface{
 
 	@Override
 	public boolean mouseStillDown(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return false;
-		}
+		}*/
 		if(GUI.key[12]>0){
 			PaintTool.owner.mainPane.setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
 		}
@@ -748,7 +749,7 @@ class BrushTool implements toolTabletInterface{
 	public boolean penStillDown(float x, float y, float pressure, boolean eraser){
 		/*if(PaintTool.antialias && pressure==0.5f && Math.pow(x-PaintTool.lastx[0],2) + Math.pow(y-PaintTool.lasty[0],2) < PaintTool.brushSize*15){
 			if(PaintTool.owner.bit==1&&PaintTool.lastTime+500>=System.currentTimeMillis()){
-				return false;//’Z‚¢ƒ‰ƒCƒ“‚Íˆø‚©‚È‚¢‚±‚Æ‚ÅƒAƒ“ƒ`ƒGƒCƒŠƒAƒX‚É‚«‚ê‚¢‚É‚·‚é
+				return false;//çŸ­ã„ãƒ©ã‚¤ãƒ³ã¯å¼•ã‹ãªã„ã“ã¨ã§ã‚¢ãƒ³ãƒã‚¨ã‚¤ãƒªã‚¢ã‚¹æ™‚ã«ãã‚Œã„ã«ã™ã‚‹
 			}
 		}*/
 
@@ -766,7 +767,7 @@ class BrushTool implements toolTabletInterface{
 			}
 		}
 		
-		//— ‰æ–Ê‚ğæ“¾
+		//è£ç”»é¢ã‚’å–å¾—
 		Graphics2D g2;
 		if(PaintTool.alpha==100 && !eraser){
 			g2 = (Graphics2D) PaintTool.owner.getSurface().getGraphics();
@@ -775,7 +776,7 @@ class BrushTool implements toolTabletInterface{
 			g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 		}
 
-		//ü‚ğ— ‰æ–Ê‚É‘‚­
+		//ç·šã‚’è£ç”»é¢ã«æ›¸ã
 		if(PaintTool.antialias){
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		}else{
@@ -796,7 +797,7 @@ class BrushTool implements toolTabletInterface{
 		Line2D.Double line = new Line2D.Double(PaintTool.lastx[0], PaintTool.lasty[0], x, y);
 		g2.draw(line);
 		
-		//ƒNƒŠƒbƒvƒTƒCƒY‚ğŒvZ
+		//ã‚¯ãƒªãƒƒãƒ—ã‚µã‚¤ã‚ºã‚’è¨ˆç®—
 		int left=0, right=0, top=0, bottom=0;
 		if(x<PaintTool.lastx[0]){
 			left = (int)(x-brushSize/2-1);
@@ -813,7 +814,7 @@ class BrushTool implements toolTabletInterface{
 			bottom = (int)(y+brushSize/2+1);
 		}
 		
-		//”wŒi‰æ–Ê‚ğ•`‰æ
+		//èƒŒæ™¯ç”»é¢ã‚’æç”»
 		Graphics2D g3;
 		if(PaintTool.alpha<100){
 			g3 = (Graphics2D) PaintTool.owner.getSurface().getGraphics();
@@ -832,7 +833,7 @@ class BrushTool implements toolTabletInterface{
 		g4.setClip(new Rectangle(left,top,right-left,bottom-top));
 		
 		
-		//“§–¾“x‚ğ”½‰f‚µ‚Äü•ª‚ğ‰æ–Ê‚É•`‰æ
+		//é€æ˜åº¦ã‚’åæ˜ ã—ã¦ç·šåˆ†ã‚’ç”»é¢ã«æç”»
 		if(PaintTool.alpha<100 || eraser){
 			if(PaintTool.owner.bit>1){
 				AffineTransform af = new AffineTransform();
@@ -860,7 +861,7 @@ class BrushTool implements toolTabletInterface{
 			return true;
 		}
 		
-		//ü•ª‚Ì‰æ–Ê‚ğ•`‰æ
+		//ç·šåˆ†ã®ç”»é¢ã‚’æç”»
 		//g4.drawImage(PaintTool.owner.getSurface(), 0, 0, PaintTool.owner.mainPane);
 		if(PaintTool.owner.bit>1)
 			PaintTool.owner.mainPane.repaint(
@@ -870,7 +871,7 @@ class BrushTool implements toolTabletInterface{
 		else
 			PaintTool.owner.mainPane.repaint(left,top,right-left,bottom-top);
 
-		//Šg‘å•\¦‚Ì˜gü•\¦
+		//æ‹¡å¤§è¡¨ç¤ºæ™‚ã®æ ç·šè¡¨ç¤º
 		if(PaintTool.owner.bit>2){
 			Graphics g5 = PaintTool.owner.mainPane.getGraphics();
 			MyPanel.bordersDraw(g5, PaintTool.owner.bit, PaintTool.owner.mainPane.getWidth(), PaintTool.owner.mainPane.getHeight());
@@ -888,13 +889,13 @@ class BrushTool implements toolTabletInterface{
 	
 	@Override
 	public void end(){
-		 TabletManager.getDefaultManager().removeTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
+		 //TabletManager.getDefaultManager().removeTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
 	}
 }
 
 
 //-------------------
-// Á‚µƒSƒ€
+// æ¶ˆã—ã‚´ãƒ 
 //-------------------
 class EraserTool implements toolTabletInterface{
 	Cursor cursor;
@@ -905,8 +906,8 @@ class EraserTool implements toolTabletInterface{
 		PaintTool.tabletinit();
 		
 		if(PaintTool.canTablet){
-			TabletManager.getDefaultManager().addTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
-			PaintTool.tabletListener.tool = this;
+			//TabletManager.getDefaultManager().addTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
+			//PaintTool.tabletListener.tool = this;
 		}
 	}
 
@@ -917,16 +918,16 @@ class EraserTool implements toolTabletInterface{
 	
 	@Override
 	public void mouseUp(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return;
-		}
+		}*/
 		penUp(x, y, 0.5f, false);
 	}
 	
 	@Override
 	public void penUp(float x, float y, float pressure, boolean eraser){
 		
-		//ƒT[ƒtƒF[ƒX‚É‘‚«‚Ş
+		//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«æ›¸ãè¾¼ã‚€
 		if(true){ //eraser
 			DataBuffer srcdb = PaintTool.owner.redoBuf.getRaster().getDataBuffer();
 			DataBuffer tgtdb = PaintTool.owner.getSurface().getRaster().getDataBuffer();
@@ -958,9 +959,9 @@ class EraserTool implements toolTabletInterface{
 
 	@Override
 	public void mouseDown(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return;
-		}
+		}*/
 		penDown(x, y+0.5f, 0.5f, false);
 	}
 	
@@ -984,9 +985,9 @@ class EraserTool implements toolTabletInterface{
 
 	@Override
 	public boolean mouseWithin(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return false;
-		}
+		}*/
 		return penWithin(x, y, 0.5f);
 	}
 	
@@ -996,9 +997,9 @@ class EraserTool implements toolTabletInterface{
 
 	@Override
 	public boolean mouseStillDown(int x, int y) {
-		if(PaintTool.tabletListener.in_stroke){
+		/*if(PaintTool.tabletListener.in_stroke){
 			return false;
-		}
+		}*/
 		return penStillDown(x, y+0.5f, 0.5f, false);
 	}
 	
@@ -1016,13 +1017,13 @@ class EraserTool implements toolTabletInterface{
 			}
 		}
 		
-		//— ‰æ–Ê‚ğæ“¾
+		//è£ç”»é¢ã‚’å–å¾—
 		Graphics2D g2;
 		if(true){ //eraser
 			g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 		}
 
-		//ü‚ğ— ‰æ–Ê‚É‘‚­
+		//ç·šã‚’è£ç”»é¢ã«æ›¸ã
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
 		float brushSize = 16.0f/PaintTool.owner.bit;
 		g2.setStroke(new BasicStroke(brushSize, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER));
@@ -1043,7 +1044,7 @@ class EraserTool implements toolTabletInterface{
 			g2.draw(line);
 		}
 		
-		//ƒNƒŠƒbƒvƒTƒCƒY‚ğŒvZ
+		//ã‚¯ãƒªãƒƒãƒ—ã‚µã‚¤ã‚ºã‚’è¨ˆç®—
 		int left=0, right=0, top=0, bottom=0;
 		if(x<PaintTool.lastx[0]){
 			left = (int)(x-brushSize/2-4);
@@ -1060,7 +1061,7 @@ class EraserTool implements toolTabletInterface{
 			bottom = (int)(y+brushSize/2+4);
 		}
 		
-		//”wŒi‰æ–Ê‚ğ•`‰æ
+		//èƒŒæ™¯ç”»é¢ã‚’æç”»
 		Graphics2D g3;
 		g3 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		g3.setClip(new Rectangle(left,top,right-left,bottom-top));
@@ -1073,7 +1074,7 @@ class EraserTool implements toolTabletInterface{
 		Graphics2D g4 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		g4.setClip(new Rectangle(left,top,right-left,bottom-top));
 
-		//“§–¾“x‚ğ”½‰f‚µ‚Äü•ª‚ğ‰æ–Ê‚É•`‰æ
+		//é€æ˜åº¦ã‚’åæ˜ ã—ã¦ç·šåˆ†ã‚’ç”»é¢ã«æç”»
 		if(true){
 			if(PaintTool.owner.bit>1){
 				AffineTransform af = new AffineTransform();
@@ -1092,7 +1093,7 @@ class EraserTool implements toolTabletInterface{
 			}*/
 			g4.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
 
-			//Šg‘å•\¦‚Ì˜gü•\¦
+			//æ‹¡å¤§è¡¨ç¤ºæ™‚ã®æ ç·šè¡¨ç¤º
 			if(PaintTool.owner.bit>2){
 				Graphics g5 = PaintTool.owner.mainPane.getGraphics();
 				MyPanel.bordersDraw(g5, PaintTool.owner.bit, PaintTool.owner.mainPane.getWidth(), PaintTool.owner.mainPane.getHeight());
@@ -1111,13 +1112,13 @@ class EraserTool implements toolTabletInterface{
 	
 	@Override
 	public void end(){
-		 TabletManager.getDefaultManager().removeTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
+		 //TabletManager.getDefaultManager().removeTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
 	}
 }
 
 
 //-------------------
-// ƒoƒPƒc
+// ãƒã‚±ãƒ„
 //-------------------
 class PaintBucketTool implements toolInterface{
 	ArrayList<Point> pointList;
@@ -1128,7 +1129,7 @@ class PaintBucketTool implements toolInterface{
 	}
 	
 	public static void gradfill(BufferedImage img, Color color1, Color color2, double angle){
-		//img‚Ì•s“§–¾‚È•”•ª‚Ìangle•â³‚µ‚½—Ìˆæ‚ğæ“¾
+		//imgã®ä¸é€æ˜ãªéƒ¨åˆ†ã®angleè£œæ­£ã—ãŸé ˜åŸŸã‚’å–å¾—
 		DataBuffer buffer = img.getRaster().getDataBuffer();
 		Point topPoint = null;
 		Point bottomPoint = null;
@@ -1155,7 +1156,7 @@ class PaintBucketTool implements toolInterface{
 			}
 		}
 		
-		//•s“§–¾‚È•”•ª‚ğƒOƒ‰ƒf[ƒVƒ‡ƒ““h‚è
+		//ä¸é€æ˜ãªéƒ¨åˆ†ã‚’ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³å¡—ã‚Š
 		for(int y=0; y<height; y++){
 			for(int x=0; x<width; x++){
 				//System.out.println(buffer.getElem(0, x+y*width));
@@ -1179,7 +1180,7 @@ class PaintBucketTool implements toolInterface{
 		int width = surface.getWidth();
 		int height = surface.getHeight();
 
-		//¶‚ğ’²‚×‚é
+		//å·¦ã‚’èª¿ã¹ã‚‹
 		int lx;
 		for(lx=-1; px+lx>=0; lx--){
 			//System.out.println("<srcColor:"+srcColor);
@@ -1190,7 +1191,7 @@ class PaintBucketTool implements toolInterface{
 		}
 		lx++;
 		
-		//‰E‚ğ’²‚×‚é
+		//å³ã‚’èª¿ã¹ã‚‹
 		int rx;
 		for(rx=1; px+rx<width; rx++){
 			//System.out.println(">srcColor:"+srcColor);
@@ -1201,21 +1202,21 @@ class PaintBucketTool implements toolInterface{
 		}
 		rx--;
 		
-		//‚»‚Ìƒ‰ƒCƒ“‚ğ“h‚é
+		//ãã®ãƒ©ã‚¤ãƒ³ã‚’å¡—ã‚‹
 		for(int x=px+lx; x<=px+rx; x++){
 			newBuffer.setElem(0, x+py*width, newColor);
 		}
 		
-		//ã‚Ìƒ‰ƒCƒ“‚ğ’T‚·
+		//ä¸Šã®ãƒ©ã‚¤ãƒ³ã‚’æ¢ã™
 		if(py-1>=0){
 			for(int x=px+lx; x<=px+rx; x++){
-				//‰E’[‚ğ’T‚·
+				//å³ç«¯ã‚’æ¢ã™
 				if((0x00FFFFFF&buffer.getElem(0, x+(py-1)*width))==(0x00FFFFFF&srcColor)){
 					if(x==px+rx ||
 							(0x00FFFFFF&buffer.getElem(0, (x+1)+(py-1)*width))!=(0x00FFFFFF&srcColor))
 					{
 						if(newBuffer.getElem(0, x+(py-1)*width)!=newColor){
-							//–¢“o˜^‚È‚Ì‚Å“o˜^‚·‚é
+							//æœªç™»éŒ²ãªã®ã§ç™»éŒ²ã™ã‚‹
 							pointList.add(new Point(x,py-1));
 							newBuffer.setElem(0, x+(py-1)*width, newColor);
 						}
@@ -1224,16 +1225,16 @@ class PaintBucketTool implements toolInterface{
 			}
 		}
 		
-		//‰º‚Ìƒ‰ƒCƒ“‚ğ’T‚·
+		//ä¸‹ã®ãƒ©ã‚¤ãƒ³ã‚’æ¢ã™
 		if(py+1<height){
 			for(int x=px+lx; x<px+rx; x++){
-				//‰E’[‚ğ’T‚·
+				//å³ç«¯ã‚’æ¢ã™
 				if((0x00FFFFFF&buffer.getElem(0, x+(py+1)*width))==(0x00FFFFFF&srcColor)){
 					if(x+1==px+rx ||
 							(0x00FFFFFF&buffer.getElem(0, (x+1)+(py+1)*width))!=(0x00FFFFFF&srcColor))
 					{
 						if(newBuffer.getElem(0, x+(py+1)*width)!=newColor){
-							//–¢“o˜^‚È‚Ì‚Å“o˜^‚·‚é
+							//æœªç™»éŒ²ãªã®ã§ç™»éŒ²ã™ã‚‹
 							pointList.add(new Point(x,py+1));
 							newBuffer.setElem(0, x+(py+1)*width, newColor);
 						}
@@ -1251,10 +1252,10 @@ class PaintBucketTool implements toolInterface{
 		//Color c = PaintTool.owner.stack.toolbar.fore.color;
 		int newColor = 0xFF000000/*+(c.getRed()<<16)+(c.getGreen()<<8)+c.getBlue()*/;
 		
-		//ƒŠƒXƒg‚ğƒŠƒZƒbƒg
+		//ãƒªã‚¹ãƒˆã‚’ãƒªã‚»ãƒƒãƒˆ
 		pointList = new ArrayList<Point>();
 		 
-		//— ‰æ–Ê‚ğ“§–¾‚É‚·‚é
+		//è£ç”»é¢ã‚’é€æ˜ã«ã™ã‚‹
 		Graphics2D g = (Graphics2D)newSurface.getGraphics();
 		g.setColor(new Color(255,255,255));
 		g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
@@ -1262,7 +1263,7 @@ class PaintBucketTool implements toolInterface{
 		g.fill(rect);
 		
 		
-		//ƒT[ƒtƒF[ƒX‚Ì“§–¾•”•ª‚ğ#FFFFFF‚É‚·‚é
+		//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã®é€æ˜éƒ¨åˆ†ã‚’#FFFFFFã«ã™ã‚‹
 		DataBuffer dbuffer = surface.getRaster().getDataBuffer();
 		for(int y=0; y<height; y++){
 			for(int x=0; x<width; x++){
@@ -1280,7 +1281,7 @@ class PaintBucketTool implements toolInterface{
 			seedfillH(surface, newSurface, p.x, p.y, srcColor, newColor);
 		}
 
-		//ƒpƒ^[ƒ“‚ğ“K—p
+		//ãƒ‘ã‚¿ãƒ¼ãƒ³ã‚’é©ç”¨
 		PaintTool.setPattern(false);
 		DataBuffer fillbuf = newSurface.getRaster().getDataBuffer();
 		DataBuffer patbuf = PaintTool.pat.getRaster().getDataBuffer();
@@ -1297,17 +1298,17 @@ class PaintBucketTool implements toolInterface{
 			}
 		}
 		
-		//ƒOƒ‰ƒf[ƒVƒ‡ƒ“‚ğ“K—p(ƒpƒ^[ƒ“‚Æ‚Ì•¹—p‚Í•s‰Â)
+		//ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã‚’é©ç”¨(ãƒ‘ã‚¿ãƒ¼ãƒ³ã¨ã®ä½µç”¨ã¯ä¸å¯)
 		if(PaintTool.owner.grad.use){
 			gradfill(newSurface, PaintTool.owner.grad.color1, PaintTool.owner.grad.color2, PaintTool.owner.grad.angle );
 		}
 		
-		//ƒT[ƒtƒF[ƒX‚É”½‰f‚·‚é
+		//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«åæ˜ ã™ã‚‹
 		Graphics2D g2 = (Graphics2D) surface.getGraphics();
 		g2.setComposite( AlphaComposite.getInstance(AlphaComposite.SRC_OVER,PaintTool.alpha/100.0F) );
 		g2.drawImage(newSurface, 0, 0, PaintTool.owner.mainPane);
 
-		//•\‰æ–Ê‚É”½‰f‚·‚é
+		//è¡¨ç”»é¢ã«åæ˜ ã™ã‚‹
 		Graphics2D g3 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		g3.drawImage(PaintTool.owner.bgImg, 0, 0, PaintTool.owner.mainPane);
 		if(!PaintTool.editBackground){
@@ -1363,7 +1364,7 @@ class PaintBucketTool implements toolInterface{
 
 
 //-------------------
-//‹éŒ`
+//çŸ©å½¢
 //-------------------
 class RectTool implements toolInterface{
 	private Rectangle srcRect;
@@ -1392,20 +1393,20 @@ class RectTool implements toolInterface{
 		clipRect.width+=2*(int)lineSize+3;
 		clipRect.height+=2*(int)lineSize+3;
 		
-		//— ‰æ–Ê‚ğæ“¾
+		//è£ç”»é¢ã‚’å–å¾—
 		Graphics2D g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 		g2.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		g2.fill(clipRect.union(lastClipRect));
 		g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 
-		//‹éŒ`‚ğ— ‰æ–Ê‚É‘‚­
+		//çŸ©å½¢ã‚’è£ç”»é¢ã«æ›¸ã
 		if(PaintTool.antialias){
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		}else{
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
 		}
 
-		//ü‚Ìí—Ş
+		//ç·šã®ç¨®é¡
 		g2.setColor(PaintTool.owner.fore.color);
 		if(PaintTool.antialias){
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -1415,19 +1416,19 @@ class RectTool implements toolInterface{
 		g2.setStroke(new BasicStroke(lineSize, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER));
 
 		if(PaintTool.owner.fill){
-			//ƒpƒ^[ƒ“
+			//ãƒ‘ã‚¿ãƒ¼ãƒ³
 			Rectangle2D.Double r = new Rectangle2D.Double(0, 0, PaintTool.pat.getWidth(), PaintTool.pat.getHeight());
 			g2.setPaint(new TexturePaint(PaintTool.pat, r));
 			g2.fill(rect);
 		}
 		
-		//‹éŒ`‚ğ•`‚­
+		//çŸ©å½¢ã‚’æã
 		g2.draw(rect);
 		
 		
 		Graphics2D g4 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 
-		//Šg‘å•\¦
+		//æ‹¡å¤§è¡¨ç¤º
 		if(PaintTool.owner.bit>1){
 			AffineTransform af = new AffineTransform();
 			af.translate(-((int)PaintTool.owner.bitLeft)*PaintTool.owner.bit, -((int)PaintTool.owner.bitTop)*PaintTool.owner.bit);
@@ -1435,7 +1436,7 @@ class RectTool implements toolInterface{
 			g4.transform(af);
 		}
 
-		//“§–¾“x‚ğ”½‰f‚µ‚Ä‹éŒ`‚ğ‰æ–Ê‚É•`‰æ
+		//é€æ˜åº¦ã‚’åæ˜ ã—ã¦çŸ©å½¢ã‚’ç”»é¢ã«æç”»
 		g4.setClip(clipRect.union(lastClipRect));
 		g4.drawImage(PaintTool.owner.bgImg, 0, 0, PaintTool.owner.mainPane);
 		g4.drawImage(PaintTool.owner.getSurface(), 0, 0, PaintTool.owner.mainPane);
@@ -1444,7 +1445,7 @@ class RectTool implements toolInterface{
 		}
 		g4.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
 
-		//Šg‘å•\¦‚Ì˜gü•\¦
+		//æ‹¡å¤§è¡¨ç¤ºæ™‚ã®æ ç·šè¡¨ç¤º
 		if(PaintTool.owner.bit>2){
 			Graphics g5 = PaintTool.owner.mainPane.getGraphics();
 			MyPanel.bordersDraw(g5, PaintTool.owner.bit, PaintTool.owner.mainPane.getWidth(), PaintTool.owner.mainPane.getHeight());
@@ -1459,7 +1460,7 @@ class RectTool implements toolInterface{
 		
 		Rectangle r = (Rectangle) srcRect.clone();
 		
-		if(GUI.key[11]>1){ //Shift‚Å³•ûŒ`
+		if(GUI.key[11]>1){ //Shiftã§æ­£æ–¹å½¢
 			if(Math.abs(r.x - x) < Math.abs(r.y - y)){
 				if((r.x - x)<0 == (r.y - y)<0)
 					y = (x - r.x) + r.y;
@@ -1498,7 +1499,7 @@ class RectTool implements toolInterface{
 		{
 			srcRect = setSelection(x,y);
 			
-			//ƒT[ƒtƒF[ƒX‚É”½‰f
+			//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«åæ˜ 
 			Graphics2D g = PaintTool.owner.getSurface().createGraphics();
 			g.setComposite( AlphaComposite.getInstance(AlphaComposite.SRC_OVER,PaintTool.alpha/100.0F) );
 			g.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
@@ -1514,7 +1515,7 @@ class RectTool implements toolInterface{
 
 			PaintTool.setPattern(GUI.key[14]>0);
 			
-			//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+			//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 			srcRect = new Rectangle(x,y,0,0);
 		}
 	}
@@ -1546,7 +1547,7 @@ class RectTool implements toolInterface{
 
 
 //-------------------
-//‘È‰~
+//æ¥•å††
 //-------------------
 class OvalTool implements toolInterface{
 	private Rectangle srcRect;
@@ -1574,20 +1575,20 @@ class OvalTool implements toolInterface{
 		clipRect.width+=2*(int)lineSize+2;
 		clipRect.height+=2*(int)lineSize+2;
 		
-		//— ‰æ–Ê‚ğæ“¾
+		//è£ç”»é¢ã‚’å–å¾—
 		Graphics2D g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 		g2.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		g2.fill(clipRect.union(lastClipRect));
 		g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 
-		//‘È‰~‚ğ— ‰æ–Ê‚É‘‚­
+		//æ¥•å††ã‚’è£ç”»é¢ã«æ›¸ã
 		if(PaintTool.antialias){
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		}else{
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
 		}
 
-		//ü‚Ìí—Ş
+		//ç·šã®ç¨®é¡
 		g2.setColor(PaintTool.owner.fore.color);
 		if(PaintTool.antialias){
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -1595,7 +1596,7 @@ class OvalTool implements toolInterface{
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
 		}
 		if(PaintTool.owner.fill){
-			//ƒpƒ^[ƒ“
+			//ãƒ‘ã‚¿ãƒ¼ãƒ³
 			Paint savePaint = g2.getPaint();
 			Rectangle2D.Double r = new Rectangle2D.Double(0, 0, PaintTool.pat.getWidth(), PaintTool.pat.getHeight());
 			g2.setPaint(new TexturePaint(PaintTool.pat, r));
@@ -1603,7 +1604,7 @@ class OvalTool implements toolInterface{
 			g2.setPaint(savePaint);
 		}
 		
-		//‘È‰~‚ğ•`‚­
+		//æ¥•å††ã‚’æã
 		g2.setStroke(new BasicStroke(lineSize, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 
 		g2.draw(new Ellipse2D.Float(rect.x, rect.y, rect.width, rect.height));
@@ -1611,7 +1612,7 @@ class OvalTool implements toolInterface{
 		
 		Graphics2D g4 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 
-		//Šg‘å•\¦
+		//æ‹¡å¤§è¡¨ç¤º
 		if(PaintTool.owner.bit>1){
 			AffineTransform af = new AffineTransform();
 			af.translate(-((int)PaintTool.owner.bitLeft)*PaintTool.owner.bit, -((int)PaintTool.owner.bitTop)*PaintTool.owner.bit);
@@ -1619,7 +1620,7 @@ class OvalTool implements toolInterface{
 			g4.transform(af);
 		}
 
-		//“§–¾“x‚ğ”½‰f‚µ‚Ä‘È‰~‚ğ‰æ–Ê‚É•`‰æ
+		//é€æ˜åº¦ã‚’åæ˜ ã—ã¦æ¥•å††ã‚’ç”»é¢ã«æç”»
 		g4.setClip(clipRect.union(lastClipRect));
 		g4.drawImage(PaintTool.owner.bgImg, 0, 0, PaintTool.owner.mainPane);
 		g4.drawImage(PaintTool.owner.getSurface(), 0, 0, PaintTool.owner.mainPane);
@@ -1628,7 +1629,7 @@ class OvalTool implements toolInterface{
 		}
 		g4.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
 
-		//Šg‘å•\¦‚Ì˜gü•\¦
+		//æ‹¡å¤§è¡¨ç¤ºæ™‚ã®æ ç·šè¡¨ç¤º
 		if(PaintTool.owner.bit>2){
 			Graphics g5 = PaintTool.owner.mainPane.getGraphics();
 			MyPanel.bordersDraw(g5, PaintTool.owner.bit, PaintTool.owner.mainPane.getWidth(), PaintTool.owner.mainPane.getHeight());
@@ -1643,7 +1644,7 @@ class OvalTool implements toolInterface{
 		
 		Rectangle r = (Rectangle) srcRect.clone();
 		
-		if(GUI.key[11]>1){ //Shift‚Å³•ûŒ`
+		if(GUI.key[11]>1){ //Shiftã§æ­£æ–¹å½¢
 			if(Math.abs(r.x - x) < Math.abs(r.y - y)){
 				if((r.x - x)<0 == (r.y - y)<0)
 					y = (x - r.x) + r.y;
@@ -1683,7 +1684,7 @@ class OvalTool implements toolInterface{
 		{
 			srcRect = setSelection(x,y);
 
-			//ƒT[ƒtƒF[ƒX‚É”½‰f
+			//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«åæ˜ 
 			Graphics2D g = PaintTool.owner.getSurface().createGraphics();
 			g.setComposite( AlphaComposite.getInstance(AlphaComposite.SRC_OVER,PaintTool.alpha/100.0F) );
 			g.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
@@ -1699,7 +1700,7 @@ class OvalTool implements toolInterface{
 
 			PaintTool.setPattern(GUI.key[14]>0);
 			
-			//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+			//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 			srcRect = new Rectangle(x,y,0,0);
 		}
 	}
@@ -1731,7 +1732,7 @@ class OvalTool implements toolInterface{
 
 
 //-------------------
-//ü•ª
+//ç·šåˆ†
 //-------------------
 class LineTool implements toolInterface{
 	private Rectangle srcRect;
@@ -1759,15 +1760,15 @@ class LineTool implements toolInterface{
 		clipRect.width+=2*(int)lineSize+2;
 		clipRect.height+=2*(int)lineSize+2;
 		
-		//— ‰æ–Ê‚ğæ“¾
+		//è£ç”»é¢ã‚’å–å¾—
 		Graphics2D g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 		g2.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		g2.fill(clipRect.union(lastClipRect));
 		g2 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 
-		//ü‚ğ— ‰æ–Ê‚É‘‚­
+		//ç·šã‚’è£ç”»é¢ã«æ›¸ã
 
-		//ü‚Ìí—Ş
+		//ç·šã®ç¨®é¡
 		g2.setColor(PaintTool.owner.fore.color);
 		if(PaintTool.antialias){
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -1776,13 +1777,13 @@ class LineTool implements toolInterface{
 		}
 		g2.setStroke(new BasicStroke(lineSize, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 
-		//ü‚ğˆø‚­
+		//ç·šã‚’å¼•ã
 		g2.drawLine(rect.x, rect.y, rect.x+rect.width, rect.y+rect.height);
 		
 		
 		Graphics2D g4 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 
-		//Šg‘å•\¦
+		//æ‹¡å¤§è¡¨ç¤º
 		if(PaintTool.owner.bit>1){
 			AffineTransform af = new AffineTransform();
 			af.translate(-((int)PaintTool.owner.bitLeft)*PaintTool.owner.bit, -((int)PaintTool.owner.bitTop)*PaintTool.owner.bit);
@@ -1790,7 +1791,7 @@ class LineTool implements toolInterface{
 			g4.transform(af);
 		}
 
-		//“§–¾“x‚ğ”½‰f‚µ‚Äü•ª‚ğ‰æ–Ê‚É•`‰æ
+		//é€æ˜åº¦ã‚’åæ˜ ã—ã¦ç·šåˆ†ã‚’ç”»é¢ã«æç”»
 		g4.setClip(clipRect.union(lastClipRect));
 		g4.drawImage(PaintTool.owner.bgImg, 0, 0, PaintTool.owner.mainPane);
 		g4.drawImage(PaintTool.owner.getSurface(), 0, 0, PaintTool.owner.mainPane);
@@ -1799,7 +1800,7 @@ class LineTool implements toolInterface{
 		}
 		g4.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
 
-		//Šg‘å•\¦‚Ì˜gü•\¦
+		//æ‹¡å¤§è¡¨ç¤ºæ™‚ã®æ ç·šè¡¨ç¤º
 		if(PaintTool.owner.bit>2){
 			Graphics g5 = PaintTool.owner.mainPane.getGraphics();
 			MyPanel.bordersDraw(g5, PaintTool.owner.bit, PaintTool.owner.mainPane.getWidth(), PaintTool.owner.mainPane.getHeight());
@@ -1815,7 +1816,7 @@ class LineTool implements toolInterface{
 		
 		Rectangle r = (Rectangle) srcRect.clone();
 		
-		if(GUI.key[11]>1){ //Shift‚Å45“x’PˆÊ
+		if(GUI.key[11]>1){ //Shiftã§45åº¦å˜ä½
 			if(Math.abs(r.x - x) < Math.abs(r.y - y)/2){
 				x = r.x;
 			}
@@ -1852,10 +1853,10 @@ class LineTool implements toolInterface{
 		g.setComposite( AlphaComposite.getInstance(AlphaComposite.SRC_OVER,PaintTool.alpha/100.0F) );
 		g.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
 		
-		/*//ƒT[ƒtƒF[ƒX‚É”½‰f
+		/*//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«åæ˜ 
 		Graphics2D g3 = PaintTool.owner.getSurface().createGraphics();
 		
-		//ü‚Ìí—Ş
+		//ç·šã®ç¨®é¡
 		g3.setColor(PaintTool.owner.fore.color);
 		if(PaintTool.antialias){
 			g3.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -1865,7 +1866,7 @@ class LineTool implements toolInterface{
 		float lineSize = PaintTool.lineSize;
 		g3.setStroke(new BasicStroke(lineSize, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 
-		//ü‚ğˆø‚­
+		//ç·šã‚’å¼•ã
 		g3.drawLine(srcRect.x, srcRect.y, srcRect.x+srcRect.width, srcRect.y+srcRect.height);
 		*/
 		PaintTool.owner.mainPane.repaint();
@@ -1878,7 +1879,7 @@ class LineTool implements toolInterface{
 
 			PaintTool.setPattern(GUI.key[14]>0);
 			
-			//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+			//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 			srcRect = new Rectangle(x,y,0,0);
 			
 			lastClipRect = new Rectangle(x,y,0,0);
@@ -1912,13 +1913,13 @@ class LineTool implements toolInterface{
 
 
 //-------------------
-//‘I‘ğ
+//é¸æŠ
 //-------------------
 class SelectTool implements toolSelectInterface{
-	//srcRect:‘I‘ğ‚µ‚½”ÍˆÍ
-	//moveRect:Œ»İ‚Ì•‚‚«o‚µ‚ÌˆÊ’u
-	//redoBuf:‘I‘ğ‚µ‚½”ÍˆÍ‚Ì•‚‚«o‚µ(0,0,width,height)
-	//move:true‚È‚ç•‚‚«o‚µ‚ ‚è
+	//srcRect:é¸æŠã—ãŸç¯„å›²
+	//moveRect:ç¾åœ¨ã®æµ®ãå‡ºã—ã®ä½ç½®
+	//redoBuf:é¸æŠã—ãŸç¯„å›²ã®æµ®ãå‡ºã—(0,0,width,height)
+	//move:trueãªã‚‰æµ®ãå‡ºã—ã‚ã‚Š
 	
 	Rectangle srcRect;
 	Rectangle moveRect;
@@ -1993,14 +1994,14 @@ class SelectTool implements toolSelectInterface{
 	}
 	
 	void viewSelection(){
-		//ˆêƒoƒbƒtƒ@‚Ì•”•ª‚ğ•`‰æ
+		//ä¸€æ™‚ãƒãƒƒãƒ•ã‚¡ã®éƒ¨åˆ†ã‚’æç”»
 		//Graphics2D g4 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		//g4.drawImage(PaintTool.owner.redoBuf, moveRect.x, moveRect.y, moveRect.x+moveRect.width, moveRect.y+moveRect.height,
 		//		0, 0, moveRect.width, moveRect.height, PaintTool.owner.mainPane);
 		//MyPanel.mainPaneDraw(g4, PaintTool.owner.redoBuf, moveRect.x, moveRect.y, moveRect.width, moveRect.height);
 		PaintTool.owner.mainPane.repaint();
 		
-		//‘I‘ğ—Ìˆæ‚Ì”jü‚ğ•\¦
+		//é¸æŠé ˜åŸŸã®ç ´ç·šã‚’è¡¨ç¤º
 		strokeDraw();
 	}
 	
@@ -2014,7 +2015,7 @@ class SelectTool implements toolSelectInterface{
 			moveRect = (Rectangle) srcRect.clone();
 			move = true;
 	
-			//ˆêƒoƒbƒtƒ@‚É‘I‘ğ—Ìˆæ‚ğˆÚ“®
+			//ä¸€æ™‚ãƒãƒƒãƒ•ã‚¡ã«é¸æŠé ˜åŸŸã‚’ç§»å‹•
 			Graphics2D g = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 			g.setColor(new Color(255,255,255));
 			g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
@@ -2023,7 +2024,7 @@ class SelectTool implements toolSelectInterface{
 			g.drawImage(PaintTool.owner.getSurface(), 0, 0, srcRect.width, srcRect.height, 
 					srcRect.x, srcRect.y, srcRect.x+srcRect.width, srcRect.y+srcRect.height, PaintTool.owner.mainPane);
 			
-			//ˆÚ“®‚µ‚½•”•ª‚ğ“§–¾‚É‚·‚é
+			//ç§»å‹•ã—ãŸéƒ¨åˆ†ã‚’é€æ˜ã«ã™ã‚‹
 			Graphics2D g2 = (Graphics2D) PaintTool.owner.getSurface().getGraphics();
 			g2.setColor(new Color(255,255,255));
 			if(!PaintTool.editBackground){
@@ -2031,7 +2032,7 @@ class SelectTool implements toolSelectInterface{
 			}
 			g2.fillRect(srcRect.x, srcRect.y, srcRect.width, srcRect.height);
 			
-			//•\‰æ–Ê‚É”½‰f
+			//è¡¨ç”»é¢ã«åæ˜ 
 			/*Graphics2D g3 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 			g3.setColor(new Color(255,255,255));
 			g3.fillRect(0, 0, PaintTool.owner.mainPane.getWidth(), PaintTool.owner.mainPane.getHeight());
@@ -2055,7 +2056,7 @@ class SelectTool implements toolSelectInterface{
 	@Override
 	public void mouseDown(int x, int y) {
 		if(move == true && moveRect.contains(new Point(x,y))){
-			//‘I‘ğ”ÍˆÍ‚ÌˆÚ“®ŠJn
+			//é¸æŠç¯„å›²ã®ç§»å‹•é–‹å§‹
 			shift = (GUI.key[11]>0);
 			shiftx = x; shifty = y;
 			
@@ -2066,11 +2067,11 @@ class SelectTool implements toolSelectInterface{
 			}
 		}
 		else{
-			//•‚‚«o‚µ—Ìˆæ‚ğÀÛ‚Ì—Ìˆæ‚É•`‰æ
+			//æµ®ãå‡ºã—é ˜åŸŸã‚’å®Ÿéš›ã®é ˜åŸŸã«æç”»
 			GMenuPaint.setUndo();
 			end();
 			
-			//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+			//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 			srcRect = new Rectangle(x,y,0,0);
 			
 			moveRect = null;
@@ -2101,7 +2102,7 @@ class SelectTool implements toolSelectInterface{
 	@Override
 	public boolean mouseStillDown(int x, int y) {
 		if(move==true){
-			//‘I‘ğ”ÍˆÍ‚ÌˆÚ“®
+			//é¸æŠç¯„å›²ã®ç§»å‹•
 
 			if(shift && ((x-shiftx!=0) || (y-shifty!=0))){
 				if((shiftx==-1) || (shifty!=-1) && (Math.abs(x-shiftx) > Math.abs(y-shifty))){
@@ -2118,7 +2119,7 @@ class SelectTool implements toolSelectInterface{
 			moveRect.x += x - PaintTool.lastx[0];
 			moveRect.y += y - PaintTool.lasty[0];
 			
-			//•\‰æ–Ê‚É”½‰f
+			//è¡¨ç”»é¢ã«åæ˜ 
 			/*Graphics2D g3 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 			g3.drawImage(PaintTool.owner.bgImg, 0, 0, PaintTool.owner.mainPane);
 			if(!PaintTool.editBackground){
@@ -2136,15 +2137,15 @@ class SelectTool implements toolSelectInterface{
 			viewSelection();
 
 
-    	   //ƒ|ƒCƒ“ƒ^‚ªƒEƒBƒ“ƒhƒEŠO‚Öo‚½‚ç
+    	   //ãƒã‚¤ãƒ³ã‚¿ãŒã‚¦ã‚£ãƒ³ãƒ‰ã‚¦å¤–ã¸å‡ºãŸã‚‰
     	   /*PointerInfo pointerInfo = MouseInfo.getPointerInfo();
     	   Point p = pointerInfo.getLocation();
     	   Rectangle r = new Rectangle(PaintTool.owner.getLocationOnScreen().x,
     			   PaintTool.owner.getLocationOnScreen().y,
     			   PaintTool.owner.getWidth(), PaintTool.owner.getHeight());
     	   if(!r.contains(p) && move==true ){
-				//ƒtƒ@ƒCƒ‹‚Ö‚Ìƒhƒ‰ƒbƒOƒAƒ“ƒhƒhƒƒbƒv
-				//ƒhƒ‰ƒbƒOŒ³‚ğì¬‚·‚é
+				//ãƒ•ã‚¡ã‚¤ãƒ«ã¸ã®ãƒ‰ãƒ©ãƒƒã‚°ã‚¢ãƒ³ãƒ‰ãƒ‰ãƒ­ãƒƒãƒ—
+				//ãƒ‰ãƒ©ãƒƒã‚°å…ƒã‚’ä½œæˆã™ã‚‹
 		        DragSource dragSource = new DragSource();
 		        DragGestureRecognizer dgr = 
 		        dragSource.createDefaultDragGestureRecognizer(
@@ -2177,7 +2178,7 @@ class SelectTool implements toolSelectInterface{
 			g.drawImage(newimg, moveRect.x, moveRect.y, moveRect.x + moveRect.width,  moveRect.y + moveRect.height, 
 					0, 0, srcRect.width, srcRect.height, null);
 
-			//ƒy[ƒXƒg‚µ‚½ê‡‚Íƒoƒbƒtƒ@‚Ì‘å‚«‚³‚ª•Ï‚í‚Á‚Ä‚¢‚é‚Ì‚ÅV‚µ‚­‚·‚é
+			//ãƒšãƒ¼ã‚¹ãƒˆã—ãŸå ´åˆã¯ãƒãƒƒãƒ•ã‚¡ã®å¤§ãã•ãŒå¤‰ã‚ã£ã¦ã„ã‚‹ã®ã§æ–°ã—ãã™ã‚‹
 			PaintTool.owner.redoBuf = new BufferedImage(PaintTool.owner.mainImg.getWidth(), PaintTool.owner.mainImg.getHeight(),
 					BufferedImage.TYPE_INT_ARGB );	
 		}
@@ -2223,7 +2224,7 @@ class SelectTool implements toolSelectInterface{
 
 	@Override
 	public void dragGestureRecognized(DragGestureEvent e) {
-		// Copy/Move‚ÌƒAƒNƒVƒ‡ƒ“‚È‚çƒhƒ‰ƒbƒO‚ğŠJn‚·‚é
+		// Copy/Moveã®ã‚¢ã‚¯ã‚·ãƒ§ãƒ³ãªã‚‰ãƒ‰ãƒ©ãƒƒã‚°ã‚’é–‹å§‹ã™ã‚‹
 		if((e.getDragAction()|DnDConstants.ACTION_COPY_OR_MOVE)!= 0) {
 			try{
 				e.startDrag(DragSource.DefaultCopyDrop, this, null);
@@ -2262,13 +2263,13 @@ class SelectTool implements toolSelectInterface{
 }*/
 
 //-------------------
-//“Š‚°‚È‚í
+//æŠ•ã’ãªã‚
 //-------------------
 class LassoTool implements toolSelectInterface{
-	//srcbits:‘I‘ğ‚µ‚½”ÍˆÍ
-	//movePoint:Œ»İ‚Ì•‚‚«o‚µ‚ÌˆÚ“®•ª
-	//redoBuf:‘I‘ğ‚µ‚½”ÍˆÍ‚Ì•‚‚«o‚µ(0,0,width,height)
-	//move:true‚È‚ç•‚‚«o‚µ‚ ‚è
+	//srcbits:é¸æŠã—ãŸç¯„å›²
+	//movePoint:ç¾åœ¨ã®æµ®ãå‡ºã—ã®ç§»å‹•åˆ†
+	//redoBuf:é¸æŠã—ãŸç¯„å›²ã®æµ®ãå‡ºã—(0,0,width,height)
+	//move:trueãªã‚‰æµ®ãå‡ºã—ã‚ã‚Š
 	
 	ArrayList<Point> srcPoints = new ArrayList<Point>();
 	BufferedImage srcbits;
@@ -2310,7 +2311,7 @@ class LassoTool implements toolSelectInterface{
 			for(int x=0; x<width; x++){
 				int c = srcbuf.getElem(0, x+y*width);
 				if((c & 0xFF000000) != 0){
-					//•‚‚«o‚µ”ÍˆÍ‚ÉŠÜ‚Ü‚ê‚Ä‚¢‚ÄAüˆÍ4‚Â‚Ì‚Ç‚ê‚©‚ª”ÍˆÍŠO‚Ìê‡
+					//æµ®ãå‡ºã—ç¯„å›²ã«å«ã¾ã‚Œã¦ã„ã¦ã€å‘¨å›²4ã¤ã®ã©ã‚Œã‹ãŒç¯„å›²å¤–ã®å ´åˆ
 					int c1 = 0x00FFFFFF;
 					if(x>=1) c1 = srcbuf.getElem(0, x-1+y*width);
 					int c2 = 0x00FFFFFF;
@@ -2368,19 +2369,19 @@ class LassoTool implements toolSelectInterface{
 			yPoints[j] = p.y;
 		}
 		
-		//ƒ}ƒXƒN—pƒoƒbƒtƒ@‚ğ—pˆÓ‚·‚é
+		//ãƒã‚¹ã‚¯ç”¨ãƒãƒƒãƒ•ã‚¡ã‚’ç”¨æ„ã™ã‚‹
 		BufferedImage srcsrcbits = new BufferedImage(PaintTool.owner.mainImg.getWidth(), PaintTool.owner.mainImg.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = (Graphics2D) srcsrcbits.getGraphics();
 		g.setColor(new Color(255,255,255));
 		//g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		g.fillRect(0,0, srcsrcbits.getWidth(), srcsrcbits.getHeight());
 
-		//‘½ŠpŒ`‚ğ•`‚­
+		//å¤šè§’å½¢ã‚’æã
 		g = (Graphics2D) srcsrcbits.getGraphics();
 		g.setColor(Color.BLACK);
 		g.fillPolygon(xPoints, yPoints, srcPoints.size());
 
-		//‚»‚ÌŒ`ó‚ÉŠÜ‚Ü‚ê‚ésurface()‚ğsrcsrcbits‚É•`‰æ
+		//ãã®å½¢çŠ¶ã«å«ã¾ã‚Œã‚‹surface()ã‚’srcsrcbitsã«æç”»
 		DataBuffer mskbuf = srcsrcbits.getRaster().getDataBuffer();
 		DataBuffer imgbuf = PaintTool.owner.getSurface().getRaster().getDataBuffer();
 		int width = srcsrcbits.getWidth();
@@ -2404,7 +2405,7 @@ class LassoTool implements toolSelectInterface{
 		srcg = (Graphics2D) srcbits.getGraphics();
 		srcg.drawImage(srcsrcbits,0,0,null);
 		
-		//ü•Ó‚Ì”’F‚ğ“§–¾‰»
+		//å‘¨è¾ºã®ç™½è‰²ã‚’é€æ˜åŒ–
 		pointList = new ArrayList<Point>();
 
 		for(int x=0; x<width; x++){
@@ -2422,7 +2423,7 @@ class LassoTool implements toolSelectInterface{
 			seedfillH(srcsrcbits, srcbits, p.x, p.y, 0xFFFFFFFF, 0x00FFFFFF);
 		}
 		
-		//ƒNƒŠƒA
+		//ã‚¯ãƒªã‚¢
 		srcPoints = new ArrayList<Point>();
 	}
 
@@ -2434,7 +2435,7 @@ class LassoTool implements toolSelectInterface{
 		int width = surface.getWidth();
 		int height = surface.getHeight();
 
-		//¶‚ğ’²‚×‚é
+		//å·¦ã‚’èª¿ã¹ã‚‹
 		int lx;
 		for(lx=0; px+lx>=0; lx--){
 			//System.out.println("<srcColor:"+srcColor);
@@ -2445,7 +2446,7 @@ class LassoTool implements toolSelectInterface{
 		}
 		lx++;
 		
-		//‰E‚ğ’²‚×‚é
+		//å³ã‚’èª¿ã¹ã‚‹
 		int rx;
 		for(rx=0; px+rx<width; rx++){
 			//System.out.println(">srcColor:"+srcColor);
@@ -2456,23 +2457,23 @@ class LassoTool implements toolSelectInterface{
 		}
 		rx--;
 		
-		//‚»‚Ìƒ‰ƒCƒ“‚ğ“h‚é
+		//ãã®ãƒ©ã‚¤ãƒ³ã‚’å¡—ã‚‹
 		for(int x=px+lx; x<=px+rx; x++){
 			if(buffer.getElem(0, x+py*width)==srcColor){
 				newBuffer.setElem(0, x+py*width, newColor);
 			}
 		}
 		
-		//ã‚Ìƒ‰ƒCƒ“‚ğ’T‚·
+		//ä¸Šã®ãƒ©ã‚¤ãƒ³ã‚’æ¢ã™
 		if(py-1>=0){
 			for(int x=px+lx; x<=px+rx; x++){
-				//‰E’[‚ğ’T‚·
+				//å³ç«¯ã‚’æ¢ã™
 				if(buffer.getElem(0, x+(py-1)*width)==srcColor){
 					if(x==px+rx ||
 						buffer.getElem(0, (x+1)+(py-1)*width)!=srcColor)
 					{
 						if(newBuffer.getElem(0, x+(py-1)*width)!=newColor){
-							//–¢“o˜^‚È‚Ì‚Å“o˜^‚·‚é
+							//æœªç™»éŒ²ãªã®ã§ç™»éŒ²ã™ã‚‹
 							pointList.add(new Point(x,py-1));
 							newBuffer.setElem(0, x+(py-1)*width, newColor);
 						}
@@ -2481,16 +2482,16 @@ class LassoTool implements toolSelectInterface{
 			}
 		}
 		
-		//‰º‚Ìƒ‰ƒCƒ“‚ğ’T‚·
+		//ä¸‹ã®ãƒ©ã‚¤ãƒ³ã‚’æ¢ã™
 		if(py+1<height){
 			for(int x=px+lx; x<px+rx; x++){
-				//‰E’[‚ğ’T‚·
+				//å³ç«¯ã‚’æ¢ã™
 				if(buffer.getElem(0, x+(py+1)*width)==srcColor){
 					if(x+1==px+rx ||
 						buffer.getElem(0, (x+1)+(py+1)*width)!=srcColor)
 					{
 						if(newBuffer.getElem(0, x+(py+1)*width)!=newColor){
-							//–¢“o˜^‚È‚Ì‚Å“o˜^‚·‚é
+							//æœªç™»éŒ²ãªã®ã§ç™»éŒ²ã™ã‚‹
 							pointList.add(new Point(x,py+1));
 							newBuffer.setElem(0, x+(py+1)*width, newColor);
 						}
@@ -2524,7 +2525,7 @@ class LassoTool implements toolSelectInterface{
 	void viewSelection(){
 		PaintTool.owner.mainPane.repaint();
 		
-		//‘I‘ğ—Ìˆæ‚Ì”jü‚ğ•\¦
+		//é¸æŠé ˜åŸŸã®ç ´ç·šã‚’è¡¨ç¤º
 		strokeDraw();
 	}
 	
@@ -2538,7 +2539,7 @@ class LassoTool implements toolSelectInterface{
 			movePoint = new Point(0,0);
 			move = true;
 	
-			//ˆêƒoƒbƒtƒ@‚É‘I‘ğ—Ìˆæ‚ğˆÚ“®
+			//ä¸€æ™‚ãƒãƒƒãƒ•ã‚¡ã«é¸æŠé ˜åŸŸã‚’ç§»å‹•
 			Graphics2D g = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 			g.setColor(new Color(255,255,255));
 			g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
@@ -2555,7 +2556,7 @@ class LassoTool implements toolSelectInterface{
 					int c = mskbuf.getElem(0, h+v*width);
 					if((c&0xFF000000) != 0){
 						movbuf.setElem(h+v*width, surbuf.getElem(0, h+v*width));
-						//ˆÚ“®‚µ‚½•”•ª‚ğ“§–¾‚É‚·‚é
+						//ç§»å‹•ã—ãŸéƒ¨åˆ†ã‚’é€æ˜ã«ã™ã‚‹
 						if(!PaintTool.editBackground){
 							surbuf.setElem(h+v*width, 0x00FFFFFF);
 						}else{
@@ -2565,7 +2566,7 @@ class LassoTool implements toolSelectInterface{
 				}
 			}
 			
-			//•\‰æ–Ê‚É”½‰f
+			//è¡¨ç”»é¢ã«åæ˜ 
 			PaintTool.owner.mainPane.repaint();
 			
 			viewSelection();
@@ -2582,7 +2583,7 @@ class LassoTool implements toolSelectInterface{
 			if((x-movePoint.x)>=0 && (x-movePoint.x)<srcbits.getWidth() &&
 				(y-movePoint.y)>=0 && (y-movePoint.y)<srcbits.getHeight())
 			{
-				//‘I‘ğ”ÍˆÍ‚ÌˆÚ“®ŠJn
+				//é¸æŠç¯„å›²ã®ç§»å‹•é–‹å§‹
 				shift = (GUI.key[11]>0);
 				shiftx = x; shifty = y;
 				
@@ -2598,11 +2599,11 @@ class LassoTool implements toolSelectInterface{
 		}
 		
 		{
-			//•‚‚«o‚µ—Ìˆæ‚ğÀÛ‚Ì—Ìˆæ‚É•`‰æ
+			//æµ®ãå‡ºã—é ˜åŸŸã‚’å®Ÿéš›ã®é ˜åŸŸã«æç”»
 			GMenuPaint.setUndo();
 			end();
 			
-			//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+			//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 			clear();
 			
 			srcPoints.add(new Point(x,y));
@@ -2640,7 +2641,7 @@ class LassoTool implements toolSelectInterface{
 	@Override
 	public boolean mouseStillDown(int x, int y) {
 		if(move==true){
-			//‘I‘ğ”ÍˆÍ‚ÌˆÚ“®
+			//é¸æŠç¯„å›²ã®ç§»å‹•
 
 			if(shift && ((x-shiftx!=0) || (y-shifty!=0))){
 				if((shiftx==-1) || (shifty!=-1) && (Math.abs(x-shiftx) > Math.abs(y-shifty))){
@@ -2679,7 +2680,7 @@ class LassoTool implements toolSelectInterface{
 			viewSelection();
 		}
 		else{
-			//‘I‘ğ”ÍˆÍ‚ğL‚°‚Äs‚­
+			//é¸æŠç¯„å›²ã‚’åºƒã’ã¦è¡Œã
 			setSelection(x,y);
 		}
 		return true;
@@ -2700,7 +2701,7 @@ class LassoTool implements toolSelectInterface{
 			BufferedImage newimg = MyPanel.makeBlendImage(PaintTool.owner.redoBuf);
 			g.drawImage(newimg, movePoint.x, movePoint.y, null);
 
-			//‰ñ“]‚µ‚½ê‡‚Íƒoƒbƒtƒ@‚Ì‘å‚«‚³‚ª•Ï‚í‚Á‚Ä‚¢‚é‚Ì‚ÅV‚µ‚­‚·‚é
+			//å›è»¢ã—ãŸå ´åˆã¯ãƒãƒƒãƒ•ã‚¡ã®å¤§ãã•ãŒå¤‰ã‚ã£ã¦ã„ã‚‹ã®ã§æ–°ã—ãã™ã‚‹
 			PaintTool.owner.redoBuf = new BufferedImage(PaintTool.owner.mainImg.getWidth(), PaintTool.owner.mainImg.getHeight(), BufferedImage.TYPE_INT_ARGB );	
 		}
 		
@@ -2768,17 +2769,17 @@ class LassoTool implements toolSelectInterface{
 
 
 //-------------------
-//ƒXƒ}[ƒg‘I‘ğ
+//ã‚¹ãƒãƒ¼ãƒˆé¸æŠ
 //-------------------
 class SmartSelectTool implements toolSelectInterface{
-	//srcbits:‘I‘ğ‚µ‚½”ÍˆÍ
-	//movePoint:Œ»İ‚Ì•‚‚«o‚µ‚ÌˆÚ“®•ª
-	//redoBuf:‘I‘ğ‚µ‚½”ÍˆÍ‚Ì•‚‚«o‚µ(0,0,width,height)
-	//move:true‚È‚ç•‚‚«o‚µ‚ ‚è
+	//srcbits:é¸æŠã—ãŸç¯„å›²
+	//movePoint:ç¾åœ¨ã®æµ®ãå‡ºã—ã®ç§»å‹•åˆ†
+	//redoBuf:é¸æŠã—ãŸç¯„å›²ã®æµ®ãå‡ºã—(0,0,width,height)
+	//move:trueãªã‚‰æµ®ãå‡ºã—ã‚ã‚Š
 	
-	//cmd‚ğ‰Ÿ‚µ‚È‚ª‚ç‘I‘ğ”ÍˆÍŠOƒNƒŠƒbƒN‚È‚ç‘I‘ğ”ÍˆÍ‚ğ‘‚â‚·
+	//cmdã‚’æŠ¼ã—ãªãŒã‚‰é¸æŠç¯„å›²å¤–ã‚¯ãƒªãƒƒã‚¯ãªã‚‰é¸æŠç¯„å›²ã‚’å¢—ã‚„ã™
 
-	ArrayList<Point> pointList; //seedFill—p
+	ArrayList<Point> pointList; //seedFillç”¨
 	ArrayList<Point> srcPoints = new ArrayList<Point>();
 	BufferedImage srcbits;
 	Point movePoint;
@@ -2795,7 +2796,7 @@ class SmartSelectTool implements toolSelectInterface{
 	private void borderDraw(){
 		if(srcbits==null) return;
 
-		/*//“§–¾“x‚ğ”½‰f‚µ‚Äü•ª‚ğ‰æ–Ê‚É•`‰æ
+		/*//é€æ˜åº¦ã‚’åæ˜ ã—ã¦ç·šåˆ†ã‚’ç”»é¢ã«æç”»
 		Graphics2D g4 = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 		g4.drawImage(PaintTool.owner.bgImg, 0, 0, PaintTool.owner.mainPane);
 		g4.drawImage(PaintTool.owner.getSurface(), 0, 0, PaintTool.owner.mainPane);
@@ -2804,10 +2805,10 @@ class SmartSelectTool implements toolSelectInterface{
 		}
 		g4.drawImage(srcbits, movePoint.x, movePoint.y, PaintTool.owner.mainPane);
 
-		//‘I‘ğ”ÍˆÍ‚ÌŒ³‰æ‘œ‚ğ•`‰æ
+		//é¸æŠç¯„å›²ã®å…ƒç”»åƒã‚’æç”»
 		Graphics2D g6 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 
-		//Šg‘å•\¦
+		//æ‹¡å¤§è¡¨ç¤º
 		if(PaintTool.owner.bit>1){
 			AffineTransform af = new AffineTransform();
 			af.translate(-((int)PaintTool.owner.bitLeft)*PaintTool.owner.bit, -((int)PaintTool.owner.bitTop)*PaintTool.owner.bit);
@@ -2817,16 +2818,16 @@ class SmartSelectTool implements toolSelectInterface{
 		
 		g6.drawImage(PaintTool.owner.redoBuf, 0, 0, PaintTool.owner.mainPane);
 		
-		//Šg‘å•\¦‚Ì˜gü•\¦
+		//æ‹¡å¤§è¡¨ç¤ºæ™‚ã®æ ç·šè¡¨ç¤º
 		if(PaintTool.owner.bit>2){
 			Graphics g5 = PaintTool.owner.mainPane.getGraphics();
 			MyPanel.bordersDraw(g5, PaintTool.owner.bit, PaintTool.owner.mainPane.getWidth(), PaintTool.owner.mainPane.getHeight());
 		}*/
 		
-		//”wŒi‚¨‚æ‚Ñ•‚‚«o‚µ•”•ª‚ğ•`‰æ
+		//èƒŒæ™¯ãŠã‚ˆã³æµ®ãå‡ºã—éƒ¨åˆ†ã‚’æç”»
 		//PaintTool.owner.mainPane.repaint();
 		
-		//”jü•`‰æ‚Í‰æ–Ê‚Éƒ_ƒCƒŒƒNƒg‚É
+		//ç ´ç·šæç”»ã¯ç”»é¢ã«ãƒ€ã‚¤ãƒ¬ã‚¯ãƒˆã«
 		Graphics2D g3 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		
 		if(PaintTool.owner.bit>1){
@@ -2836,7 +2837,7 @@ class SmartSelectTool implements toolSelectInterface{
 			g3.transform(af);
 		}
 	
-		//‘I‘ğ‚Ì”jü‚ğ•`‰æ
+		//é¸æŠã®ç ´ç·šã‚’æç”»
 		if(srcbits == null) return;
 		WritableRaster raster = srcbits.getRaster();
 		if(raster == null) return;
@@ -2849,7 +2850,7 @@ class SmartSelectTool implements toolSelectInterface{
 			for(int x=0; x<width; x++){
 				int c = srcbuf.getElem(0, x+y*width);
 				if((c & 0xFF000000) != 0){
-					//•‚‚«o‚µ”ÍˆÍ‚ÉŠÜ‚Ü‚ê‚Ä‚¢‚ÄAüˆÍ4‚Â‚Ì‚Ç‚ê‚©‚ª”ÍˆÍŠO‚Ìê‡
+					//æµ®ãå‡ºã—ç¯„å›²ã«å«ã¾ã‚Œã¦ã„ã¦ã€å‘¨å›²4ã¤ã®ã©ã‚Œã‹ãŒç¯„å›²å¤–ã®å ´åˆ
 					int c1 = 0x00FFFFFF;
 					if(x>=1) c1 = srcbuf.getElem(0, x-1+y*width);
 					int c2 = 0x00FFFFFF;
@@ -2905,7 +2906,7 @@ class SmartSelectTool implements toolSelectInterface{
 		int height = surface.getHeight();
 		int near = PaintTool.smartSelectPercent*256/100;
 
-		//¶‚ğ’²‚×‚é
+		//å·¦ã‚’èª¿ã¹ã‚‹
 		int lx;
 		for(lx=0; px+lx>=0; lx--){
 			//System.out.println("<srcColor:"+srcColor);
@@ -2921,7 +2922,7 @@ class SmartSelectTool implements toolSelectInterface{
 		}
 		lx++;
 		
-		//‰E‚ğ’²‚×‚é
+		//å³ã‚’èª¿ã¹ã‚‹
 		int rx;
 		for(rx=0; px+rx<width; rx++){
 			//System.out.println(">srcColor:"+srcColor);
@@ -2937,17 +2938,17 @@ class SmartSelectTool implements toolSelectInterface{
 		}
 		rx--;
 		
-		//‚»‚Ìƒ‰ƒCƒ“‚ğ“h‚é
+		//ãã®ãƒ©ã‚¤ãƒ³ã‚’å¡—ã‚‹
 		for(int x=px+lx; x<=px+rx; x++){
 			int c = buffer.getElem(0, x+py*width);
 			if(c==0) c=1;
 			newBuffer.setElem(0, x+py*width, c);
 		}
 		
-		//ã‚Ìƒ‰ƒCƒ“‚ğ’T‚·
+		//ä¸Šã®ãƒ©ã‚¤ãƒ³ã‚’æ¢ã™
 		if(py-1>=0){
 			for(int x=px+lx; x<=px+rx; x++){
-				//‰E’[‚ğ’T‚·
+				//å³ç«¯ã‚’æ¢ã™
 				boolean isMatch = false;
 				for(int i=0; i<srcColors.size(); i++){
 					if(isNear(buffer.getElem(0, x+(py-1)*width),srcColors.get(i), near)){
@@ -2968,7 +2969,7 @@ class SmartSelectTool implements toolSelectInterface{
 					if(x==px+rx || !isMatch2)
 					{
 						if(newBuffer.getElem(0, x+(py-1)*width)==0x00000000){
-							//–¢“o˜^‚È‚Ì‚Å“o˜^‚·‚é
+							//æœªç™»éŒ²ãªã®ã§ç™»éŒ²ã™ã‚‹
 							pointList.add(new Point(x,py-1));
 							int c = buffer.getElem(0, x+(py-1)*width);
 							if(c==0) c=1;
@@ -2979,10 +2980,10 @@ class SmartSelectTool implements toolSelectInterface{
 			}
 		}
 		
-		//‰º‚Ìƒ‰ƒCƒ“‚ğ’T‚·
+		//ä¸‹ã®ãƒ©ã‚¤ãƒ³ã‚’æ¢ã™
 		if(py+1<height){
 			for(int x=px+lx; x<=px+rx; x++){
-				//‰E’[‚ğ’T‚·
+				//å³ç«¯ã‚’æ¢ã™
 				boolean isMatch = false;
 				for(int i=0; i<srcColors.size(); i++){
 					if(isNear(buffer.getElem(0, x+(py+1)*width),srcColors.get(i), near)){
@@ -3003,7 +3004,7 @@ class SmartSelectTool implements toolSelectInterface{
 					if(x==px+rx || !isMatch2)
 					{
 						if(newBuffer.getElem(0, x+(py+1)*width)==0x00000000){
-							//–¢“o˜^‚È‚Ì‚Å“o˜^‚·‚é
+							//æœªç™»éŒ²ãªã®ã§ç™»éŒ²ã™ã‚‹
 							pointList.add(new Point(x,py+1));
 							int c = buffer.getElem(0, x+(py+1)*width);
 							if(c==0) c=1;
@@ -3021,10 +3022,10 @@ class SmartSelectTool implements toolSelectInterface{
 			allScreen = true;
 		}
 		
-		//ŠÔ‚ª‚©‚©‚é‚Ì‚ÅƒJ[ƒ\ƒ‹‚ğŒv‚É
+		//æ™‚é–“ãŒã‹ã‹ã‚‹ã®ã§ã‚«ãƒ¼ã‚½ãƒ«ã‚’æ™‚è¨ˆã«
 		PaintTool.owner.mainPane.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 		
-		//ŠÜ‚Ü‚ê‚éF‚ğ—ñ‹“
+		//å«ã¾ã‚Œã‚‹è‰²ã‚’åˆ—æŒ™
 		ArrayList<Color> srcColors = new ArrayList<Color>();
 		int width = PaintTool.owner.getSurface().getWidth();
 		int near = PaintTool.smartSelectPercent*256/100;
@@ -3046,11 +3047,11 @@ class SmartSelectTool implements toolSelectInterface{
 			if(!isFound) srcColors.add(c);
 		}
 
-		//“h‚è‚Â‚Ô‚µŒó•âƒŠƒXƒg‚ğƒŠƒZƒbƒg
+		//å¡—ã‚Šã¤ã¶ã—å€™è£œãƒªã‚¹ãƒˆã‚’ãƒªã‚»ãƒƒãƒˆ
 		pointList = new ArrayList<Point>();
 		
 		if(allScreen){
-			//‚·‚×‚Ä‚Ì—Ş—F‚ğŒŸõ
+			//ã™ã¹ã¦ã®é¡ä¼¼è‰²ã‚’æ¤œç´¢
 			DataBuffer buffer = PaintTool.owner.getSurface().getRaster().getDataBuffer();
 			DataBuffer newBuffer = srcbits.getRaster().getDataBuffer();
 			int width1 = PaintTool.owner.getSurface().getWidth();
@@ -3082,7 +3083,7 @@ class SmartSelectTool implements toolSelectInterface{
 		}
 		else
 		{
-			//—×‚è‡‚Á‚½—Ş—F‚ğŒŸõ
+			//éš£ã‚Šåˆã£ãŸé¡ä¼¼è‰²ã‚’æ¤œç´¢
 			for(int j=0; j<srcPoints.size(); j++){
 				seedfillH(PaintTool.owner.getSurface(), srcbits,
 						srcPoints.get(j).x, srcPoints.get(j).y, srcColors);
@@ -3096,10 +3097,10 @@ class SmartSelectTool implements toolSelectInterface{
 			}
 		}
 		
-		//FƒŠƒXƒg‚Í‚à‚¤‚¢‚ç‚È‚¢‚Ì‚ÅƒNƒŠƒA
+		//è‰²ãƒªã‚¹ãƒˆã¯ã‚‚ã†ã„ã‚‰ãªã„ã®ã§ã‚¯ãƒªã‚¢
 		srcPoints = new ArrayList<Point>();
 		
-		//ƒJ[ƒ\ƒ‹‚ğ–ß‚·
+		//ã‚«ãƒ¼ã‚½ãƒ«ã‚’æˆ»ã™
 		TBCursor.changeCursor(PaintTool.owner);
 	}
 	
@@ -3133,7 +3134,7 @@ class SmartSelectTool implements toolSelectInterface{
 	void viewSelection(){
 		//PaintTool.owner.mainPane.repaint();
 		
-		//‘I‘ğ—Ìˆæ‚ğ•\¦
+		//é¸æŠé ˜åŸŸã‚’è¡¨ç¤º
 		borderDraw();
 	}
 	
@@ -3147,7 +3148,7 @@ class SmartSelectTool implements toolSelectInterface{
 			movePoint = new Point(0,0);
 			move = true;
 	
-			//ˆêƒoƒbƒtƒ@‚É‘I‘ğ—Ìˆæ‚ğˆÚ“®
+			//ä¸€æ™‚ãƒãƒƒãƒ•ã‚¡ã«é¸æŠé ˜åŸŸã‚’ç§»å‹•
 			Graphics2D g = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 			g.setColor(new Color(255,255,255));
 			g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
@@ -3164,7 +3165,7 @@ class SmartSelectTool implements toolSelectInterface{
 					int c = mskbuf.getElem(0, h+v*width);
 					if((c&0xFF000000) != 0){
 						movbuf.setElem(h+v*width, surbuf.getElem(0, h+v*width));
-						//ˆÚ“®‚µ‚½•”•ª‚ğ“§–¾‚É‚·‚é
+						//ç§»å‹•ã—ãŸéƒ¨åˆ†ã‚’é€æ˜ã«ã™ã‚‹
 						if(!PaintTool.editBackground){
 							surbuf.setElem(h+v*width, 0x00FFFFFF);
 						}else{
@@ -3174,7 +3175,7 @@ class SmartSelectTool implements toolSelectInterface{
 				}
 			}
 			
-			//•\‰æ–Ê‚É”½‰f
+			//è¡¨ç”»é¢ã«åæ˜ 
 			PaintTool.owner.mainPane.repaint();
 
 			viewSelection();
@@ -3191,7 +3192,7 @@ class SmartSelectTool implements toolSelectInterface{
 			if((x-movePoint.x)>=0 && (x-movePoint.x)<PaintTool.owner.redoBuf.getWidth() &&
 				(y-movePoint.y)>=0 && (y-movePoint.y)<PaintTool.owner.redoBuf.getHeight())
 			{
-				//‘I‘ğ”ÍˆÍ‚ÌˆÚ“®ŠJn
+				//é¸æŠç¯„å›²ã®ç§»å‹•é–‹å§‹
 				shift = (GUI.key[11]>0);
 				shiftx = x; shifty = y;
 				
@@ -3213,18 +3214,18 @@ class SmartSelectTool implements toolSelectInterface{
 				tmpRect = null;
 			}
 			else if(move){
-				//•‚‚«o‚µ—Ìˆæ‚ğÀÛ‚Ì—Ìˆæ‚É•`‰æ
+				//æµ®ãå‡ºã—é ˜åŸŸã‚’å®Ÿéš›ã®é ˜åŸŸã«æç”»
 				GMenuPaint.setUndo();
 				this_end();
 				
-				//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+				//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 				clear();
 			}
 			else{
-				//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+				//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 				clear();
 				
-				//ƒ}ƒXƒN—pƒoƒbƒtƒ@‚ğ—pˆÓ‚·‚é
+				//ãƒã‚¹ã‚¯ç”¨ãƒãƒƒãƒ•ã‚¡ã‚’ç”¨æ„ã™ã‚‹
 				srcbits = new BufferedImage(PaintTool.owner.mainImg.getWidth(), PaintTool.owner.mainImg.getHeight(), BufferedImage.TYPE_INT_ARGB);
 				Graphics2D g = (Graphics2D) srcbits.getGraphics();
 				g.setColor(new Color(255,255,255));
@@ -3271,7 +3272,7 @@ class SmartSelectTool implements toolSelectInterface{
 	@Override
 	public boolean mouseStillDown(int x, int y) {
 		if(move==true){
-			//‘I‘ğ”ÍˆÍ‚ÌˆÚ“®
+			//é¸æŠç¯„å›²ã®ç§»å‹•
 
 			if(shift && ((x-shiftx!=0) || (y-shifty!=0))){
 				if((shiftx==-1) || (shifty!=-1) && (Math.abs(x-shiftx)-1 > Math.abs(y-shifty))){
@@ -3311,7 +3312,7 @@ class SmartSelectTool implements toolSelectInterface{
 			viewSelection();
 		}
 		else if(srcbits != null){
-			//‘I‘ğF‚ğL‚°‚Äs‚­
+			//é¸æŠè‰²ã‚’åºƒã’ã¦è¡Œã
 			for(int i=0; i<8; i++){
 				addSelection((int)((PaintTool.lastx[0]*i+x*(8-i))/8),(int)((PaintTool.lasty[0]*i+y*(8-i))/8));
 			}
@@ -3340,7 +3341,7 @@ class SmartSelectTool implements toolSelectInterface{
 			BufferedImage newimg = MyPanel.makeBlendImage(PaintTool.owner.redoBuf);
 			g.drawImage(newimg, movePoint.x, movePoint.y, null);
 
-			//‰ñ“]‚µ‚½ê‡‚Íƒoƒbƒtƒ@‚Ì‘å‚«‚³‚ª•Ï‚í‚Á‚Ä‚¢‚é‚Ì‚ÅV‚µ‚­‚·‚é
+			//å›è»¢ã—ãŸå ´åˆã¯ãƒãƒƒãƒ•ã‚¡ã®å¤§ãã•ãŒå¤‰ã‚ã£ã¦ã„ã‚‹ã®ã§æ–°ã—ãã™ã‚‹
 			PaintTool.owner.redoBuf = new BufferedImage(PaintTool.owner.mainImg.getWidth(), PaintTool.owner.mainImg.getHeight(), BufferedImage.TYPE_INT_ARGB );	
 			move = false;
 		}
@@ -3383,7 +3384,7 @@ class SmartSelectTool implements toolSelectInterface{
 
 
 //-------------------
-// •¶š
+// æ–‡å­—
 //-------------------
 class TypeTool implements toolInterface{
 	MyTextArea area;
@@ -3396,12 +3397,12 @@ class TypeTool implements toolInterface{
 	}
 	
 	void viewRect(){
-		//ˆêƒoƒbƒtƒ@‚Ì•”•ª‚ğ•`‰æ
+		//ä¸€æ™‚ãƒãƒƒãƒ•ã‚¡ã®éƒ¨åˆ†ã‚’æç”»
 		Graphics2D g4 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 		g4.drawImage(PaintTool.owner.redoBuf, typeRect.x, typeRect.y, typeRect.x+typeRect.width, typeRect.y+typeRect.height,
 				0, 0, typeRect.width, typeRect.height, PaintTool.owner.mainPane);
 		
-		//‘I‘ğ—Ìˆæ‚ğ•\¦
+		//é¸æŠé ˜åŸŸã‚’è¡¨ç¤º
 		//strokeDraw();
 	}
 	
@@ -3414,7 +3415,7 @@ class TypeTool implements toolInterface{
 	
 			type = true;
 	
-			//ˆêƒoƒbƒtƒ@‚ğƒNƒŠƒA
+			//ä¸€æ™‚ãƒãƒƒãƒ•ã‚¡ã‚’ã‚¯ãƒªã‚¢
 			Graphics2D g = (Graphics2D) PaintTool.owner.redoBuf.getGraphics();
 			g.setColor(new Color(255,255,255));
 			g.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
@@ -3456,11 +3457,11 @@ class TypeTool implements toolInterface{
 			
 		}
 		else{
-			//•‚‚«o‚µ—Ìˆæ‚ğÀÛ‚Ì—Ìˆæ‚É•`‰æ
+			//æµ®ãå‡ºã—é ˜åŸŸã‚’å®Ÿéš›ã®é ˜åŸŸã«æç”»
 			GMenuPaint.setUndo();
 			end();
 			
-			//V‚µ‚¢‘I‘ğ—Ìˆæ‚ğì‚é
+			//æ–°ã—ã„é¸æŠé ˜åŸŸã‚’ä½œã‚‹
 			typeRect = new Rectangle(x,y,1,PCARD.pc.textSize+5);
 			type = false;
 		}
@@ -3475,11 +3476,11 @@ class TypeTool implements toolInterface{
 	@Override
 	public boolean mouseStillDown(int x, int y) {
 		if(type==true){
-			//ˆÚ“®
+			//ç§»å‹•
 			//typeRect.x += x - PaintTool.lastx[0];
 			//typeRect.y += y - PaintTool.lasty[0];
 			
-			//•\‰æ–Ê‚É”½‰f
+			//è¡¨ç”»é¢ã«åæ˜ 
 			Graphics2D g3 = (Graphics2D) PaintTool.owner.mainPane.getGraphics();
 			g3.drawImage(PaintTool.owner.bgImg, 0, 0, PaintTool.owner.mainPane);
 			if(!PaintTool.editBackground){
@@ -3509,7 +3510,7 @@ class TypeTool implements toolInterface{
 	@Override
 	public void end(){
 		if(type){
-			//textarea‚ğ— ‰æ–Ê‚É•`‰æ
+			//textareaã‚’è£ç”»é¢ã«æç”»
 			Graphics2D redog = PaintTool.owner.redoBuf.createGraphics();
 			area.setCaretColor(new Color(0,0,0,0));
 			
@@ -3528,9 +3529,9 @@ class TypeTool implements toolInterface{
 			area.paint(redog);
 			
 			Graphics2D g = PaintTool.owner.getSurface().createGraphics();
-			//“§–¾“x
+			//é€æ˜åº¦
 			g.setComposite( AlphaComposite.getInstance(AlphaComposite.SRC_OVER,PaintTool.alpha/100.0F) );
-			//ƒT[ƒtƒF[ƒX‚É”½‰f
+			//ã‚µãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹ã«åæ˜ 
 			g.drawImage(PaintTool.owner.redoBuf, typeRect.x, typeRect.y, null);
 			
 		}
@@ -3583,7 +3584,7 @@ class PaintIdle extends Thread {
 			}
 			
 			if(PaintTool.lastTime+100<=System.currentTimeMillis() && PaintTool.owner.bit==1){
-				//0.1•bˆÈã‘Ò‚Á‚½‚ç
+				//0.1ç§’ä»¥ä¸Šå¾…ã£ãŸã‚‰
 				if(PaintTool.mouse) {
 					PaintTool.mouseStillDown((int)PaintTool.lastx[0], (int)PaintTool.lasty[0]);
 				}
@@ -3600,7 +3601,7 @@ class PaintIdle extends Thread {
 			GUI.keyEventCheck();
 			
 			try{
-				sleep(100);//1000msec‚É10‰ñ
+				sleep(100);//1000msecã«10å›
 			} catch (InterruptedException e) {
 		          //Thread.currentThread().interrupt();
 			}
@@ -3612,7 +3613,7 @@ class PaintIdle extends Thread {
 }
 
 
-class MyTabletListener implements TabletListener
+/*class MyTabletListener implements TabletListener
 {
 	toolTabletInterface tool;
 	boolean in_stroke = false;
@@ -3672,4 +3673,4 @@ class MyTabletListener implements TabletListener
 	@Override
 	public void levelChanged(TabletEvent arg0) {
 	}
-}
+}*/

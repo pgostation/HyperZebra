@@ -22,9 +22,9 @@ import javax.swing.JFileChooser;
 public class PictureFile {
 
 	//-------------------------------
-	//PPMƒtƒ@ƒCƒ‹•Û‘¶
+	//PPMãƒ•ã‚¡ã‚¤ãƒ«ä¿å­˜
 	//-------------------------------
-	//•Û‘¶¨“Ç‚İ‚İ‚Å‰æ‘œ‚ª•ö‚ê‚é‚Ì‚Åg‚Á‚Ä‚Í‚¢‚¯‚È‚¢
+	//ä¿å­˜â†’èª­ã¿è¾¼ã¿ã§ç”»åƒãŒå´©ã‚Œã‚‹ã®ã§ä½¿ã£ã¦ã¯ã„ã‘ãªã„
 	public static void saveAsPpm(BufferedImage img, String path){
 		if(img.getType()==BufferedImage.TYPE_INT_ARGB){
 			//main
@@ -40,7 +40,7 @@ public class PictureFile {
 			chooser.setSelectedFile(new File("./.ppm"));
 			int ret = chooser.showSaveDialog(PCARDFrame.pc);
 			if(ret != JFileChooser.APPROVE_OPTION){
-				//•Û‘¶‚µ‚È‚¢
+				//ä¿å­˜ã—ãªã„
 				return;
 			}
 			path = chooser.getSelectedFile().getName();
@@ -48,7 +48,7 @@ public class PictureFile {
 		
 		File file = new File(path);
 		if(file.exists()&&!file.canWrite()){
-			//‘‚«‚ß‚È‚¢
+			//æ›¸ãè¾¼ã‚ãªã„
 			return;
 		}
 
@@ -86,7 +86,7 @@ public class PictureFile {
 			}
 			
 			if(img.getType()==BufferedImage.TYPE_INT_ARGB){
-				//ƒAƒ‹ƒtƒ@ƒf[ƒ^
+				//ã‚¢ãƒ«ãƒ•ã‚¡ãƒ‡ãƒ¼ã‚¿
 				stream.write('\n');
 				stream.write('P');
 				stream.write('5');
@@ -124,7 +124,7 @@ public class PictureFile {
 	
 
 	//-------------------------------
-	//PBM/PPMƒtƒ@ƒCƒ‹“Ç‚İ‚İ
+	//PBM/PPMãƒ•ã‚¡ã‚¤ãƒ«èª­ã¿è¾¼ã¿
 	//-------------------------------
 	public static BufferedImage loadPbm(String path){
 		File file = new File(path);
@@ -138,7 +138,7 @@ public class PictureFile {
 			return null;
 		}
 		
-		//ƒTƒCƒYæ“¾
+		//ã‚µã‚¤ã‚ºå–å¾—
 		int ver = readPbmVer(stream);
 		if(ver==0) return null;
 		Dimension size = readPbmSize(stream);
@@ -150,7 +150,7 @@ public class PictureFile {
 		
 		byte[] b = null;
 		if(ver==4){
-			//PBM‰æ‘œƒf[ƒ^
+			//PBMç”»åƒãƒ‡ãƒ¼ã‚¿
 			b = new byte[size.width/8*size.height];
 			try {
 				for(int i=0; i<b.length; i++){
@@ -161,7 +161,7 @@ public class PictureFile {
 				e.printStackTrace();
 			}
 		}else if(ver==6){
-			//PPM‰æ‘œƒf[ƒ^
+			//PPMç”»åƒãƒ‡ãƒ¼ã‚¿
 			b = new byte[size.width*3*size.height];
 			try {
 				for(int i=0; i<b.length; i++){
@@ -173,7 +173,7 @@ public class PictureFile {
 			}
 		}
 
-		//ƒ}ƒXƒNƒTƒCƒYæ“¾
+		//ãƒã‚¹ã‚¯ã‚µã‚¤ã‚ºå–å¾—
 		int maskver = readPbmVer(stream);
 		Dimension masksize = null;
 		int maskdepth = 0;
@@ -184,10 +184,10 @@ public class PictureFile {
 			}
 		}
 
-		//PBMƒ}ƒXƒN‰æ‘œƒf[ƒ^
+		//PBMãƒã‚¹ã‚¯ç”»åƒãƒ‡ãƒ¼ã‚¿
 		byte[] msk = null;
 		if(maskver==4){
-			//PBM‰æ‘œƒf[ƒ^
+			//PBMç”»åƒãƒ‡ãƒ¼ã‚¿
 			msk = new byte[masksize.width/8*masksize.height];
 			try {
 				for(int i=0; i<msk.length; i++){
@@ -198,7 +198,7 @@ public class PictureFile {
 				e.printStackTrace();
 			}
 		}else if(maskver==5){
-			//PPM‰æ‘œƒf[ƒ^
+			//PPMç”»åƒãƒ‡ãƒ¼ã‚¿
 			msk = new byte[masksize.width*masksize.height];
 			try {
 				for(int i=0; i<msk.length; i++){
@@ -212,7 +212,7 @@ public class PictureFile {
 		
 		BufferedImage img = null;
 		if(ver==4 /*&& maskver==4*/){
-			//BufferedImage‚É•ÏŠ·
+			//BufferedImageã«å¤‰æ›
 			img = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_ARGB);
 			img.getGraphics().setColor(Color.WHITE);
 			img.getGraphics().fillRect(0, 0, size.width, size.height);
@@ -250,7 +250,7 @@ public class PictureFile {
 			}
 		}
 		else if(ver==6 && /*maskver==5 &&*/ depth==255 /*&& maskdepth==255*/){
-			//BufferedImage‚É•ÏŠ·
+			//BufferedImageã«å¤‰æ›
 			img = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_ARGB);
 			img.getGraphics().setColor(Color.WHITE);
 			img.getGraphics().fillRect(0, 0, size.width, size.height);
@@ -271,13 +271,13 @@ public class PictureFile {
 		return img;
 	}
 	
-	//PBMƒwƒbƒ_“Ç‚İ‚İ
+	//PBMãƒ˜ãƒƒãƒ€èª­ã¿è¾¼ã¿
 	private static int readPbmVer(BufferedInputStream stream){
 		String tmpstr="";
 		int ver = 0;
 		
 		try {
-			//ƒo[ƒWƒ‡ƒ“
+			//ãƒãƒ¼ã‚¸ãƒ§ãƒ³
 			for(int i=0; i<2; i++){
 				tmpstr += (char)stream.read();
 			}
@@ -292,13 +292,13 @@ public class PictureFile {
 		return ver;
 	}
 	
-	//PBMƒwƒbƒ_“Ç‚İ‚İ
+	//PBMãƒ˜ãƒƒãƒ€èª­ã¿è¾¼ã¿
 	private static Dimension readPbmSize(BufferedInputStream stream){
 		String tmpstr="";
 		int width=0, height=0;
 		
 		try {
-			//ƒTƒCƒY
+			//ã‚µã‚¤ã‚º
 			tmpstr="";
 			while(true){
 				char c = (char)stream.read();
@@ -322,13 +322,13 @@ public class PictureFile {
 		return new Dimension(width,height);
 	}
 	
-	//PBMƒwƒbƒ_“Ç‚İ‚İ
+	//PBMãƒ˜ãƒƒãƒ€èª­ã¿è¾¼ã¿
 	private static int readPpmDepth(BufferedInputStream stream){
 		String tmpstr="";
 		int depth = 0;
 		
 		try {
-			//ƒo[ƒWƒ‡ƒ“
+			//ãƒãƒ¼ã‚¸ãƒ§ãƒ³
 			for(int i=0; i<3; i++){
 				tmpstr += (char)stream.read();
 			}
@@ -344,7 +344,7 @@ public class PictureFile {
 	
 	
 	//-------------------------------
-	//PICTƒtƒ@ƒCƒ‹“Ç‚İ‚İ
+	//PICTãƒ•ã‚¡ã‚¤ãƒ«èª­ã¿è¾¼ã¿
 	//-------------------------------
 	public static BufferedImage loadPICT(String path){
 		File file = new File(path);
@@ -358,7 +358,7 @@ public class PictureFile {
 			return null;
 		}
 		
-		//ƒTƒCƒYæ“¾
+		//ã‚µã‚¤ã‚ºå–å¾—
 		Dimension size = readPICTv1Size(stream);
 		int version = readPICTVer(stream);
 		if(version==2) size = readPICTv2Size(stream,version);
@@ -368,7 +368,7 @@ public class PictureFile {
 			return null;
 		}
 
-		//Šeƒf[ƒ^
+		//å„ãƒ‡ãƒ¼ã‚¿
 		BufferedImage img = null;
 		BufferedImage jpegimg = null;
 		int jpgHeight = 0;
@@ -386,7 +386,7 @@ public class PictureFile {
 			} catch (IOException e1) {
 				break;
 			}
-			if(opcode==0x0000){ //ƒAƒ‰ƒCƒƒ“ƒg‚¸‚ê‚Ìb’è‘[’u
+			if(opcode==0x0000){ //ã‚¢ãƒ©ã‚¤ãƒ¡ãƒ³ãƒˆãšã‚Œã®æš«å®šæªç½®
 				opcode = readOpcode(stream,1);
 			}
 			boolean bitmap_flag=false;
@@ -397,12 +397,12 @@ public class PictureFile {
 			if(opcode==0x8200||opcode==0x8201){
 				//JPEG
 				int filelen = (readOpcode(stream,2)<<16)+readOpcode(stream,2);//00 00 53 60
-				for(int i=0; i<100; i++){ //macƒtƒ@ƒCƒ‹ƒwƒbƒ_
+				for(int i=0; i<100; i++){ //macãƒ•ã‚¡ã‚¤ãƒ«ãƒ˜ãƒƒãƒ€
 					readOpcode(stream,1);
 				}
 				/*int width2 =*/ readOpcode(stream,2);
 				/*int height2 =*/ readOpcode(stream,2);
-				for(int i=0; i<50; i++){ //macƒtƒ@ƒCƒ‹ƒwƒbƒ_2
+				for(int i=0; i<50; i++){ //macãƒ•ã‚¡ã‚¤ãƒ«ãƒ˜ãƒƒãƒ€2
 					readOpcode(stream,1);
 				}
 				byte[] b = new byte[filelen-154];
@@ -430,7 +430,7 @@ public class PictureFile {
 				fullcolor_flag = true;
 			}
 			else if(opcode==0x00a1){
-				//ƒƒ“ƒOƒRƒƒ“ƒg
+				//ãƒ­ãƒ³ã‚°ã‚³ãƒ¡ãƒ³ãƒˆ
 				opcode = readOpcode(stream,2);
 				int length = readOpcode(stream,2);
 				byte[] b = new byte[length];
@@ -444,13 +444,13 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x00ff||opcode==0xffff){
-				break; //I—¹ƒR[ƒh
+				break; //çµ‚äº†ã‚³ãƒ¼ãƒ‰
 			}
 			else if(opcode==0x001e){
-				continue; //?
+				continue; //ãƒ‡ãƒ•ã‚©ãƒ«ãƒˆã®ãƒã‚¤ãƒ©ã‚¤ãƒˆã‚«ãƒ©ãƒ¼ä½¿ç”¨ã€ã‚‰ã—ã„
 			}
 			else if(opcode==0x0001){
-				//—Ìˆæ
+				//é ˜åŸŸ
 				int length = readOpcode(stream,2);
 				for(int i=0;i<length-2;i++){readOpcode(stream,1);}
 				continue;
@@ -467,18 +467,18 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x00a0){
-				//ƒVƒ‡[ƒgƒRƒƒ“ƒg
+				//ã‚·ãƒ§ãƒ¼ãƒˆã‚³ãƒ¡ãƒ³ãƒˆ
 				readOpcode(stream,2);
 				continue;
 			}
 			else if(opcode==0x0009){
-				//ƒyƒ“ƒpƒ^[ƒ“
+				//ãƒšãƒ³ãƒ‘ã‚¿ãƒ¼ãƒ³
 				int[]penptn = new int[8];
 				for(int i=0;i<8;i++){penptn[i] = readOpcode(stream,1);}
 				continue;
 			}
 			else if(opcode==0x0022){
-				//ƒyƒ“ˆÊ’u
+				//ãƒšãƒ³ä½ç½®
 				int penX = (short)readOpcode(stream,2);
 				int penY = (short)readOpcode(stream,2);
 				byte penX2 = (byte)readOpcode(stream,1);
@@ -494,14 +494,14 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x0007){
-				//ƒyƒ“ƒTƒCƒY
+				//ãƒšãƒ³ã‚µã‚¤ã‚º
 				int penSizeX = readOpcode(stream,2);
 				int penSizeY = readOpcode(stream,2);
 				g.setStroke(new BasicStroke((penSizeX+penSizeY)/2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 				continue;
 			}
 			else if(opcode==0x001a){
-				//RGBcolorb‘OŒiFiRGBj
+				//RGBcolorï½œå‰æ™¯è‰²ï¼ˆRGBï¼‰
 				int cr = readOpcode(stream,2);
 				int cg = readOpcode(stream,2);
 				int cb = readOpcode(stream,2);
@@ -509,7 +509,7 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x001b){
-				//RGBcolorb”wŒiFiRGBj
+				//RGBcolorï½œèƒŒæ™¯è‰²ï¼ˆRGBï¼‰
 				int cr = readOpcode(stream,2);
 				int cg = readOpcode(stream,2);
 				int cb = readOpcode(stream,2);
@@ -517,7 +517,7 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x002c){
-				//ƒtƒHƒ“ƒg (2+ƒf[ƒ^’·)
+				//ãƒ•ã‚©ãƒ³ãƒˆ (2+ãƒ‡ãƒ¼ã‚¿é•·)
 				int length = readOpcode(stream,2);
 				byte[] b = new byte[length];
 				for(int i=0;i<length;i++){b[i] = (byte)readOpcode(stream,1);}
@@ -531,30 +531,30 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x0003){
-				//‘‘ÌID
+				//æ›¸ä½“ID
 				readOpcode(stream,2);
 				continue;
 			}
 			else if(opcode==0x0004){
-				//•¶šŒ`ó
+				//æ–‡å­—å½¢çŠ¶
 				readOpcode(stream,2);
 				continue;
 			}
 			else if(opcode==0x000d){
-				//•¶šƒTƒCƒY
+				//æ–‡å­—ã‚µã‚¤ã‚º
 				fontsize = readOpcode(stream,2);
 				g.setFont(new Font("", 0, fontsize));
 				continue;
 			}
 			else if(opcode==0x002e){
-				//? •¶š‚ÉŠÖ‚·‚é‰½‚©
+				//? æ–‡å­—ã«é–¢ã™ã‚‹ä½•ã‹
 				int length = readOpcode(stream,2);
 				for(int i=0;i<length;i++){readOpcode(stream,1);}
 				px=0;py=0;//###
 				continue;
 			}
 			else if(opcode==0x0028){
-				//•¶š—ñ•`‰æ
+				//æ–‡å­—åˆ—æç”»
 				int ddx = readOpcode(stream,2);
 				int ddy = readOpcode(stream,2);
 				int count = readOpcode(stream,1);
@@ -576,7 +576,7 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x0029){
-				//•¶š—ñ•`‰æi…•½‘Š‘ÎÀ•Wj
+				//æ–‡å­—åˆ—æç”»ï¼ˆæ°´å¹³ç›¸å¯¾åº§æ¨™ï¼‰
 				int dx = readOpcode(stream,1);
 				int count = readOpcode(stream,1);
 				byte[] b = new byte[count];
@@ -597,7 +597,7 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x002a){
-				//•¶š—ñ•`‰æi‚’¼‘Š‘ÎÀ•Wj
+				//æ–‡å­—åˆ—æç”»ï¼ˆå‚ç›´ç›¸å¯¾åº§æ¨™ï¼‰
 				int dy = readOpcode(stream,1);
 				int count = readOpcode(stream,1);
 				byte[] b = new byte[count];
@@ -618,7 +618,7 @@ public class PictureFile {
 				continue;
 			}
 			else if(opcode==0x002b){
-				//•¶š—ñ•`‰æi…•½‚’¼‘Š‘ÎÀ•Wj
+				//æ–‡å­—åˆ—æç”»ï¼ˆæ°´å¹³å‚ç›´ç›¸å¯¾åº§æ¨™ï¼‰
 				int dx = readOpcode(stream,1);
 				int dy = readOpcode(stream,1);
 				int count = readOpcode(stream,1);
@@ -640,7 +640,7 @@ public class PictureFile {
 				continue;
 			}
 			else{
-				//•s–¾
+				//ä¸æ˜
 				continue;
 			}
 
@@ -662,13 +662,13 @@ public class PictureFile {
 			DataBuffer db = img.getRaster().getDataBuffer();
 
 			if(fullcolor_flag){
-				readOpcode(stream,2);//ƒx[ƒXƒAƒhƒŒƒX
+				readOpcode(stream,2);//ãƒ™ãƒ¼ã‚¹ã‚¢ãƒ‰ãƒ¬ã‚¹
 				readOpcode(stream,2);
 			}
 			
 			int rowBytes = 0x3fff & readOpcode(stream,2);
 			
-			int btop = readOpcode(stream,2);//¶ã‚xÀ•W
+			int btop = readOpcode(stream,2);//å·¦ä¸Šï¼¹åº§æ¨™
 			int bleft = readOpcode(stream,2);
 			int bbottom = readOpcode(stream,2);
 			int bright = readOpcode(stream,2);
@@ -680,36 +680,36 @@ public class PictureFile {
 			}
 			
 			if(!bitmap_flag&&version==2&&jpegimg==null){
-				readOpcode(stream,2);//ƒo[ƒWƒ‡ƒ“
-				readOpcode(stream,2);//ˆ³kƒ^ƒCƒv
-				readOpcode(stream,2);//ˆ³kƒTƒCƒY
-				readOpcode(stream,2);//ˆ³kƒTƒCƒY
-				readOpcode(stream,2);//…•½‰ğ‘œ“x
-				readOpcode(stream,2);//…•½‰ğ‘œ“x
-				readOpcode(stream,2);//‚’¼‰ğ‘œ“x
-				readOpcode(stream,2);//‚’¼‰ğ‘œ“x
-				readOpcode(stream,2);//ƒsƒNƒZƒ‹ƒ^ƒCƒv
-				bpp = readOpcode(stream,2);//‚PƒsƒNƒZƒ‹‚ ‚½‚è‚Ìƒrƒbƒg”
-				/*int byteoff =*/ readOpcode(stream,2);//Ÿ‚ÌƒsƒNƒZƒ‹‚Ü‚Å‚ÌƒoƒCƒgƒIƒtƒZƒbƒg
-				/*int pixelbytes =*/ readOpcode(stream,2);//ƒRƒ“ƒ|[ƒlƒ“ƒgƒTƒCƒY
-				readOpcode(stream,2);//Ÿ‚ÌƒJƒ‰[ƒvƒŒ[ƒ“‚Ü‚Å‚ÌƒIƒtƒZƒbƒg
-				readOpcode(stream,2);//Ÿ‚ÌƒJƒ‰[ƒvƒŒ[ƒ“‚Ü‚Å‚ÌƒIƒtƒZƒbƒg
-				readOpcode(stream,2);//”½“]
-				readOpcode(stream,2);//”½“]
-				readOpcode(stream,2);//ƒJƒ‰[ƒe[ƒuƒ‹¯•Ê”Ô†
-				readOpcode(stream,2);//ƒJƒ‰[ƒe[ƒuƒ‹¯•Ê”Ô†
+				readOpcode(stream,2);//ãƒãƒ¼ã‚¸ãƒ§ãƒ³
+				readOpcode(stream,2);//åœ§ç¸®ã‚¿ã‚¤ãƒ—
+				readOpcode(stream,2);//åœ§ç¸®ã‚µã‚¤ã‚º
+				readOpcode(stream,2);//åœ§ç¸®ã‚µã‚¤ã‚º
+				readOpcode(stream,2);//æ°´å¹³è§£åƒåº¦
+				readOpcode(stream,2);//æ°´å¹³è§£åƒåº¦
+				readOpcode(stream,2);//å‚ç›´è§£åƒåº¦
+				readOpcode(stream,2);//å‚ç›´è§£åƒåº¦
+				readOpcode(stream,2);//ãƒ”ã‚¯ã‚»ãƒ«ã‚¿ã‚¤ãƒ—
+				bpp = readOpcode(stream,2);//ï¼‘ãƒ”ã‚¯ã‚»ãƒ«ã‚ãŸã‚Šã®ãƒ“ãƒƒãƒˆæ•°
+				/*int byteoff =*/ readOpcode(stream,2);//æ¬¡ã®ãƒ”ã‚¯ã‚»ãƒ«ã¾ã§ã®ãƒã‚¤ãƒˆã‚ªãƒ•ã‚»ãƒƒãƒˆ
+				/*int pixelbytes =*/ readOpcode(stream,2);//ã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆã‚µã‚¤ã‚º
+				readOpcode(stream,2);//æ¬¡ã®ã‚«ãƒ©ãƒ¼ãƒ—ãƒ¬ãƒ¼ãƒ³ã¾ã§ã®ã‚ªãƒ•ã‚»ãƒƒãƒˆ
+				readOpcode(stream,2);//æ¬¡ã®ã‚«ãƒ©ãƒ¼ãƒ—ãƒ¬ãƒ¼ãƒ³ã¾ã§ã®ã‚ªãƒ•ã‚»ãƒƒãƒˆ
+				readOpcode(stream,2);//åè»¢
+				readOpcode(stream,2);//åè»¢
+				readOpcode(stream,2);//ã‚«ãƒ©ãƒ¼ãƒ†ãƒ¼ãƒ–ãƒ«è­˜åˆ¥ç•ªå·
+				readOpcode(stream,2);//ã‚«ãƒ©ãƒ¼ãƒ†ãƒ¼ãƒ–ãƒ«è­˜åˆ¥ç•ªå·
 				if(!fullcolor_flag){
-					readOpcode(stream,2);//ƒJƒ‰[ƒe[ƒuƒ‹ID
-					readOpcode(stream,2);//ƒJƒ‰[ƒe[ƒuƒ‹ID
-					readOpcode(stream,2);//ƒJƒ‰[ƒe[ƒuƒ‹ƒtƒ‰ƒO
-					int palette_cnt = 1+readOpcode(stream,2);//“o˜^‚³‚ê‚Ä‚¢‚éƒpƒŒƒbƒg”
+					readOpcode(stream,2);//ã‚«ãƒ©ãƒ¼ãƒ†ãƒ¼ãƒ–ãƒ«ID
+					readOpcode(stream,2);//ã‚«ãƒ©ãƒ¼ãƒ†ãƒ¼ãƒ–ãƒ«ID
+					readOpcode(stream,2);//ã‚«ãƒ©ãƒ¼ãƒ†ãƒ¼ãƒ–ãƒ«ãƒ•ãƒ©ã‚°
+					int palette_cnt = 1+readOpcode(stream,2);//ç™»éŒ²ã•ã‚Œã¦ã„ã‚‹ãƒ‘ãƒ¬ãƒƒãƒˆæ•°
 					//if(palette_cnt > 256) return null;
 					palette = new int[palette_cnt];
 					for(int i=0; i<palette_cnt; i++){
-						/*int pidx =*/ readOpcode(stream,2);//ƒpƒŒƒbƒg”Ô†
-						int cr = readOpcode(stream,2)>>8;//ƒpƒŒƒbƒgFƒf[ƒ^R
-						int cg = readOpcode(stream,2)>>8;//ƒpƒŒƒbƒgFƒf[ƒ^G
-						int cb = readOpcode(stream,2)>>8;//ƒpƒŒƒbƒgFƒf[ƒ^B
+						/*int pidx =*/ readOpcode(stream,2);//ãƒ‘ãƒ¬ãƒƒãƒˆç•ªå·
+						int cr = readOpcode(stream,2)>>8;//ãƒ‘ãƒ¬ãƒƒãƒˆè‰²ãƒ‡ãƒ¼ã‚¿R
+						int cg = readOpcode(stream,2)>>8;//ãƒ‘ãƒ¬ãƒƒãƒˆè‰²ãƒ‡ãƒ¼ã‚¿G
+						int cb = readOpcode(stream,2)>>8;//ãƒ‘ãƒ¬ãƒƒãƒˆè‰²ãƒ‡ãƒ¼ã‚¿B
 						palette[i] = 0xFF000000+(cr<<16)+(cg<<8)+cb;
 					}
 				}
@@ -718,27 +718,27 @@ public class PictureFile {
 			if(rowBytes==0) rowBytes = (bright-bleft)*bpp/8;
 			if(rowBytes<8) packbits_flag = false;
 			
-			int dtop = readOpcode(stream,2);//Œ³‰ğ‘œ“x‚Å‚Ì¶ã‚xÀ•W
+			int dtop = readOpcode(stream,2);//å…ƒè§£åƒåº¦ã§ã®å·¦ä¸Šï¼¹åº§æ¨™
 			int dleft = readOpcode(stream,2);
 			int dbottom = readOpcode(stream,2);
 			int dright = readOpcode(stream,2);
 			
-			if(dright>size.width || dbottom>size.height){ //–³—–î—‘Î‰EEE
+			if(dright>size.width || dbottom>size.height){ //ç„¡ç†çŸ¢ç†å¯¾å¿œãƒ»ãƒ»ãƒ»
 				dright -= dleft;
 				dleft = 0;
 				dbottom -= dtop;
 				dtop = 0;
 				if(dright>size.width || dbottom>size.height){
-					break; //–³—
+					break; //ç„¡ç†
 				}
 			}
 			
-			readOpcode(stream,2);//72dpi‚Å‚Ì¶ã‚xÀ•W
+			readOpcode(stream,2);//72dpiã§ã®å·¦ä¸Šï¼¹åº§æ¨™
 			readOpcode(stream,2);
 			readOpcode(stream,2);
 			readOpcode(stream,2);
 			
-			int trans_mode = readOpcode(stream,2);//“]‘—ƒ‚[ƒh
+			int trans_mode = readOpcode(stream,2);//è»¢é€ãƒ¢ãƒ¼ãƒ‰
 			if(trans_mode!=0){
 				//System.out.println("trans_mode:"+trans_mode);
 			}
@@ -746,8 +746,8 @@ public class PictureFile {
 			if(rgnmask_flag){
 				//System.out.println("rgnmask_flag:"+rgnmask_flag);
 				int len = readOpcode(stream,2);
-				readOpcode(stream,2);//top
-				readOpcode(stream,2);//left
+				int rtop = readOpcode(stream,2);//top
+				int rleft = readOpcode(stream,2);//left
 				readOpcode(stream,2);//bottom
 				readOpcode(stream,2);//right
 				if(len==10){
@@ -759,58 +759,58 @@ public class PictureFile {
 				}
 				//for(int i=0; i<len-10;i++){readOpcode(stream,1);}
 				
-				//ƒŠ[ƒWƒ‡ƒ“ƒtƒH[ƒ}ƒbƒg
+				//ãƒªãƒ¼ã‚¸ãƒ§ãƒ³ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆ
 				//
-				//—Ìˆæ‚Ì—ÖŠs‚Ìü‚Ìƒf[ƒ^‚ª“ü‚Á‚Ä‚¢‚é
-				//ã‚©‚çŒ©‚Äs‚Á‚ÄA—ÖŠs‚ÉŠÜ‚Ü‚ê‚½‚ç1A‚à‚¤ˆê“xŠÜ‚Ü‚ê‚½‚ç0
-				//‚Æ‚¢‚¤‚±‚Æ‚ğ‚â‚ê‚Îƒrƒbƒgƒ}ƒbƒvƒf[ƒ^‚Éo—ˆ‚éB
+				//é ˜åŸŸã®è¼ªéƒ­ã®ç·šã®ãƒ‡ãƒ¼ã‚¿ãŒå…¥ã£ã¦ã„ã‚‹
+				//ä¸Šã‹ã‚‰è¦‹ã¦è¡Œã£ã¦ã€è¼ªéƒ­ã«å«ã¾ã‚ŒãŸã‚‰1ã€ã‚‚ã†ä¸€åº¦å«ã¾ã‚ŒãŸã‚‰0
+				//ã¨ã„ã†ã“ã¨ã‚’ã‚„ã‚Œã°ãƒ“ãƒƒãƒˆãƒãƒƒãƒ—ãƒ‡ãƒ¼ã‚¿ã«å‡ºæ¥ã‚‹ã€‚
 				//
-				//Å‰‚Ìword‚Åã‚©‚ç‚Ìs”‚ğ¦‚· (”ò‚Î‚µ‚½s‚Íã‚Ìs‚Æ“¯‚¶)
-				//(ŒJ‚è•Ô‚µ){
-				//  Ÿ‚Ìword‚Å—ÖŠs•”•ª‚ÌŠJnˆÊ’u
-				//  Ÿ‚Ìword‚Å—ÖŠs•”•ª‚ÌI—¹ˆÊ’u
+				//æœ€åˆã®wordã§ä¸Šã‹ã‚‰ã®è¡Œæ•°ã‚’ç¤ºã™ (é£›ã°ã—ãŸè¡Œã¯ä¸Šã®è¡Œã¨åŒã˜)
+				//(ç¹°ã‚Šè¿”ã—){
+				//  æ¬¡ã®wordã§è¼ªéƒ­éƒ¨åˆ†ã®é–‹å§‹ä½ç½®
+				//  æ¬¡ã®wordã§è¼ªéƒ­éƒ¨åˆ†ã®çµ‚äº†ä½ç½®
 				//}
-				//32767‚Åƒ‰ƒCƒ“I—¹
+				//32767ã§ãƒ©ã‚¤ãƒ³çµ‚äº†
 				int scanline = 0;
 				for(int i=0; i<len-10;){
 					int lastscanline = scanline;
 					scanline = readOpcode(stream,2);
 					i+=2;
 					for(int yy=lastscanline+1; yy<scanline; yy++){
-						if(yy<size.height){
+						if(yy-rtop<size.height&&yy-rtop>=0){
 							for(int xx=0; xx<size.width; xx++){
-								db.setElem(yy*size.width+xx, db.getElem((yy-1)*size.width+xx));
+								db.setElem((yy-rtop)*size.width+xx, db.getElem((yy-rtop-1)*size.width+xx));
 							}
 						}
 					}
-					int x=0;
+					int x=rleft;
 					while(i<len-10){
 						int xstart = readOpcode(stream,2);
 						i+=2;
 						if(xstart==32767) {
-							if(scanline<size.height && scanline>0){
-								for(; x<size.width; x++){
-									db.setElem(scanline*size.width+x, db.getElem((scanline-1)*size.width+x));
+							if(scanline-rtop<size.height && scanline-rtop>0){
+								for(; x-rleft<size.width; x++){
+									db.setElem((scanline-rtop)*size.width+(x-rleft), db.getElem((scanline-rtop-1)*size.width+(x-rleft)));
 								}
 							}
 							break;
 						}
 						int xend = readOpcode(stream,2);
 						i+=2;
-						if(scanline<size.height){
+						if(scanline-rtop<size.height&&scanline-rtop>=0){
 							for(; x<xstart; x++){
-								if(scanline>0){
-									db.setElem(scanline*size.width+x, db.getElem((scanline-1)*size.width+x));
+								if(scanline-rtop>0&&x>0&&x-rleft<size.width){
+									db.setElem((scanline-rtop)*size.width+(x-rleft), db.getElem((scanline-rtop-1)*size.width+(x-rleft)));
 								}
 							}
 						}
-						if(scanline<size.height){
+						if(scanline-rtop<size.height&&scanline-rtop>=0){
 							for(; x<xend; x++){
-								if(scanline==0){
-									db.setElem(scanline*size.width+x, 0xFFFFFFFF);
+								if(scanline-rtop==0){
+									db.setElem((scanline-rtop)*size.width+(x-rleft), 0xFFFFFFFF);
 								}else{
-									if(db.getElem((scanline-1)*size.width+x)==0x00000000){
-										db.setElem(scanline*size.width+x, 0xFFFFFFFF);
+									if(db.getElem((scanline-rtop-1)*size.width+(x-rleft))==0x00000000){
+										db.setElem((scanline-rtop)*size.width+(x-rleft), 0xFFFFFFFF);
 									}
 								}
 							}
@@ -820,7 +820,7 @@ public class PictureFile {
 			}
 			
 			if(bitmap_flag&&!packbits_flag){
-				//–³ˆ³kBitMap
+				//ç„¡åœ§ç¸®BitMap
 				for(int v=0; v<bbottom-btop; v++){
 					byte[] data = new byte[rowBytes];
 					for(int i=0; i<rowBytes; i++){
@@ -830,23 +830,27 @@ public class PictureFile {
 					for(int h=0; h<bright-bleft; h++){
 						int pix = (data[h/8]>>(7-(h%8)))&0x01;
 						if(pix!=0) {
-							if(trans_mode==1) continue; //#srcOr
+							if(trans_mode==1) pix=0xFF000000;//continue; //#srcOr
 							else pix=0xFFFFFFFF;
 						}
 						else if( pix==0 && trans_mode==3 ){ //#srcBic
 							pix=0xFFFFFFFF;
 						}
+						else if(pix==0 && trans_mode==1){
+							pix=0xFFFFFFFF;
+						}
+						if(v-btop>=size.height||h-bleft>=size.width||v-btop<0||h-bleft<0)continue;
 						if(rgnmask_flag){
-							if(db.getElem(v*size.width+h)==0x00000000){
+							if(db.getElem((v-btop)*size.width+(h-bleft))==0x00000000){
 								continue;
 							}
 						}
-						db.setElem((v/*+btop*/)*size.width+(h/*+bleft*/), pix);
+						db.setElem(((v-btop)/*+btop*/)*size.width+((h-bleft)/*+bleft*/), pix);
 					}
 				}
 			}
 			else if(bitmap_flag&&packbits_flag){
-				//ˆ³kBitMap
+				//åœ§ç¸®BitMap
 				int dlen = 1;
 				if(rowBytes>=251) dlen=2;
 				for(int v=0; v<bbottom-btop; v++){
@@ -854,12 +858,12 @@ public class PictureFile {
 					
 					byte[] data = new byte[rowBytes];
 					int offset = 0;
-					//packBits‚ğ“WŠJ
+					//packBitsã‚’å±•é–‹
 					int packsize = readOpcode(stream,dlen);
 					for(int i=0; i<packsize; i++){
 						int dsize = readOpcode(stream,1);
 						if(dsize>=128) {
-							//“¯‚¶ƒf[ƒ^‚ª˜A‘±‚·‚éê‡
+							//åŒã˜ãƒ‡ãƒ¼ã‚¿ãŒé€£ç¶šã™ã‚‹å ´åˆ
 							dsize = 256-dsize+1;
 							int src = readOpcode(stream,1);
 							for(int j=0; j<dsize; j++){
@@ -868,7 +872,7 @@ public class PictureFile {
 							offset += dsize;
 						}
 						else {
-							//ƒf[ƒ^‚»‚Ì‚Ü‚Ü
+							//ãƒ‡ãƒ¼ã‚¿ãã®ã¾ã¾
 							dsize++;
 							for(int j=0; j<dsize; j++){
 								try { data[j+offset] = (byte)stream.read(); }
@@ -900,21 +904,21 @@ public class PictureFile {
 				System.out.println("bpp:"+bpp);
 				System.out.println("ispalette:"+(palette!=null));
 				System.out.println("rowBytes:"+rowBytes);
-				//ˆ³kPixMap
+				//åœ§ç¸®PixMap
 				int dlen = 1;
 				if(rowBytes>=251) dlen=2;
 				for(int v=0; v<bbottom-btop; v++){
 					//System.out.println(v+"<"+(bbottom-btop));
 					byte[] data = new byte[rowBytes];
 					int offset = 0;
-					//packBits‚ğ“WŠJ
+					//packBitsã‚’å±•é–‹
 					int packsize = readOpcode(stream,dlen);
 					//System.out.println("packsize:"+packsize);
-					if(bpp==16){ //16bit‚Ìpackbits‚Íˆá‚¤‚ç‚µ‚¢
+					if(bpp==16){ //16bitã®packbitsã¯é•ã†ã‚‰ã—ã„
 						for(int i=0; i<packsize; i++){
 							int dsize = readOpcode(stream,1);
 							if(dsize>=128) {	
-								//“¯‚¶ƒf[ƒ^‚ª˜A‘±‚·‚éê‡
+								//åŒã˜ãƒ‡ãƒ¼ã‚¿ãŒé€£ç¶šã™ã‚‹å ´åˆ
 								//System.out.println("renzoku dsize:"+dsize);
 								dsize = 256-dsize+1;
 								int src1 = readOpcode(stream,1);
@@ -928,7 +932,7 @@ public class PictureFile {
 								offset += dsize*2;
 							}
 							else {
-								//ƒf[ƒ^‚»‚Ì‚Ü‚Ü
+								//ãƒ‡ãƒ¼ã‚¿ãã®ã¾ã¾
 								//System.out.println("sonomama dsize:"+dsize);
 								dsize++;
 								for(int j=0; j<dsize*2; j++){
@@ -944,12 +948,12 @@ public class PictureFile {
 							}
 						}
 					}
-					else{ //16bitˆÈŠO‚Ìpackbits
+					else{ //16bitä»¥å¤–ã®packbits
 						for(int i=0; i<packsize; i++){
 							int dsize = readOpcode(stream,1);
 							if(dsize>=128) {
 								//System.out.println("renzoku dsize:"+dsize);
-								//“¯‚¶ƒf[ƒ^‚ª˜A‘±‚·‚éê‡
+								//åŒã˜ãƒ‡ãƒ¼ã‚¿ãŒé€£ç¶šã™ã‚‹å ´åˆ
 								dsize = 256-dsize+1;
 								int src = readOpcode(stream,1);
 								//System.out.println("src:"+src);
@@ -962,7 +966,7 @@ public class PictureFile {
 								offset += dsize;
 							}
 							else {
-								//ƒf[ƒ^‚»‚Ì‚Ü‚Ü
+								//ãƒ‡ãƒ¼ã‚¿ãã®ã¾ã¾
 								//System.out.println("sonomama dsize:"+dsize);
 								dsize++;
 								for(int j=0; j<dsize; j++){
@@ -977,7 +981,7 @@ public class PictureFile {
 								offset += dsize;
 							}
 						}
-					} //packbitsI—¹
+					} //packbitsçµ‚äº†
 					
 					if(v+dtop>=size.height) {
 						//System.out.println("v+dtop("+(v+dtop)+") > "+size.height);
@@ -1056,7 +1060,7 @@ public class PictureFile {
 		return img;
 	}
 	
-	//PICTƒwƒbƒ_“Ç‚İ‚İ
+	//PICTãƒ˜ãƒƒãƒ€èª­ã¿è¾¼ã¿
 	private static Dimension readPICTv1Size(BufferedInputStream stream){
 		int width=0, height=0;
 		try {
@@ -1081,17 +1085,17 @@ public class PictureFile {
 		return new Dimension(width,height);
 	}
 	
-	//PICTƒwƒbƒ_“Ç‚İ‚İ
+	//PICTãƒ˜ãƒƒãƒ€èª­ã¿è¾¼ã¿
 	private static int readPICTVer(BufferedInputStream stream){
 		int version = 0;
 
-		//ƒo[ƒWƒ‡ƒ“
+		//ãƒãƒ¼ã‚¸ãƒ§ãƒ³
 		int opcode = readOpcode(stream,2);
-		if(opcode==0x0011) {//ƒo[ƒWƒ‡ƒ“ƒIƒvƒR[ƒh2
+		if(opcode==0x0011) {//ãƒãƒ¼ã‚¸ãƒ§ãƒ³ã‚ªãƒ—ã‚³ãƒ¼ãƒ‰2
 			opcode = readOpcode(stream,2);
-			if(opcode==0x02FF) version = 2;//ƒo[ƒWƒ‡ƒ“2
+			if(opcode==0x02FF) version = 2;//ãƒãƒ¼ã‚¸ãƒ§ãƒ³2
 		}
-		else if(opcode==0x1101) version = 1;//ƒo[ƒWƒ‡ƒ“1
+		else if(opcode==0x1101) version = 1;//ãƒãƒ¼ã‚¸ãƒ§ãƒ³1
 		
 		return version;
 	}
@@ -1099,36 +1103,36 @@ public class PictureFile {
 	private static Dimension readPICTv2Size(BufferedInputStream stream, int version){
 		int top=0,left=0,bottom=0,right=0;
 		
-		//ƒo[ƒWƒ‡ƒ“2ƒwƒbƒ_
+		//ãƒãƒ¼ã‚¸ãƒ§ãƒ³2ãƒ˜ãƒƒãƒ€
 		int opcode = readOpcode(stream,version);
-		if(opcode==0x0C00);//ƒo[ƒWƒ‡ƒ“2ƒwƒbƒ_[ƒIƒvƒR[ƒh
+		if(opcode==0x0C00);//ãƒãƒ¼ã‚¸ãƒ§ãƒ³2ãƒ˜ãƒƒãƒ€ãƒ¼ã‚ªãƒ—ã‚³ãƒ¼ãƒ‰
 		else return null;
-		int zahyou = readOpcode(stream,version);//À•WˆÊ’uw’èŒ`®
+		int zahyou = readOpcode(stream,version);//åº§æ¨™ä½ç½®æŒ‡å®šå½¢å¼
 		if(zahyou == 0xfffe){
-			readOpcode(stream,version);//—\–ñ
-			readOpcode(stream,version);//…•½‰ğ‘œ“x
-			readOpcode(stream,version);//…•½‰ğ‘œ“x
-			readOpcode(stream,version);//‚’¼‰ğ‘œ“x
-			readOpcode(stream,version);//‚’¼‰ğ‘œ“x
-			top = readOpcode(stream,version);//¶ã‚xÀ•W
-			left = readOpcode(stream,version);//¶ã‚wÀ•W
-			bottom = readOpcode(stream,version);//‰E‰º‚xÀ•W
-			right = readOpcode(stream,version);//‰E‰º‚wÀ•W
-			readOpcode(stream,version);//—\–ñi0j
-			readOpcode(stream,version);//—\–ñi0j
+			readOpcode(stream,version);//äºˆç´„
+			readOpcode(stream,version);//æ°´å¹³è§£åƒåº¦
+			readOpcode(stream,version);//æ°´å¹³è§£åƒåº¦
+			readOpcode(stream,version);//å‚ç›´è§£åƒåº¦
+			readOpcode(stream,version);//å‚ç›´è§£åƒåº¦
+			top = readOpcode(stream,version);//å·¦ä¸Šï¼¹åº§æ¨™
+			left = readOpcode(stream,version);//å·¦ä¸Šï¼¸åº§æ¨™
+			bottom = readOpcode(stream,version);//å³ä¸‹ï¼¹åº§æ¨™
+			right = readOpcode(stream,version);//å³ä¸‹ï¼¸åº§æ¨™
+			readOpcode(stream,version);//äºˆç´„ï¼ˆ0ï¼‰
+			readOpcode(stream,version);//äºˆç´„ï¼ˆ0ï¼‰
 		}
-		else if(zahyou == 0xffff){ //ŒÅ’è¬”“_À•W
-			readOpcode(stream,version);//—\–ñ(ffff)
-			left = readOpcode(stream,version);//¶ã‚w•W
-			readOpcode(stream,version);//¶ã‚wÀ•W(¬”“_ˆÈ‰º)
-			top = readOpcode(stream,version);//¶ã‚xÀ•W
-			readOpcode(stream,version);//¶ã‚xÀ•W(¬”“_ˆÈ‰º)
-			right = readOpcode(stream,version);//‰E‰º‚wÀ•W
-			readOpcode(stream,version);//‰E‰º‚wÀ•W(¬”“_ˆÈ‰º)
-			bottom = readOpcode(stream,version);//‰E‰º‚xÀ•W
-			readOpcode(stream,version);//‰E‰º‚xÀ•W(¬”“_ˆÈ‰º)
-			readOpcode(stream,version);//—\–ñi0j
-			readOpcode(stream,version);//—\–ñi0j
+		else if(zahyou == 0xffff){ //å›ºå®šå°æ•°ç‚¹åº§æ¨™
+			readOpcode(stream,version);//äºˆç´„(ffff)
+			left = readOpcode(stream,version);//å·¦ä¸Šï¼¸æ¨™
+			readOpcode(stream,version);//å·¦ä¸Šï¼¸åº§æ¨™(å°æ•°ç‚¹ä»¥ä¸‹)
+			top = readOpcode(stream,version);//å·¦ä¸Šï¼¹åº§æ¨™
+			readOpcode(stream,version);//å·¦ä¸Šï¼¹åº§æ¨™(å°æ•°ç‚¹ä»¥ä¸‹)
+			right = readOpcode(stream,version);//å³ä¸‹ï¼¸åº§æ¨™
+			readOpcode(stream,version);//å³ä¸‹ï¼¸åº§æ¨™(å°æ•°ç‚¹ä»¥ä¸‹)
+			bottom = readOpcode(stream,version);//å³ä¸‹ï¼¹åº§æ¨™
+			readOpcode(stream,version);//å³ä¸‹ï¼¹åº§æ¨™(å°æ•°ç‚¹ä»¥ä¸‹)
+			readOpcode(stream,version);//äºˆç´„ï¼ˆ0ï¼‰
+			readOpcode(stream,version);//äºˆç´„ï¼ˆ0ï¼‰
 		}
 		
 		return new Dimension(right-left,bottom-top);

@@ -36,7 +36,7 @@ public class TMP3 extends Thread {
 					baseFormat.getChannels() * 2, baseFormat.getSampleRate(), false);
 			din = AudioSystem.getAudioInputStream(decodedFormat, in);
 			pause_flag = true;
-			//ƒXƒŒƒbƒh‘¤‚ÅÄ¶‚·‚é
+			//ã‚¹ãƒ¬ãƒƒãƒ‰å´ã§å†ç”Ÿã™ã‚‹
 			start();
 		} catch (Exception e) {
 			// Handle exception.
@@ -85,7 +85,7 @@ public class TMP3 extends Thread {
 		return playing_flag;
 	}
 	
-	//Žó‚¯Žæ‚Á‚½ƒƒbƒZ[ƒW‚ðŽÀs‚·‚éƒXƒŒƒbƒh
+	//å—ã‘å–ã£ãŸãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’å®Ÿè¡Œã™ã‚‹ã‚¹ãƒ¬ãƒƒãƒ‰
 	@Override
 	public void run() {
         this.setName("MP3 play");
@@ -118,7 +118,7 @@ public class TMP3 extends Thread {
 			}
 		}
 		
-		//’âŽ~
+		//åœæ­¢
 		try {
 			line.close();
 			line = null;
@@ -147,7 +147,7 @@ public class TMP3 extends Thread {
 				if (nBytesRead != -1)
 					/*nBytesWritten =*/ line.write(data, 0, nBytesRead);
 			}
-			line.drain();//Ä¶‚ªI‚í‚é‚Ü‚Å‘Ò‚Â
+			line.drain();//å†ç”ŸãŒçµ‚ã‚ã‚‹ã¾ã§å¾…ã¤
 			line.stop();
 		}
 	}
@@ -158,7 +158,7 @@ public class TMP3 extends Thread {
 		DataLine.Info info = new DataLine.Info(SourceDataLine.class,
 				audioFormat);
 		res = (SourceDataLine) AudioSystem.getLine(info);
-		res.open(audioFormat, 524288);//512KB‚­‚ç‚¢‚ ‚ê‚ÎOK?
+		res.open(audioFormat, 524288);//512KBãã‚‰ã„ã‚ã‚Œã°OK?
 		return res;
 	}
 }

@@ -48,7 +48,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 		}
 		
-		//ƒ_ƒCƒAƒƒO“à‚ğì‚é
+		//ãƒ€ã‚¤ã‚¢ãƒ­ã‚°å†…ã‚’ä½œã‚‹
 		makeDialog();
 		
 		setBounds(owner.getX()+owner.getWidth()/2-150,owner.getY()+20,300,200);
@@ -306,7 +306,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	private BufferedImage getBigImage(BufferedImage bi)
 	{
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = new BufferedImage(bi.getWidth()+4, bi.getHeight()+4, BufferedImage.TYPE_INT_ARGB);
 
 		if(owner.tool.getClass()==SelectTool.class){
@@ -339,7 +339,7 @@ class PaintFilter extends JDialog implements ActionListener {
 	
 	private BufferedImage getBigImage(BufferedImage bi, int awidth, int aheight)
 	{
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = new BufferedImage(bi.getWidth()+awidth*2, bi.getHeight()+aheight*2, BufferedImage.TYPE_INT_ARGB);
 
 		if(owner.tool.getClass()==SelectTool.class){
@@ -397,7 +397,7 @@ class PaintFilter extends JDialog implements ActionListener {
 		newg.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		newg.fillRect(0,0,newbi.getWidth(), newbi.getHeight());
 		
-		//ˆ— (8ƒ}ƒX)
+		//å‡¦ç† (8ãƒã‚¹)
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newbi.getRaster().getDataBuffer();
 		int width = srcbi.getWidth();
@@ -441,15 +441,15 @@ class PaintFilter extends JDialog implements ActionListener {
 				
 				if(mode == 1)
 				{
-					//ü‚è‚ÅÅ‚à”–‚¢F‚É‚·‚é
+					//å‘¨ã‚Šã§æœ€ã‚‚è–„ã„è‰²ã«ã™ã‚‹
 					newdb.setElem(h+v*width, maxc);
 				}
 				else if(mode == 0){
-					//ü‚è‚ÅÅ‚à”Z‚¢F‚É‚·‚é
+					//å‘¨ã‚Šã§æœ€ã‚‚æ¿ƒã„è‰²ã«ã™ã‚‹
 					newdb.setElem(h+v*width, minc);
 				}
 				else{
-					//•½‹ÏF‚É‚·‚é
+					//å¹³å‡è‰²ã«ã™ã‚‹
 					int cc = 0xFF000000+(((((minc>>17)&0x7F)+((maxc>>17)&0x7F)))<<16)+(((((minc>>9)&0x7F)+((maxc>>9)&0x7F)))<<8)+((((minc>>1)&0x7F)+((maxc>>1)&0x7F)));
 					newdb.setElem(h+v*width, cc);
 				}
@@ -462,7 +462,7 @@ class PaintFilter extends JDialog implements ActionListener {
 	
 	private BufferedImage TraceEdges(BufferedImage bi)
 	{
-		//‘I‘ğ”ÍˆÍ‚Ì‰æ‚è
+		//é¸æŠç¯„å›²ã®ç¸å–ã‚Š
 		
 		BufferedImage bigbi = getBigImage(bi);
 		
@@ -471,7 +471,7 @@ class PaintFilter extends JDialog implements ActionListener {
 		newg.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		newg.fillRect(0,0,newbigbi.getWidth(), newbigbi.getHeight());
 		
-		//ˆ— (8ƒ}ƒX)
+		//å‡¦ç† (8ãƒã‚¹)
 		DataBuffer srcdb = bigbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newbigbi.getRaster().getDataBuffer();
 		int width = bigbi.getWidth();
@@ -515,11 +515,11 @@ class PaintFilter extends JDialog implements ActionListener {
 				
 				if( d[4]*8 <= d[0]+d[1]+d[2]+d[3]+d[5]+d[6]+d[7]+d[8])
 				{
-					//ü‚è‚ÅÅ‚à”–‚¢F‚É‚·‚é
+					//å‘¨ã‚Šã§æœ€ã‚‚è–„ã„è‰²ã«ã™ã‚‹
 					newdb.setElem(h+v*width, maxc);
 				}
 				else{
-					//ü‚è‚ÅÅ‚à”Z‚¢F‚É‚·‚é
+					//å‘¨ã‚Šã§æœ€ã‚‚æ¿ƒã„è‰²ã«ã™ã‚‹
 					newdb.setElem(h+v*width, minc);
 				}
 			}
@@ -535,12 +535,12 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage TraceEdges2(BufferedImage bi) {
-		//ƒtƒBƒ‹ƒ^‚É‚æ‚é‰æ‚è
+		//ãƒ•ã‚£ãƒ«ã‚¿ã«ã‚ˆã‚‹ç¸å–ã‚Š
 		
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi);
 
-		//ƒtƒBƒ‹ƒ^[ˆ—
+		//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 		final float[] operator={
 				0.00f, 0.00f, 0.50f, 0.00f, 0.00f,
 				0.00f, 0.00f, 0.00f, 0.00f, 0.00f,
@@ -563,14 +563,14 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	private BufferedImage Median(BufferedImage srcbi)
 	{
-		//‘I‘ğ”ÍˆÍ‚ÌƒƒfƒBƒAƒ“(’†‰›’l‚ğæ‚è‚Ü‚·‚æ)
+		//é¸æŠç¯„å›²ã®ãƒ¡ãƒ‡ã‚£ã‚¢ãƒ³(ä¸­å¤®å€¤ã‚’å–ã‚Šã¾ã™ã‚ˆ)
 		
 		BufferedImage newbi = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		Graphics2D newg = newbi.createGraphics();
 		newg.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		newg.fillRect(0,0,newbi.getWidth(), newbi.getHeight());
 		
-		//ˆ— (8ƒ}ƒX)
+		//å‡¦ç† (8ãƒã‚¹)
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newbi.getRaster().getDataBuffer();
 		int width = srcbi.getWidth();
@@ -612,7 +612,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					continue;
 				}
 				
-				//’†‰›’l‚ğg‚¤
+				//ä¸­å¤®å€¤ã‚’ä½¿ã†
 				newdb.setElem(h+v*width, c[4]);
 			}
 		}
@@ -623,14 +623,14 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	private BufferedImage Median5(BufferedImage srcbi)
 	{
-		//‘I‘ğ”ÍˆÍ‚ÌƒƒfƒBƒAƒ“(’†‰›’l‚ğæ‚è‚Ü‚·‚æ)(5‹ß–T)
+		//é¸æŠç¯„å›²ã®ãƒ¡ãƒ‡ã‚£ã‚¢ãƒ³(ä¸­å¤®å€¤ã‚’å–ã‚Šã¾ã™ã‚ˆ)(5è¿‘å‚)
 		
 		BufferedImage newbi = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		Graphics2D newg = newbi.createGraphics();
 		newg.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		newg.fillRect(0,0,newbi.getWidth(), newbi.getHeight());
 		
-		//ˆ— (4ƒ}ƒX)
+		//å‡¦ç† (4ãƒã‚¹)
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newbi.getRaster().getDataBuffer();
 		int width = srcbi.getWidth();
@@ -677,7 +677,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					continue;
 				}
 				
-				//’†‰›’l‚ğg‚¤
+				//ä¸­å¤®å€¤ã‚’ä½¿ã†
 				newdb.setElem(h+v*width, c[2]);
 			}
 		}
@@ -688,14 +688,14 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	private BufferedImage Median25(BufferedImage srcbi)
 	{
-		//‘I‘ğ”ÍˆÍ‚ÌƒƒfƒBƒAƒ“(’†‰›’l‚ğæ‚è‚Ü‚·‚æ)
+		//é¸æŠç¯„å›²ã®ãƒ¡ãƒ‡ã‚£ã‚¢ãƒ³(ä¸­å¤®å€¤ã‚’å–ã‚Šã¾ã™ã‚ˆ)
 		
 		BufferedImage newbi = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		Graphics2D newg = newbi.createGraphics();
 		newg.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));
 		newg.fillRect(0,0,newbi.getWidth(), newbi.getHeight());
 		
-		//ˆ— (24ƒ}ƒX)
+		//å‡¦ç† (24ãƒã‚¹)
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newbi.getRaster().getDataBuffer();
 		int width = srcbi.getWidth();
@@ -737,7 +737,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					continue;
 				}
 				
-				//’†‰›’l‚ğg‚¤
+				//ä¸­å¤®å€¤ã‚’ä½¿ã†
 				newdb.setElem(h+v*width, c[12]);
 			}
 		}
@@ -748,10 +748,10 @@ class PaintFilter extends JDialog implements ActionListener {
 	
 	private BufferedImage MotionBlur(BufferedImage bi) {
 
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi);
 
-		//ƒtƒBƒ‹ƒ^[ˆ—
+		//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 		final float[] operator={
 				0.00f, 0.00f, 0.00f, 0.00f, 0.00f,
 				0.00f,-0.06f,-0.08f,-0.06f, 0.00f,
@@ -773,7 +773,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage GlassTile(BufferedImage bi) {
-		//myƒtƒBƒ‹ƒ^[ˆ—
+		//myãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 		int patWidth = 10;
 		int patHeight = 10;
 		
@@ -785,10 +785,10 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 		}
 
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi, patWidth, patHeight );
 
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage bignewimg = new BufferedImage(bi.getWidth()+patWidth*2, bi.getHeight()+patHeight*2, BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = bigbi.getRaster().getDataBuffer();
 		DataBuffer newdb = bignewimg.getRaster().getDataBuffer();
@@ -809,7 +809,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage WaveH(BufferedImage bi) {
-		//myƒtƒBƒ‹ƒ^[ˆ—
+		//myãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 		int patWidth = 20;
 		int patHeight = 20;
 		
@@ -823,10 +823,10 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 		}
 
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi, patWidth, patHeight );
 
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage bignewimg = new BufferedImage(bi.getWidth()+patWidth*2, bi.getHeight()+patHeight*2, BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = bigbi.getRaster().getDataBuffer();
 		DataBuffer newdb = bignewimg.getRaster().getDataBuffer();
@@ -849,7 +849,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage WaveV(BufferedImage bi) {
-		//myƒtƒBƒ‹ƒ^[ˆ—
+		//myãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 		int patWidth = 20;
 		int patHeight = 20;
 		
@@ -863,10 +863,10 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 		}
 
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi, patWidth, patHeight );
 
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage bignewimg = new BufferedImage(bi.getWidth()+patWidth*2, bi.getHeight()+patHeight*2, BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = bigbi.getRaster().getDataBuffer();
 		DataBuffer newdb = bignewimg.getRaster().getDataBuffer();
@@ -900,10 +900,10 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 		}
 
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi, patWidth, patHeight );
 
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage bignewimg = new BufferedImage(bi.getWidth()+patWidth*2, bi.getHeight()+patHeight*2, BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = bigbi.getRaster().getDataBuffer();
 		DataBuffer newdb = bignewimg.getRaster().getDataBuffer();
@@ -926,7 +926,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage Noise(BufferedImage srcbi) {
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newimg.getRaster().getDataBuffer();
@@ -957,7 +957,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage HighContrast(BufferedImage srcbi) {
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newimg.getRaster().getDataBuffer();
@@ -988,7 +988,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage LowContrast(BufferedImage srcbi) {
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newimg.getRaster().getDataBuffer();
@@ -1016,7 +1016,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage HighSaturation(BufferedImage srcbi) {
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newimg.getRaster().getDataBuffer();
@@ -1046,7 +1046,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage LowSaturation(BufferedImage srcbi) {
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newimg.getRaster().getDataBuffer();
@@ -1076,7 +1076,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage Grayscale(BufferedImage srcbi) {
-		//ˆ—
+		//å‡¦ç†
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 		DataBuffer newdb = newimg.getRaster().getDataBuffer();
@@ -1103,7 +1103,7 @@ class PaintFilter extends JDialog implements ActionListener {
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 
 		if(dithermode==-1){
-			//ƒfƒBƒU–³‚µ
+			//ãƒ‡ã‚£ã‚¶ç„¡ã—
 			DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 			DataBuffer newdb = newimg.getRaster().getDataBuffer();
 			int width = srcbi.getWidth();
@@ -1142,12 +1142,12 @@ class PaintFilter extends JDialog implements ActionListener {
 					int color = srcdb.getElem(h+v*width);
 					int alpha = color&0xFF000000;
 					
-					//–¾‚é‚³‚ğ‹‚ß‚é
+					//æ˜ã‚‹ã•ã‚’æ±‚ã‚ã‚‹
 					int brightness = (int)(0.29891f*((color>>16)&0xFF)+0.58661f*((color>>8)&0xFF)+0.1144f*((color)&0xFF));
-					//ƒKƒ“ƒ}’²® brightness = (int) (Math.pow(brightness/256f, 1.8)*256);
+					//ã‚¬ãƒ³ãƒèª¿æ•´ brightness = (int) (Math.pow(brightness/256f, 1.8)*256);
 					brightness += newdb.getElem(h+v*width);
 					
-					//ƒsƒNƒZƒ‹‚ğ”’‚©•‚É‚·‚é
+					//ãƒ”ã‚¯ã‚»ãƒ«ã‚’ç™½ã‹é»’ã«ã™ã‚‹
 					if(brightness>=128){
 						brightness -= 256;
 						newdb.setElem(h+v*width, alpha + 0x00FFFFFF);
@@ -1156,7 +1156,7 @@ class PaintFilter extends JDialog implements ActionListener {
 						newdb.setElem(h+v*width, alpha + 0x00000000);
 					}
 
-					//Œë·‚ğŠgU‚·‚é
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹
 					if(h+1<width) newdb.setElem(h+1+v*width, newdb.getElem(h+1+v*width)+brightness*7/16);
 					if(v+1>=height) continue;
 					if(h-1>=0) newdb.setElem(h-1+(v+1)*width, newdb.getElem(h-1+(v+1)*width)+brightness*3/16);
@@ -1184,12 +1184,12 @@ class PaintFilter extends JDialog implements ActionListener {
 					int color = srcdb.getElem(h+v*width);
 					int alpha = color&0xFF000000;
 					
-					//–¾‚é‚³‚ğ‹‚ß‚é
+					//æ˜ã‚‹ã•ã‚’æ±‚ã‚ã‚‹
 					int brightness = (int)(0.29891f*((color>>16)&0xFF)+0.58661f*((color>>8)&0xFF)+0.1144f*((color)&0xFF));
-					//ƒKƒ“ƒ}’²® brightness = (int) (Math.pow(brightness/256f, 1.8)*256);
+					//ã‚¬ãƒ³ãƒèª¿æ•´ brightness = (int) (Math.pow(brightness/256f, 1.8)*256);
 					brightness += newdb.getElem(h+v*width);
 					
-					//ƒsƒNƒZƒ‹‚ğ”’‚©•‚É‚·‚é
+					//ãƒ”ã‚¯ã‚»ãƒ«ã‚’ç™½ã‹é»’ã«ã™ã‚‹
 					if(brightness>=128){
 						brightness -= 256;
 						newdb.setElem(h+v*width, alpha + 0x00FFFFFF);
@@ -1198,7 +1198,7 @@ class PaintFilter extends JDialog implements ActionListener {
 						newdb.setElem(h+v*width, alpha + 0x00000000);
 					}
 
-					//Œë·‚ğŠgU‚·‚é
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹
 					int carry = brightness/8;
 					if(h+1<width) newdb.setElem(h+1+v*width, newdb.getElem(h+1+v*width)+carry);
 					if(h+2<width) newdb.setElem(h+2+v*width, newdb.getElem(h+2+v*width)+carry);
@@ -1208,7 +1208,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					if(h+1<width) newdb.setElem(h+1+(v+1)*width, newdb.getElem(h+1+(v+1)*width)+carry);
 					if(v+2<height) newdb.setElem(h+(v+2)*width, carry);
 					
-					//Œë·‚ğŠgU‚·‚é(Burkes)
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹(Burkes)
 					/*int carry = brightness;
 					if(h+1<width) newdb.setElem(h+1+v*width, newdb.getElem(h+1+v*width)+carry*4/16);
 					if(h+2<width) newdb.setElem(h+2+v*width, newdb.getElem(h+2+v*width)+carry*2/16);
@@ -1219,7 +1219,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					if(h+1<width) newdb.setElem(h+1+(v+1)*width, newdb.getElem(h+1+(v+1)*width)+carry*2/16);
 					if(h+2<width) newdb.setElem(h+2+(v+1)*width, newdb.getElem(h+2+(v+1)*width)+carry*1/16);
 					*/
-					//Œë·‚ğŠgU‚·‚é(Stucki)
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹(Stucki)
 					/*int carry = brightness;
 					if(h+1<width) newdb.setElem(h+1+v*width, newdb.getElem(h+1+v*width)+carry*8/42);
 					if(h+2<width) newdb.setElem(h+2+v*width, newdb.getElem(h+2+v*width)+carry*4/42);
@@ -1236,7 +1236,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					if(h+1<width) newdb.setElem(h+1+(v+2)*width, newdb.getElem(h+1+(v+2)*width)+carry*2/42);
 					if(h+2<width) newdb.setElem(h+2+(v+2)*width, newdb.getElem(h+2+(v+2)*width)+carry*1/42);
 					*/
-					//Œë·‚ğŠgU‚·‚é(JaJuNi)
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹(JaJuNi)
 					/*int carry = brightness;
 					if(h+1<width) newdb.setElem(h+1+v*width, newdb.getElem(h+1+v*width)+carry*7/48);
 					if(h+2<width) newdb.setElem(h+2+v*width, newdb.getElem(h+2+v*width)+carry*5/48);
@@ -1253,7 +1253,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					if(h+1<width) newdb.setElem(h+1+(v+2)*width, newdb.getElem(h+1+(v+2)*width)+carry*3/48);
 					if(h+2<width) newdb.setElem(h+2+(v+2)*width, newdb.getElem(h+2+(v+2)*width)+carry*1/48);
 					*/
-					//Œë·‚ğŠgU‚·‚é(Sierra 2line)
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹(Sierra 2line)
 					/*int carry = brightness;
 					if(h+1<width) newdb.setElem(h+1+v*width, newdb.getElem(h+1+v*width)+carry*4/16);
 					if(h+2<width) newdb.setElem(h+2+v*width, newdb.getElem(h+2+v*width)+carry*3/16);
@@ -1264,7 +1264,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					if(h+1<width) newdb.setElem(h+1+(v+1)*width, newdb.getElem(h+1+(v+1)*width)+carry*2/16);
 					if(h+2<width) newdb.setElem(h+2+(v+1)*width, newdb.getElem(h+2+(v+1)*width)+carry*1/16);
 					*/
-					//Œë·‚ğŠgU‚·‚é(Sierra lite)
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹(Sierra lite)
 					/*int carry = brightness;
 					if(h+1<width) newdb.setElem(h+1+v*width, newdb.getElem(h+1+v*width)+carry*2/4);
 					if(v+1>=height) continue;
@@ -1276,7 +1276,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			
 		}
 		else if(dithermode == 2){
-			//ƒpƒ^[ƒ“ˆ—‚ÍJava‚ÌdrawImage‚É”C‚¹‚é
+			//ãƒ‘ã‚¿ãƒ¼ãƒ³å‡¦ç†ã¯Javaã®drawImageã«ä»»ã›ã‚‹
 			byte[] r_a = new byte[]{(byte)0,(byte)254};
 			byte[] g_a = new byte[]{(byte)0,(byte)255};
 			byte[] b_a = new byte[]{(byte)0,(byte)254};
@@ -1305,11 +1305,11 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage Blur(BufferedImage bi) {
-		//ˆ—
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//å‡¦ç†
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi);
 		
-		//ƒtƒBƒ‹ƒ^[ˆ—
+		//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 		final float[] operator={
 				0.00f, 0.01f, 0.02f, 0.01f, 0.00f,
 				0.01f, 0.03f, 0.08f, 0.03f, 0.01f,
@@ -1331,11 +1331,11 @@ class PaintFilter extends JDialog implements ActionListener {
 
 	
 	private BufferedImage Sharpen(BufferedImage bi) {
-		//ˆ—
-		//’[‚Ìˆ—‚ğ‚³‚¹‚é‚½‚ßA‰æ‘œƒTƒCƒY‚ğ‘å‚«‚­‚·‚é
+		//å‡¦ç†
+		//ç«¯ã®å‡¦ç†ã‚’ã•ã›ã‚‹ãŸã‚ã€ç”»åƒã‚µã‚¤ã‚ºã‚’å¤§ããã™ã‚‹
 		BufferedImage bigbi = getBigImage(bi);
 		
-		//ƒtƒBƒ‹ƒ^[ˆ—
+		//ãƒ•ã‚£ãƒ«ã‚¿ãƒ¼å‡¦ç†
 		final float[] operator={
 				-0.00f, -0.01f, -0.02f, -0.01f, -0.00f,
 				-0.01f, -0.03f, -0.08f, -0.03f, -0.01f,
@@ -1365,7 +1365,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			this.bluemax = bluemax;
 			this.count = cnt;
 		}
-		int redmin; //F‹óŠÔƒGƒŠƒA
+		int redmin; //è‰²ç©ºé–“ã‚¨ãƒªã‚¢
 		int redmax;
 		int greenmin;
 		int greenmax;
@@ -1377,7 +1377,7 @@ class PaintFilter extends JDialog implements ActionListener {
 		int reddist;
 		int greendist;
 		int bluedist;
-		int count; //ƒGƒŠƒA“à‚É‚ ‚éƒsƒNƒZƒ‹”
+		int count; //ã‚¨ãƒªã‚¢å†…ã«ã‚ã‚‹ãƒ”ã‚¯ã‚»ãƒ«æ•°
 		
 		int[] initArea = new int[6];
 		void setInitArea(colorCnt parentCnt){
@@ -1397,7 +1397,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			this.redavr = 0;
 			float pixtotal = 0;
 			for(int i=this.redmin; i<this.redmax; i++){
-				//ƒsƒNƒZƒ‹”‚ğ”‚¦‚é
+				//ãƒ”ã‚¯ã‚»ãƒ«æ•°ã‚’æ•°ãˆã‚‹
 				countHist[i] = 0;
 				for(int g=this.greenmin; g<this.greenmax; g++){
 					for(int b=this.bluemin; b<this.bluemax; b++){
@@ -1407,7 +1407,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				pixtotal += countHist[i];
 				this.redavr += i*countHist[i];
 				if(countHist[i]>0){
-					//ƒsƒNƒZƒ‹‚ª‚ ‚é‚Ì‚Åmin‚Æmax‚É”½‰f
+					//ãƒ”ã‚¯ã‚»ãƒ«ãŒã‚ã‚‹ã®ã§minã¨maxã«åæ˜ 
 					if(iredmin==-1){
 						iredmin = i;
 						this.redmin = i;
@@ -1417,7 +1417,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 			this.redmax = iredmax;
 			this.redavr /= (pixtotal);
-			//•½‹Ï’l‚Æ‚Ì˜¨—£‚Ì‡Œv‚ğ‹‚ß‚é
+			//å¹³å‡å€¤ã¨ã®ä¹–é›¢ã®åˆè¨ˆã‚’æ±‚ã‚ã‚‹
 			this.reddist = 0;
 			for(int i=this.redmin; i<this.redmax; i++){
 				this.reddist += countHist[i]*Math.abs(i-this.redavr)/*/(this.redmax-this.redmin)*/;
@@ -1431,7 +1431,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			this.greenavr = 0;
 			pixtotal = 0;
 			for(int i=this.greenmin; i<this.greenmax; i++){
-				//ƒsƒNƒZƒ‹”‚ğ”‚¦‚é
+				//ãƒ”ã‚¯ã‚»ãƒ«æ•°ã‚’æ•°ãˆã‚‹
 				countHist[i] = 0;
 				for(int r=this.redmin; r<this.redmax; r++){
 					for(int b=this.bluemin; b<this.bluemax; b++){
@@ -1441,7 +1441,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				pixtotal += countHist[i];
 				this.greenavr += i*countHist[i];
 				if(countHist[i]>0){
-					//ƒsƒNƒZƒ‹‚ª‚ ‚é‚Ì‚Åmin‚Æmax‚É”½‰f
+					//ãƒ”ã‚¯ã‚»ãƒ«ãŒã‚ã‚‹ã®ã§minã¨maxã«åæ˜ 
 					if(igreenmin==-1){
 						igreenmin = i;
 						this.greenmin = i;
@@ -1451,7 +1451,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 			this.greenmax = igreenmax;
 			this.greenavr /= (pixtotal);
-			//•½‹Ï’l‚Æ‚Ì˜¨—£‚Ì‡Œv‚ğ‹‚ß‚é
+			//å¹³å‡å€¤ã¨ã®ä¹–é›¢ã®åˆè¨ˆã‚’æ±‚ã‚ã‚‹
 			this.greendist = 0;
 			for(int i=this.greenmin; i<this.greenmax; i++){
 				this.greendist += countHist[i]*Math.abs(i-this.greenavr)/*/(this.greenmax-this.greenmin)*/;
@@ -1466,7 +1466,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			this.blueavr = 0;
 			pixtotal = 0;
 			for(int i=this.bluemin; i<this.bluemax; i++){
-				//ƒsƒNƒZƒ‹”‚ğ”‚¦‚é
+				//ãƒ”ã‚¯ã‚»ãƒ«æ•°ã‚’æ•°ãˆã‚‹
 				countHist[i] = 0;
 				for(int r=this.redmin; r<this.redmax; r++){
 					for(int g=this.greenmin; g<this.greenmax; g++){
@@ -1476,7 +1476,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				pixtotal += countHist[i];
 				this.blueavr += i*countHist[i];
 				if(countHist[i]>0){
-					//ƒsƒNƒZƒ‹‚ª‚ ‚é‚Ì‚Åmin‚Æmax‚É”½‰f
+					//ãƒ”ã‚¯ã‚»ãƒ«ãŒã‚ã‚‹ã®ã§minã¨maxã«åæ˜ 
 					if(ibluemin==-1){
 						ibluemin = i;
 						this.bluemin = i;
@@ -1486,7 +1486,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 			this.bluemax = ibluemax;
 			this.blueavr /= (pixtotal);
-			//•½‹Ï’l‚Æ‚Ì˜¨—£‚Ì‡Œv‚ğ‹‚ß‚é
+			//å¹³å‡å€¤ã¨ã®ä¹–é›¢ã®åˆè¨ˆã‚’æ±‚ã‚ã‚‹
 			this.bluedist = 0;
 			for(int i=this.bluemin; i<this.bluemax; i++){
 				this.bluedist += countHist[i]*Math.abs(i-this.blueavr)/*/(this.bluemax-this.bluemin)*/;
@@ -1495,10 +1495,10 @@ class PaintFilter extends JDialog implements ActionListener {
 				this.bluedist = 0;
 			}
 
-			//–¾‚é‚³‚Ì•Ï‰»“x‡‚¢‚ğ’²‚×‚é
+			//æ˜ã‚‹ã•ã®å¤‰åŒ–åº¦åˆã„ã‚’èª¿ã¹ã‚‹
 			int countBright = 0;
 			if(reddist>this.bluedist){
-				//—¼•û‚Æ‚à–¾‚é‚¢—Ìˆæ‚Ì”
+				//ä¸¡æ–¹ã¨ã‚‚æ˜ã‚‹ã„é ˜åŸŸã®æ•°
 				for(int r=((int)this.redavr+this.redmax)/2; r<this.redmax; r++){
 					for(int g=((int)this.greenavr+this.greenmax)/2; g<this.greenmax; g++){
 						for(int b=this.bluemin; b<this.bluemax; b++){
@@ -1506,7 +1506,7 @@ class PaintFilter extends JDialog implements ActionListener {
 						}
 					}
 				}
-				//—¼•û‚Æ‚àˆÃ‚¢—Ìˆæ‚Ì”
+				//ä¸¡æ–¹ã¨ã‚‚æš—ã„é ˜åŸŸã®æ•°
 				for(int r=this.redmin; r<((int)this.redavr+this.redmin)/2; r++){
 					for(int g=this.greenmin; g<((int)this.greenavr+this.greenmax)/2; g++){
 						for(int b=this.bluemin; b<this.bluemax; b++){
@@ -1516,7 +1516,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 			}
 			else{
-				//—¼•û‚Æ‚à–¾‚é‚¢—Ìˆæ‚Ì”
+				//ä¸¡æ–¹ã¨ã‚‚æ˜ã‚‹ã„é ˜åŸŸã®æ•°
 				for(int r=this.redmin; r<this.redmax; r++){
 					for(int g=((int)this.greenavr+this.greenmax)/2; g<this.greenmax; g++){
 						for(int b=((int)this.blueavr+this.bluemax)/2; b<this.bluemax; b++){
@@ -1524,7 +1524,7 @@ class PaintFilter extends JDialog implements ActionListener {
 						}
 					}
 				}
-				//—¼•û‚Æ‚àˆÃ‚¢—Ìˆæ‚Ì”
+				//ä¸¡æ–¹ã¨ã‚‚æš—ã„é ˜åŸŸã®æ•°
 				for(int r=this.redmin; r<this.redmax; r++){
 					for(int g=this.greenmin; g<((int)this.greenavr+this.greenmax)/2; g++){
 						for(int b=this.bluemin; b<((int)this.blueavr+this.bluemin)/2; b++){
@@ -1534,9 +1534,9 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 			}
 
-			//lŠÔ‚Ì‹Šo‚É‡‚í‚¹‚éˆ—
+			//äººé–“ã®è¦–è¦šã«åˆã‚ã›ã‚‹å‡¦ç†
 
-			//‘S‚Ä‚Ìdist‚ª‘å‚«‚¯‚ê‚Î–¾‚é‚³‚Ìˆá‚¢
+			//å…¨ã¦ã®distãŒå¤§ãã‘ã‚Œã°æ˜ã‚‹ã•ã®é•ã„
 			//if(this.redavr<58 && (float)this.reddist/this.greendist/2<1.2f && (float)this.bluedist/this.greendist/2<1.2f){
 
 			
@@ -1546,30 +1546,30 @@ class PaintFilter extends JDialog implements ActionListener {
 				float grad=1.0f;
 				//System.out.println("gradarea[c565]:"+gradarea[c565]);
 				if(colorsize>32){
-					//ƒOƒ‰ƒf[ƒVƒ‡ƒ“ƒGƒŠƒA‚Å‚Í–¾‚é‚³‚ğ—Dæ
+					//ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã‚¨ãƒªã‚¢ã§ã¯æ˜ã‚‹ã•ã‚’å„ªå…ˆ
 					if(gradarea[c565]>=64) grad = 1.3f;
 					else if(gradarea[c565]>=8) grad = 1.2f;
 					else if (gradarea[c565]>=4) grad = 1.1f;
 					else grad = 0.9f;
 				}
 				
-				//“ñ‚Â‚Ì—Ìˆæ‚ª‚Æ‚à‚É‚‚¢‚Æ‚±‚ë‚ÉƒsƒNƒZƒ‹‚ªW’†‚µ‚Ä‚¢‚ê‚Î–¾‚é‚³‚Ìˆá‚¢
+				//äºŒã¤ã®é ˜åŸŸãŒã¨ã‚‚ã«é«˜ã„ã¨ã“ã‚ã«ãƒ”ã‚¯ã‚»ãƒ«ãŒé›†ä¸­ã—ã¦ã„ã‚Œã°æ˜ã‚‹ã•ã®é•ã„
 				if(this.greenavr/4>1 && this.greendist>this.reddist/2 && this.greendist>this.bluedist/2 ){
-					//—Î‚ğ‹­‰»(—Î‚ª–¾‚é‚³‚É‰e‹¿‘å)
+					//ç·‘ã‚’å¼·åŒ–(ç·‘ãŒæ˜ã‚‹ã•ã«å½±éŸ¿å¤§)
 					this.reddist *= 1.0/grad;
 					if(dithermode!=-1 || colorsize<=16) this.greendist *= 1.2;
 					else this.greendist *= (1.4f+colorsize/256.0f)*grad;
 					this.bluedist *= 1.0/grad;
 				}
 				else if(this.reddist>this.bluedist){
-					//Ô‚ğ‹­‰»
+					//èµ¤ã‚’å¼·åŒ–
 					if(dithermode!=-1 || colorsize<=16) this.reddist *= 1.2;
 					else this.reddist *= (1.4f+colorsize/256.0f)*grad;
 					this.greendist *= 1.0/grad;
 					this.bluedist *= 1.0/grad;
 				}
 				else{
-					//Â‚ğ‹­‰»
+					//é’ã‚’å¼·åŒ–
 					this.reddist *= 1.0/grad;
 					this.greendist *= 1.0/grad;
 					if(dithermode!=-1 || colorsize<=16) this.bluedist *= 1.2;
@@ -1578,84 +1578,84 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 			
 			if(countBright<pixtotal*1/32 && colorsize<24){
-				//F”‚Ì­‚È‚¢ê‡‚Í‚Ş‚µ‚ëF‘Š‚ğ—Dæ
+				//è‰²æ•°ã®å°‘ãªã„å ´åˆã¯ã‚€ã—ã‚è‰²ç›¸ã‚’å„ªå…ˆ
 				this.reddist *= 1.8;
 				this.greendist *= 1.8;
 				this.bluedist *= 1.8;
 			}
 			
 			if( this.blueavr+this.greenavr/4+this.redavr<60 && this.blueavr>this.greenavr/4*1.5 && this.blueavr>this.redavr*1.5 ){
-				//ˆÃ‚­‚ÄÂ‚ª‘å
+				//æš—ãã¦é’ãŒå¤§
 				this.reddist *= 0.8;
 				this.greendist *= 0.6;
 			}
 			
 			if( this.redavr>this.blueavr*2 && this.redavr>this.greenavr/4*2*1.2 ){
-				//Ô‚ª‘å‚Å‘¼‚ªã‚¢ê‡‚Í‘¼‚Ì•Ï‰»‚ğ–³‹
+				//èµ¤ãŒå¤§ã§ä»–ãŒå¼±ã„å ´åˆã¯ä»–ã®å¤‰åŒ–ã‚’ç„¡è¦–
 				this.reddist *= 1.0;
 				this.greendist *= 0.8;
 				this.bluedist *= 0.2;
 			}
 			if( this.greenavr/4*1.2>this.blueavr*2 && this.greenavr/4*1.2>this.redavr*2 ){
-				//—Î‚ª‘å‚Å‘¼‚ªã‚¢ê‡‚Í‘¼‚Ì•Ï‰»‚ğ–³‹
+				//ç·‘ãŒå¤§ã§ä»–ãŒå¼±ã„å ´åˆã¯ä»–ã®å¤‰åŒ–ã‚’ç„¡è¦–
 				this.greendist *= 1.1;
 				this.reddist *= 0.2;
 				this.bluedist *= 0.2;
 			}
 			if( this.blueavr>this.redavr*2 && this.blueavr>this.greenavr/4*1.2 ){
-				//Â‚ª‘å‚Å‘¼‚ªã‚¢ê‡‚Í‘¼‚Ì•Ï‰»‚ğ–³‹A‚â‚Á‚Ï‚èÂ‚Ì•Ï‰»‚ğ–³‹
+				//é’ãŒå¤§ã§ä»–ãŒå¼±ã„å ´åˆã¯ä»–ã®å¤‰åŒ–ã‚’ç„¡è¦–ã€ã‚„ã£ã±ã‚Šé’ã®å¤‰åŒ–ã‚’ç„¡è¦–
 				this.reddist *= 1;
 				this.greendist *= 1;
 				this.bluedist *= 0.8;
 			}
 
 			if( (this.greenmax/4>48 && this.redmax>54) && this.blueavr<32 ){
-				//Ôand—Î‚ª‘å‚ÅÂ‚ªã‚¢ê‡‚ÍÂ‚Ì•Ï‰»‚ğ–³‹
+				//èµ¤andç·‘ãŒå¤§ã§é’ãŒå¼±ã„å ´åˆã¯é’ã®å¤‰åŒ–ã‚’ç„¡è¦–
 				this.bluedist *= 0.1;
 				this.greendist *= 0.8;
 				this.reddist *= 0.7;
 			}
 			else if( (this.greenmax/4>48 || this.redmax>54) && this.blueavr<32 ){
-				//Ôor—Î‚ª‘å‚ÅÂ‚ªã‚¢ê‡‚ÍÂ‚Ì•Ï‰»‚ğ–³‹
+				//èµ¤orç·‘ãŒå¤§ã§é’ãŒå¼±ã„å ´åˆã¯é’ã®å¤‰åŒ–ã‚’ç„¡è¦–
 				this.bluedist *= 0.3;
 				this.greendist *= 1.0;
 				this.reddist *= 0.9;
 			}
 			else if( (this.greenmax/4>36 && this.bluemax>54) && this.redavr<32 ){
-				//—ÎandÂ‚ª‘å‚ÅÔ‚ªã‚¢ê‡‚ÍÔ‚Ì•Ï‰»‚ğ–³‹
+				//ç·‘andé’ãŒå¤§ã§èµ¤ãŒå¼±ã„å ´åˆã¯èµ¤ã®å¤‰åŒ–ã‚’ç„¡è¦–
 				this.reddist *= 0.3;
 				this.greendist *= 1.0;
 				this.bluedist *= 0.9;
 			}
 			else if( (this.redmax>48 && this.redmax>54) && this.greenavr/4<12 ){
-				//ÔandÂ‚ª‘å‚Å—Î‚ªã‚¢ê‡‚Í—Î‚Ì•Ï‰»‚ğ–³‹
+				//èµ¤andé’ãŒå¤§ã§ç·‘ãŒå¼±ã„å ´åˆã¯ç·‘ã®å¤‰åŒ–ã‚’ç„¡è¦–
 				this.greendist *= 0.50;
 			}
 			
 			if(this.redavr+this.greenavr/4+this.blueavr >= 188){
-				//”’FƒGƒŠƒA
+				//ç™½è‰²ã‚¨ãƒªã‚¢
 				this.reddist = this.reddist*3/4;
 				this.greendist = this.greendist*3/4;
 				this.bluedist = this.bluedist*3/4;
 			}
 			else if( this.redavr>this.greenavr/4+5 && this.greenavr/4>this.blueavr+5 && 
 					this.greenavr/4*1.5 >= this.redavr && this.blueavr*2 >= this.greenavr/4){
-				//”§FƒGƒŠƒA
+				//è‚Œè‰²ã‚¨ãƒªã‚¢
 				//this.reddist *= 1.3;
 				this.greendist *= 1.3;
 				//this.bluedist *= 1.3;
 			}
 			else if( (this.redmin>48 && this.redavr<=55 || this.bluemin>48 && this.blueavr<=55)  &&
 					(this.greendist>this.reddist) && (this.greendist>this.bluedist) ){
-				//—Î‚Ì•Ï‰»‘å
+				//ç·‘ã®å¤‰åŒ–å¤§
 				this.greendist *= 1.5;
 			}
 			else if( this.greenavr/4>54 && this.greenmin/2>this.bluemax && this.greenmin/4>this.redmax && (this.greenmax/4-this.greenmin/4<=8) ){
-				//—Î‚ª‘å‚Å—Î‚ª‹·‚¢
+				//ç·‘ãŒå¤§ã§ç·‘ãŒç‹­ã„
 				this.greendist = this.greendist*3/4;
 			}
 			else if(this.redmax+this.greenmax/4+this.bluemax <= 32){
-				//ˆÃFƒGƒŠƒA
+				//æš—è‰²ã‚¨ãƒªã‚¢
 				if(this.reddist>this.greendist/2) {
 					this.reddist *= 0.6;
 					this.greendist *= 0.1;
@@ -1672,14 +1672,14 @@ class PaintFilter extends JDialog implements ActionListener {
 					this.bluedist *= 0.05;
 				}
 				if(this.redmax+this.greenmax/4+this.bluemax <= 16){
-					//‚©‚È‚èˆÃFƒGƒŠƒA‚Ìê‡‚Í‚³‚ç‚É”¼•ª
+					//ã‹ãªã‚Šæš—è‰²ã‚¨ãƒªã‚¢ã®å ´åˆã¯ã•ã‚‰ã«åŠåˆ†
 					this.reddist *= 0.5;
 					this.greendist *= 0.5;
 					this.bluedist *= 0.5;
 				}
 			}
 			else if(this.redmax+this.greenmax/4+this.bluemax <= 64){
-				//‚â‚âˆÃFƒGƒŠƒA
+				//ã‚„ã‚„æš—è‰²ã‚¨ãƒªã‚¢
 				//this.reddist *= 0.9;
 				//this.greendist *= 0.9;
 				//this.bluedist *= 0.8;
@@ -1690,7 +1690,7 @@ class PaintFilter extends JDialog implements ActionListener {
 	private BufferedImage IndexColor(BufferedImage srcbi, 
 			int colors, int dithermode)
 	{
-		//6+8+6‚Ì20bit‚É•ÏŠ·
+		//6+8+6ã®20bitã«å¤‰æ›
 		int width = srcbi.getWidth();
 		int height = srcbi.getHeight();
 		BufferedImage minibi = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
@@ -1713,9 +1713,9 @@ class PaintFilter extends JDialog implements ActionListener {
 			counts[i] = 0;
 		}
 
-		byte[] gradarea = new byte[1<<16];//5,6,5‚ÅƒOƒ‰ƒf[ƒVƒ‡ƒ“‚ÌƒGƒŠƒA‚ğ‹L‰¯
+		byte[] gradarea = new byte[1<<16];//5,6,5ã§ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã®ã‚¨ãƒªã‚¢ã‚’è¨˜æ†¶
 		
-		//ŠÜ‚Ü‚ê‚éF‚ğƒJƒEƒ“ƒg
+		//å«ã¾ã‚Œã‚‹è‰²ã‚’ã‚«ã‚¦ãƒ³ãƒˆ
 		//DataBuffer db = srcbi.getRaster().getDataBuffer();
 		//DataBuffer minidb = minibi.getRaster().getDataBuffer();
 		int[] grad_d = new int[8];
@@ -1724,7 +1724,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			cnt_renzoku = 0;
 			for(int h=0; h<width; h++){
 				int orgd = db.getElem(h+v*width);
-				if(((orgd>>24)&0xFF)==0) continue;//“§–¾F‚ÍŠÜ‚Ü‚È‚¢
+				if(((orgd>>24)&0xFF)==0) continue;//é€æ˜è‰²ã¯å«ã¾ãªã„
 				int d = minidb.getElem(h+v*width);
 				grad_d[cnt_renzoku%8] = d;
 				counts[d]+=1;
@@ -1732,11 +1732,11 @@ class PaintFilter extends JDialog implements ActionListener {
 				int g = ((d>>6)&0xFF);
 				int b = ((d)&0x3F);
 				if(r>=54 && r<g/4+24 && r>g/4+4 &&g/4<b+16 && g/4>b+2){
-					//”§FƒGƒŠƒA
+					//è‚Œè‰²ã‚¨ãƒªã‚¢
 					counts[d]+=1;
 				}
 				if((colors==-1 || colors >= 32) && h-1>=0 && v-1>=0 && /*r+g+b<364 &&*/ r+g+b>24){
-					//–Ê
+					//é¢
 					int dd1 = minidb.getElem(h-1+v*width);
 					int dd2 = minidb.getElem(h+(v-1)*width);
 					int cnt = 0;
@@ -1755,7 +1755,7 @@ class PaintFilter extends JDialog implements ActionListener {
 						cnt_renzoku++;
 						if(cnt_renzoku>=2 && h-cnt_renzoku>=0){
 							int dd3 = minidb.getElem(h-cnt_renzoku+v*width);
-							//ƒOƒ‰ƒf[ƒVƒ‡ƒ“‚Ì•ûŒü‚ª•Ï‚í‚Á‚Ä‚¢‚È‚¢‚©
+							//ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã®æ–¹å‘ãŒå¤‰ã‚ã£ã¦ã„ãªã„ã‹
 							int houkou = 0;
 							if(((r-((dd1>>14)&0x3F))>0) == ((((dd1>>14)&0x3F)-((dd3>>14)&0x3F))<0)){
 								houkou++;
@@ -1771,12 +1771,12 @@ class PaintFilter extends JDialog implements ActionListener {
 							}
 						}
 						if(cnt_renzoku>=8){
-							//8ŒÂˆÈã˜A‘±‚µ‚Ä—Ş—‚µ‚½F‚ª‘±‚­‚Æ‚æ‚è—Dæ“x‚ğ‚‚­‚·‚é
+							//8å€‹ä»¥ä¸Šé€£ç¶šã—ã¦é¡ä¼¼ã—ãŸè‰²ãŒç¶šãã¨ã‚ˆã‚Šå„ªå…ˆåº¦ã‚’é«˜ãã™ã‚‹
 							int add = 1;
 							
 							int dd3 = minidb.getElem(h-cnt_renzoku+v*width);
 							if((r-((dd3>>14)&0x3F))<=3 && (g-((dd3>>6)&0xFF))<=7 && (b-((dd3)&0x3F))<=3){
-								//”÷–­‚È·‚Ìê‡‚Í‚Ş‚µ‚ë—Êq‰»Œë·‚©‚à‚µ‚ê‚È‚¢
+								//å¾®å¦™ãªå·®ã®å ´åˆã¯ã‚€ã—ã‚é‡å­åŒ–èª¤å·®ã‹ã‚‚ã—ã‚Œãªã„
 								add = -1;
 							}
 							
@@ -1797,20 +1797,20 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 		}
 
-		//cŒü‚«‚É‘–¸‚µ‚ÄƒOƒ‰ƒf[ƒVƒ‡ƒ“‚ğ’²‚×‚é
+		//ç¸¦å‘ãã«èµ°æŸ»ã—ã¦ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã‚’èª¿ã¹ã‚‹
 		if(colors==-1 || colors >= 128){
 			for(int h=0; h<width; h+=2){
 				cnt_renzoku = 0;
 				for(int v=0; v<height; v++){
 					int orgd = db.getElem(h+v*width);
-					if(((orgd>>24)&0xFF)==0) continue;//“§–¾F‚ÍŠÜ‚Ü‚È‚¢
+					if(((orgd>>24)&0xFF)==0) continue;//é€æ˜è‰²ã¯å«ã¾ãªã„
 					int d = minidb.getElem(h+v*width);
 					grad_d[cnt_renzoku%8] = d;
 					int r = ((d>>14)&0x3F);
 					int g = ((d>>6)&0xFF);
 					int b = ((d)&0x3F);
 					if((colors==-1 || colors >= 32) && v-1>=0 && /*r+g+b<364 &&*/ r+g+b>24){
-						//–Ê
+						//é¢
 						int dd1 = minidb.getElem(h+(v-1)*width);
 						int cnt = 0;
 						if(Math.abs(r - ((dd1>>14)&0x3F))<=3){
@@ -1827,7 +1827,7 @@ class PaintFilter extends JDialog implements ActionListener {
 							cnt_renzoku++;
 							if(cnt_renzoku>=2 && v-cnt_renzoku>=0){
 								int dd3 = minidb.getElem(h+(v-cnt_renzoku)*width);
-								//ƒOƒ‰ƒf[ƒVƒ‡ƒ“‚Ì•ûŒü‚ª•Ï‚í‚Á‚Ä‚¢‚È‚¢‚©
+								//ã‚°ãƒ©ãƒ‡ãƒ¼ã‚·ãƒ§ãƒ³ã®æ–¹å‘ãŒå¤‰ã‚ã£ã¦ã„ãªã„ã‹
 								int houkou = 0;
 								if(((r-((dd1>>14)&0x3F))>0) == ((((dd1>>14)&0x3F)-((dd3>>14)&0x3F))<0)){
 									houkou++;
@@ -1843,12 +1843,12 @@ class PaintFilter extends JDialog implements ActionListener {
 								}
 							}
 							if(cnt_renzoku>=8){
-								//8ŒÂˆÈã˜A‘±‚µ‚Ä—Ş—‚µ‚½F‚ª‘±‚­‚Æ‚æ‚è—Dæ“x‚ğ‚‚­‚·‚é
+								//8å€‹ä»¥ä¸Šé€£ç¶šã—ã¦é¡ä¼¼ã—ãŸè‰²ãŒç¶šãã¨ã‚ˆã‚Šå„ªå…ˆåº¦ã‚’é«˜ãã™ã‚‹
 								int add = 1;
 
 								int dd3 = minidb.getElem(h+(v-cnt_renzoku)*width);
 								if((r-((dd3>>14)&0x3F))<=3 && (g-((dd3>>6)&0xFF))<=7 && (b-((dd3)&0x3F))<=3){
-									//”÷–­‚È·‚Ìê‡‚Í‚Ş‚µ‚ë—Êq‰»Œë·‚©‚à‚µ‚ê‚È‚¢
+									//å¾®å¦™ãªå·®ã®å ´åˆã¯ã‚€ã—ã‚é‡å­åŒ–èª¤å·®ã‹ã‚‚ã—ã‚Œãªã„
 									add = -1;
 								}
 								
@@ -1879,7 +1879,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			autoColors = true;
 		}
 		
-		//ƒJƒ‰[‚Ì”z’u‚ğ•ªÍ‚µA‚Ç‚±‚©‚Å•ª‚¯‚é
+		//ã‚«ãƒ©ãƒ¼ã®é…ç½®ã‚’åˆ†æã—ã€ã©ã“ã‹ã§åˆ†ã‘ã‚‹
 		ArrayList<colorCnt> colorList = new ArrayList<colorCnt>();
 		int total = 0;
 		for(int i=0; i<counts.length; i++){
@@ -1899,13 +1899,13 @@ class PaintFilter extends JDialog implements ActionListener {
 		colorList.get(0).initArea[3] = 256;
 		colorList.get(0).initArea[4] = 0;
 		colorList.get(0).initArea[5] = 64;
-		//Å‰‚ÌƒGƒŠƒA‚Ì”ÍˆÍ‚ğ’÷‚ß‚é
+		//æœ€åˆã®ã‚¨ãƒªã‚¢ã®ç¯„å›²ã‚’ç· ã‚ã‚‹
 		colorList.get(0).setDist(countHist, counts, dithermode, colorList.size(), gradarea);
 		
 		while(colorList.size()<colors){
-			//F‹óŠÔ‚ğƒƒfƒBƒAƒ“ƒJƒbƒg–@‚ÅØ‚è•ª‚¯‚Äs‚­
+			//è‰²ç©ºé–“ã‚’ãƒ¡ãƒ‡ã‚£ã‚¢ãƒ³ã‚«ãƒƒãƒˆæ³•ã§åˆ‡ã‚Šåˆ†ã‘ã¦è¡Œã
 			
-			//•ªŠ„‘ÎÛ‚ÌƒGƒŠƒA‚ğŒˆ‚ß‚éB”ÍˆÍ‚ªL‚­ƒsƒNƒZƒ‹‚Ì‘½‚¢ƒGƒŠƒAB
+			//åˆ†å‰²å¯¾è±¡ã®ã‚¨ãƒªã‚¢ã‚’æ±ºã‚ã‚‹ã€‚ç¯„å›²ãŒåºƒããƒ”ã‚¯ã‚»ãƒ«ã®å¤šã„ã‚¨ãƒªã‚¢ã€‚
 			float maxdist = 0;
 			colorCnt maxarea = null;
 			for(int i=0; i<colorList.size(); i++){
@@ -1936,9 +1936,9 @@ class PaintFilter extends JDialog implements ActionListener {
 					+" greendist:"+maxarea.greendist
 					+" bluedist:"+maxarea.bluedist);*/
 			
-			//•ªŠ„•ûŒü(r,g,b)‚ğŒˆ‚ß‚é ƒsƒNƒZƒ‹‚ª‚»‚ÌF•ûŒü‚É•Î‚Á‚Ä‚¢‚ÄƒsƒNƒZƒ‹‚ğ‘½‚­•ªŠ„‚Å‚«‚éˆÊ’u
+			//åˆ†å‰²æ–¹å‘(r,g,b)ã‚’æ±ºã‚ã‚‹ ãƒ”ã‚¯ã‚»ãƒ«ãŒãã®è‰²æ–¹å‘ã«åã£ã¦ã„ã¦ãƒ”ã‚¯ã‚»ãƒ«ã‚’å¤šãåˆ†å‰²ã§ãã‚‹ä½ç½®
 			if(maxarea.reddist==0 && maxarea.greendist==0 && maxarea.bluedist==0){
-				//•ªŠ„•s‰Â”\
+				//åˆ†å‰²ä¸å¯èƒ½
 				if(maxarea.count==-10000){
 					break;
 				}
@@ -1956,11 +1956,11 @@ class PaintFilter extends JDialog implements ActionListener {
 			newarea = new colorCnt(maxarea.redmin, maxarea.redmax, maxarea.greenmin, maxarea.greenmax, maxarea.bluemin, maxarea.bluemax, 0);
 
 			if(maxarea.reddist>=maxarea.greendist && maxarea.reddist>=maxarea.bluedist){
-				//Ô‚ğ•ªŠ„
+				//èµ¤ã‚’åˆ†å‰²
 				
-				//•ªŠ„‚É“s‡‚ª—Ç‚¢êŠ‚ğ‹‚ß‚éB
+				//åˆ†å‰²ã«éƒ½åˆãŒè‰¯ã„å ´æ‰€ã‚’æ±‚ã‚ã‚‹ã€‚
 				
-				//ƒqƒXƒgƒOƒ‰ƒ€‚ğ‹‚ß‚é
+				//ãƒ’ã‚¹ãƒˆã‚°ãƒ©ãƒ ã‚’æ±‚ã‚ã‚‹
 				float average=0;
 				int counttotal=0;
 				for(int r=maxarea.redmin; r<maxarea.redmax; r++){
@@ -1976,7 +1976,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				average/=counttotal;
 				int areawidth = (maxarea.redmax-maxarea.redmin)*4;
 				if(areawidth>32){
-					//ƒqƒXƒgƒOƒ‰ƒ€‚ğ‚Ú‚©‚·
+					//ãƒ’ã‚¹ãƒˆã‚°ãƒ©ãƒ ã‚’ã¼ã‹ã™
 					for(int j=0; j<areawidth/32; j++){
 						for(int i=newarea.redmin+1; i<newarea.redmax-1; i++){
 							countHist[i] = (countHist[i-1]+2*countHist[i]+countHist[i+1])/4;
@@ -1985,7 +1985,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 				//System.out.println("average"+average+"    counttotal:"+counttotal);
 				
-				//•½‹Ï’l‚É‹ß‚­‚ÄƒsƒNƒZƒ‹‚Ì­‚È‚¢‚Æ‚±‚ë‚ğ’T‚·
+				//å¹³å‡å€¤ã«è¿‘ãã¦ãƒ”ã‚¯ã‚»ãƒ«ã®å°‘ãªã„ã¨ã“ã‚ã‚’æ¢ã™
 				float maxrank = -1000000;
 				for(int i=maxarea.redmin+1; i<maxarea.redmax; i++){
 					float rank = (((float)counttotal)/(countHist[i]+1*counttotal/areawidth)-(5+32.0f/areawidth)*Math.abs(average-i));
@@ -1996,7 +1996,7 @@ class PaintFilter extends JDialog implements ActionListener {
 							splitcount += countHist[j];
 						}
 						if(splitcount>maxarea.count*2/8 && splitcount<maxarea.count*6/8){
-							//•ªŠ„
+							//åˆ†å‰²
 							maxrank = rank;
 							newarea.redmin = i;
 						}
@@ -2005,16 +2005,16 @@ class PaintFilter extends JDialog implements ActionListener {
 				if(maxrank == -1000000) newarea.redmin = (int)average+1;
 				maxarea.redmax = newarea.redmin;
 				
-				newarea.setInitArea(maxarea); //‰Šú‚ÌF‹óŠÔ‚ğ‹L‰¯
+				newarea.setInitArea(maxarea); //åˆæœŸã®è‰²ç©ºé–“ã‚’è¨˜æ†¶
 				newarea.initArea[0] = newarea.redmin;
 				maxarea.initArea[1] = maxarea.redmax;
 			}
 			else if(maxarea.greendist>=maxarea.reddist && maxarea.greendist>=maxarea.bluedist){
-				//—Î‚ğ•ªŠ„
+				//ç·‘ã‚’åˆ†å‰²
 				
-				//•ªŠ„‚É“s‡‚ª—Ç‚¢êŠ‚ğ‹‚ß‚éB
+				//åˆ†å‰²ã«éƒ½åˆãŒè‰¯ã„å ´æ‰€ã‚’æ±‚ã‚ã‚‹ã€‚
 				
-				//ƒqƒXƒgƒOƒ‰ƒ€‚ğ‹‚ß‚é
+				//ãƒ’ã‚¹ãƒˆã‚°ãƒ©ãƒ ã‚’æ±‚ã‚ã‚‹
 				float average=0;
 				int counttotal=0;
 				for(int g=maxarea.greenmin; g<maxarea.greenmax; g++){
@@ -2030,7 +2030,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				average/=counttotal;
 				int areawidth = (maxarea.greenmax-maxarea.greenmin)*1;
 				if(areawidth>32){
-					//ƒqƒXƒgƒOƒ‰ƒ€‚ğ‚Ú‚©‚·
+					//ãƒ’ã‚¹ãƒˆã‚°ãƒ©ãƒ ã‚’ã¼ã‹ã™
 					for(int j=0; j<areawidth/32/4; j++){
 						for(int i=newarea.greenmin+1; i<newarea.greenmax-1; i++){
 							countHist[i] = (countHist[i-1]+2*countHist[i]+countHist[i+1])/4;
@@ -2039,7 +2039,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 				//System.out.println("average"+average+"    counttotal:"+counttotal);
 				
-				//•½‹Ï’l‚É‹ß‚­‚ÄƒsƒNƒZƒ‹‚Ì­‚È‚¢‚Æ‚±‚ë‚ğ’T‚·
+				//å¹³å‡å€¤ã«è¿‘ãã¦ãƒ”ã‚¯ã‚»ãƒ«ã®å°‘ãªã„ã¨ã“ã‚ã‚’æ¢ã™
 				float maxrank = -1000000;
 				for(int i=maxarea.greenmin+1; i<maxarea.greenmax; i++){
 					float rank = (((float)counttotal)/(countHist[i]+1*counttotal/areawidth)-(5+32.0f/areawidth)*Math.abs(average-i));
@@ -2050,7 +2050,7 @@ class PaintFilter extends JDialog implements ActionListener {
 							splitcount += countHist[j];
 						}
 						if(splitcount>maxarea.count*2/8 && splitcount<maxarea.count*6/8){
-							//•ªŠ„
+							//åˆ†å‰²
 							maxrank = rank;
 							newarea.greenmin = i;
 						}
@@ -2059,16 +2059,16 @@ class PaintFilter extends JDialog implements ActionListener {
 				if(maxrank == -1000000) newarea.greenmin = (int)average+1;
 				maxarea.greenmax = newarea.greenmin;
 				
-				newarea.setInitArea(maxarea); //‰Šú‚ÌF‹óŠÔ‚ğ‹L‰¯
+				newarea.setInitArea(maxarea); //åˆæœŸã®è‰²ç©ºé–“ã‚’è¨˜æ†¶
 				newarea.initArea[2] = newarea.greenmin;
 				maxarea.initArea[3] = maxarea.greenmax;
 			}
 			else{
-				//Â‚ğ•ªŠ„
+				//é’ã‚’åˆ†å‰²
 				
-				//•ªŠ„‚É“s‡‚ª—Ç‚¢êŠ‚ğ‹‚ß‚éB
+				//åˆ†å‰²ã«éƒ½åˆãŒè‰¯ã„å ´æ‰€ã‚’æ±‚ã‚ã‚‹ã€‚
 				
-				//ƒqƒXƒgƒOƒ‰ƒ€‚ğ‹‚ß‚é
+				//ãƒ’ã‚¹ãƒˆã‚°ãƒ©ãƒ ã‚’æ±‚ã‚ã‚‹
 				float average=0;
 				int counttotal=0;
 				for(int b=maxarea.bluemin; b<maxarea.bluemax; b++){
@@ -2084,7 +2084,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				average/=counttotal;
 				int areawidth = (maxarea.bluemax-maxarea.bluemin)*4;
 				if(areawidth>32){
-					//ƒqƒXƒgƒOƒ‰ƒ€‚ğ‚Ú‚©‚·
+					//ãƒ’ã‚¹ãƒˆã‚°ãƒ©ãƒ ã‚’ã¼ã‹ã™
 					for(int j=0; j<areawidth/32; j++){
 						if(j%2==0){
 							for(int i=newarea.greenmin+1; i<newarea.greenmax-1; i++){
@@ -2099,7 +2099,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 				//System.out.println("average"+average+"    counttotal:"+counttotal);
 
-				//•½‹Ï’l‚É‹ß‚­‚ÄƒsƒNƒZƒ‹‚Ì­‚È‚¢‚Æ‚±‚ë‚ğ’T‚·
+				//å¹³å‡å€¤ã«è¿‘ãã¦ãƒ”ã‚¯ã‚»ãƒ«ã®å°‘ãªã„ã¨ã“ã‚ã‚’æ¢ã™
 				float maxrank = -1000000;
 				for(int i=maxarea.bluemin+1; i<maxarea.bluemax; i++){
 					float rank = (((float)counttotal)/(countHist[i]+1*counttotal/areawidth)-(5+32.0f/areawidth)*Math.abs(average-i));
@@ -2110,7 +2110,7 @@ class PaintFilter extends JDialog implements ActionListener {
 							splitcount += countHist[j];
 						}
 						if(splitcount>maxarea.count*2/8 && splitcount<maxarea.count*6/8){
-							//•ªŠ„
+							//åˆ†å‰²
 							maxrank = rank;
 							newarea.bluemin = i;
 						}
@@ -2119,13 +2119,13 @@ class PaintFilter extends JDialog implements ActionListener {
 				if(maxrank == -1000000) newarea.bluemin = (int)average+1;
 				maxarea.bluemax = newarea.bluemin;
 				
-				newarea.setInitArea(maxarea); //‰Šú‚ÌF‹óŠÔ‚ğ‹L‰¯
+				newarea.setInitArea(maxarea); //åˆæœŸã®è‰²ç©ºé–“ã‚’è¨˜æ†¶
 				newarea.initArea[4] = newarea.bluemin;
 				maxarea.initArea[5] = maxarea.bluemax;
 			}
 			
 			
-			//V‚µ‚¢—Ìˆæ‚ÌƒsƒNƒZƒ‹”‚ğ”‚¦‚é
+			//æ–°ã—ã„é ˜åŸŸã®ãƒ”ã‚¯ã‚»ãƒ«æ•°ã‚’æ•°ãˆã‚‹
 			int count = 0;
 			for(int r=newarea.redmin; r<newarea.redmax; r++){
 				for(int g=newarea.greenmin; g<newarea.greenmax; g++){
@@ -2145,11 +2145,11 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 			}
 			
-			//”ÍˆÍ‚ğ’÷‚ß‚é
+			//ç¯„å›²ã‚’ç· ã‚ã‚‹
 			newarea.setDist(countHist, counts, dithermode, colorList.size(), gradarea);
 			maxarea.setDist(countHist, counts, dithermode, colorList.size(), gradarea);
 			
-			//ƒŠƒXƒg‚É’Ç‰Á
+			//ãƒªã‚¹ãƒˆã«è¿½åŠ 
 			colorList.add(newarea);
 			
 			/*System.out.println("newarea.count:"+newarea.count);
@@ -2172,7 +2172,7 @@ class PaintFilter extends JDialog implements ActionListener {
 		Color[] srcColorBest = new Color[colors];
 		
 		if(dithermode==-1){
-			//F‚ğŒˆ‚ß‚éBƒGƒŠƒA“à‚ÌƒsƒNƒZƒ‹‚ÌF‚Ì•½‹Ï’l ƒsƒNƒZƒ‹‚Ì·‚ª\•ª‚É‚ ‚ê‚Î‘ã•\’l
+			//è‰²ã‚’æ±ºã‚ã‚‹ã€‚ã‚¨ãƒªã‚¢å†…ã®ãƒ”ã‚¯ã‚»ãƒ«ã®è‰²ã®å¹³å‡å€¤ ãƒ”ã‚¯ã‚»ãƒ«ã®å·®ãŒååˆ†ã«ã‚ã‚Œã°ä»£è¡¨å€¤
 			for(int i=0; i<colorList.size(); i++){
 				int red = 0;
 				int green = 0;
@@ -2188,7 +2188,7 @@ class PaintFilter extends JDialog implements ActionListener {
 							int c = counts[r*256*64+g*64+b];
 							if(c==0) continue;
 							/*if(r>=28*2 && r<g/2+12*2 && r>g/2+2*2 &&g/2<b+8*2 && g/2>b+1*2){
-								//”§FƒGƒŠƒA  ‚Í‚±‚±‚Å‚Í‚È‚­Å‰‚ÌƒsƒNƒZƒ‹”‚ğ”‚¦‚é‚Æ‚«‚Él—¶‚·‚é
+								//è‚Œè‰²ã‚¨ãƒªã‚¢  ã¯ã“ã“ã§ã¯ãªãæœ€åˆã®ãƒ”ã‚¯ã‚»ãƒ«æ•°ã‚’æ•°ãˆã‚‹ã¨ãã«è€ƒæ…®ã™ã‚‹
 								c *= 2;
 							}*/
 							red += r*c;
@@ -2205,18 +2205,18 @@ class PaintFilter extends JDialog implements ActionListener {
 				if(totalpix==0) totalpix = 1;
 
 				if(maxpix >= totalpix/2){
-					//‘ã•\’l
+					//ä»£è¡¨å€¤
 					srcColorBest[i] = new Color((maxrgb>>14)*255/63, ((maxrgb>>6)&0xFF)*255/255, (maxrgb&0x3F)*255/63);
 				}
 				else{
-					//•½‹Ï’l
+					//å¹³å‡å€¤
 					srcColorBest[i] = new Color(red/totalpix*255/63, green/totalpix*255/255, blue/totalpix*255/63);
 				}
 				
-				//srcColorBest[i] = new Color(i, (i*4)%256, (i*16)%256); //index‚ÅF•ª‚¯
+				//srcColorBest[i] = new Color(i, (i*4)%256, (i*16)%256); //indexã§è‰²åˆ†ã‘
 			}
 			
-			//F‹óŠÔ‚É‚Ç‚ÌF‚É‹ß‚¢‚Ì‚©‚ğ‘‚«‚Ş
+			//è‰²ç©ºé–“ã«ã©ã®è‰²ã«è¿‘ã„ã®ã‹ã‚’æ›¸ãè¾¼ã‚€
 			short[] colorAry = new short[1<<20];
 			for(int i=0; i<colorAry.length; i++){
 				colorAry[i] = -1;
@@ -2232,7 +2232,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 			}
 			
-			//Œ³‰æ‘œ‚ğw’èF‚Ì‚İ‚É•ÏŠ·‚·‚é
+			//å…ƒç”»åƒã‚’æŒ‡å®šè‰²ã®ã¿ã«å¤‰æ›ã™ã‚‹
 			width = srcbi.getWidth();
 			height = srcbi.getHeight();
 			for(int v=0; v<height; v++){
@@ -2266,7 +2266,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 			}
 			
-			//–¾‚é‚³ƒ\[ƒg
+			//æ˜ã‚‹ã•ã‚½ãƒ¼ãƒˆ
 			for(int i=0; i<srcColorBest.length-1; i++){
 				if(srcColorBest[i]==null) continue;
 				for(int j=i+1; j<srcColorBest.length; j++){
@@ -2280,7 +2280,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				}
 			}
 			
-			//ƒpƒŒƒbƒg•\¦
+			//ãƒ‘ãƒ¬ãƒƒãƒˆè¡¨ç¤º
 			/*for(int y=0; y<8; y++){
 				for(int x=0; x<srcColorBest.length/8; x++){
 					if(srcColorBest[x+y*srcColorBest.length/8]==null) continue;
@@ -2317,11 +2317,11 @@ class PaintFilter extends JDialog implements ActionListener {
 		}
 
 		/////////////////////
-		//  ƒfƒBƒU‚ğg—p‚·‚éê‡
+		//  ãƒ‡ã‚£ã‚¶ã‚’ä½¿ç”¨ã™ã‚‹å ´åˆ
 		/////////////////////
 		
 		
-		//F‚ğŒˆ‚ß‚éBƒGƒŠƒA“à‚ÌƒsƒNƒZƒ‹‚ÌF‚Ì•½‹Ï’l ƒsƒNƒZƒ‹‚Ì·‚ª\•ª‚É‚ ‚ê‚Î‘ã•\’l
+		//è‰²ã‚’æ±ºã‚ã‚‹ã€‚ã‚¨ãƒªã‚¢å†…ã®ãƒ”ã‚¯ã‚»ãƒ«ã®è‰²ã®å¹³å‡å€¤ ãƒ”ã‚¯ã‚»ãƒ«ã®å·®ãŒååˆ†ã«ã‚ã‚Œã°ä»£è¡¨å€¤
 		for(int i=0; i<colorList.size(); i++){
 			double red = 0;
 			double green = 0;
@@ -2350,16 +2350,16 @@ class PaintFilter extends JDialog implements ActionListener {
 			if(totalpix==0) totalpix = 1;
 
 			if(maxpix >= totalpix*3/4){
-				//‘ã•\’l
+				//ä»£è¡¨å€¤
 				srcColorBest[i] = new Color((int)((0x003F&(maxrgb>>14))*255/63), ((maxrgb>>6)&0x00FF)*255/255, (maxrgb&0x003F)*255/63);
 			}
 			else{
-				//•½‹Ï’l‚ğŠî–{‚É‚·‚é
+				//å¹³å‡å€¤ã‚’åŸºæœ¬ã«ã™ã‚‹
 				int cred = ((int)(red/totalpix)*255/63);
 				int cgreen = ((int)(green/totalpix)*255/255);
 				int cblue = ((int)(blue/totalpix)*255/63);
 				
-				//‘S‹óŠÔ‚Årgb‚ÌÊ“x‚ªÅ‚à‚‚¢ê‡‚Í‚»‚ê‚ğÌ—p‚·‚é
+				//å…¨ç©ºé–“ã§rgbã®å½©åº¦ãŒæœ€ã‚‚é«˜ã„å ´åˆã¯ãã‚Œã‚’æ¡ç”¨ã™ã‚‹
 				int minbright = 1000;
 				int maxbright = 0;
 				int redsat = -255;
@@ -2397,13 +2397,13 @@ class PaintFilter extends JDialog implements ActionListener {
 					}
 				}
 				if(area.redavr+area.greenavr/4+area.blueavr<minbright) {
-					//–¾‚é‚¢
+					//æ˜ã‚‹ã„
 					cred = (cred*3+area.redmin*255/63)/4;
 					cgreen = (cgreen*3+area.greenmin*255/255)/4;
 					cblue = (cblue*3+area.bluemin*255/63)/4;
 				}
 				else if(area.redavr+area.greenavr/4+area.blueavr>maxbright) {
-					//ˆÃ‚¢
+					//æš—ã„
 					cred = (cred*3+area.redmax*255/63)/4;
 					cgreen = (cgreen*3+area.greenmax*255/255)/4;
 					cblue = (cblue*3+area.bluemax*255/63)/4;
@@ -2432,7 +2432,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				srcColorBest[i] = new Color(cred, cgreen, cblue);
 			}
 			
-			//srcColorBest[i] = new Color(i, (i*4)%256, (i*16)%256); //index‚ÅF•ª‚¯
+			//srcColorBest[i] = new Color(i, (i*4)%256, (i*16)%256); //indexã§è‰²åˆ†ã‘
 		}
 		
 		counts = null;
@@ -2440,7 +2440,7 @@ class PaintFilter extends JDialog implements ActionListener {
 		BufferedImage newimg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_INT_ARGB);
 
 		if(dithermode==0 || dithermode==1){
-			//F‹óŠÔ‚É‚Ç‚ÌF‚É‹ß‚¢‚Ì‚©‚ğ‘‚«‚Ş
+			//è‰²ç©ºé–“ã«ã©ã®è‰²ã«è¿‘ã„ã®ã‹ã‚’æ›¸ãè¾¼ã‚€
 			short[] colorAry = new short[1<<20];
 			/*for(int i=0; i<colorAry.length; i++){
 				colorAry[i] = -1;
@@ -2468,7 +2468,7 @@ class PaintFilter extends JDialog implements ActionListener {
 
 			DataBuffer srcdb = srcbi.getRaster().getDataBuffer();
 			for(int v=0; v<height; v++){
-				//‰¡•ûŒü‚ÍƒWƒOƒUƒO‚ÉƒXƒLƒƒƒ“‚·‚é
+				//æ¨ªæ–¹å‘ã¯ã‚¸ã‚°ã‚¶ã‚°ã«ã‚¹ã‚­ãƒ£ãƒ³ã™ã‚‹
 				int hstart = 0;
 				int hend = width;
 				int add=1;
@@ -2480,7 +2480,7 @@ class PaintFilter extends JDialog implements ActionListener {
 				for(int h=hstart; h!=hend; h+=add){
 					int color = srcdb.getElem(h+v*width);
 					
-					//r,g,b‚ğ‹‚ß‚é
+					//r,g,bã‚’æ±‚ã‚ã‚‹
 					int carrycolor = newdb.getElem(h+v*width);
 					int r = ((color>>16)&0xFF)+(byte)((carrycolor>>16)&0xFF);
 					int g = ((color>>8)&0xFF)+(byte)((carrycolor>>8)&0xFF);
@@ -2505,11 +2505,11 @@ class PaintFilter extends JDialog implements ActionListener {
 						b = 0;
 					}
 					
-					//ƒsƒNƒZƒ‹‚ğƒCƒ“ƒfƒbƒNƒXƒJƒ‰[‚Ì‹ß‚¢‚à‚Ì‚É‚·‚é
+					//ãƒ”ã‚¯ã‚»ãƒ«ã‚’ã‚¤ãƒ³ãƒ‡ãƒƒã‚¯ã‚¹ã‚«ãƒ©ãƒ¼ã®è¿‘ã„ã‚‚ã®ã«ã™ã‚‹
 					int index = colorAry[(r>>2)*256*64+(g>>0)*64+(b>>2)];
 					Color newcolor = srcColorBest[index];
 					if(colorList.size()<=32){
-						//—Í‹ZŒŸõ
+						//åŠ›æŠ€æ¤œç´¢
 						int rrr = (r + newcolor.getRed())/2;
 						int ggg = (g + newcolor.getGreen())/2;
 						int bbb = (b + newcolor.getBlue())/2;
@@ -2528,10 +2528,10 @@ class PaintFilter extends JDialog implements ActionListener {
 						}
 					}
 					
-					//‚ ‚Ü‚è‚É‚à‚©‚¯—£‚ê‚Ä‚¢‚éê‡‚ÍÌ—p‚µ‚È‚¢
+					//ã‚ã¾ã‚Šã«ã‚‚ã‹ã‘é›¢ã‚Œã¦ã„ã‚‹å ´åˆã¯æ¡ç”¨ã—ãªã„
 					if(colorList.size()>=4 && Math.abs(((color>>16)&0xFF)-newcolor.getRed()) +Math.abs(((color>>8)&0xFF)-newcolor.getGreen()) +Math.abs(((color)&0xFF)-newcolor.getBlue()) >48*544/(32+colorList.size())){
 						if(colorList.size()<=256){
-							//—Í‹ZŒŸõ
+							//åŠ›æŠ€æ¤œç´¢
 							boolean isFound = false;
 							int nearoffset = 1;
 							while(!isFound){
@@ -2555,11 +2555,11 @@ class PaintFilter extends JDialog implements ActionListener {
 						}
 					}
 					
-					//ƒsƒNƒZƒ‹‚É”½‰f
+					//ãƒ”ã‚¯ã‚»ãƒ«ã«åæ˜ 
 					int d = (color&0xFF000000) + (newcolor.getRed()<<16) + (newcolor.getGreen()<<8) +(newcolor.getBlue());
 					newdb.setElem(h+v*width, d);
 
-					//—]‚è‚ğ‹‚ß‚é
+					//ä½™ã‚Šã‚’æ±‚ã‚ã‚‹
 					int cr = rr - newcolor.getRed();
 					if(cr>127) cr = 127;
 					if(cr<-127) cr = -127;
@@ -2570,7 +2570,7 @@ class PaintFilter extends JDialog implements ActionListener {
 					if(cb>127) cb = 127;
 					if(cb<-127) cb = -127;
 					
-					//Œë·‚ğŠgU‚·‚é
+					//èª¤å·®ã‚’æ‹¡æ•£ã™ã‚‹
 					if(dithermode == 0){
 						//Floyd-Steinburg Algorithm
 						if(h+add>=0 && h+add<width) {
@@ -2652,9 +2652,9 @@ class PaintFilter extends JDialog implements ActionListener {
 			}
 		}
 		else if(dithermode==2){
-			//ƒpƒ^[ƒ“ˆ—‚ÍdrawImage‚É”C‚¹‚é
+			//ãƒ‘ã‚¿ãƒ¼ãƒ³å‡¦ç†ã¯drawImageã«ä»»ã›ã‚‹
 			
-			//IndexColorModel‚ğì¬
+			//IndexColorModelã‚’ä½œæˆ
 			byte[] r_a = new byte[256];
 			byte[] g_a = new byte[256];
 			byte[] b_a = new byte[256];
@@ -2667,7 +2667,7 @@ class PaintFilter extends JDialog implements ActionListener {
 			
 			IndexColorModel colorModel = new IndexColorModel(8, colors, r_a, g_a, b_a);
 			
-			//TYPE_BYTE_INDEXED‚ÌBufferedImage‚ğì‚é
+			//TYPE_BYTE_INDEXEDã®BufferedImageã‚’ä½œã‚‹
 			BufferedImage indeximg = new BufferedImage(srcbi.getWidth(), srcbi.getHeight(), BufferedImage.TYPE_BYTE_INDEXED, colorModel);
 			Graphics2D indexg = indeximg.createGraphics();
 			indexg.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR, 0.0f));

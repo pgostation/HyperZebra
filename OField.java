@@ -37,7 +37,7 @@ public class OField extends OObject {
 	MyScrollPane scrollPane = null;
 	BufferedImage fontPict2;
 	
-	//ƒvƒƒpƒeƒB
+	//ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	Boolean autoTab=false;
 	Boolean autoSelect=false;
 	Boolean dontSearch=false;
@@ -47,13 +47,13 @@ public class OField extends OObject {
 	//Color selectColor=Color.ORANGE;
 	//Color textColor=Color.BLACK;
 	Boolean fixedLineHeight=false;
-	// lockText‚Íenabled‚Å‘ã—p
-	//number (ƒJ[ƒh‚Ìî•ñ‚©‚ç‹‚ß‚é)
+	// lockTextã¯enabledã§ä»£ç”¨
+	//number (ã‚«ãƒ¼ãƒ‰ã®æƒ…å ±ã‹ã‚‰æ±‚ã‚ã‚‹)
 	int scroll=0;
 	Boolean sharedText=false;
 	Boolean showLines=false;
-	int style=0;//(0•W€) 1“§–¾ 2•s“§–¾ 3’·•ûŒ` 4ƒVƒƒƒhƒE 5ƒXƒNƒ[ƒ‹
-	int textAlign=0;//0¶ 1’† 2‰E
+	int style=0;//(0æ¨™æº–) 1é€æ˜ 2ä¸é€æ˜ 3é•·æ–¹å½¢ 4ã‚·ãƒ£ãƒ‰ã‚¦ 5ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«
+	int textAlign=0;//0å·¦ 1ä¸­ 2å³
 	String textFont="";
 	int textHeight=16;
 	int textSize=12;
@@ -67,7 +67,7 @@ public class OField extends OObject {
 	
 	ArrayList<styleClass> styleList;
 	
-	//’Ç‰ÁƒvƒƒpƒeƒB
+	//è¿½åŠ ãƒ—ãƒ­ãƒ‘ãƒ†ã‚£
 	@SuppressWarnings("unused")
 	private String reservedFamily;
 	@SuppressWarnings("unused")
@@ -177,14 +177,14 @@ public class OField extends OObject {
 	}
 	public void setText2(String in) {
 		if(card.objectType.equals("background") && !sharedText && ((OBackground)card).viewCard!=null){
-			//‹¤—L‚Å‚È‚¢bg fld‚ÌƒeƒLƒXƒg‚Í•Ê‚ÌêŠ‚É•Û‘¶
+			//å…±æœ‰ã§ãªã„bg fldã®ãƒ†ã‚­ã‚¹ãƒˆã¯åˆ¥ã®å ´æ‰€ã«ä¿å­˜
 			for(int j=0; j<((OBackground)card).viewCard.bgfldList.size(); j++){
 				if(((OBackground)card).viewCard.bgfldList.get(j).id == id){
 					((OBackground)card).viewCard.bgfldList.get(j).text = in;
 					return;
 				}
 			}
-			//V‚µ‚¢ƒf[ƒ^‚ğì¬
+			//æ–°ã—ã„ãƒ‡ãƒ¼ã‚¿ã‚’ä½œæˆ
 			{
 				OBgFieldData bgflddata = new OBgFieldData(((OBackground)card).viewCard, id);
 				bgflddata.fld = this;
@@ -782,11 +782,11 @@ public class OField extends OObject {
 	}
 
 	
-	//HC‚ÌƒXƒ^ƒbƒN‚ğ•ÏŠ·
+	//HCã®ã‚¹ã‚¿ãƒƒã‚¯ã‚’å¤‰æ›
 	@SuppressWarnings("unchecked")
 	public boolean readFieldBlock(DataInputStream dis, int partSize){
 		//System.out.println("====readFieldBlock====");
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		int flags = HCData.readCode(dis, 1);
 		//System.out.println("flags:"+flags);
 		setVisible(((flags>>7)&0x01)==0);
@@ -813,7 +813,7 @@ public class OField extends OObject {
 		multipleLines = ((flags2>>4)&0x01)!=0;
 		//group = (flags2)&0x0F;
 		int style = HCData.readCode(dis, 1);
-		//0•W€ 1“§–¾ 2•s“§–¾ 3’·•ûŒ` 4ƒVƒƒƒhƒE 5ŠÛ‚İ‚Ì‚ ‚é’·•ûŒ` 6È—ªİ’è 7‘È‰~ 8ƒ|ƒbƒvƒAƒbƒv 9ƒ`ƒFƒbƒNƒ{ƒbƒNƒX 10ƒ‰ƒWƒI
+		//0æ¨™æº– 1é€æ˜ 2ä¸é€æ˜ 3é•·æ–¹å½¢ 4ã‚·ãƒ£ãƒ‰ã‚¦ 5ä¸¸ã¿ã®ã‚ã‚‹é•·æ–¹å½¢ 6çœç•¥æ™‚è¨­å®š 7æ¥•å†† 8ãƒãƒƒãƒ—ã‚¢ãƒƒãƒ— 9ãƒã‚§ãƒƒã‚¯ãƒœãƒƒã‚¯ã‚¹ 10ãƒ©ã‚¸ã‚ª
 		switch(style){
 		case 0: this.style = 1; break;//transparent
 		case 1: this.style = 2; break;//opaque
@@ -860,7 +860,7 @@ public class OField extends OObject {
 		String scriptStr = scriptResult.str;
 		//System.out.println("scriptStr:"+scriptStr);
 
-		//ƒtƒHƒ“ƒg–¼‚ğƒe[ƒuƒ‹‚©‚çŒŸõ
+		//ãƒ•ã‚©ãƒ³ãƒˆåã‚’ãƒ†ãƒ¼ãƒ–ãƒ«ã‹ã‚‰æ¤œç´¢
 		OStack stack = ((OCardBase)this.parent).stack;
 		for(int i=0; i<stack.fontList.size();i++){
 			if(stack.fontList.get(i).id ==textFontID){
@@ -885,7 +885,7 @@ public class OField extends OObject {
 			System.out.println("padding:"+padding);
 		}*/
 
-		//ƒXƒNƒŠƒvƒg
+		//ã‚¹ã‚¯ãƒªãƒ—ãƒˆ
 		String[] scriptAry = scriptStr.split("\n");
 		for(int i=0; i<scriptAry.length; i++)
 		{
@@ -900,7 +900,7 @@ public class OField extends OObject {
 	
 	static void buildOField(OField ofld)
 	{
-		//swing‚ÌƒeƒLƒXƒgƒRƒ“ƒ|[ƒlƒ“ƒg‚ğ’Ç‰Á
+		//swingã®ãƒ†ã‚­ã‚¹ãƒˆã‚³ãƒ³ãƒãƒ¼ãƒãƒ³ãƒˆã‚’è¿½åŠ 
 		ofld.fld = new MyTextArea(ofld.getText());
 
 		ofld.fld.fldData = ofld;
@@ -926,7 +926,7 @@ public class OField extends OObject {
 			}*/
 			if(bi == null){
 				int rsrcid = ofld.card.stack.rsrc.getRsrcIdAll(ofld.textFont, "font");
-				rsrcid += ofld.textSize;//ƒx[ƒXID+ƒeƒLƒXƒgƒTƒCƒY=ID
+				rsrcid += ofld.textSize;//ãƒ™ãƒ¼ã‚¹ID+ãƒ†ã‚­ã‚¹ãƒˆã‚µã‚¤ã‚º=ID
 				String path = ofld.card.stack.rsrc.getFilePathAll(rsrcid, "font");
 				if(path!=null){
 					File file = new File(path/*ofld.card.stack.file.getParent()+File.separatorChar+rsrcName*/);
@@ -960,7 +960,7 @@ public class OField extends OObject {
 			case 2:StyleConstants.setAlignment(s, StyleConstants.ALIGN_RIGHT);break;
 		}
 		StyleConstants.setComponent(s, ofld.fld);
-		//(0•W€) 1“§–¾ 2•s“§–¾ 3’·•ûŒ` 4ƒVƒƒƒhƒE 5ƒXƒNƒ[ƒ‹
+		//(0æ¨™æº–) 1é€æ˜ 2ä¸é€æ˜ 3é•·æ–¹å½¢ 4ã‚·ãƒ£ãƒ‰ã‚¦ 5ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«
 		switch(ofld.style) {
 		case 1:
 			ofld.fld.setOpaque(false);
@@ -1074,7 +1074,7 @@ class MyScrollPane extends JScrollPane {
 		}
 		/*for(int i=0; i<getComponentCount(); i++){
 			if(getComponent(i).getClass() == JScrollPane.ScrollBar.class) continue;
-			//setVisible(true)‚ğ‚â‚Á‚½‚Æ‚«‚É‘‚«Š·‚¦–½—ß‚ª”­¶‚·‚é‚Ì‚Å‚±‚Á‚»‚è‚â‚è‚½‚¢
+			//setVisible(true)ã‚’ã‚„ã£ãŸã¨ãã«æ›¸ãæ›ãˆå‘½ä»¤ãŒç™ºç”Ÿã™ã‚‹ã®ã§ã“ã£ãã‚Šã‚„ã‚ŠãŸã„
 			Class<JScrollPane.ScrollBar> c = JScrollPane.ScrollBar.class;
 			Field m;
 			try {
@@ -1100,7 +1100,7 @@ class MyTextArea extends JTextArea {
 	private static final long serialVersionUID = 1L;
 	OField fldData = null;
 	JScrollPane pr_scrl;
-	int pr_selLine;//showLine xfcn—p
+	int pr_selLine;//showLine xfcnç”¨
 	boolean smallfont;
 	
 	MyTextArea(String str){
@@ -1121,7 +1121,7 @@ class MyTextArea extends JTextArea {
 		if(PCARD.lockedScreen&&paneg==g) return;
         //super.paintComponent(g);
     	if(fldData!=null){
-    		//’ÊíƒtƒB[ƒ‹ƒh
+    		//é€šå¸¸ãƒ•ã‚£ãƒ¼ãƒ«ãƒ‰
     		if(fldData.fontPict2!=null){
     			if(fldData.style!=1){
 	    			g.setColor(fldData.bgColor);
@@ -1129,9 +1129,9 @@ class MyTextArea extends JTextArea {
 	    			g.fillRect(r.x,r.y,r.width,r.height);
     			}
     			
-    			//ƒsƒNƒ`ƒƒ‚É‚æ‚é“Æ©ƒtƒHƒ“ƒg
+    			//ãƒ”ã‚¯ãƒãƒ£ã«ã‚ˆã‚‹ç‹¬è‡ªãƒ•ã‚©ãƒ³ãƒˆ
 				int rsrcid = fldData.card.stack.rsrc.getRsrcIdAll(fldData.textFont, "font");
-				rsrcid += fldData.textSize;//ƒx[ƒXID+ƒeƒLƒXƒgƒTƒCƒY=ID
+				rsrcid += fldData.textSize;//ãƒ™ãƒ¼ã‚¹ID+ãƒ†ã‚­ã‚¹ãƒˆã‚µã‚¤ã‚º=ID
 				Rsrc.rsrcClass fontrsrc = fldData.card.stack.rsrc.getResourceAll(rsrcid, "font");
 				Rsrc.FontInfo fontinfo = (Rsrc.FontInfo) fontrsrc.optionInfo;
 				
@@ -1164,7 +1164,7 @@ class MyTextArea extends JTextArea {
     			}
     			
     			if(fldData.enabled && fldData.autoSelect && fldData.dontWrap){
-        			//ƒ‰ƒCƒ“‘I‘ğ
+        			//ãƒ©ã‚¤ãƒ³é¸æŠ
     	    		if(fldData.selectedLine>0){
     	    			g.setColor(SystemColor.textHighlight);
     	    			g.fillRect(1,(fldData.selectedLine-1)*fldData.textHeight,getWidth()-1,fldData.textHeight);
@@ -1184,7 +1184,7 @@ class MyTextArea extends JTextArea {
 				int textHeight = fldData.textHeight;
 				if(textHeight<textSize) textHeight = textSize;
 				StringBuilder readingStr = new StringBuilder();
-    			int v=0;
+    			//int v=0;
 				g.setFont(new Font(textFont, textStyle&0x03, textSize));
 	        	FontMetrics fo = g.getFontMetrics();
 	        	int nihongo_i = 0;
@@ -1230,15 +1230,15 @@ class MyTextArea extends JTextArea {
 					
 		        	int add = textSize;
 		        	if(nextc=='\n') add=0;
-    				if(c=='\r'||c=='\n'||w>fldWidth-add+1||(isStyleChange && i!=0)){ //‚±‚Ìs‚ğ•`‰æ‚·‚é
+    				if(c=='\r'||c=='\n'||w>fldWidth-add+1||(isStyleChange && i!=0)){ //ã“ã®è¡Œã‚’æç”»ã™ã‚‹
 
     					if(!isStyleChange && w>fldWidth-add+1){
-    						//s––ˆ—
+    						//è¡Œæœ«å‡¦ç†
 	    					{
 		    					int len = drawStr.length();
 		        				if(i+1<getText().length()){
 		        					char nextchar = getText().charAt(i+1);
-		        					if(nextchar=='.' || nextchar==',' || nextchar=='A' || nextchar=='B'){
+		        					if(nextchar=='.' || nextchar==',' || nextchar=='ã€' || nextchar=='ã€‚'){
 		        						len--;
 		        					}
 		        				}
@@ -1258,7 +1258,7 @@ class MyTextArea extends JTextArea {
 
     		        	int drawWidth = fo.stringWidth(drawStr);
     		        	
-    		        	//‰EŠñ‚¹‚©ƒZƒ“ƒ^ƒŠƒ“ƒO
+    		        	//å³å¯„ã›ã‹ã‚»ãƒ³ã‚¿ãƒªãƒ³ã‚°
     		        	if(lft==0){
 	    		        	if(fldData.textAlign==0) {
 	    		        		lft = 0;
@@ -1284,7 +1284,7 @@ class MyTextArea extends JTextArea {
 	    		        	g.setColor(fldData.bgColor);
         				}
         				
-        				//•¶š•`‰æ
+        				//æ–‡å­—æç”»
     		        	g.drawString(drawStr,lft,top);
     		        	
     		        	//underline
@@ -1297,10 +1297,10 @@ class MyTextArea extends JTextArea {
     		        	}
     					
     					if(!isStyleChange){
-    						v++; //‰üs
+    						//v++; //æ”¹è¡Œ
     						lft = 0;
     						top += textHeight;
-    						/*//OS9‚Æ‚ÌƒtƒHƒ“ƒgƒTƒCƒY‚Ìˆá‚¢‚ğ‹zû
+    						/*//OS9ã¨ã®ãƒ•ã‚©ãƒ³ãƒˆã‚µã‚¤ã‚ºã®é•ã„ã‚’å¸å
     						if(PCARD.pc.stack.createdByVersion.charAt(0)=='2' &&
     								fldData.style!=5 && !smallfont && top+textHeight>fldData.height+4){
     							smallfont = true;
@@ -1314,7 +1314,7 @@ class MyTextArea extends JTextArea {
     				}
     				
     				if(isStyleChange){
-						//Ÿ‚ÌƒXƒ^ƒCƒ‹‚ğ“K—p
+						//æ¬¡ã®ã‚¹ã‚¿ã‚¤ãƒ«ã‚’é©ç”¨
 						int styleId = fldData.styleList.get(nextStyle).styleId;
 						for(int j=0; j<fldData.card.stack.styleList.size(); j++){
 							OStack.styleClass styleClass = fldData.card.stack.styleList.get(j);
@@ -1345,7 +1345,7 @@ class MyTextArea extends JTextArea {
 							}
 						}
 						
-						//V‚µ‚¢ƒXƒ^ƒCƒ‹‚ğ“K—p
+						//æ–°ã—ã„ã‚¹ã‚¿ã‚¤ãƒ«ã‚’é©ç”¨
 						g.setFont(new Font(textFont, textStyle&0x03, textSize));
 			        	fo = g.getFontMetrics();
 			        	
@@ -1356,7 +1356,7 @@ class MyTextArea extends JTextArea {
 							nextTextPosition = -1;
 						}
 	    			}
-    			}/*else if(fldData.textAlign!=0){ //‰EŠñ‚¹‚©ƒZƒ“ƒ^ƒŠƒ“ƒO
+    			}/*else if(fldData.textAlign!=0){ //å³å¯„ã›ã‹ã‚»ãƒ³ã‚¿ãƒªãƒ³ã‚°
     				if(fldData.style!=1){
     					g.setColor(Color.WHITE);
     					g.fillRect(1,1,fldData.width-2,fldData.height-2);
@@ -1395,8 +1395,8 @@ class MyTextArea extends JTextArea {
     			return;
     		}
     	}else if(fldData==null){
-    		//showList—p
-			//ƒ‰ƒCƒ“‘I‘ğ
+    		//showListç”¨
+			//ãƒ©ã‚¤ãƒ³é¸æŠ
 			g.setColor(Color.WHITE);
 			Rectangle r = g.getClipBounds();
 			g.fillRect(r.x,r.y,r.width,r.height);

@@ -77,7 +77,7 @@ public class OObject {
 	}
 	public String getLongName(){
 		if(objectType.equals("stack")){
-			//ƒXƒ^ƒbƒN‚Ìê‡‚Í Stack "ƒXƒ^ƒbƒN‚ÌƒpƒX"‚É‚È‚é
+			//ã‚¹ã‚¿ãƒƒã‚¯ã®å ´åˆã¯ Stack "ã‚¹ã‚¿ãƒƒã‚¯ã®ãƒ‘ã‚¹"ã«ãªã‚‹
 			String path = ((OStack)this).file.getAbsolutePath();
 			for(int i=0;i<path.length();i++){
 				if(path.charAt(i)==File.separatorChar) path = path.substring(0,i)+":"+path.substring(i+1);
@@ -141,7 +141,7 @@ public class OObject {
 class OHyperCard extends OObject {
 	static OHyperCard hc = new OHyperCard();
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OHyperCard() {
     	objectType="hypercard";
 	}
@@ -150,7 +150,7 @@ class OHyperCard extends OObject {
 class OTitlebar extends OObject {
 	static OTitlebar titlebar = new OTitlebar();
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OTitlebar() {
     	objectType="titlebar";
 	}
@@ -159,7 +159,7 @@ class OTitlebar extends OObject {
 class OMenubar extends OObject {
 	static OMenubar menubar = new OMenubar();
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OMenubar() {
     	objectType="menubar";
 	}
@@ -174,7 +174,7 @@ class OWindow extends OObject {
 	TMP3 mp3;
 	GPictWindow gpw;
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OWindow(JFrame inframe, boolean isCdWindow) {
     	objectType="window";
     	frame = inframe;
@@ -187,7 +187,7 @@ class OWindow extends OObject {
     	list.add(this);
 	}
 
-	//ƒƒCƒ“(Msg)
+	//ãƒ¡ã‚¤ãƒ³(Msg)
 	public OWindow(JDialog inframe) {
     	objectType="window";
     	dlog = inframe;
@@ -196,7 +196,7 @@ class OWindow extends OObject {
     	list.add(this);
 	}
 	
-	//ƒƒCƒ“(MovieƒEƒBƒ“ƒhƒE)
+	//ãƒ¡ã‚¤ãƒ³(Movieã‚¦ã‚£ãƒ³ãƒ‰ã‚¦)
 	public OWindow(TMP3 in_mp3) {
     	objectType="window";
     	mp3 = in_mp3;
@@ -232,7 +232,7 @@ class OWindow extends OObject {
 class OMsg extends OObject {
 	static OMsg msg = new OMsg();
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OMsg() {
     	objectType="msg";
 	}
@@ -241,7 +241,7 @@ class OMsg extends OObject {
 class OToolWindow extends OObject {
 	static OToolWindow toolwindow = new OToolWindow();
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OToolWindow() {
     	objectType="tool window";
 	}
@@ -249,7 +249,7 @@ class OToolWindow extends OObject {
 
 class OPicture extends OObject {
 	OCardBase parent;
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OPicture(OCardBase prt) {
     	objectType="picture";
     	parent = prt;
@@ -272,7 +272,7 @@ class OPicture extends OObject {
 class OMenu extends OObject {
 	JMenu menu;
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OMenu(JMenu menu) {
     	objectType="menu";
     	this.menu = menu;
@@ -283,7 +283,7 @@ class OMenu extends OObject {
 class OMonitor extends OObject {
 	static OMonitor monitor = new OMonitor();
 	
-	//ƒƒCƒ“
+	//ãƒ¡ã‚¤ãƒ³
 	public OMonitor() {
     	objectType="monitor";
 	}

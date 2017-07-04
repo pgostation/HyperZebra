@@ -25,7 +25,7 @@ public class HCData {
 		
 		try {
 			while(dis.available()>0){
-				int blockSize = readCode(dis, 2); //int blockSize = readCode(dis, 4);‚¸‚ê‚é‚Ì‚Å2ŒÂ‚µ‚©“Ç‚Ü‚È‚¢‚æ‚¤‚É‚µ‚Ä‚â‚Á‚½
+				int blockSize = readCode(dis, 2); //int blockSize = readCode(dis, 4);ãšã‚Œã‚‹ã®ã§2å€‹ã—ã‹èª­ã¾ãªã„ã‚ˆã†ã«ã—ã¦ã‚„ã£ãŸ
 				int typeCode = readCode(dis, 4);
 
 				if(stack.totalSize>0){
@@ -78,12 +78,12 @@ public class HCData {
 						stack.bar.setString("Converting Card Data...");
 			    		OCard cd = new OCard(PCARDFrame.pc.stack);
 						if(cd.readCardBlock(dis, blockSize)){
-							//stack.cdCacheList.add(cd); //new OCard()‚Å“o˜^‚³‚ê‚Ä‚é
+							//stack.cdCacheList.add(cd); //new OCard()ã§ç™»éŒ²ã•ã‚Œã¦ã‚‹
 						}
 						else{
 							errCount++;
 						}
-						java.lang.System.gc();//GC‚ğ‚È‚é‚×‚­ŒÄ‚Ô
+						java.lang.System.gc();//GCã‚’ãªã‚‹ã¹ãå‘¼ã¶
 					}
 					else if(typeStr.equals("BKGD")){
 						HCStackDebug.blockstart(typeStr);
@@ -130,7 +130,7 @@ public class HCData {
 					}
 					else{
 						while(true){
-							//ƒAƒ‰ƒCƒƒ“ƒg‚ğ‚Ç‚¤‚É‚©‡‚í‚¹‚Ä‚İ‚é
+							//ã‚¢ãƒ©ã‚¤ãƒ¡ãƒ³ãƒˆã‚’ã©ã†ã«ã‹åˆã‚ã›ã¦ã¿ã‚‹
 							blockSize = (0x00FFFFFF&blockSize)<<8;
 							blockSize += (0x00FF&(typeCode>>24));
 							//System.out.println("<blockSize:"+blockSize);
@@ -168,7 +168,7 @@ public class HCData {
 			e.printStackTrace();
 		}
 		
-		//ƒfƒoƒbƒOî•ño—Í
+		//ãƒ‡ãƒãƒƒã‚°æƒ…å ±å‡ºåŠ›
 		/*File f = new File("./debug_"+stack.name+".txt");
 		try {
 			FileOutputStream stream = new FileOutputStream(f);
@@ -179,7 +179,7 @@ public class HCData {
 		}*/
 		
 		if(result==true){
-			//ƒJ[ƒh‚Ì–‡”ƒ`ƒFƒbƒN
+			//ã‚«ãƒ¼ãƒ‰ã®æšæ•°ãƒã‚§ãƒƒã‚¯
 			//System.out.println(stack.cdCacheList.size()+","+stack.cardIdList.size());
 			if(stack.cdCacheList.size()!=stack.cardIdList.size()){
 				System.out.println("number of cards check error.");
@@ -191,7 +191,7 @@ public class HCData {
 			}
 		}
 		
-		//ƒsƒNƒ`ƒƒ‚Ì•ÏŠ·‚ğŠJn
+		//ãƒ”ã‚¯ãƒãƒ£ã®å¤‰æ›ã‚’é–‹å§‹
 		new HCData().new convertPictureThread().start();
 		
 		return result;
@@ -283,7 +283,7 @@ public class HCData {
 			}else{
 				result.str = new String(b, 0, i);
 			}
-			//‰üsƒR[ƒh•ÏX
+			//æ”¹è¡Œã‚³ãƒ¼ãƒ‰å¤‰æ›´
 			for(int j=0;j<result.str.length(); j++){
 				if(result.str.charAt(j)=='\r'){
 					result.str = result.str.substring(0,j)+"\n"+result.str.substring(j+1);
@@ -323,7 +323,7 @@ public class HCData {
 		
 		try {
 			result.str = new String(b, 0, i, "SJIS");
-			//‰üsƒR[ƒh•ÏX
+			//æ”¹è¡Œã‚³ãƒ¼ãƒ‰å¤‰æ›´
 			for(int j=0;j<result.str.length(); j++){
 				if(result.str.charAt(j)=='\r'){
 					result.str = result.str.substring(0,j)+"\n"+result.str.substring(j+1);
@@ -359,7 +359,7 @@ public class HCData {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			//PNGŒ`®‚É•ÏŠ·‚µ‚Äƒtƒ@ƒCƒ‹‚É•Û‘¶
+			//PNGå½¢å¼ã«å¤‰æ›ã—ã¦ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜
 			String filename = "PAT_"+(i+1)+".png";
 			File ofile=new File(parentPath+File.separatorChar+filename);
 			try {
@@ -382,7 +382,7 @@ public class HCData {
 			return false;
 		}
 		
-		//ƒuƒƒbƒN‚Ìƒf[ƒ^‚ğ‡Ÿ“Ç‚İ‚İ
+		//ãƒ–ãƒ­ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’é †æ¬¡èª­ã¿è¾¼ã¿
 		int bitmapId = HCData.readCode(dis, 4);
 		//HCStackDebug.debuginfo("bitmapId:"+Integer.toString(bitmapId));
 		//System.out.println("bitmapId:"+bitmapId);
@@ -433,7 +433,7 @@ public class HCData {
 			return false;
 		}
 
-		//ƒ}ƒXƒN‚ğbyte”z—ñ‚Éƒ[ƒh
+		//ãƒã‚¹ã‚¯ã‚’byteé…åˆ—ã«ãƒ­ãƒ¼ãƒ‰
 		byte[] mask = null;
 		if(maskSize>0){
 			mask = new byte[maskSize];
@@ -449,7 +449,7 @@ public class HCData {
 			};
 		}
 
-		//ƒCƒ[ƒW‚ğbyte”z—ñ‚Éƒ[ƒh
+		//ã‚¤ãƒ¡ãƒ¼ã‚¸ã‚’byteé…åˆ—ã«ãƒ­ãƒ¼ãƒ‰
 		byte[] img = new byte[imgSize];
 		try {
 			//dis.read(img);
@@ -462,7 +462,7 @@ public class HCData {
 			e.printStackTrace();
 		};
 		
-		//ƒCƒ[ƒW‚Ì“Ç‚İ‚İ‚ÍÅŒã‚É•ÊƒXƒŒƒbƒh‚Ås‚¤
+		//ã‚¤ãƒ¡ãƒ¼ã‚¸ã®èª­ã¿è¾¼ã¿ã¯æœ€å¾Œã«åˆ¥ã‚¹ãƒ¬ãƒƒãƒ‰ã§è¡Œã†
 		Thread p = new HCData().new saveThread(mask, img, bitmapId,
 				top, left, right, bottom, 
 				maskLeft, maskTop, maskRight, maskBottom,
@@ -482,7 +482,7 @@ public class HCData {
 		}
 		
 		
-		//ƒAƒ‰ƒCƒƒ“ƒg’²®
+		//ã‚¢ãƒ©ã‚¤ãƒ¡ãƒ³ãƒˆèª¿æ•´
 		int remainLength = blockSize - (64+maskSize+imgSize);
 		HCStackDebug.debuginfo("remainLength:"+Integer.toString(remainLength));
 		//System.out.println("remainLength:"+remainLength);
@@ -503,7 +503,7 @@ public class HCData {
 					if(p!=null&&!p.isAlive()){
 						p.start();
 					}
-					//•Às3ƒXƒŒƒbƒh‚Ü‚Å
+					//ä¸¦è¡Œ3ã‚¹ãƒ¬ãƒƒãƒ‰ã¾ã§
 					while(lastp2!=null && lastp2.isAlive()){
 						try {
 							Thread.sleep(20);
@@ -564,9 +564,9 @@ public class HCData {
 		
 		@Override
 		public void run(){
-			//bg‚É“o˜^‚³‚ê‚Ä‚¢‚ébitmapID‚©H(ƒXƒ^ƒbƒN‚Ìƒf[ƒ^‚ğ“Ç‚İØ‚Á‚Ä‚µ‚Ü‚í‚È‚¢‚ÆŒ©“¦‚µ‚Ä‚µ‚Ü‚¤ê‡‚ ‚è)
+			//bgã«ç™»éŒ²ã•ã‚Œã¦ã„ã‚‹bitmapIDã‹ï¼Ÿ(ã‚¹ã‚¿ãƒƒã‚¯ã®ãƒ‡ãƒ¼ã‚¿ã‚’èª­ã¿åˆ‡ã£ã¦ã—ã¾ã‚ãªã„ã¨è¦‹é€ƒã—ã¦ã—ã¾ã†å ´åˆã‚ã‚Š)
 			boolean isBgPicture = false;
-			for(int i=0; i<stack.bgCacheList.size(); i++){
+			for(int i=0; stack.bgCacheList!=null&&i<stack.bgCacheList.size(); i++){
 				if(stack.bgCacheList.get(i).bitmapName!=null && stack.bgCacheList.get(i).bitmapName.equals("BMAP_"+bitmapId+".png")){
 					isBgPicture = true;
 					break;
@@ -586,7 +586,7 @@ public class HCData {
 			g.fillRect(0,0,right,imgTop);
 			g.fillRect(0,imgBottom,right,bottom);
 			
-			//ƒAƒ‹ƒtƒ@ƒ`ƒƒƒ“ƒlƒ‹•t‚«‚ÌƒCƒ[ƒW‚É‡¬
+			//ã‚¢ãƒ«ãƒ•ã‚¡ãƒãƒ£ãƒ³ãƒãƒ«ä»˜ãã®ã‚¤ãƒ¡ãƒ¼ã‚¸ã«åˆæˆ
 			if(mask!=null){
 				DataBuffer maindb = mainBi.getRaster().getDataBuffer();
 				DataBuffer maskdb = maskBi.getRaster().getDataBuffer();
@@ -618,7 +618,7 @@ public class HCData {
 				}
 			}
 			
-			//ƒtƒ@ƒCƒ‹‚É•Û‘¶(‚±‚ê‚ÉŠÔ‚ª‚©‚©‚é)
+			//ãƒ•ã‚¡ã‚¤ãƒ«ã«ä¿å­˜(ã“ã‚Œã«æ™‚é–“ãŒã‹ã‹ã‚‹)
 			String filename = "BMAP_"+bitmapId+".png";
 			File file = new File(PCARDFrame.pc.stack.file.getParent()+File.separatorChar+filename);
 			try {
@@ -637,7 +637,7 @@ public class HCData {
 		}
 	
 
-		//HyperCard‚ÌƒsƒNƒ`ƒƒƒtƒH[ƒ}ƒbƒg(Wrath Of Bill Atkinson)‚Ì“Ç‚İ‚İ
+		//HyperCardã®ãƒ”ã‚¯ãƒãƒ£ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆ(Wrath Of Bill Atkinson)ã®èª­ã¿è¾¼ã¿
 		private BufferedImage readWOBA(byte[] img, int id, int cdWidth, int cdHeight,
 				int left, int top, int right, int bottom, boolean isBgPicture)
 		{
@@ -703,7 +703,7 @@ public class HCData {
 					}
 					else if(opcode >= 0x80 && opcode <= 0x8F){
 						switch(opcode){
-						case 0x80: //1s•ª–³ˆ³k
+						case 0x80: //1è¡Œåˆ†ç„¡åœ§ç¸®
 							while(x<right && i<img.length){
 								for(int k=0; k<8; k++){
 									db.setElem(x+y*cdWidth, (0x01&(img[i]>>(7-k)))!=0?0xFF000000:0xFFFFFFFF);
@@ -713,19 +713,19 @@ public class HCData {
 								i++;
 							}
 							break;
-						case 0x81: //1s”’
+						case 0x81: //1è¡Œç™½
 							while(x<right){
 								db.setElem(x+y*cdWidth, 0xFFFFFFFF);
 								x++;
 							}
 							break;
-						case 0x82: //1s•
+						case 0x82: //1è¡Œé»’
 							while(x<right){
 								db.setElem(x+y*cdWidth, 0xFF000000);
 								x++;
 							}
 							break;
-						case 0x83: //1s“¯ˆêƒoƒCƒg
+						case 0x83: //1è¡ŒåŒä¸€ãƒã‚¤ãƒˆ
 							while(x<right){
 								for(int k=0; k<8; k++){
 									db.setElem(x+y*cdWidth, (0x01&(img[i]>>(7-k)))!=0?0xFF000000:0xFFFFFFFF);
@@ -736,7 +736,7 @@ public class HCData {
 							keepArray[y%8] = img[i];
 							i++;
 							break;
-						case 0x84: //1s“¯ˆêƒoƒCƒg,•Û”z—ñ‚Ìƒf[ƒ^‚ğg‚¤
+						case 0x84: //1è¡ŒåŒä¸€ãƒã‚¤ãƒˆ,ä¿æŒé…åˆ—ã®ãƒ‡ãƒ¼ã‚¿ã‚’ä½¿ã†
 							while(x<right){
 								for(int k=0; k<8; k++){
 									db.setElem(x+y*cdWidth, (0x01&(keepArray[y%8]>>(7-k)))!=0?0xFF000000:0xFFFFFFFF);
@@ -745,7 +745,7 @@ public class HCData {
 							}
 							//debugStr += "keep "+Integer.toHexString((int)(0x00FF&keepArray[y%8]))+" ";//####
 							break;
-						case 0x85: //1sã‚ğƒRƒs[
+						case 0x85: //1è¡Œä¸Šã‚’ã‚³ãƒ”ãƒ¼
 							while(x<right){
 								for(int k=0; k<8; k++){
 									db.setElem(x+y*cdWidth, db.getElem(0, x+(y-1)*cdWidth));
@@ -753,7 +753,7 @@ public class HCData {
 								}
 							}
 							break;
-						case 0x86: //2sã‚ğƒRƒs[
+						case 0x86: //2è¡Œä¸Šã‚’ã‚³ãƒ”ãƒ¼
 							while(x<right){
 								for(int k=0; k<8; k++){
 									db.setElem(x+y*cdWidth, db.getElem(0, x+(y-2)*cdWidth));
@@ -761,7 +761,7 @@ public class HCData {
 								}
 							}
 							break;
-						case 0x87: //3sã‚ğƒRƒs[
+						case 0x87: //3è¡Œä¸Šã‚’ã‚³ãƒ”ãƒ¼
 							while(x<right){
 								for(int k=0; k<8; k++){
 									db.setElem(x+y*cdWidth, db.getElem(0, x+(y-3)*cdWidth));
@@ -770,28 +770,28 @@ public class HCData {
 							}
 							break;
 						case 0x88:
-							dh = 16; dv = 0; //16bit‰EƒVƒtƒg‚µ‚ÄXOR
+							dh = 16; dv = 0; //16bitå³ã‚·ãƒ•ãƒˆã—ã¦XOR
 							break;
 						case 0x89:
 							dh = 0; dv = 0; //
 							break;
 						case 0x8A:
-							dh = 0; dv = 1; //1sã‚ÆXOR
+							dh = 0; dv = 1; //1è¡Œä¸Šã¨XOR
 							break;
 						case 0x8B:
-							dh = 0; dv = 2; //2sã‚ÆXOR
+							dh = 0; dv = 2; //2è¡Œä¸Šã¨XOR
 							break;
 						case 0x8C:
-							dh = 1; dv = 0; //1bit‰EƒVƒtƒg‚µ‚ÄXOR
+							dh = 1; dv = 0; //1bitå³ã‚·ãƒ•ãƒˆã—ã¦XOR
 							break;
 						case 0x8D:
-							dh = 1; dv = 1; //1bit‰EƒVƒtƒgA1sã‚ÆXOR
+							dh = 1; dv = 1; //1bitå³ã‚·ãƒ•ãƒˆã€1è¡Œä¸Šã¨XOR
 							break;
 						case 0x8E:
-							dh = 2; dv = 2; //2bit‰EƒVƒtƒgA2sã‚ÆXOR
+							dh = 2; dv = 2; //2bitå³ã‚·ãƒ•ãƒˆã€2è¡Œä¸Šã¨XOR
 							break;
 						case 0x8F:
-							dh = 8; dv = 0; //8bit‰EƒVƒtƒg‚µ‚ÄXOR
+							dh = 8; dv = 0; //8bitå³ã‚·ãƒ•ãƒˆã—ã¦XOR
 							break;
 							
 						default:
@@ -800,12 +800,12 @@ public class HCData {
 						}
 					}
 					else if(opcode >= 0xA0 && opcode <= 0xBF){
-						//‰º5bit•ªAŸ‚ÌƒoƒCƒg‚Ìopcode‚ğŒJ‚è•Ô‚·
+						//ä¸‹5bitåˆ†ã€æ¬¡ã®ãƒã‚¤ãƒˆã®opcodeã‚’ç¹°ã‚Šè¿”ã™
 						repeatInstructionCount = (0x1F & opcode);
 						repeatInstructionIndex = i;
 					}
 					else if(opcode >= 0xC0 && opcode <= 0xDF){
-						//‰º5bit*8•ª‚Ìƒf[ƒ^
+						//ä¸‹5bit*8åˆ†ã®ãƒ‡ãƒ¼ã‚¿
 						int count = (0x1F & opcode)*8;
 						while(count>0 && x<cdWidth && i<img.length){
 							for(int k=0; k<8; k++){
@@ -818,7 +818,7 @@ public class HCData {
 						}
 					}
 					else if(opcode >= 0xE0 && opcode <= 0xFF){
-						//‰º5bit*16•ª‚Ìƒ[ƒ
+						//ä¸‹5bit*16åˆ†ã®ã‚¼ãƒ­
 						int count = (0x1F & opcode)*16;
 						while(count>0 && x<cdWidth){
 							for(int k=0; k<8; k++){
@@ -831,7 +831,7 @@ public class HCData {
 				}
 	
 				if(opcode>=0x80 && opcode<=0x87){
-					//1s‘‚«Š·‚¦‚Ì‚Æ‚«‚Ídh,dv‚ğÀ{‚µ‚È‚¢
+					//1è¡Œæ›¸ãæ›ãˆã®ã¨ãã¯dh,dvã‚’å®Ÿæ–½ã—ãªã„
 					continue;
 				}
 				

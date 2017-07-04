@@ -29,7 +29,7 @@ public class ResEditIndex extends JFrame
 		
 		setTitle("Resource Editor");
 		
-	    //ƒe[ƒuƒ‹‚ğ—pˆÓ
+	    //ãƒ†ãƒ¼ãƒ–ãƒ«ã‚’ç”¨æ„
 		String[][] tabledata = { {"", ""} };
 
 		JTable table = new JTable(tabledata, columnNames);
@@ -37,13 +37,13 @@ public class ResEditIndex extends JFrame
 	    table.setEnabled(false);
 		//table.setDefaultRenderer(Object.class, new MultiLineCellRenderer());
 	    
-	    //ƒXƒNƒ[ƒ‹
+	    //ã‚¹ã‚¯ãƒ­ãƒ¼ãƒ«
 	    scrollpane = new JScrollPane(table);
 	    add(scrollpane);
 	    
 	    setTable(stack.rsrc);
 	    
-	    //ƒEƒBƒ“ƒhƒEˆÊ’u‚ÆƒTƒCƒYİ’è
+	    //ã‚¦ã‚£ãƒ³ãƒ‰ã‚¦ä½ç½®ã¨ã‚µã‚¤ã‚ºè¨­å®š
 	    setBounds(0,0,560,480);
 	    setLocationRelativeTo(parent);
 	    setVisible(true);

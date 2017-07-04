@@ -4140,6 +4140,7 @@ public class TTalk extends Thread {
 						for(i=0; i<offset; i++){
 							istream.read(b,i,1);
 						}
+						istream.close();
 						text = new String(b) + text;
 					}
 				} catch (IOException e) {
@@ -4260,6 +4261,8 @@ public class TTalk extends Thread {
 				dateItemStr += calender.get(Calendar.MINUTE) +",";
 				dateItemStr += calender.get(Calendar.SECOND) +",";
 				dateItemStr += calender.get(Calendar.DAY_OF_WEEK);
+				result.theResult = dateItemStr;
+				result.ret = 0;
 			}
 			else{
 				throw new xTalkException("convert toでの変換が分かりません");
@@ -4453,7 +4456,7 @@ public class TTalk extends Thread {
 			
 			OStack ostack = new OStack(PCARD.pc);
 			ostack.openStackFile(pathStr, true);
-			if(PCARD.pc.stack.usingStacks!=null){
+			if(PCARD.pc.stack.usingStacks!=null && PCARD.pc.stack.usingStacks.size()<=8){
 				PCARD.pc.stack.usingStacks.add(ostack);
 			}
 		}
@@ -4981,8 +4984,8 @@ public class TTalk extends Thread {
 					catch(xTalkException e){}
 					if(objres!=null && objres.obj!=null){
 						//
-						String objstr="";
-						for(int k=i+2;k<i+2+objres.cnt;k++) objstr += stringList.get(k);
+						//String objstr="";
+						//for(int k=i+2;k<i+2+objres.cnt;k++) objstr += stringList.get(k);
 						//
 						int offset = 0;
 						if(i>start && (0==stringList.get(i-1).compareToIgnoreCase("short") || 0==stringList.get(i-1).compareToIgnoreCase("long"))){
@@ -6923,10 +6926,10 @@ public class TTalk extends Thread {
 			}
 		}
 		
-		String errstr="";
-		for(int i=start; i<start+objres.cnt; i++){
-			errstr+=stringList.get(i);
-		}
+		//String errstr="";
+		//for(int i=start; i<start+objres.cnt; i++){
+		//	errstr+=stringList.get(i);
+		//}
 		//timeIsMoney("getObjectFromList:",timestart,25);
 		//System.out.println("objstr;"+errstr+" cnt="+objres.cnt);
 		return objres;

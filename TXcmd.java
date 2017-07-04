@@ -96,9 +96,9 @@ public class TXcmd {
 					if(key.equals("^ct")) ret += (GUI.key[13]>1)?"1":"0";
 					if(key.equals("^cm")) ret += (GUI.key[14]>1)?"1":"0";
 					if(key.equals("^ca")) ret += (GUI.key[15]>1)?"1":"0";
-					if(key.equals("<de")) ret += (GUI.key[20]>1)?"1":"0";
-					if(key.equals("<dl")) ret += (GUI.key[21]>1)?"1":"0";
-					if(key.equals("<es")) ret += (GUI.key[22]>1)?"1":"0";
+					if(key.equals("^de")) ret += (GUI.key[20]>1)?"1":"0";
+					if(key.equals("^dl")) ret += (GUI.key[21]>1)?"1":"0";
+					if(key.equals("^es")) ret += (GUI.key[22]>1)?"1":"0";
 					if(key.equals("^t0")) ret += (GUI.key[100]>1)?"1":"0";
 					if(key.equals("^t1")) ret += (GUI.key[101]>1)?"1":"0";
 					if(key.equals("^t2")) ret += (GUI.key[102]>1)?"1":"0";
