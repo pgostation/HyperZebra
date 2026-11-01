@@ -1,9 +1,10 @@
 # Third-party notices
 
-HyperZebra itself is released under the MIT License (see `LICENSE.txt`). It
-links against no third-party libraries: the program is built from the Java
-sources in this folder with the JDK alone. The items below are the external
-works whose code, data or documentation HyperZebra incorporates or relies on.
+The HyperZebra source code is released under the MIT License (`LICENSE.txt` in
+the source repository, https://github.com/pgostation/HyperZebra). It links
+against no third-party libraries: the program is built from the Java sources
+with the JDK alone. The items below are the external works whose code, data or
+documentation HyperZebra incorporates or relies on.
 
 ## HyperCardPreview (Pierre Lorenzi) — MIT License
 

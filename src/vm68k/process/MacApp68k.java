@@ -76,6 +76,8 @@ final class MacApp68k implements Runnable {
 	 * the speed at every scheduler poll, so it changes while the program runs.
 	 */
 	Integer depthOverride;volatile String screenSizeOverride;volatile Integer screenScaleOverride;volatile Boolean screenTopLeftOverride;volatile Integer smoothZoomOverride;volatile Boolean wideDialogsOverride;volatile Boolean controlKeysOverride;volatile Boolean realSpeedOverride;volatile Double mipsOverride;
+	/** The program's own JIT setting for its PowerPC code (null: the shared one, PpcJit.wanted); a change applies at the next poll. */
+	volatile Boolean ppcJitOverride;
 	/** The program's own keys for Command, Option and Control (null: the default keys); changes while the program runs. */
 	volatile ModifierKeys modifierKeysOverride;
 	/** The launcher's System version for this program (Toolbox68k.systemVersionFor); null = the standard, Mac OS 9.2.2. */
@@ -85,6 +87,78 @@ final class MacApp68k implements Runnable {
 	final String languageOverride;
 	/** The program's translated resources laid over its own (ResourceTranslation), or null. */
 	final ResourceTranslation.Overlay translatedResources;
+	/** The program's font substitutions (the launcher's, as Font Patchin' made them): used by its thread and the threads it starts. */
+	final Fonts68k.Substitution fontSubstitution=new Fonts68k.Substitution();
+	/** Whether the program sees a Japanese System (KanjiTalk: Shift-JIS, Osaka), where its text in a Roman font can come out garbled. */
+	boolean japaneseSystem(){Toolbox68k tb=toolbox;return (tb!=null?tb.encoding():Toolbox68k.applicationEncoding(resources,languageOverride))==StackTextEncoding.JAPANESE;}
+	/** The font substitutions changed in the launcher: the program's windows are drawn again with them at once. */
+	void fontSubstitutionsChanged(List<String> pairs){
+		fontSubstitution.set(pairs,japaneseSystem());
+		Toolbox68k tb=toolbox;if(tb==null||finished)return;
+		tb.laterAtEvent(()->{try{tb.windows.redrawAll();}catch(M68kCpuException e){if(Mac68kApi.TRACE)System.err.println("[68K] font substitution redraw: "+e);}});
+	}
+	/** How many of the fonts the program drew text in "Fix Garbled Text…" tries at most (each costs a redraw). */
+	static final int GARBLED_TEXT_TRIES=6;
+	/**
+	 * "Fix Garbled Text…" (the program's Apple menu): the user clicked garbled text at (x,y) of window {@code window}'s image.
+	 * Users know where the garbled text is, not the name of its font, nor which Japanese font to take: each font the program
+	 * drew text in (Fonts68k.Substitution.candidates: garbled-looking text first) is given its automatic replacement and the
+	 * windows drawn again until the pixels at the place change; that substitution stays and goes into the launcher's settings.
+	 * The others are taken back. The place is read after a redraw of its own first, so a part that changes by itself (iTunes's
+	 * elapsed time) is not taken for the font's doing.
+	 */
+	void fixGarbledText(final int window,final int x,final int y){
+		final Toolbox68k tb=toolbox;final MacAppHost h=host;if(tb==null||h==null||finished)return;
+		Thread search=new Thread(()->{
+			final List<String> before=fontSubstitution.pairs();final boolean japanese=fontSubstitution.japaneseSystem();
+			int[] box={x-10,y-6,21,13};
+			h.fontSearching(true);
+			try{
+				int[] baseline=redrawnPixels(tb,h,window,box);
+				List<Fonts68k.Substitution.Drawn> candidates=fontSubstitution.candidates();
+				if(Mac68kApi.TRACE)System.err.println("[68K "+name+"] fix garbled text at "+x+","+y+" of $"+Integer.toHexString(window)+": "+candidates.size()+" fonts to try");
+				for(Fonts68k.Substitution.Drawn d:candidates.subList(0,Math.min(GARBLED_TEXT_TRIES,candidates.size()))){
+					if(finished)return;
+					List<String> trial=new ArrayList<String>();
+					for(String p:before)if(!p.substring(0,p.indexOf('\t')).equalsIgnoreCase(d.name))trial.add(p);
+					trial.add(d.name+"\t"+Fonts68k.AUTOMATIC);
+					fontSubstitution.set(trial,japanese);
+					int[] after=redrawnPixels(tb,h,window,box);
+					if(Mac68kApi.TRACE)System.err.println("[68K "+name+"] fix garbled text: "+d.name+" ("+d.garbled+" garbled of "+d.count+") "+(baseline!=null&&after!=null&&!java.util.Arrays.equals(baseline,after)?"changes the place":"changes nothing there"));
+					if(baseline!=null&&after!=null&&!java.util.Arrays.equals(baseline,after)){
+						keepFontSubstitutions(trial);
+						h.garbledTextFixed(d.name,Fonts68k.nameOf(Fonts68k.automaticReplacement(d.id)),()->{fontSubstitutionsChanged(before);keepFontSubstitutions(before);});
+						return;
+					}
+				}
+				fontSubstitutionsChanged(before);
+				h.garbledTextNotFound();
+			}catch(InterruptedException e){fontSubstitutionsChanged(before);}
+			finally{h.fontSearching(false);}
+		},"Fix Garbled Text: "+name);
+		search.setDaemon(true);search.start();
+	}
+	/** The program's windows drawn again (update events), then the pixels of {@code box} {x,y,w,h} of the window's image once the update is done and they stay still. */
+	private static int[] redrawnPixels(Toolbox68k tb,MacAppHost h,int window,int[] box) throws InterruptedException {
+		final java.util.concurrent.CountDownLatch asked=new java.util.concurrent.CountDownLatch(1);
+		tb.laterAtEvent(()->{try{tb.windows.redrawAll();}catch(M68kCpuException e){}finally{asked.countDown();}});
+		asked.await(3,java.util.concurrent.TimeUnit.SECONDS);
+		long until=System.currentTimeMillis()+3000;int[] last=null;int still=0;
+		while(System.currentTimeMillis()<until){
+			Thread.sleep(60);
+			boolean pending;try{pending=tb.windows.updatePending(window);}catch(M68kCpuException e){pending=false;}
+			int[] now=h.windowPixels(window,box[0],box[1],box[2],box[3]);
+			if(!pending&&now!=null&&java.util.Arrays.equals(now,last)){if(++still>=3)return now;}else still=0;
+			last=now;
+		}
+		return last;
+	}
+	/** Keeps the program's font substitutions in the launcher's settings ("Fix Garbled Text…" and its undo). */
+	private void keepFontSubstitutions(final List<String> pairs){
+		if(!LauncherStore.enabled)return;
+		SwingUtilities.invokeLater(()->{LauncherStore store=LauncherStore.get();LauncherStore.AppSettings s=store.settingsFor(file);
+			s=s==null?new LauncherStore.AppSettings():s.copy();s.fontSubstitutions.clear();s.fontSubstitutions.addAll(pairs);store.putSettings(file,s);});
+	}
 
 	/** The translation of what the program shows (VMTranslation), or null when it is off; replaced when the settings change. */
 	volatile VMTranslation.Translator translator;
@@ -169,8 +243,10 @@ final class MacApp68k implements Runnable {
 		if(mb!=null&&mb.nameBytes.length>0)n=Toolbox68k.applicationEncoding(null,languageOverride).decode(mb.nameBytes);
 		name=n;
 		if(documents!=null)this.documents.addAll(documents);
-		synchronized(MacApp68k.class){int serial;do serial=nextSerial++;while(Toolbox68k.standInSerial(serial));serialNumber=serial;}
+		serialNumber=newSerialNumber();
 	}
+	/** The next process serial number (the low long of a ProcessSerialNumber): a program's, or one a program runs on a task of its own. */
+	static synchronized int newSerialNumber(){int serial;do serial=nextSerial++;while(Toolbox68k.standInSerial(serial));return serial;}
 
 	/** The zoom setting changed: every running program shows its screen magnified by the new choice at once. */
 	static void zoomChangedAll(){for(MacApp68k app:runningApplications()){MacAppHost h=app.host;if(h!=null)h.rezoom(app);}}
@@ -480,6 +556,7 @@ final class MacApp68k implements Runnable {
 	private static MacApp68k launch(File file,ResourceFile68k rf,List<File> documents,boolean controlPanel,String deskAccessory) throws IOException {
 		MacApp68k app=new MacApp68k(file,rf,documents);
 		app.unattended=UNATTENDED_LAUNCH.get()!=null||Boolean.getBoolean("hz68k.unattended"); // debug aid: -Dhz68k.unattended=true runs every program so
+		app.unpaced=UNATTENDED_LAUNCH.get()!=null||!controlPanel&&deskAccessory==null&&ExtractorApps.shippedExpander(file); // the shipped expanders and their installers
 		MacApp68k parent=forCurrentThread();if(parent!=null)app.launcherSerial=parent.serialNumber; // _Launch runs on the launching program's thread
 		Integer loadSegHook=LOAD_SEG_HOOK.get();if(loadSegHook!=null&&parent!=null)app.launchBridge=new LaunchHookBridge68k(parent,app,loadSegHook);
 		app.powerPC=!controlPanel&&deskAccessory==null&&runsAsPowerPc(rf,file);
@@ -496,9 +573,10 @@ final class MacApp68k implements Runnable {
 		}
 		Sandbox.programLaunched(app.name,file,app.documents); // its folder to read, its own file and its documents to change; anything else it asks for (Sandbox)
 		Sandbox.runsUnattended(app.name,app.unattended);
+		app.fontSubstitution.set(null,app.japaneseSystem()); // its System's script also without settings: garbled-looking text is counted on a Japanese System
 		if(LauncherStore.enabled){
 			LauncherStore.AppSettings s=LauncherStore.get().settingsFor(file);
-			if(s!=null){app.depthOverride=s.depth;app.screenSizeOverride=s.screenSize;app.screenScaleOverride=s.screenScale;app.screenTopLeftOverride=s.screenTopLeft;app.smoothZoomOverride=s.smoothZoom;app.wideDialogsOverride=s.wideDialogs;app.controlKeysOverride=s.controlKeys;app.realSpeedOverride=s.realSpeed;app.mipsOverride=s.mips;app.modifierKeysOverride=modifierKeys(s);app.systemVersionOverride=s.systemVersion;}
+			if(s!=null){app.fontSubstitution.set(s.fontSubstitutions,app.fontSubstitution.japaneseSystem());app.depthOverride=s.depth;app.screenSizeOverride=s.screenSize;app.screenScaleOverride=s.screenScale;app.screenTopLeftOverride=s.screenTopLeft;app.smoothZoomOverride=s.smoothZoom;app.wideDialogsOverride=s.wideDialogs;app.controlKeysOverride=s.controlKeys;app.realSpeedOverride=s.realSpeed;app.mipsOverride=s.mips;app.ppcJitOverride=s.ppcJit;app.modifierKeysOverride=modifierKeys(s);app.systemVersionOverride=s.systemVersion;}
 			for(File d:app.documents)LauncherStore.get().recordDocument(file,d);
 		}
 		// one Mac, one System: a program another one launches reports the System version its launcher does (OpenDoc™ runs each
@@ -508,7 +586,11 @@ final class MacApp68k implements Runnable {
 			app.compactScreen=true;
 			if(app.screenSizeOverride==null)app.screenSizeOverride="512x342";
 			if(app.screenScaleOverride==null)app.screenScaleOverride=2;
-			System.err.println("[68K "+app.name+"] writes a compact Macintosh screen itself (ScrnBase/ScreenRow, no SIZE resource): 512x342 at 1 bit");
+			System.err.println("[68K "+app.name+"] writes a compact Macintosh screen itself (ScrnBase/ScreenRow/64-byte rows, no SIZE resource): 512x342 at 1 bit");
+		}
+		if(parent!=null&&sharesAddressSpace(parent,app)){ // on the launcher's thread, in its _Launch: its memory may grow now
+			int depth=app.plannedDepth();app.sharedMemory=parent.memory.launchPartition(app.plannedMemorySize(depth),Toolbox68k.APPL_HEAP_START);
+			if(app.sharedMemory!=null)System.err.printf("[68K %s] runs in the address space of \"%s\", as on a Mac: partition $%08X..$%08X%n",app.name,parent.name,app.sharedMemory.partitionBase(),app.sharedMemory.partitionBase()+app.sharedMemory.partitionSize());
 		}
 		app.translationChanged();
 		app.thread=new Thread(app,"68K: "+app.name);
@@ -522,6 +604,7 @@ final class MacApp68k implements Runnable {
 	}
 
 	@Override public void run(){
+		Fonts68k.useSubstitution(service?null:fontSubstitution); // not the launching program's: this thread inherited those
 		try{
 			setUp();
 			loadSegPatchAtStart=cpu.patchedTrap(0xa9f0); // the extensions' patch, if any: not the program's own
@@ -544,6 +627,7 @@ final class MacApp68k implements Runnable {
 			if(ppc!=null)System.err.println(ppc.describe(ppc.cpu.lastPc()));
 			System.err.println(cpu.dumpState(e.pc));
 			System.err.println(toolbox.describeSegments());
+			retryIndexedAfterCrash();
 			if(M68kMemory.ADDR_PROBE!=null){System.err.println(memory.describeAddrRing());
 				try{StringBuilder sb=new StringBuilder("jump table entries $2100..$2140(A5):");for(int o=0x2100;o<0x2140;o+=8){sb.append(String.format("%n  $%04X(A5): %04X %04X %04X %04X",o,memory.readWord(a5+o),memory.readWord(a5+o+2),memory.readWord(a5+o+4),memory.readWord(a5+o+6)));}System.err.println(sb);}catch(Exception x){}}
 		}catch(M68kException e){
@@ -566,18 +650,50 @@ final class MacApp68k implements Runnable {
 	/** Set by Toolbox68k's _Launch around {@link #launch(File,List)}: the launcher's own _LoadSeg patch. */
 	static final ThreadLocal<Integer> LOAD_SEG_HOOK=new ThreadLocal<Integer>();
 
-	private void setUp() throws IOException,M68kException {
+	/** The least guest memory of a PowerPC program: the RAM of the Power Macs it ran on, temporary memory included. */
+	private static final int PPC_MIN_MEMORY=256*1024*1024;
+	/**
+	 * Whether {@code app}, which {@code parent} launches, runs in the launcher's address space (M68kMemory.launchPartition), as
+	 * every program did on a classic Mac: a partition of its own above the launcher's memory, its own low memory, and each sees the
+	 * other's partition at the same addresses. Done for a launcher that is a Macintosh Common Lisp program: the Apple Dylan IDE
+	 * reads its Application Nub's runtime globals and stacks at the addresses the nub reports over Apple events ("Illegal runtime
+	 * address" otherwise). Other programs keep a memory of their own: a separate space keeps one program's stray writes out of
+	 * the other, and their layouts stay as they were. -Dhz68k.sharedspace=all does it for every 68K program another launches, =off never.
+	 */
+	private static boolean sharesAddressSpace(MacApp68k parent,MacApp68k app){
+		String mode=System.getProperty("hz68k.sharedspace","");
+		if(mode.equals("off")||!(mode.equals("all")||parent.mclHeap))return false;
+		M68kMemory m=parent.memory;
+		if(m==null||parent.powerPC||parent.hosted!=null||parent.service||m.addressing24||parent.finished)return false; // (a 68K program's PowerPC runtime for fat INITs' code loads and stores through the memory: fine)
+		return !app.powerPC&&app.hosted==null&&!app.compactScreen&&!app.service&&!app.addressing24();
+	}
+	/** The memory {@link #launch} made for this program in its launcher's address space (see {@link #sharesAddressSpace}), or null. */
+	private M68kMemory sharedMemory;
+
+	/** Bytes of guest memory for this program at a main device of {@code depth} bits (not the 24-bit world's 16 MB). */
+	private int plannedMemorySize(int depth){
 		int memorySize=M68kMemory.SIZE*2; // 32 MB: room for the screen-sized main device and large programs
 		int preferred=preferredHeapSize();
 		// a PowerPC program's partition can be large (Heavy Metal F.A.K.K.2 asks for 100 MB and quits when NewPtr fails): twice the SIZE request, up to 512 MB
 		int memoryCap=powerPC?512*1024*1024:64*1024*1024;
 		while(memorySize<memoryCap&&preferred>memorySize/2)memorySize*=2;
+		// Temporary memory (TempNewHandle) lies outside the partition on a real Mac, and MacMAME relies on it (its FAQ: do not raise the
+		// partition, it takes what it needs: Neo Geo games 192 MB and more): a PowerPC program's guest memory is a Power Mac's RAM, not just its partition
+		if(powerPC)while(memorySize<PPC_MIN_MEMORY)memorySize*=2;
 		// The main device PixMap and a full-screen window both live in guest memory: at full colour on a
 		// large display that is tens of megabytes, so keep the base 32 MB free of them.
-		java.awt.Rectangle screen=MacAppHost.screenBounds();int depth=screenDepthFor(depthOverride!=null?depthOverride:QuickDraw68k.screenDepth);
+		java.awt.Rectangle screen=MacAppHost.screenBounds();
 		long screenBytes=(long)Math.min(screen.width,QuickDraw68k.maxScreenWidth(depth,powerPC))*screen.height*Math.max(1,depth/8); // the screen programs see stops where rowBytes would overflow
 		while(memorySize<256*1024*1024&&memorySize<M68kMemory.SIZE*2+2*screenBytes)memorySize*=2;
-		addressing24=addressing24();
+		return memorySize;
+	}
+	private int plannedDepth(){return screenDepthFor(depthOverride!=null?depthOverride:QuickDraw68k.screenDepth);}
+
+	private void setUp() throws IOException,M68kException {
+		int depth=plannedDepth();
+		int memorySize=sharedMemory!=null?sharedMemory.partitionSize():plannedMemorySize(depth);
+		java.awt.Rectangle screen=MacAppHost.screenBounds();
+		addressing24=sharedMemory==null&&addressing24();
 		if(addressing24){
 			// the 24-bit world of the Macs these programs were written for: 16 MB, so the top address byte is ignored as the
 			// hardware did (Word 1.0 tags its p-code pointers with $01 there), and a screen that leaves room for the heap
@@ -585,11 +701,14 @@ final class MacApp68k implements Runnable {
 			while(depth>1&&(long)Math.min(screen.width,QuickDraw68k.maxScreenWidth(depth))*screen.height*depth/8>ADDRESSING24_SCREEN_BYTES)depth=depth==32?16:depth==16?8:depth==8?4:depth/2;
 			System.err.println("[68K "+name+"] 24-bit addressing (a program written for the 24-bit Memory Manager), screen depth "+depth);
 		}
-		memory=new M68kMemory(memorySize,Toolbox68k.APPL_HEAP_START);
+		// in its launcher's address space: the zone record starts the partition (ApplZone), the heap right after it
+		int zone=sharedMemory!=null?sharedMemory.partitionBase():Toolbox68k.APPL_ZONE,heapBase=zone+(Toolbox68k.APPL_HEAP_START-Toolbox68k.APPL_ZONE);
+		memory=sharedMemory!=null?sharedMemory:new M68kMemory(memorySize,Toolbox68k.APPL_HEAP_START);
 		memory.addressing24=addressing24;
 		memory.blockTags=walksHeapHeaders();
 		mpwShell=isMpwShell();
-		memory.headerZone=Toolbox68k.APPL_ZONE;memory.blockHeaders=mpwShell;
+		mclHeap=isMcl();
+		memory.headerZone=zone;memory.blockHeaders=mpwShell||mclHeap;memory.blockHeaders24=!memory.blockHeaders&&readsBlockHeaders24();
 		ResourceFile68k.Resource code0=resources.get(ResourceFile68k.fourcc("CODE"),0);
 		byte[] c0;
 		if(hosted!=null||powerPC){ // no CODE 0: a jump-table-sized slot for the host stub (see below) and a small A5 world
@@ -614,7 +733,7 @@ final class MacApp68k implements Runnable {
 		// deeper Lingo call (Last Call never got past "Click anywhere to start your shift!").
 		if(powerPC){PpcRuntime.FragmentEntry e=PpcRuntime.applicationFragment(resources);ppcStackSize=(Math.max(1024*1024,Math.min(8*1024*1024,e==null?0:e.stackSize))+0xf)&~0xf;}
 		stackBottom=(stackTop-stackSize-ppcStackSize)&~0xf;
-		memory.setHeapRange(Toolbox68k.APPL_HEAP_START,stackBottom);
+		memory.setHeapRange(heapBase,stackBottom);
 		// jump table: copy the CODE 0 entries after the 16-byte header
 		byte[] table=new byte[jumpTableSize];
 		System.arraycopy(c0,16,table,0,Math.min(jumpTableSize,c0.length-16));
@@ -622,6 +741,7 @@ final class MacApp68k implements Runnable {
 		api=new Mac68kApi(memory,null);
 		api.quickDraw().setPreferredScreenDepth(depth);startDepth=depth;
 		toolbox=new Toolbox68k(this);
+		toolbox.ownClockShift=ownClockShift();
 		api.setApplication(toolbox);
 		cpu=new M68kCpu(memory,0,api,null);
 		cpu.setInstructionLimit(Long.MAX_VALUE);
@@ -668,7 +788,7 @@ final class MacApp68k implements Runnable {
 		toolbox.writePascal(0x910,controlPanel!=null?"Finder":name,31); // CurApName
 		openResFileAtLaunch();
 		// High-level-event-aware programs (SIZE flag 0x0040) receive Open Application / Open Documents.
-		if((sizeFlags()&0x0040)!=0)toolbox.events.postOpenDocuments(new ArrayList<File>(documents));
+		if((sizeFlags()&0x0040)!=0)toolbox.events.postLaunchDocuments(new ArrayList<File>(documents));
 	}
 
 	/**
@@ -780,7 +900,7 @@ final class MacApp68k implements Runnable {
 					int at=(int)Long.parseLong(p[1],16),n=Integer.parseInt(p[2],16);StringBuilder sb=new StringBuilder();
 					for(int i=0;i<n;i++){if(i%16==0)sb.append(String.format("%n%08X:",at+i));sb.append(String.format(" %02X",memory.readByte(at+i)));}
 					System.err.println("[68K debug] dump"+sb);continue;}
-				if(p[0].equals("palette")){int[] c=host.devicePalette(8);StringBuilder sb=new StringBuilder("[68K debug] palette");for(int i:new int[]{0,1,2,3,4,5,6,7,64,128,200,254,255})sb.append(String.format(" [%d]=%06x",i,c[i]));System.err.println(sb);continue;} // palette: main device CLUT sample
+				if(p[0].equals("palette")){int[] c=host.devicePalette(8);StringBuilder sb=new StringBuilder("[68K debug] palette");if(p.length>=2&&p[1].equals("all"))for(int i=0;i<256;i++)sb.append(String.format(" %06x",c[i]));else for(int i:new int[]{0,1,2,3,4,5,6,7,64,128,200,254,255})sb.append(String.format(" [%d]=%06x",i,c[i]));System.err.println(sb);continue;} // palette [all]: main device CLUT sample (all: the 256 entries in order)
 				if(p[0].equals("planes")){SmoothZoom sz=host.smoothZoom();System.err.println("[68K debug] planes"+(sz==null?" (none)":sz.describe(p.length>=2?new File(p[1]):null)));continue;} // planes [dir]: the smooth zoom's planes (images to dir)
 				if(p[0].equals("paintdump")&&p.length>=2){MacAppHost.paintDumpDir=new File(p[1]);host.invalidateDisplays();continue;}
 				if(p[0].equals("dumppng")&&p.length>=6){ // dumppng <hexaddr> <rowBytes> <width> <height> <file> [1]: 8-bit pixels through the screen palette (or a 1-bit BitMap)
@@ -931,13 +1051,25 @@ final class MacApp68k implements Runnable {
 		kill(); // it would go on with the nil block to its crash
 		relaunchIndexed(null,"a block of "+size+" bytes requested (16-bit size arithmetic overflowed on the "+startDepth+"-bit screen)");
 	}
-	private void relaunchIndexed(String why){relaunchIndexed(why,null);}
-	private void relaunchIndexed(String why,String reason){
+	/**
+	 * The program's 68K code crashed within its first minute on a screen deeper than 8 bits: a program that treats every device as
+	 * indexed (Space Junkie 1.2 fades in by walking the main device's colour table with the word ctSize, -1 on a direct
+	 * device, over its own code) is restarted once at 8 bits - for this session only, the launcher's per-program depth stays as it was.
+	 */
+	private void retryIndexedAfterCrash(){
+		if(relaunching||startDepth<=8||service||hosted!=null||java.awt.GraphicsEnvironment.isHeadless()||System.currentTimeMillis()-startedAt>INDEXED_WATCH_MILLIS)return;
+		if(toolbox!=null&&toolbox.events.quitInProgress())return; // crashed while closing down (Mactella's thread teardown): quitting must not start it again
+		if(System.getProperty("hz68k.depth")!=null||"false".equals(System.getProperty("hz68k.autodepth"))||depthOverride!=null)return;
+		relaunchIndexed(null,"crashed within its first minute on the "+startDepth+"-bit screen",false);
+	}
+	private void relaunchIndexed(String why){relaunchIndexed(why,null,true);}
+	private void relaunchIndexed(String why,String reason){relaunchIndexed(why,reason,true);}
+	private void relaunchIndexed(String why,String reason,boolean keep){
 		relaunching=true;
 		System.err.println(why!=null?"[68K "+name+"] asks for 256 colours on a "+startDepth+"-bit screen (\""+why+"\"): restarting it at 8 bits"
 			:"[68K "+name+"] "+reason+": restarting it at 8 bits");
 		indexedThisSession.add(file.getAbsolutePath());
-		if(LauncherStore.enabled){try{LauncherStore store=LauncherStore.get();LauncherStore.AppSettings s=store.settingsFor(file);if(s==null)s=new LauncherStore.AppSettings();if(s.depth==null){s.depth=8;store.putSettings(file,s);}}catch(Exception e){System.err.println("[68K "+name+"] could not keep the 8-bit setting: "+e);}}
+		if(keep&&LauncherStore.enabled){try{LauncherStore store=LauncherStore.get();LauncherStore.AppSettings s=store.settingsFor(file);if(s==null)s=new LauncherStore.AppSettings();if(s.depth==null){s.depth=8;store.putSettings(file,s);}}catch(Exception e){System.err.println("[68K "+name+"] could not keep the 8-bit setting: "+e);}}
 		final List<File> docs=new ArrayList<File>(documents);final File program=file;
 		Thread t=new Thread(new Runnable(){@Override public void run(){
 			kill();
@@ -958,7 +1090,26 @@ final class MacApp68k implements Runnable {
 	 * predates MultiFinder, 1987). Such programs address the screen with the 512x342 geometry built in - Space Quest's picture
 	 * copy steps 64 bytes a row whatever the screen's rowBytes - so they get that screen, shown twice as large.
 	 */
-	boolean compactMacProgram(){return !hasSizeResource()&&(readsScreenBase()||readsScreenRow());}
+	boolean compactMacProgram(){return !hasSizeResource()&&(readsScreenBase()||readsScreenRow()||stepsCompactScreenRows());}
+	/**
+	 * True when the program's code steps through screen rows of the compact Macs' 64 bytes itself: a store through (An), then
+	 * adda.w #$40,An and a DBRA closing the loop. The Guided Tour's Labyrinthe (1984) ORs its 16x16 maze cells into the screen
+	 * that way, the base from screenBits - on a wider screen the walls were never seen and the menu bar rows filled with noise.
+	 */
+	boolean stepsCompactScreenRows(){
+		if(hosted!=null||"false".equals(System.getProperty("hz68k.screenportbits")))return false;
+		for(ResourceFile68k.Resource r:resources.ofType(ResourceFile68k.fourcc("CODE"))){
+			if(r.id==0)continue;
+			byte[] code=r.data();
+			for(int i=4;i+9<code.length;i+=2){
+				int store=((code[i]&0xff)<<8)|(code[i+1]&0xff),adda=((code[i+2]&0xff)<<8)|(code[i+3]&0xff),dbra=((code[i+6]&0xff)<<8)|(code[i+7]&0xff);
+				if((adda&0xf1ff)!=0xd0fc||(code[i+4]&0xff)!=0x00||(code[i+5]&0xff)!=0x40||(dbra&0xfff8)!=0x51c8)continue; // adda.w #$40,An; dbra Dn
+				int size=store>>>12;
+				if(size>=1&&size<=3&&(store&0x01c0)==0x0080&&((store>>9)&7)==((adda>>9)&7))return true; // move.b/w/l <ea>,(An)
+			}
+		}
+		return false;
+	}
 	/**
 	 * True when the program's code reads ScreenRow ($106, the screen's rowBytes) with an absolute short address (move.w
 	 * $106.w,<ea> or mulu.w $106.w,Dn): it steps through the screen memory itself. MacPaint 1.5 blits its 1-bit document
@@ -1042,6 +1193,35 @@ final class MacApp68k implements Runnable {
 		return colorQuickDraw;
 	}
 
+	/**
+	 * How far this program's clock runs behind the VM clock (Toolbox68k.ownClockShift). Sierra's Macintosh SCI interpreter
+	 * (Quest for Glory I) turns Time into the time of day as (Time - $19BFCC00) / 43200 with a 16-bit DIVU, which overflows
+	 * from May 2007 on: the 68000 leaves the dividend as it is, the time of day changes once in 18 hours, and every script
+	 * timer counting seconds waits for ever - the class chosen at the character selection never went on to its sheet. Such a
+	 * program gets today's date whole 28-year cycles back (the same weekdays and leap years), as far as the quotient needs.
+	 * An explicit -Dhz68k.yearshift leaves the clock to it.
+	 */
+	private long ownClockShift(){
+		String setting=System.getProperty("hz68k.yearshift");
+		if(setting!=null&&!setting.trim().equalsIgnoreCase("auto")||!sierraTimeOfDay())return 0;
+		long now=Toolbox68k.macNow(),shift=0;
+		while(now+shift-SIERRA_TIME_BASE>=65536L*43200L)shift-=Toolbox68k.CLOCK_CYCLE_SECONDS;
+		if(shift!=0)System.err.println("[68K "+name+"] clock set back "+(-shift/Toolbox68k.CLOCK_CYCLE_SECONDS*28)+" years: the program's time of day overflows a 16-bit divide after May 2007 (Sierra SCI)");
+		return shift;
+	}
+	private static final long SIERRA_TIME_BASE=0x19BFCC00L;
+	/** Whether a CODE resource holds Sierra's time-of-day code: SUBI.L #$19BFCC00,Dn then DIVU.W #43200,Dn. */
+	private boolean sierraTimeOfDay(){
+		for(ResourceFile68k.Resource r:resources.ofType(ResourceFile68k.fourcc("CODE"))){
+			if(r.id==0)continue;
+			byte[] code=r.data();
+			for(int i=2;i+9<code.length;i+=2)
+				if((code[i]&0xff)==0x04&&(code[i+1]&0xf8)==0x80&&(code[i+2]&0xff)==0x19&&(code[i+3]&0xff)==0xbf&&(code[i+4]&0xff)==0xcc&&code[i+5]==0
+					&&(code[i+6]&0xf1)==0x80&&(code[i+7]&0xff)==0xfc&&(code[i+8]&0xff)==0xa8&&(code[i+9]&0xff)==0xc0)return true;
+		}
+		return false;
+	}
+
 	/** The partition the SIZE resource asks for (1 MB without one). */
 	int preferredHeapSize(){
 		ResourceFile68k.Resource size=resources.get(ResourceFile68k.fourcc("SIZE"),-1);
@@ -1056,7 +1236,9 @@ final class MacApp68k implements Runnable {
 	 * Whether the program runs in a 24-bit world ({@link #setUp}): -Dhz68k.addr24=true/false decides, else a Microsoft p-code
 	 * program ('PCOD' resources) without a SIZE resource does - written before MultiFinder (1987) for the 24-bit Memory
 	 * Manager, it keeps flags in the top byte of its pointers (Word 1.0). So does one whose SIZE resource does not claim
-	 * is32BitCompatible ($0080): Excel 1.01F asks NewPtr for $01699F22 bytes and never opened a window in the large world.
+	 * is32BitCompatible ($0080): Excel 1.01F asks NewPtr for $01699F22 bytes and never opened a window in the large world. The
+	 * same goes for such a program that reads the 24-bit Memory Manager's block headers itself ({@link #readsBlockHeaders24}):
+	 * Uninvited keeps flags in the top byte of the Handles its resource cache links together.
 	 * Other programs without a SIZE resource stay in the large world: some size buffers from the screen (Fractal Contours
 	 * asks for 14 MB on a wide display).
 	 */
@@ -1071,6 +1253,35 @@ final class MacApp68k implements Runnable {
 	private boolean isMpwShell(){
 		return !resources.ofType(ResourceFile68k.fourcc("MPS ")).isEmpty()||!resources.ofType(ResourceFile68k.fourcc("MPSX")).isEmpty();
 	}
+	/**
+	 * A Macintosh Common Lisp saved application (its 'CCL2' resource; Apple Dylan's 68K and PowerPC environments are built on
+	 * MCL): the Lisp checks every Handle it is given the way the 32-bit Memory Manager lays it out - inside SysZone or ApplZone
+	 * (below the zone's bkLim), the master pointer to a block whose 12-byte header says relocatable and whose relative handle
+	 * plus the zone gives the Handle back (M68kMemory.blockHeaders, a 32-bit zone record). Without it Apple Dylan's FRED
+	 * editor took every region Handle for a bad one: "Invalid selection region in #<FRED-RECORD>" at start-up.
+	 */
+	boolean mclHeap;
+	private boolean isMcl(){return !resources.ofType(ResourceFile68k.fourcc("CCL2")).isEmpty();}
+	/**
+	 * True when the program's code reads a 24-bit block header itself: move.l Lo3Bytes,Dn; subq #8,An; and.l (An),Dn - the
+	 * physical size of the block a master pointer points at (M68kMemory.blockHeaders24; Uninvited's resource cache).
+	 */
+	boolean readsBlockHeaders24(){
+		if(hosted!=null||powerPC)return false;
+		for(ResourceFile68k.Resource r:resources.ofType(ResourceFile68k.fourcc("CODE"))){
+			if(r.id==0)continue;
+			byte[] code=r.data();
+			for(int i=4;i+7<code.length;i+=2){
+				int move=((code[i]&0xff)<<8)|(code[i+1]&0xff);
+				if((move&0xf1ff)!=0x2038||(code[i+2]&0xff)!=0x03||(code[i+3]&0xff)!=0x1a)continue; // move.l $31A.w,Dn
+				int subq=((code[i+4]&0xff)<<8)|(code[i+5]&0xff),and=((code[i+6]&0xff)<<8)|(code[i+7]&0xff);
+				int dn=(move>>9)&7,an=subq&7;
+				if((subq&0xfff8)!=0x5148&&(subq&0xfff8)!=0x5188)continue; // subq.w/subq.l #8,An
+				if(and==(0xc090|dn<<9|an))return true; // and.l (An),Dn
+			}
+		}
+		return false;
+	}
 	private boolean walksHeapHeaders(){
 		return !resources.ofType(ResourceFile68k.fourcc("KAHL")).isEmpty()||!resources.ofType(ResourceFile68k.fourcc("PJMM")).isEmpty();
 	}
@@ -1078,7 +1289,7 @@ final class MacApp68k implements Runnable {
 	private boolean addressing24(){
 		String forced=System.getProperty("hz68k.addr24");
 		if(forced!=null)return Boolean.parseBoolean(forced);
-		return !service&&hosted==null&&(!hasSizeResource()||(sizeFlags()&0x80)==0)&&!resources.ofType(ResourceFile68k.fourcc("PCOD")).isEmpty();
+		return !service&&hosted==null&&(!hasSizeResource()||(sizeFlags()&0x80)==0)&&(!resources.ofType(ResourceFile68k.fourcc("PCOD")).isEmpty()||readsBlockHeaders24());
 	}
 
 	/** SIZE resource flags word ($4000 acceptSuspendResumeEvents, $1000 canBackground, $0080 is32BitCompatible, $0040 isHighLevelEventAware...): also the low word of the Process Manager's processMode. */
@@ -1097,8 +1308,9 @@ final class MacApp68k implements Runnable {
 		running.remove(this);
 		if(ppc!=null)try{ppc.shutDown();}catch(RuntimeException e){System.err.println("[ppc "+name+"] at shut-down: "+e);}
 		if(toolbox!=null)toolbox.shutDown();
+		if(memory!=null)memory.releasePartition(); // in a launcher's address space: free for the next program it launches
 		if(!service)tell(false,this);
-		if(exitMessage!=null&&(service||relaunching)){System.err.println("[68K "+name+"] "+exitMessage);return;} // a program being restarted at 8 bits may fail on its way out: no dialog
+		if(exitMessage!=null&&(service||relaunching||toolbox!=null&&toolbox.events.quitInProgress())){System.err.println("[68K "+name+"] "+exitMessage);return;} // a program being restarted at 8 bits, or one the user asked to quit (Mactella's threads fail while it closes), may fail on its way out: no dialog
 		if(exitMessage!=null){
 			System.err.println("["+(ppc!=null?"ppc ":"68K ")+name+"] "+exitMessage);
 			final String hint=wideScreenHint();
@@ -1282,16 +1494,20 @@ final class MacApp68k implements Runnable {
 	void recordDocument(File document){if(LauncherStore.enabled&&!service)LauncherStore.get().recordDocument(file,document);}
 	/** Raises every window of this program (the launcher's "Bring to front"). */
 	void bringToFront(){if(host!=null&&!finished)host.bringToFront();}
+	/** HyperZebra's own expanders (ExtractorApps.shippedExpander) and the installers it runs without the user: unlimited
+	 *  unless the program has a speed of its own. Nobody watches them; a slow CPU only makes the user wait for the files. */
+	boolean unpaced;
 	/** The effective CPU speed: the program's own setting, else the VM preference (Toolbox68k.mips). */
 	/**
-	 * The instruction rate this program is paced to (0 = unlimited): its own setting, else the shared one. A PowerPC program
-	 * counts PowerPC instructions and its "real machine" is a G3 iMac (PpcRuntime.REAL_MIPS) instead of a
-	 * 68040; the shared setting's rate is scaled between the two.
+	 * The instruction rate this program is paced to (0 = unlimited): its own setting, else the shared one ({@link #unpaced}:
+	 * unlimited). A PowerPC program counts PowerPC instructions and its "real machine" is a G3 iMac (PpcRuntime.REAL_MIPS)
+	 * instead of a 68040; the shared setting's rate is scaled between the two.
 	 */
 	double mips(){
 		Double m=mipsOverride;if(m!=null)return m;
 		Boolean b=realSpeedOverride;double real=powerPC?PpcRuntime.REAL_MIPS:Toolbox68k.DEFAULT_MIPS;
 		if(b!=null)return b?real:0;
+		if(unpaced)return 0;
 		double vm=Toolbox68k.mips;return !powerPC||vm<=0?vm:vm*PpcRuntime.REAL_MIPS/Toolbox68k.DEFAULT_MIPS;
 	}
 	/** The "Classic Macintosh (68000)" per-program speed: about a 68000 at 8 MHz. */

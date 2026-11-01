@@ -391,7 +391,9 @@ class ButtonGUI implements MouseListener, MouseMotionListener
         	if(obtn!=null){
             	//ダブルクリック判定
             	if (!newButton && e.getClickCount() >= 2){
-            		AuthDialog.openAuthDialog(PCARDFrame.pc, "button", obtn);
+            		//Shift-ダブルクリックはスクリプトを開く(HyperCard)
+            		if(e.isShiftDown() && StackProtection.canOpenScripts()) ScriptEditor.openScriptEditor(PCARDFrame.pc, obtn);
+            		else AuthDialog.openAuthDialog(PCARDFrame.pc, "button", obtn);
             	}
             	else{
             		tgtOBtn = obtn;
@@ -1130,7 +1132,9 @@ class FieldGUI implements MouseListener, MouseMotionListener
         	if(ofld!=null){
             	//ダブルクリック判定
             	if (!newField && e.getClickCount() >= 2){
-            		AuthDialog.openAuthDialog(PCARD.pc, "field", ofld);
+            		//Shift-ダブルクリックはスクリプトを開く(HyperCard)
+            		if(e.isShiftDown() && StackProtection.canOpenScripts()) ScriptEditor.openScriptEditor(PCARD.pc, ofld);
+            		else AuthDialog.openAuthDialog(PCARD.pc, "field", ofld);
             	}
             	else{
             		tgtOFld = ofld;

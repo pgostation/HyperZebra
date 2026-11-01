@@ -176,6 +176,9 @@ final class MacAppHost {
 		/** The user put the window where it is (a native drag, or DragWindow of a frame drawn in the window): like a native frame
 		 *  it may lie anywhere on the display, beyond the program's game screen; a move by the program itself clears it. */
 		boolean userPlaced;
+		/** Until then (System.nanoTime) the user drags the window's frame drawn in it (DragWindow): the native window's move
+		 *  reports are this host's own placing, late on macOS. */
+		volatile long userDragUntil;
 		/** Where the native frame sits relative to the program's idea of the window (virtual pixels): non-zero for a window
 		 *  the program placed on its screen with the title bar out of sight (content at the top edge), which the display
 		 *  cannot show there, and for one the user dragged past the program's screen ({@link #placeForProgram}). The program
@@ -1002,6 +1005,7 @@ final class MacAppHost {
 	private javax.swing.Timer screenMoveSettle;
 	private static final long SCREEN_MOVE_QUIET_NANOS=400_000_000L;
 	private boolean screenMoving(){long until=screenMovingUntil;return until!=0&&System.nanoTime()-until<0;}
+	private static boolean userDragging(HostWindow hw){long until=hw.userDragUntil;return until!=0&&System.nanoTime()-until<0;}
 	/** The program sees a game screen (its own size, the preference or -Dhz68k.screen) placed by this host, not the display. */
 	private boolean gameScreen(){
 		if(SCREEN_OVERRIDE!=null)return true;
@@ -1757,6 +1761,7 @@ final class MacAppHost {
 		final Canvas canvas=hw.canvas;
 		MouseAdapter mouse=new MouseAdapter(){
 			@Override public void mousePressed(MouseEvent e){canvas.requestFocusInWindow();if(!SwingUtilities.isLeftMouseButton(e)&&!(SwingUtilities.isRightMouseButton(e)))return;
+				if(fontPick){if(SwingUtilities.isLeftMouseButton(e)){fontPickRelease=true;endFontPick();MacApp68k app=owner;if(app!=null)app.fixGarbledText(hw.record,imageLen(e.getX()),imageLen(e.getY()));}return;} // the click "Fix Garbled Text…" waits for: never the program's
 				if(injectedMouse!=null&&!isInjected(e))injectedMouse=null; // a real press ends a debug-injected pointer position
 				mouseDown=true;Point p=warped(inWindow(hw,e));int mods=hostModifiers(e.getModifiersEx())&~0x80;if(SwingUtilities.isRightMouseButton(e))mods|=0x1000;
 				if(provisional==hw)provisionalClicked=true; // the OS raised this background window for the click: the program decides whether it comes forward
@@ -1766,7 +1771,7 @@ final class MacAppHost {
 					if(HOST_TRACE)System.err.println("[host] press on backdrop $"+Integer.toHexString(hw.record)+" behind the front window: held until the click is through");}
 				lastPressWindow=hw;lastPressPoint=p;lastPressNanos=System.nanoTime();
 				listener.postMouse(true,p.x,p.y,mods,e.getWhen());}
-			@Override public void mouseReleased(MouseEvent e){mouseDown=false;Point p=warped(inWindow(hw,e));listener.postMouse(false,p.x,p.y,hostModifiers(e.getModifiersEx())|0x80,e.getWhen());
+			@Override public void mouseReleased(MouseEvent e){if(fontPickRelease){fontPickRelease=false;return;}mouseDown=false;Point p=warped(inWindow(hw,e));listener.postMouse(false,p.x,p.y,hostModifiers(e.getModifiersEx())|0x80,e.getWhen());
 				if(provisional==hw&&provisionalClicked)settleProvisional();}
 			@Override public void mouseMoved(MouseEvent e){Point p=inWindow(hw,e);mouseGlobalH=p.x;mouseGlobalV=p.y;}
 			@Override public void mouseDragged(MouseEvent e){Point p=inWindow(hw,e);mouseGlobalH=p.x;mouseGlobalV=p.y;}
@@ -1823,6 +1828,7 @@ final class MacAppHost {
 		return new KeyAdapter(){
 			private boolean ownModifierTyping;
 			@Override public void keyPressed(KeyEvent e){
+				if(fontPick&&e.getKeyCode()==KeyEvent.VK_ESCAPE){endFontPick();e.consume();return;}
 				if(e.getKeyCode()==KeyEvent.VK_CONTROL&&controlKeysToProgram())suspendSystemHotKeys(true);
 				if(isOwnModifierKey(e)){ownModifierTyping=true;return;} // its character (keyTyped) is not typed either
 				ownModifierTyping=false;
@@ -1853,7 +1859,7 @@ final class MacAppHost {
 	private void installGeometryListeners(final HostWindow hw){
 		final Canvas canvas=hw.canvas;
 		hw.window.addComponentListener(new ComponentAdapter(){ // events of a window replaced by rebuildAsFrame carry its stale geometry
-			@Override public void componentMoved(ComponentEvent e){if(hw.ignoreMoves||canvas!=hw.canvas||!hw.window.isShowing()||screenMoving())return;
+			@Override public void componentMoved(ComponentEvent e){if(hw.ignoreMoves||canvas!=hw.canvas||!hw.window.isShowing()||screenMoving()||!hw.decorated&&userDragging(hw))return;
 				// macOS pulls a titled frame toward the display; a window the program parked far away stays there for the program
 				if(parkedFar(hw)){if(HOST_TRACE)System.err.println("[host] componentMoved $"+Integer.toHexString(hw.record)+" ignored: parked at "+hw.contentLeft+","+hw.contentTop);return;}
 				// shown where it already was (the host placed a displaced frame): the program's position stays
@@ -2360,6 +2366,9 @@ final class MacAppHost {
 		// windows behind, drawn while this one was still hidden, came back as its own pixels once a later write in the same
 		// device tile made them look new (Resorcerer's editors showed the file windows' borders in their margins)
 		if(!was)forgetDeviceWritesUnder(hw);
+		// nor are the screen writes before it a screen saver at work: Uninvited fills the whole screen with its desktop pattern
+		// and then shows its windows - counted as drawing round windows already up, it put the stale screen over them for good
+		if(!was)saverQuietSerial=Math.max(saverQuietSerial,memory.deviceSerial());
 		if(record==quietRaisedHidden){quietRaisedHidden=0;quietRaise=0;}
 		runOnEdt(new Runnable(){@Override public void run(){if(processHidden&&!hw.systemWindow)return; // shown while its program is hidden: it appears with the program
 			if(hw.window!=null&&!hw.window.isVisible()&&!outOfSight(hw)){updateMenuBarFor(hw);hw.ignoreMoves=true;setFocusable(hw,!hw.behindHyperCard&&!(hw.backdrop&&!isFrontmostVisible(hw)));hw.window.setVisible(true);placeWindow(hw);hw.ignoreMoves=false;if(!hw.behindHyperCard)hw.canvas.requestFocusInWindow();restack();}refreshDialogMenuBars();applyModalWindowState();updateStandIn();activateIfFrontmost(hw);}},false);
@@ -2367,7 +2376,11 @@ final class MacAppHost {
 	/** A titled window with no content to speak of (NewWindow with an empty rect gets a 1-pixel port) and its title bar above the
 	 *  screen's top or under the menu bar: nothing of it shows on a real Mac. AQUAZONE 1.5 opens such a "New Window" at 0,0; its
 	 *  native frame, moved onto the display, stood at the screen's corner with its own close button and took the keyboard. */
-	private boolean outOfSight(HostWindow hw){return hw.insisted&&offScreen(hw,hw.contentLeft,hw.contentTop)||hw.decorated&&!hw.backdrop&&(hw.width<=1||hw.height<=1)&&hw.contentTop<=MENU_BAR_HEIGHT;}
+	private boolean outOfSight(HostWindow hw){return hw.insisted&&offScreen(hw,hw.contentLeft,hw.contentTop)||hw.decorated&&!hw.backdrop&&(hw.width<=1||hw.height<=1)&&hw.contentTop<=MENU_BAR_HEIGHT||beforeScreen(hw);}
+	/** A titled window wholly left of or above the program's one screen, where no Mac had a display: out of sight as there (macOS
+	 *  would drag its native frame partly onto the display). Battle Planets 1.5 shows a 200x200 window with an "Encounter" button
+	 *  at -1000,-1000; its frame came onto the display at the top left. Bare windows parked off the display are left where they are. */
+	private static boolean beforeScreen(HostWindow hw){return hw.decorated&&!hw.backdrop&&(hw.contentLeft+hw.width<=0||hw.contentTop+hw.height<=0);}
 	/** Shows or hides the native frame of a visible window that came into or went out of sight (SizeWindow, MoveWindow); EDT only. */
 	private void syncOutOfSight(HostWindow hw){
 		if(hw.window==null||!hw.visible||(processHidden&&!hw.systemWindow))return;
@@ -2540,8 +2553,9 @@ final class MacAppHost {
 			MouseAdapter mouse=new MouseAdapter(){
 				private Point at(MouseEvent e){int[] f=screenFrameGeometry;return new Point((f==null?0:f[3])+virtualLen(e.getX()),(f==null?0:f[4])+virtualLen(e.getY()));}
 				@Override public void mousePressed(MouseEvent e){screenCanvas.requestFocusInWindow();if(!SwingUtilities.isLeftMouseButton(e)&&!SwingUtilities.isRightMouseButton(e))return;
+					if(fontPick){fontPickRelease=true;endFontPick();garbledTextNotFound();return;} // the whole-screen view has no window images to compare: "Fix Garbled Text…" works in windows
 					Point p=at(e);mouseDown=true;mouseGlobalH=p.x;mouseGlobalV=p.y;int mods=hostModifiers(e.getModifiersEx())&~0x80;if(SwingUtilities.isRightMouseButton(e))mods|=0x1000;listener.postMouse(true,p.x,p.y,mods,e.getWhen());}
-				@Override public void mouseReleased(MouseEvent e){Point p=at(e);mouseDown=false;mouseGlobalH=p.x;mouseGlobalV=p.y;listener.postMouse(false,p.x,p.y,hostModifiers(e.getModifiersEx())|0x80,e.getWhen());}
+				@Override public void mouseReleased(MouseEvent e){if(fontPickRelease){fontPickRelease=false;return;}Point p=at(e);mouseDown=false;mouseGlobalH=p.x;mouseGlobalV=p.y;listener.postMouse(false,p.x,p.y,hostModifiers(e.getModifiersEx())|0x80,e.getWhen());}
 				@Override public void mouseMoved(MouseEvent e){Point p=at(e);mouseGlobalH=p.x;mouseGlobalV=p.y;}
 				@Override public void mouseDragged(MouseEvent e){Point p=at(e);mouseGlobalH=p.x;mouseGlobalV=p.y;}
 			};
@@ -2620,6 +2634,10 @@ final class MacAppHost {
 	/** {@code byUser}: the user drags the window (DragWindow of a frame drawn in the window), see {@link HostWindow#userPlaced}. */
 	void moveWindow(final int record,final int left,final int top,boolean byUser){
 		final HostWindow hw=window(record);if(hw==null)return;hw.userPlaced=byUser;
+		// The frame the user drags is where the program now has the window: no displacement from before is added to it. A stale
+		// native move report had made JumpStart's 643x505 Kaleidoscope-framed window (wider than the 640x480 screen) displaced,
+		// and every further step of the drag added that displacement again - the window ran ahead of the pointer.
+		if(byUser){hw.dispX=hw.dispY=0;hw.userDragUntil=System.nanoTime()+SCREEN_MOVE_QUIET_NANOS;}
 		int[] kept=hw.keptFrom;hw.keptFrom=null;
 		hw.insisted=!byUser&&(hw.insisted&&left==hw.contentLeft&&top==hw.contentTop||kept!=null&&left==kept[0]&&top==kept[1]);
 		if((left!=hw.contentLeft||top!=hw.contentTop)&&hw.visible)adoptDeviceWrites(hw);
@@ -2857,8 +2875,9 @@ final class MacAppHost {
 		updateScreenBar();
 	}
 	private long saverWindowPrevious;
-	/** Device write serial when the mouse button was last seen down: screen writes before it are tracking outlines, not a saver. */
-	private long saverQuietSerial;
+	/** Device write serial when the mouse button was last seen down or a window was last shown: screen writes before it are
+	 *  tracking outlines or the screen made ready for the windows, not a saver. */
+	private volatile long saverQuietSerial;
 	/** The program painted the desktop behind its windows (PaintOne/PaintBehind): a screen saver waking up restores the screen so. */
 	private volatile boolean saverRestored;
 	void screenSaverRestored(){if(saverMode)saverRestored=true;}
@@ -2876,6 +2895,48 @@ final class MacAppHost {
 	void invalidateDisplays(){for(HostWindow hw:windowsFrontToBack())hw.display=null;}
 	void repaintNow(int record){final HostWindow hw=window(record);if(hw!=null&&hw.canvas!=null)runOnEdt(new Runnable(){@Override public void run(){try{refreshDisplay(hw);}catch(RuntimeException e){}hw.canvas.paintImmediately(0,0,hw.canvas.getWidth(),hw.canvas.getHeight());}},false);}
 
+	// ------------------------------------------------------------ Fix Garbled Text
+
+	/** "Fix Garbled Text…" waits for the click on the garbled text (its release is swallowed too), and then tries fonts there (MacApp68k.fixGarbledText). */
+	private volatile boolean fontPick,fontSearching;private boolean fontPickRelease;private javax.swing.JWindow fontPickHint;
+	/** "Fix Garbled Text…": the pointer becomes a cross and the next click in one of the program's windows names the place (Esc gives up). */
+	void pickGarbledText(){
+		runOnEdt(new Runnable(){@Override public void run(){
+			fontPick=true;applyCursor();
+			HostWindow front=frontWindow;if(front==null||front.canvas==null||!front.canvas.isShowing())return;
+			if(fontPickHint!=null)fontPickHint.dispose();
+			JLabel hint=new JLabel(International.t("Click the garbled text. (Esc cancels)"));
+			hint.setOpaque(true);hint.setBackground(new Color(0xffffe1));hint.setBorder(javax.swing.BorderFactory.createCompoundBorder(javax.swing.BorderFactory.createLineBorder(Color.GRAY),javax.swing.BorderFactory.createEmptyBorder(3,6,3,6)));
+			fontPickHint=new javax.swing.JWindow(front.window);fontPickHint.setFocusableWindowState(false);fontPickHint.getContentPane().add(hint);fontPickHint.pack();
+			Point at=front.canvas.getLocationOnScreen();fontPickHint.setLocation(at.x+8,at.y+8);fontPickHint.setVisible(true);}},false);
+	}
+	private void endFontPick(){fontPick=false;if(fontPickHint!=null){fontPickHint.dispose();fontPickHint=null;}applyCursor();}
+	/** The program's fonts are being tried: a busy pointer meanwhile. */
+	void fontSearching(boolean busy){fontSearching=busy;applyCursor();}
+	/** Pixels of the program's image from host (canvas) pixels: the zoom undone. */
+	private int imageLen(int host){return (int)((long)host*100/scPct);}
+	/** The window buffer's pixels (xRGB) in a rectangle of its image, clipped to it; null when it has none. */
+	int[] windowPixels(int record,int x,int y,int w,int h){
+		HostWindow hw=window(record);if(hw==null||hw.imageBase<=0)return null;
+		int left=Math.max(0,x),top=Math.max(0,y),right=Math.min(hw.imageWidth,x+w),bottom=Math.min(hw.imageHeight,y+h);
+		byte[] raw=memory.raw();if(right<=left||bottom<=top||hw.imageBase+(long)hw.imageRowBytes*bottom>raw.length)return null;
+		int[] clut=hw.imageDepth<=8?devicePalette(hw.imageDepth):null;int[] row=new int[hw.imageWidth],out=new int[(right-left)*(bottom-top)];
+		for(int r=top;r<bottom;r++){readPixels(raw,hw.imageBase+r*hw.imageRowBytes,hw.imageDepth,clut,hw.imageWidth,row);System.arraycopy(row,left,out,(r-top)*(right-left),right-left);}
+		return out;
+	}
+	/** "Fix Garbled Text…" found the font: what changed, and a way back. */
+	void garbledTextFixed(final String font,final String replacement,final Runnable undo){
+		runOnEdt(new Runnable(){@Override public void run(){
+			String ok=International.t("OK"),back=International.t("Undo the Change");
+			int choice=javax.swing.JOptionPane.showOptionDialog(ownerFrame(),International.t("Text in {0} is now shown in {1}.",font,replacement),International.t("Fix Garbled Text"),
+				javax.swing.JOptionPane.DEFAULT_OPTION,javax.swing.JOptionPane.INFORMATION_MESSAGE,null,new Object[]{ok,back},ok);
+			if(choice==1)undo.run();}},false);
+	}
+	void garbledTextNotFound(){
+		runOnEdt(new Runnable(){@Override public void run(){
+			javax.swing.JOptionPane.showMessageDialog(ownerFrame(),International.t("No text a font change fixes was found there. Click right on the garbled characters."),International.t("Fix Garbled Text"),javax.swing.JOptionPane.INFORMATION_MESSAGE);}},false);
+	}
+
 	// ------------------------------------------------------------ cursor
 
 	void setCursor(final Cursor c){cursor=c;cursorSetByProgram=true;applyCursor();}
@@ -2888,7 +2949,7 @@ final class MacAppHost {
 	private final java.util.concurrent.atomic.AtomicBoolean cursorPending=new java.util.concurrent.atomic.AtomicBoolean();
 	private void applyCursor(){
 		if(!cursorPending.compareAndSet(false,true))return;
-		runOnEdt(new Runnable(){@Override public void run(){cursorPending.set(false);Cursor effective=cursorHidden?blankCursor():cursor;
+		runOnEdt(new Runnable(){@Override public void run(){cursorPending.set(false);Cursor effective=fontSearching?Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR):fontPick?Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR):cursorHidden?blankCursor():cursor;
 			for(HostWindow hw:windowsFrontToBack())if(hw.canvas!=null&&hw.canvas.getCursor()!=effective)hw.canvas.setCursor(effective);
 			// an external's SetCursor/SetCCursor/HideCursor is HyperCard's cursor, over the card as `set cursor` (XTernal Collection's
 			// ColorCursor animation showed nothing: an external's VM often has no window of its own); HyperTalk's idle puts the browse
@@ -3036,7 +3097,7 @@ final class MacAppHost {
 	 *  step aside meanwhile, as the Mac's menu bar, which is only pixels on its screen, is overdrawn (EDT, each refresh). */
 	private boolean anyOverlayBar;
 	private void updateOverlayBars(){
-		if(!anyOverlayBar)return;byte[] raw=memory.raw();boolean shown=raw.length<0xbac||((raw[0xbaa]&0xff)<<8|(raw[0xbab]&0xff))!=0;
+		if(!anyOverlayBar)return;boolean shown;try{shown=memory.readWord(0xbaa)!=0;}catch(M68kCpuException e){shown=true;} // MBarHeight (this program's own low memory)
 		for(HostWindow hw:windowsFrontToBack())if(hw.overlayBar!=null&&hw.overlayBar.isVisible()!=shown){hw.overlayBar.setVisible(shown);if(hw.canvas!=null)hw.canvas.repaint();}
 	}
 	/** Puts a backdrop's overlaid menu bar over the menu-bar band of the screen (EDT). */
@@ -3264,6 +3325,11 @@ final class MacAppHost {
 		}
 		menu.add(mi=new JMenuItem(International.t("Application Settings…")));
 		mi.addActionListener(new ActionListener(){@Override public void actionPerformed(ActionEvent e){GAppSettingsDialog.show(ownerFrame(),app.file);}});
+		if(app.japaneseSystem()){ // Japanese text comes out garbled in a Roman font only on a Japanese System (HyperZebra's language, or the program's own System language)
+			menu.add(mi=new JMenuItem(International.t("Fix Garbled Text…")));
+			mi.setToolTipText(International.t("Click garbled text to show it in a Japanese font"));
+			mi.addActionListener(new ActionListener(){@Override public void actionPerformed(ActionEvent e){pickGarbledText();}});
+		}
 		if(VMTranslation.unavailableReason()==null){
 			menu.add(mi=new JMenuItem(International.t("Resource Translation…")));
 			mi.setToolTipText(International.t("Translates its menus and dialogs into a copy of its resources."));

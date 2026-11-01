@@ -74,6 +74,7 @@ final class QuitSequence {
 			}
 			for(MacApp68k app: MacApp68k.runningApplications()) if(!app.finished && app.service) quitService(app);
 			closeWindow();
+			TTalk.closeAllOpenFiles(); //files a script left open: cut at what was written, as close file does
 			exitAction.run();
 		}catch(RuntimeException e){
 			e.printStackTrace();

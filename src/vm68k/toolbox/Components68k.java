@@ -19,13 +19,25 @@ final class Components68k {
 	static final int REG_DO_AUTO_VERSION=1,REG_WANTS_UNREGISTER=2,REG_AUTO_VERSION_INCLUDE_FLAGS=4,REG_HAS_MULTIPLE_PLATFORMS=8,REG_LOAD_RESIDENT=16;
 	// standard selectors
 	static final int SEL_OPEN=-1,SEL_CLOSE=-2,SEL_CAN_DO=-3,SEL_VERSION=-4,SEL_REGISTER=-5,SEL_TARGET=-6,SEL_UNREGISTER=-7;
-	static final int PLATFORM_68K=1;
+	static final int PLATFORM_68K=1,PLATFORM_POWERPC=2;
+	/** uppComponentRoutineProcInfo: pascal long (ComponentParameters *, Handle). */
+	static final int COMPONENT_ROUTINE_PROC_INFO=0x3f0;
+	/**
+	 * Components with PowerPC code (the 'pwpc' entry of the thng's platform table: QuickTime 5/6's codecs, media handlers and
+	 * importers, the PowerPC halves of fat components) run it, as the Component Manager of a Power Macintosh chose it: the code
+	 * resource is prepared as a fragment and its main routine called natively - in the JIT-compiled PowerPC VM rather than the
+	 * 68K interpreter. -Dhz68k.ppccomponents=false keeps the 68K code of components that have both (PowerPC-only ones then
+	 * stay unregistered, as on a 68K Mac).
+	 */
+	static final boolean PPC_COMPONENTS=!"false".equals(System.getProperty("hz68k.ppccomponents"));
 
 	final class Component {
 		final int id;int type,subType,manufacturer,flags,flagsMask;
 		int entry; // start of the loaded code (0 until loaded)
 		int resFile;java.io.File file; // the resource file the code comes from
 		int codeType,codeId,codeHandle;
+		int thngId=Integer.MIN_VALUE; // the 'thng' resource's ID: its 'thnr' public resource map has the same one
+		boolean powerPC; // the code is a PowerPC fragment: entry is its main symbol, a routine descriptor (or a transition vector)
 		int nameType,nameId,infoType,infoId,iconType,iconId;
 		int name,info,icon; // Handles (RegisterComponent gives them directly; thng components load theirs on demand)
 		int version,registerFlags,refcon;
@@ -50,7 +62,7 @@ final class Components68k {
 	private final Map<Integer,Integer> records=new HashMap<Integer,Integer>(); // component/instance id -> internal record in guest memory (selectors $23/$25)
 	static final int CM_VERSION=8; // what QuickTime 4's own Component Manager patch reports (Gestalt 'cpnt', selector $19)
 
-	Components68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;if(!tb.guestQuickTime){movieController();GraphicsImporter68k.register(this,tb);PictureCompression68k.register(this,tb);DecompressSequence68k.registerBase(this);QuickTimeMusic68k.register(this,tb);}}
+	Components68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;if(!tb.guestQuickTime){movieController();GraphicsImporter68k.register(this,tb);PictureCompression68k.register(this,tb);DecompressSequence68k.registerBase(this);QuickTimeMusic68k.register(this,tb);MovieImport68k.register(this,tb);}}
 
 	/**
 	 * The Component Manager's own routines are pascal calls (Components.h): the caller reserves the result
@@ -74,7 +86,7 @@ final class Components68k {
 				return resultLong(cpu,found);} // FindNextComponent
 			case 0x05:{int icon=memory.readLong(sp),info=memory.readLong(sp+4),name=memory.readLong(sp+8),cd=memory.readLong(sp+12),c=memory.readLong(sp+16);cpu.a[7]+=20; // GetComponentInfo : OSErr
 				Component comp=componentOf(c);if(comp==null)return resultWord(cpu,INVALID_COMPONENT_ID);
-				if(cd!=0){memory.writeLong(cd,comp.type);memory.writeLong(cd+4,comp.subType);memory.writeLong(cd+8,comp.manufacturer);memory.writeLong(cd+12,comp.flags);memory.writeLong(cd+16,comp.flagsMask);}
+				if(cd!=0){memory.writeLong(cd,comp.type);memory.writeLong(cd+4,comp.subType);memory.writeLong(cd+8,comp.manufacturer);memory.writeLong(cd+12,comp.flags);memory.writeLong(cd+16,publicResourceKey(comp));}
 				if(name!=0)copyHandle(nameHandle(comp),name);if(info!=0)copyHandle(infoHandle(comp),info);if(icon!=0)copyHandle(iconHandle(comp),icon);return resultWord(cpu,0);}
 			case 0x06:return resultLong(cpu,modSeed); // GetComponentListModSeed
 			case 0x2c:cpu.a[7]+=4;return resultLong(cpu,modSeed); // GetComponentTypeModSeed
@@ -105,8 +117,12 @@ final class Components68k {
 				Component comp=componentOf(c);if(comp==null)return resultWord(cpu,INVALID_COMPONENT_ID);int h=resourceCopy(comp,resType,resId);if(handlePtr!=0)memory.writeLong(handlePtr,h);return resultWord(cpu,h==0?-192:0);}
 			case 0x36:{int index=(short)memory.readWord(sp),strListId=(short)memory.readWord(sp+2),string=memory.readLong(sp+4),c=memory.readLong(sp+8);cpu.a[7]+=12; // GetComponentIndString(component, Str255, strListID, index)
 				Component comp=componentOf(c);if(comp==null)return resultWord(cpu,INVALID_COMPONENT_ID);return resultWord(cpu,indString(comp,strListId,index,string)?0:-192);}
-			case 0x38:{int handlePtr=memory.readLong(sp),resId=(short)memory.readWord(sp+4),resType=memory.readLong(sp+6),c=memory.readLong(sp+10);cpu.a[7]+=14;if(handlePtr!=0)memory.writeLong(handlePtr,0);return resultWord(cpu,componentOf(c)==null?INVALID_COMPONENT_ID:-192);} // GetComponentPublicResource: none published
-			case 0x39:{cpu.a[7]+=10;return resultWord(cpu,-192);} // GetComponentPublicResourceList
+			case 0x38:{int handlePtr=memory.readLong(sp),resId=(short)memory.readWord(sp+4),resType=memory.readLong(sp+6),c=memory.readLong(sp+10);cpu.a[7]+=14; // GetComponentPublicResource(component, type, id, Handle*)
+				Component comp=componentOf(c);byte[] data=comp==null?null:publicResource(comp,resType,resId);
+				if(handlePtr!=0)memory.writeLong(handlePtr,data==null?0:tb.api.createHandle(data));
+				return resultWord(cpu,comp==null?INVALID_COMPONENT_ID:data==null?RES_NOT_FOUND:0);}
+			case 0x39:{int containerPtr=memory.readLong(sp),refCon=memory.readLong(sp+4),missingProc=memory.readLong(sp+8),cd=memory.readLong(sp+12),resId=(short)memory.readWord(sp+20),resType=memory.readLong(sp+22);cpu.a[7]+=26;
+				return resultWord(cpu,publicResourceList(resType,resId,cd,missingProc,refCon,containerPtr));} // GetComponentPublicResourceList
 			// Private selectors of the QuickTime-era Component Manager (Mac OS 8/9's, and the head patch QuickTime installs on
 			// older ones - 'ptch' -19071 of the extension is the reference for these):
 			case 0x19:return resultLong(cpu,CM_VERSION); // Component Manager version : long
@@ -185,6 +201,7 @@ final class Components68k {
 		byte[] b=tb.api.handleContents(thng);if(b==null)return null;
 		int ref=tb.resources.homeRefNumOf(thng);if(ref==0)ref=tb.resources.currentRefNum();
 		Component c=fromThng(b,ref);
+		if(c!=null)c.thngId=tb.resources.idOf(thng,Integer.MIN_VALUE);
 		return c!=null&&add(c)?c:null;
 	}
 	/** RegisterComponentResourceFile: every 'thng' of the file; returns how many were registered. */
@@ -193,6 +210,7 @@ final class Components68k {
 		for(ResourceFile68k.Resource r:new ArrayList<ResourceFile68k.Resource>(tb.resources.resourcesOfFile(ref,ResourceFile68k.fourcc("thng")))){
 			byte[] b;try{b=tb.resources.data(r);}catch(M68kCpuException e){continue;}
 			Component c=fromThng(b,ref);
+			if(c!=null)c.thngId=r.id;
 			if(c!=null&&add(c))n++;
 		}
 		// 'thga' component aliases (QuickTime™ Musical Instruments: an 'inst'/'gs8 ' alias of the base instrument component whose
@@ -206,7 +224,7 @@ final class Components68k {
 			Component c=new Component(nextComponent+=0x10);
 			c.type=u4(b,0);c.subType=u4(b,4);c.manufacturer=u4(b,8);c.flags=u4(b,12)|(target.flags&CMP_FAST_DISPATCH);c.flagsMask=u4(b,16); // the calling convention is the code's
 			c.nameType=u4(b,26);c.nameId=(short)u2(b,30);c.infoType=u4(b,32);c.infoId=(short)u2(b,36);c.iconType=u4(b,38);c.iconId=(short)u2(b,42);
-			c.codeType=target.codeType;c.codeId=target.codeId;c.version=target.version;c.registerFlags=target.registerFlags&~REG_DO_AUTO_VERSION;c.aliasOf=target;
+			c.codeType=target.codeType;c.codeId=target.codeId;c.powerPC=target.powerPC;c.version=target.version;c.registerFlags=target.registerFlags&~REG_DO_AUTO_VERSION;c.aliasOf=target;
 			c.resFile=ref;c.file=tb.resources.fileOf(ref);
 			if(add(c))n++;
 		}
@@ -223,10 +241,16 @@ final class Components68k {
 			c.version=u4(b,44);c.registerFlags=u4(b,48);
 			int count=u4(b,54);
 			if(count>0){ // a platform table (componentHasMultiplePlatforms may be set with an empty table: the basic code spec applies then, e.g. QuickTime's base graphics importer)
-				boolean found=false;
+				// the PowerPC entry only when its code is in the file: QuickTime 4's 68K edition lists PowerPC-only components whose
+				// code lives in a QuickTime PowerPlug it does not install (scom/Qclp's 'proc' -18927)
+				boolean powerPC=PPC_COMPONENTS&&tb.app!=null&&tb.seesPowerPC();
+				int pick=-1,ppc=-1;
 				for(int i=0;i<count&&58+i*12+12<=b.length;i++){int at=58+i*12;int platform=u2(b,at+10);
-					if(platform==PLATFORM_68K){c.flags=u4(b,at);c.codeType=u4(b,at+4);c.codeId=(short)u2(b,at+8);found=true;break;}}
-				if(!found)return null; // PowerPC-only component
+					if(platform==PLATFORM_POWERPC&&ppc<0)ppc=at;
+					if(platform==PLATFORM_68K&&pick<0)pick=at;}
+				if(powerPC&&ppc>=0&&tb.resources.inFile(ref,u4(b,ppc+4),(short)u2(b,ppc+8))!=null){pick=ppc;c.powerPC=true;}
+				if(pick<0)return null; // no code for this machine (a PowerPC-only component on the 68K Mac)
+				c.flags=u4(b,pick);c.codeType=u4(b,pick+4);c.codeId=(short)u2(b,pick+8);
 			}
 		}
 		if(c.codeType==0)return null;
@@ -269,7 +293,7 @@ final class Components68k {
 	// ------------------------------------------------------------------ code and resources of a component
 
 	/** Loads the component's code resource (once) and returns its entry point, 0 when it cannot be loaded. */
-	private int entry(Component c) throws M68kCpuException {
+	private int entry(Component c) throws M68kException {
 		if(c.entry!=0||!c.fromResource())return c.entry;
 		if(c.aliasOf!=null){c.entry=entry(c.aliasOf);return c.entry;}
 		int ref=ensureFileOpen(c);
@@ -279,6 +303,12 @@ final class Components68k {
 		tb.api.setHandleState(h,tb.api.handleState(h)|0x80);
 		tb.resources.pinHandle(h); // component code stays even if its file is closed
 		c.codeHandle=h;c.entry=memory.readLong(h);
+		if(c.powerPC){ // a PEF container: prepared in place, as GetMemFragment does for a code resource
+			PpcRuntime rt=tb.powerPcRuntime();
+			PpcRuntime.Fragment f=rt==null?null:rt.tryLoadMemoryFragment(c.entry,tb.api.handleSize(h),describe(c));
+			c.entry=f==null?0:f.instance.main();
+			if(c.entry==0){System.err.println("[68K "+tb.app.name+"] component "+describe(c)+": PowerPC code "+ResourceFile68k.typeName(c.codeType)+" "+c.codeId+" could not be prepared");return 0;}
+		}
 		if(Mac68kApi.TRACE)System.err.println("[68K] component "+describe(c)+" code "+ResourceFile68k.typeName(c.codeType)+" "+c.codeId+" at $"+Integer.toHexString(c.entry)+" size "+tb.api.handleSize(h));
 		return c.entry;
 	}
@@ -312,6 +342,88 @@ final class Components68k {
 		int at=2;for(int i=1;i<index;i++)at+=1+(b[at]&0xff);
 		int len=b[at]&0xff;if(string!=0)memory.load(string,java.util.Arrays.copyOfRange(b,at,at+1+len));
 		return true;
+	}
+
+	// ------------------------------------------------------------------ public resources
+
+	static final int RES_NOT_FOUND=-192,THNR=0x74686e72,COMP=0x636f6d70;
+	/**
+	 * What GetComponentInfo returns in componentFlagsMask: under a PowerPC QuickTime the component's own reference, the ID of
+	 * its atom in a public resource list (QuickTime 6's ICM looks a codec's 'ccha' up with QTFindChildByID('comp', that
+	 * value)); else the thng's mask, as before.
+	 */
+	private int publicResourceKey(Component c){return tb.guestPowerPcQuickTime?c.id:c.flagsMask;}
+	/**
+	 * A public resource of a component (QuickTime 5/6 codecs publish 'cpix', 'ccha', 'sent' ... so the ICM can plan pixel format
+	 * conversions): the 'thnr' map with the ID of its 'thng' - 16-byte entries {public type, public ID, 0, local type, local
+	 * ID, 0} - names the resource of the component's file that answers. Null when the component publishes none such.
+	 */
+	private byte[] publicResource(Component c,int type,int id) throws M68kCpuException {
+		if(c.aliasOf!=null&&c.thngId==Integer.MIN_VALUE)return publicResource(c.aliasOf,type,id);
+		if(c.thngId==Integer.MIN_VALUE||!c.fromResource())return null;
+		int ref=ensureFileOpen(c);if(ref<0)return null;
+		ResourceFile68k.Resource map=tb.resources.inFile(ref,THNR,c.thngId);if(map==null)return null;
+		byte[] m=tb.resources.data(map);
+		for(int at=0;at+16<=m.length;at+=16)if(u4(m,at)==type&&(short)u2(m,at+4)==id){
+			ResourceFile68k.Resource r=tb.resources.inFile(ref,u4(m,at+8),(short)u2(m,at+12));
+			return r==null?null:tb.resources.data(r);}
+		return null;
+	}
+	/**
+	 * GetComponentPublicResourceList: an atom container with a 'comp' atom per matching component that has the public resource
+	 * (ID: {@link #publicResourceKey}), holding it as a (type, ID) leaf. A component without one is offered to {@code missingProc}
+	 * (pascal OSErr (Component, OSType, short, void *refCon, Handle *)), which QuickTime's ICM uses to supply its own table
+	 * ('ccst') for codecs older than public resources. The container is built with the installed QuickTime's own atom calls, so
+	 * it is in the layout its QTFindChildByID reads.
+	 */
+	private int publicResourceList(int type,int id,int cd,int missingProc,int refCon,int containerPtr) throws M68kException {
+		if(containerPtr!=0)memory.writeLong(containerPtr,0);
+		if(!tb.guestQuickTime||containerPtr==0)return RES_NOT_FOUND;
+		int out=memory.allocate(8,4);
+		try{
+			int err=movieToolbox(0x20c,2,new int[]{out,4}); // QTNewAtomContainer
+			if(err!=0)return err;
+			int container=memory.readLong(out);
+			for(Component c:new ArrayList<Component>(components)){
+				if(c.capturedBy!=null||c.isNative()||!matches(c,cd))continue;
+				byte[] data=publicResource(c,type,id);
+				if(data==null&&missingProc!=0){
+					M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();int h=0;
+					try{memory.writeLong(out+4,0);
+						cpu.a[7]-=2;memory.writeWord(cpu.a[7],0);
+						cpu.pushLong(c.id);cpu.pushLong(type);cpu.a[7]-=2;memory.writeWord(cpu.a[7],id);cpu.pushLong(refCon);cpu.pushLong(out+4);
+						cpu.callPascal(missingProc,18);
+						h=memory.readWord(cpu.a[7])==0?memory.readLong(out+4):0;}
+					finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);}
+					if(h!=0){data=tb.api.handleContents(h);tb.api.disposeHandleAndFree(h);}
+				}
+				if(data==null)continue;
+				int block=memory.allocate(Math.max(4,data.length),4);
+				try{memory.load(block,data);
+					memory.writeLong(out+4,0);
+					err=movieToolbox(0x218,2,new int[]{container,4},new int[]{0,4},new int[]{COMP,4},new int[]{publicResourceKey(c),4},new int[]{0,2},new int[]{0,4},new int[]{0,4},new int[]{out+4,4}); // QTInsertChild: the component's atom
+					if(err==0)err=movieToolbox(0x218,2,new int[]{container,4},new int[]{memory.readLong(out+4),4},new int[]{type,4},new int[]{id,4},new int[]{0,2},new int[]{data.length,4},new int[]{block,4},new int[]{0,4});
+				}finally{memory.free(block);}
+				if(err!=0){movieToolbox(0x20d,2,new int[]{container,4});return err;}
+			}
+			memory.writeLong(containerPtr,container);
+			return 0;
+		}finally{memory.free(out);}
+	}
+	private int movieToolboxStub;
+	/** Calls the installed QuickTime's Movie Toolbox routine {@code selector} ($AAAA) with Pascal arguments ({value, size} in
+	 *  declaration order); returns its result of {@code resultSize} bytes. The trap runs from a stub as from the caller's code. */
+	private int movieToolbox(int selector,int resultSize,int[]... args) throws M68kException {
+		M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();
+		if(movieToolboxStub==0)movieToolboxStub=memory.allocate(12,4);
+		memory.writeWord(movieToolboxStub,0x303c);memory.writeWord(movieToolboxStub+2,selector);memory.writeWord(movieToolboxStub+4,0xaaaa); // MOVE.W #sel,D0; _MovieToolbox
+		memory.writeWord(movieToolboxStub+6,0x4ef9);memory.writeLong(movieToolboxStub+8,M68kCpu.RETURN_SENTINEL);                        // JMP sentinel
+		try{
+			cpu.a[7]-=resultSize<=2?2:4;memory.fill(cpu.a[7],resultSize<=2?2:4,0);int result=cpu.a[7];
+			int bytes=0;for(int[] arg:args){if(arg[1]==2){cpu.a[7]-=2;memory.writeWord(cpu.a[7],arg[0]);}else cpu.pushLong(arg[0]);bytes+=arg[1];}
+			cpu.runUntilSentinel(movieToolboxStub,bytes);
+			return resultSize<=2?(short)memory.readWord(result):memory.readLong(result);
+		}finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);}
 	}
 
 	// ------------------------------------------------------------------ instances
@@ -430,6 +542,11 @@ final class Components68k {
 		M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();
 		int result;
 		try{
+			// PowerPC code: pascal ComponentResult entry(ComponentParameters *params, Handle storage) - fast dispatch is a 68K
+			// convention. The fragment's main symbol is the routine descriptor a Power Mac's Component Manager calls (Apple's
+			// components export one, uppComponentRoutineProcInfo), or plain code's transition vector.
+			if(c.powerPC){PpcRuntime rt=tb.powerPcRuntime();int[] args={params,storage};
+				return rt.isRoutineDescriptor(c.entry)?rt.callUniversal(c.entry,COMPONENT_ROUTINE_PROC_INFO,args):rt.cpu.call(c.entry,args);}
 			if((c.flags&CMP_FAST_DISPATCH)!=0){
 				int paramSize=memory.readByte(params+1);
 				cpu.a[7]-=4;cpu.pushLong(storage);int storageSlot=cpu.a[7];

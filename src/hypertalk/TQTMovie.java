@@ -248,7 +248,7 @@ public class TQTMovie {
 			System.out.println(logPrefix+": MP3 audio prepared (decoded while it plays)");
 		}else if(asset.hasAudio()){
 			try {
-				AudioInputStream ais = asset.audioStream();
+				AudioInputStream ais = HostSampleRate.forHost(asset.audioStream()); // a plain rate: an 11127 Hz track broke the host's audio after a minute
 				Clip clip = AudioSystem.getClip();
 				clip.open(ais);
 				if(!automaticIdle){if(loop)clip.loop(Clip.LOOP_CONTINUOUSLY);else clip.start();}
@@ -820,7 +820,7 @@ public class TQTMovie {
 		}
 		//a stack file's (.hzb ZIP) working folder goes at quit and the cache is not carried in the file: kept beside the state
 		File packed = StackBundle.packedOf(hzbDir);
-		File dir = packed!=null ? new File(StackBundle.cacheFolder(packed, "Movie Cache"), movieFile.getName())
+		File dir = packed!=null ? new File(StackBundle.cacheFolder(packed, StackBundle.MOVIE_CACHE_KIND), movieFile.getName())
 			: new File(new File(hzbDir, "_qtmovie_cache"), movieFile.getName());
 		dir.mkdirs();
 		return dir.isDirectory() ? dir : null;

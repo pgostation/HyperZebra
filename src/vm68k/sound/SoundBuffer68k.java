@@ -38,7 +38,8 @@ final class SoundBuffer68k {
 	/** The high-pass filter's pole: about 20 Hz at 22200 Hz. */
 	private static final double POLE=1-2*Math.PI*20/RATE;
 
-	private final byte[] raw;private final int base;
+	/** The memory's bytes, fetched per use: a launch into this program's address space replaces them (M68kMemory.launchPartition). */
+	private final java.util.function.Supplier<byte[]> raw;private final int base;
 	private final boolean[] full=new boolean[WORDS];
 	private int reader;private boolean synced,fresh;
 	/** The last sample read, and how many reads in a row had that value. */
@@ -54,7 +55,9 @@ final class SoundBuffer68k {
 	/** The mixer to play through; null for a test that reads the FIFO itself. */
 	private final SoundMixer68k mixer;
 
-	SoundBuffer68k(byte[] raw,int base,SoundMixer68k mixer){this.raw=raw;this.base=base;this.mixer=mixer;}
+	SoundBuffer68k(M68kMemory memory,int base,SoundMixer68k mixer){this(memory::raw,base,mixer);}
+	SoundBuffer68k(byte[] raw,int base,SoundMixer68k mixer){this(()->raw,base,mixer);}
+	private SoundBuffer68k(java.util.function.Supplier<byte[]> raw,int base,SoundMixer68k mixer){this.raw=raw;this.base=base;this.mixer=mixer;}
 
 	/** VIA1 port B (bit 7 set = sound off) and port A (bits 0-2 = volume) as the program last wrote them. */
 	void setPorts(int portB,int portA){
@@ -74,7 +77,7 @@ final class SoundBuffer68k {
 		if(fresh){fresh=false;if(i==(reader==0?WORDS-1:reader-1))reader=i;}
 		full[i]=true;
 		while(full[reader]){
-			full[reader]=false;sample(raw[base+2*reader]&0xff);
+			full[reader]=false;sample(raw.get()[base+2*reader]&0xff);
 			reader=reader+1==WORDS?0:reader+1;
 		}
 	}

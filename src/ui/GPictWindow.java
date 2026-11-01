@@ -349,20 +349,38 @@ public class GPictWindow extends JDialog {
 	/** the buttonCount */
 	int paletteButtonCount(){ return paletteButtons.size(); }
 
-	/** クローズボックス/close window: ウインドウを捨ててclosePaletteを送る */
+	private boolean closingPalette, paletteClosed;
+
+	/** クローズボックス/close window: closePaletteを送ってからウインドウを捨てる。その handler の中ではパレットはまだある
+	 *  (HC 2.4 / J-2.3 probe Hcde Close Palette: there is a window x, its visible and topLeft - TimeCache 1.6 keeps the
+	 *  topLeft of window "sectNav" in its preferences there) */
 	void closePalette(){
-		OWindow window = OWindow.find(this);
-		dispose();
-		if(window!=null) OWindow.list.remove(window);
-		if(paletteWindow && PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null){
-			String id = Integer.toString(window==null ? 0 : window.id);
-			//close window from a script: the handler runs before the next statement, on the card current then (HyperTutor2's
-			//closeCard closes its Keyboard palette and closePalette hides a field of that card - queued, it ran on the next card)
-			if(Thread.currentThread()==TTalk.talk){
+		if(paletteWindow && TTalk.talk!=null && Thread.currentThread()!=TTalk.talk){
+			//the close box: the handler runs on the script thread, the window still there
+			TTalk.runOnScriptThread(this::closePaletteNow, true);
+			return;
+		}
+		closePaletteNow();
+	}
+
+	private void closePaletteNow(){
+		if(closingPalette || paletteClosed) return; //close window x again in its own closePalette, or a second click on the close box
+		boolean message = paletteWindow && PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null;
+		closingPalette = true;
+		try{
+			OWindow window = OWindow.find(this);
+			if(message){
+				String id = Integer.toString(window==null ? 0 : window.id);
+				//close window from a script: the handler runs before the next statement, on the card current then (HyperTutor2's
+				//closeCard closes its Keyboard palette and closePalette hides a field of that card - queued, it ran on the next card)
 				try{ TTalk.runExternalStatement("closePalette "+TTalk.quoteLiteral(name)+","+id, PCARD.pc.stack.curCard); }
 				catch(xTalkException e){ System.out.println("closePalette: "+e.getMessage()); }
 			}
-			else TTalk.CallMessage("closePalette", new String[]{name, id}, PCARD.pc.stack.curCard);
+			paletteClosed = true;
+			dispose();
+			if(window!=null) OWindow.list.remove(window);
+		}finally{
+			closingPalette = false;
 		}
 	}
 

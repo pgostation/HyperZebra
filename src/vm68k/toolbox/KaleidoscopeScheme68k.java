@@ -120,8 +120,11 @@ final class KaleidoscopeScheme68k {
 
 	private static KaleidoscopeScheme68k cached;private static String cachedKey="";private static long checkedAt;private static File cachedSystemFolder,cachedPanel;
 
+	/** Tests: the scheme in use whatever the System Folder holds (null: the one Kaleidoscope would use). */
+	static volatile KaleidoscopeScheme68k testScheme;
 	/** The scheme Kaleidoscope would use in this System Folder, or null (not installed, none chosen, turned off). */
 	static KaleidoscopeScheme68k active(Toolbox68k tb){
+		if(testScheme!=null)return testScheme;
 		if(!ENABLED||tb==null||tb.files==null)return null;
 		File system=tb.files.systemFolder;if(system==null)return null;
 		// a black-and-white screen (a compact-Mac program's 1-bit screen) keeps the standard look: the scheme's colour pieces
@@ -718,7 +721,9 @@ final class KaleidoscopeScheme68k {
 		Img img=element(base+state,false);if(img==null)img=element(base+1,false);
 		Img icon=img==null?oldIndicator(radio,value,state):null;if(img==null&&icon==null)return false;
 		prepare(g);
-		if(background!=null){g.setColor(background);g.fillRect(left-1,top,right-left+1,bottom-top);}
+		// without a title only the box's part (as ControlManager68k.drawCheckOrRadio): ApplicationMenu 4.0's check boxes are
+		// title-less and as wide as the static texts drawn in them before the controls - the labels vanished under the erase
+		if(background!=null){g.setColor(background);g.fillRect(left-1,top,title==null||title.isEmpty()?Math.min(right-left+1,18):right-left+1,bottom-top);}
 		if(icon!=null)blit(g,icon,0,0,icon.w,icon.h,left-1,top+Math.floorDiv(bottom-top-12,2),icon.w,icon.h);
 		else{int x=left+(17-img.w)/2,y=top+Math.floorDiv(bottom-top-img.h,2);blit(g,img,0,0,img.w,img.h,x,y,img.w,img.h);}
 		if(title!=null&&!title.isEmpty()){ // a disabled title is grey text over the background: half its colour

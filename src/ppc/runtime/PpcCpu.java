@@ -14,6 +14,9 @@
  *
  * Primary opcode 1, unused by the architecture, is the host gate: {@code 0x04000000|n} calls native routine n (a shared
  * library function implemented in Java) and continues at LR, like a leaf function that ends with blr.
+ *
+ * With {@link #useJit} on, code that runs often is compiled ({@link PpcJit}) and the interpreter runs the rest; the two
+ * compute the same results and can be switched at any scheduler poll.
  */
 final class PpcCpu {
 	/** The address a call from Java returns to (set as LR); reaching it ends {@link #call}. Never a valid code address. */
@@ -36,7 +39,16 @@ final class PpcCpu {
 	private final Natives natives;
 	private Scheduler scheduler;
 	private int nesting;
-	private boolean reservation;
+	/** The lwarx reservation (compiled code reads and clears it too). */
+	boolean reservation;
+	/** The JIT compiler of this address space, while compiled code runs (null: every instruction is interpreted). */
+	PpcJit jit;
+	/** For compiled code: the instructions a region may run before it must return for the next scheduler poll (PpcJit). */
+	int jitStop;
+	/** The indirect branch (bclr, bcctr) by which compiled code last left its region. */
+	int jitBranch;
+	/** The region running now and its thread (PpcJit: a store of its own that changes its code stops it). */
+	PpcJit.Code jitRunning;Thread jitThread;
 	private static final int POLL_INTERVAL=4096;
 	/** Ring buffer of recent instruction addresses for crash dumps (-Dhzppc.pchistory=n, a power of two). */
 	private static final int PC_HISTORY=Integer.getInteger("hzppc.pchistory",256);
@@ -61,8 +73,12 @@ final class PpcCpu {
 	static final long TIME_BASE_HZ=25_000_000L;
 
 	PpcCpu(M68kMemory memory,Natives natives){this.memory=memory;this.natives=natives;}
-	/** Debug (pctrace): the non-zero registers r13-r30. */
-	private String highRegisters(){StringBuilder b=new StringBuilder();for(int i=13;i<31;i++)if(r[i]!=0)b.append(String.format(" r%d=%08X",i,r[i]));return b.toString();}
+	/** Debug aid: -Dhzppc.pctracefp=true adds the non-zero FPRs (as doubles) to every pctrace line. */
+	private static final boolean TRACE_FP=Boolean.getBoolean("hzppc.pctracefp");
+	/** Debug (pctrace): the non-zero registers r13-r30 (and f0-f31 with hzppc.pctracefp). */
+	private String highRegisters(){StringBuilder b=new StringBuilder();for(int i=13;i<31;i++)if(r[i]!=0)b.append(String.format(" r%d=%08X",i,r[i]));
+		if(TRACE_FP)for(int i=0;i<32;i++)if(f[i]!=0)b.append(" f").append(i).append('=').append(Double.longBitsToDouble(f[i]));
+		return b.toString();}
 	/** Debug: lr plus the saved LRs along the stack back chain (pctrace prints it at the range's first address). */
 	String backChain(){
 		StringBuilder sb=new StringBuilder(String.format("%08X",lr));int sp=r[1];
@@ -156,6 +172,7 @@ final class PpcCpu {
 	 * instead of 300 for the rest of its life.
 	 */
 	private boolean execute() throws M68kException {
+		if(jit!=null&&!CALL_TRACE)return executeJit();
 		for(;;){
 			if(pc==RETURN_SENTINEL)return true;
 			int at=pc;
@@ -173,6 +190,69 @@ final class PpcCpu {
 			if(CALL_TRACE&&lr==at+4&&pc!=at+4&&(op>>>26==18||op>>>26==16||op>>>26==19))traceCall(at);
 			if(WATCH){if(at==WATCH_AT_PC)M68kCpu.WATCH=r[WATCH_AT_REG]+WATCH_AT_OFFSET;checkWatch(at);}
 			if((++instructions&(POLL_INTERVAL-1))==0){if(scheduler!=null)scheduler.poll(this);return false;}
+		}
+	}
+
+	/** Turns the JIT on or off (at the next scheduler poll); the debug traces keep the interpreter. */
+	void useJit(boolean on){
+		if(on&&(TRACE_RANGES.length>0||WATCH)){if(!jitBlockedTold){jitBlockedTold=true;System.err.println("[ppc] JIT off while -Dhzppc.pctrace / -Dhz68k.watch trace instructions");}on=false;}
+		if(!on&&jit!=null)jit.dropAll(); // the interpreter only from now on: the compiled classes can go
+		jit=on?PpcJit.attach(memory,this):null;
+	}
+	private static boolean jitBlockedTold;
+
+	/**
+	 * {@link #execute} with the JIT: compiled regions run where they exist, the rest is interpreted up to its next control
+	 * transfer (where a region may start). A region returns when it reaches the next poll, so the poll keeps its pace.
+	 */
+	private boolean executeJit() throws M68kException {
+		PpcJit j=jit;
+		int[] keys=j.cacheKey;PpcJit.Code[] codes=j.cacheCode;
+		for(;;){
+			int at=pc;
+			if(at==RETURN_SENTINEL)return true;
+			int slot=(at>>>2)&PpcJit.CACHE_MASK;
+			PpcJit.Code code=keys[slot]==at?codes[slot]:j.lookup(at);
+			if(code!=null&&code!=PpcJit.NONE){
+				long before=instructions;
+				jitStop=POLL_INTERVAL-(int)(before&(POLL_INTERVAL-1));
+				pcHistory[pcHistoryPos++&(PC_HISTORY-1)]=at;
+				jitRunning=code;jitThread=Thread.currentThread();
+				int n;
+				try{n=code.run(this);}finally{jitRunning=null;}
+				if(pc==0||(pc&3)!=0)pcHistory[pcHistoryPos++&(PC_HISTORY-1)]=jitBranch; // what glueCallee looks behind
+				if(n>=0){
+					instructions=before+n;
+					if(((before^instructions)&-POLL_INTERVAL)!=0){if(scheduler!=null)scheduler.poll(this);return false;}
+					continue;
+				}
+				if(n<-1){ // stopped before an instruction the interpreter runs (a failed access: it fails again, for real)
+					instructions=before+(-2-n);
+					boolean due=((before^instructions)&-POLL_INTERVAL)!=0;
+					if(interpretBlock())return false;
+					if(due){if(scheduler!=null)scheduler.poll(this);return false;}
+					continue;
+				}
+			}
+			if(interpretBlock())return false;
+		}
+	}
+	/** Interprets from pc up to the next control transfer (JIT mode, code without a region); true when a scheduler poll was made. */
+	private boolean interpretBlock() throws M68kException {
+		for(;;){
+			int at=pc;
+			if(at==RETURN_SENTINEL)return false;
+			if((at&3)!=0||at==0)throw new M68kCpuException(at,at==0?"PowerPC code jumped to address 0 ("+glueCallee("a NIL function pointer or an unresolved import")+")":"PowerPC code jumped to an unaligned address"+glueCallee(""));
+			byte[] m=memory.raw();int p=memory.physical(at);
+			if(p>m.length-4)throw new M68kCpuException(at,"PowerPC code outside the address space");
+			int op=(m[p]&0xff)<<24|(m[p+1]&0xff)<<16|(m[p+2]&0xff)<<8|m[p+3]&0xff;
+			pcHistory[pcHistoryPos++&(PC_HISTORY-1)]=at;
+			pc=at+4;
+			try{step(op,at);}
+			catch(IllegalInstruction e){if(e.level!=nesting||e.pc!=at||!deliverException(ILLEGAL_INSTRUCTION_EXCEPTION,at,0))throw e;}
+			catch(ProtectionFault e){if(e.level!=nesting||!deliverException(READ_ONLY_MEMORY_EXCEPTION,at,e.address))throw e;}
+			if((++instructions&(POLL_INTERVAL-1))==0){if(scheduler!=null)scheduler.poll(this);return true;}
+			if(pc!=at+4)return false;
 		}
 	}
 
@@ -457,7 +537,7 @@ final class PpcCpu {
 	}
 
 	private int mq; // POWER MQ register (601)
-	private int mfspr(int spr){
+	int mfspr(int spr){
 		switch(spr){
 			case 1:return xer;
 			case 8:return lr;
@@ -475,14 +555,18 @@ final class PpcCpu {
 		switch(spr){case 0:mq=v;break;case 1:xer=v;break;case 8:lr=v;break;case 9:ctr=v;break;default:break;}
 	}
 	private long timeBase(){long ns=System.nanoTime()-timeBaseOrigin;return ns/1000*(TIME_BASE_HZ/1_000_000);}
+	/** mftb (compiled code): the time base's lower (268) or upper (269) word. */
+	int mftb(int tbr){long tb=timeBase();return tbr==269?(int)(tb>>>32):(int)tb;}
+	/** dcbz (compiled code): clears the 32-byte block holding {@code ea}. */
+	void dcbz(int ea) throws M68kCpuException {ea&=~31;for(int i=0;i<32;i+=4)store32(ea+i,0);}
 
 	// ------------------------------------------------------------------ floating point
 
-	private long readDouble(int ea) throws M68kCpuException {return ((long)memory.readLong(ea)<<32)|(memory.readLong(ea+4)&0xffffffffL);}
-	private void writeDouble(int ea,long bits) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,8);memory.writeLong(ea,(int)(bits>>>32));memory.writeLong(ea+4,(int)bits);}
-	private void store32(int ea,int v) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,4);memory.writeLong(ea,v);}
-	private void store16(int ea,int v) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,2);memory.writeWord(ea,v);}
-	private void store8(int ea,int v) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,1);memory.writeByte(ea,v);}
+	long readDouble(int ea) throws M68kCpuException {return ((long)memory.readLong(ea)<<32)|(memory.readLong(ea+4)&0xffffffffL);}
+	void writeDouble(int ea,long bits) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,8);memory.writeLong(ea,(int)(bits>>>32));memory.writeLong(ea+4,(int)bits);}
+	void store32(int ea,int v) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,4);memory.writeLong(ea,v);}
+	void store16(int ea,int v) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,2);memory.writeWord(ea,v);}
+	void store8(int ea,int v) throws M68kCpuException {if(memory.protectedPageCount!=0)checkStore(ea,1);memory.writeByte(ea,v);}
 	/** A store into a page the program protected faults when it has an exception handler to take it (else the page is written). */
 	private void checkStore(int ea,int n) throws M68kCpuException {if(exceptionHandler!=0&&memory.writeProtected(ea,n))throw new ProtectionFault(ea,nesting);}
 	/** A store into a protected page: a readOnlyMemoryException for the program's handler (see {@link #deliverException}). */
@@ -565,7 +649,7 @@ final class PpcCpu {
 		}
 	}
 	/** fctiw: rounds by {@code mode} (0 nearest, 1 toward zero, 2 up, 3 down) and saturates; NaN gives 0x80000000. */
-	private static int toInt(double v,int mode){
+	static int toInt(double v,int mode){
 		if(Double.isNaN(v))return Integer.MIN_VALUE;
 		double t=mode==0?Math.rint(v):mode==1?(v<0?Math.ceil(v):Math.floor(v)):mode==2?Math.ceil(v):Math.floor(v);
 		if(t>=2147483647.0)return Integer.MAX_VALUE;if(t<=-2147483648.0)return Integer.MIN_VALUE;

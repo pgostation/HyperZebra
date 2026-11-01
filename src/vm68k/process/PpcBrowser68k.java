@@ -38,8 +38,8 @@ final class PpcBrowser68k {
 			if(location!=0){ // LocationNameRec: ppcNBPLocation, this machine by its name in this zone
 				memory.fill(location,2+3*34,0);memory.writeWord(location,1);
 				tb.writePascal(location+2,Toolbox68k.COMPUTER_NAME,32);
-				tb.writePascal(location+2+33,nbpType!=0&&memory.readByte(nbpType)>0?tb.readPascal(nbpType):"PPCToolBox",32);
-				tb.writePascal(location+2+66,"*",32);
+				tb.writePascal(location+2+34,nbpType!=0&&memory.readByte(nbpType)>0?tb.readPascal(nbpType):"PPCToolBox",32);
+				tb.writePascal(location+2+68,"*",32); // Str32Field = 34 bytes (PPCList 1.1 read the zone at +68)
 			}
 			result=0;
 		}

@@ -65,12 +65,18 @@ final class AdbManager68k {
 	 * a Talk completes with an empty packet, Listen/Flush/Reset with the buffer as given, and the completion routine (when
 	 * there is one) runs at once with the usual registers.
 	 */
+	/** Register 2 contents a Listen gave each device (by ADB address). */
+	private final java.util.Map<Integer,byte[]> register2=new java.util.HashMap<Integer,byte[]>();
 	private boolean adbOp(M68kCpu cpu) throws M68kCpuException {
 		int block=cpu.a[0],command=cpu.d[0]&0xff;
 		int buffer=memory.readLong(block),completion=memory.readLong(block+4),dataArea=memory.readLong(block+8);
 		if(Mac68kApi.TRACE)System.err.printf("[68K] ADBOp command $%02X buffer $%08X completion $%08X%n",command,buffer,completion);
 		if(deviceAt(command>>4)==null){cpu.d[0]=-1;return true;}
-		if((command&0x0c)==TALK_REGISTER_0&&buffer!=0)memory.writeByte(buffer,0);
+		// register 2 of the extended keyboard holds its LED bits (0-2, active low): what a Listen wrote is answered by the next
+		// Talk (ADB Lights: SetLights 5 then Lights() read 255 back); the host's own LEDs do not change
+		if((command&0x0f)==0x0a&&buffer!=0){int n=Math.min(8,memory.readByte(buffer));byte[] r=new byte[n];for(int i=0;i<n;i++)r[i]=(byte)memory.readByte(buffer+1+i);register2.put(command>>4,r);}
+		else if((command&0x0f)==0x0e&&buffer!=0&&(command>>4)==2){byte[] r=register2.getOrDefault(2,new byte[]{(byte)0xff,(byte)0xff});memory.writeByte(buffer,r.length);for(int i=0;i<r.length;i++)memory.writeByte(buffer+1+i,r[i]&0xff);}
+		else if((command&0x0c)==TALK_REGISTER_0&&buffer!=0)memory.writeByte(buffer,0);
 		if(completion!=0){
 			final int routine=completion;
 			tb.later(new Runnable(){@Override public void run(){try{callService(routine,buffer,dataArea,command);}catch(M68kException e){throw Toolbox68k.wrap(e);}}});

@@ -68,7 +68,7 @@ final class DisplayManager68k {
 
 	// layout of the scratch block handed to the iterator. The switch infos and VPBlocks (42 bytes, packed) are contiguous arrays as the
 	// real Display Manager builds them: RezLib reads only the first DMDepthInfoRec and indexes its two pointers by depth.
-	private static final int ENTRY=0,SWITCH=32,RESOLUTION=48,TIMING=80,DEPTH_BLOCK=100,DEPTH_RECS=120,DEPTH_SWITCH=180,VP_BLOCKS=228,VP_SIZE=42,SCRATCH=364;
+	private static final int ENTRY=0,SWITCH=32,RESOLUTION=48,TIMING=80,DEPTH_BLOCK=100,DEPTH_RECS=120,DEPTH_SWITCH=180,VP_BLOCKS=228,VP_SIZE=42,NAME=364,DISPLAY_INFO=396,SCRATCH=480;
 
 	/** The entry blocks built for each list (list token -> mode index -> block); they stay until the list is disposed: the pointers in an entry point into its block. */
 	private final java.util.Map<Integer,java.util.Map<Integer,Integer>> entries=new java.util.HashMap<Integer,java.util.Map<Integer,Integer>>();
@@ -117,7 +117,13 @@ final class DisplayManager68k {
 		}
 		// DMDisplayModeListEntryRec (Displays.h): flags, switch info, resolution info, timing info, depth block, version one, name, display info
 		memory.writeLong(p+ENTRY,0);memory.writeLong(p+ENTRY+4,p+SWITCH);memory.writeLong(p+ENTRY+8,p+RESOLUTION);memory.writeLong(p+ENTRY+12,p+TIMING);
-		memory.writeLong(p+ENTRY+16,p+DEPTH_BLOCK);memory.writeLong(p+ENTRY+20,1);memory.writeLong(p+ENTRY+24,0);memory.writeLong(p+ENTRY+28,0);
+		// the mode's name ("640 x 480"), as the Display Manager names the modes it lists: Ferazel's Wand copies it with a routine
+		// that asserts on NIL and quit at its first mode; and the version one DMDisplayTimingInfoRec (version, attributes, relative
+		// quality, relative default, 16 reserved longs), zeroed
+		byte[] name=(size[0]+" x "+size[1]).getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+		memory.writeByte(p+NAME,name.length);for(int i=0;i<name.length;i++)memory.writeByte(p+NAME+1+i,name[i]);
+		memory.fill(p+DISPLAY_INFO,SCRATCH-DISPLAY_INFO,0);
+		memory.writeLong(p+ENTRY+16,p+DEPTH_BLOCK);memory.writeLong(p+ENTRY+20,1);memory.writeLong(p+ENTRY+24,p+NAME);memory.writeLong(p+ENTRY+28,p+DISPLAY_INFO);
 		return p;
 	}
 	private void writeSwitch(int p,int mode,int id) throws M68kCpuException {

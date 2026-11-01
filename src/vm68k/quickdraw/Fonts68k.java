@@ -71,6 +71,114 @@ final class Fonts68k {
 	static volatile boolean scaleDisabled;
 	private Fonts68k(){}
 
+	/**
+	 * A program's own font substitutions (LauncherStore.AppSettings.fontSubstitutions), as the Font Patchin' control panel made
+	 * them on a real Mac: text the program sets in one family is drawn and measured in another. The English iTunes 2 draws its
+	 * song list in its own Lucida Grande ('FOND' 1024 + 'sfnt'), a Roman font, so the Shift-JIS titles it makes from Unicode
+	 * tags came out one Roman glyph per byte ("ç˘ÇÃâÃ" for 桜の歌); with Lucida Grande → Osaka they read. The program still sees
+	 * its own font number (the port's txFont, GetFontName); FontScript and FontToScript answer the replacement's script.
+	 * Families by name, any case; the font number 0, 1 or 3 of a Japanese System is also Osaka (what it draws). The replacement
+	 * {@link #AUTOMATIC} is the Japanese family that suits the original ({@link #automaticReplacement}).
+	 * <p>It also records the fonts the program draws text in ({@link #noteDrawn}): users know where the garbled text is, not
+	 * its font's name, so "Fix Garbled Text…" (MacApp68k.fixGarbledText) tries these where they clicked.
+	 */
+	static final class Substitution {
+		private volatile Map<String,String> byName=java.util.Collections.emptyMap();
+		private volatile java.util.List<String> pairs=java.util.Collections.emptyList();
+		private volatile boolean japanese;
+		/** font number -> the number drawn instead (itself when not substituted), for the families named so far; a new map with
+		 *  every {@link #set} (a resolution under way meanwhile lands in the old one) */
+		private volatile Map<Integer,Integer> resolved=new java.util.concurrent.ConcurrentHashMap<Integer,Integer>();
+		/** The pairs as the launcher keeps them ("original\treplacement"); the program's System script for 0/1/3. Takes effect at once. */
+		void set(java.util.List<String> pairs,boolean japaneseSystem){
+			Map<String,String> map=new HashMap<String,String>();java.util.List<String> kept=new java.util.ArrayList<String>();
+			if(pairs!=null)for(String p:pairs){int tab=p.indexOf('\t');if(tab>0&&tab<p.length()-1){map.put(p.substring(0,tab).toLowerCase(),p.substring(tab+1));kept.add(p);}}
+			byName=map;this.pairs=java.util.Collections.unmodifiableList(kept);japanese=japaneseSystem;resolved=new java.util.concurrent.ConcurrentHashMap<Integer,Integer>();
+		}
+		/** The pairs in effect, as {@link #set} took them. */
+		java.util.List<String> pairs(){return pairs;}
+		boolean japaneseSystem(){return japanese;}
+		boolean isEmpty(){return byName.isEmpty();}
+		int apply(int id){
+			Map<Integer,Integer> cache=resolved;Map<String,String> names=byName; // in this order: set() replaces byName first
+			if(names.isEmpty())return id;
+			Integer known=cache.get(id);if(known!=null)return known;
+			String name=nameOf(id);
+			String target=names.get(name.toLowerCase());
+			if(target==null&&japanese&&(id==0||id==1||id==3))target=names.get(NAMES.get(JAPANESE_SYSTEM_FONT).toLowerCase());
+			int to=id;
+			if(AUTOMATIC.equals(target))to=automaticReplacement(id);
+			else if(target!=null){int n=numberOf(target);if(n!=0||target.equalsIgnoreCase(NAMES.get(0)))to=n;}
+			if(!name.isEmpty())cache.put(id,to); // an unnamed number may become a family later (a document's fonts): asked again
+			return to;
+		}
+
+		/** A font the program drew text in: its number as the program asked for it, its name then, how often, and how often the text looked garbled. */
+		static final class Drawn {
+			final int id;final String name;volatile int count,garbled;volatile long last;
+			Drawn(int id,String name){this.id=id;this.name=name;}
+		}
+		private final Map<Integer,Drawn> drawn=new java.util.concurrent.ConcurrentHashMap<Integer,Drawn>();
+		/**
+		 * The program drew {@code text} asking for font {@code id}, drawn in {@code font}. Text "looks garbled" when a Japanese
+		 * System's Shift-JIS pairs went to a strike of a Roman family: its glyphs show each byte as a Roman character (a host font
+		 * stand-in reads the pairs as Japanese anyway, see Toolbox68k.decodeFor).
+		 */
+		void noteDrawn(int id,byte[] text,Font font){
+			if(text.length==0)return;
+			Drawn d=drawn.get(id);
+			if(d==null){String name=nameOfDrawn(id);if(name.isEmpty())return;d=drawn.computeIfAbsent(id,k->new Drawn(k,name));}
+			d.count++;d.last=System.nanoTime();
+			if(japanese&&font instanceof BitmapFont68k&&romanScriptNumber(((BitmapFont68k)font).family)&&hasShiftJisPair(text))d.garbled++;
+		}
+		private String nameOfDrawn(int id){return japanese&&(id==0||id==1||id==3)?NAMES.get(JAPANESE_SYSTEM_FONT):nameOf(id);}
+		/**
+		 * The fonts to try for text at a place the user pointed at, most likely first: those whose text looked garbled, then the
+		 * most used; not those already substituted, nor (on a Japanese System) its own Japanese families.
+		 */
+		java.util.List<Drawn> candidates(){
+			java.util.List<Drawn> list=new java.util.ArrayList<Drawn>();
+			for(Drawn d:drawn.values()){
+				if(apply(d.id)!=d.id)continue;
+				if(japanese&&(d.id==0||d.id==1||d.id==3||d.id>=JAPANESE_SYSTEM_FONT&&d.id<JAPANESE_SYSTEM_FONT+512))continue;
+				list.add(d);
+			}
+			list.sort((a,b)->a.garbled!=b.garbled?Integer.compare(b.garbled,a.garbled):a.count!=b.count?Integer.compare(b.count,a.count):Long.compare(b.last,a.last));
+			return list;
+		}
+		/** Every font the program drew text in, most used first (the launcher's Fonts tab lists them first). */
+		java.util.List<Drawn> drawnFonts(){
+			java.util.List<Drawn> list=new java.util.ArrayList<Drawn>(drawn.values());
+			list.sort((a,b)->Integer.compare(b.count,a.count));
+			return list;
+		}
+	}
+	/** A replacement chosen for the original: a Japanese family like it ({@link #automaticReplacement}). Kept as such in the settings. */
+	static final String AUTOMATIC="*";
+	/**
+	 * The Japanese family to show a family's text in when the user does not choose one: Osaka−等幅 for a monospaced family (its
+	 * columns stay), 本明朝−Ｍ for a serif one, else Osaka - what the Japanese System itself uses.
+	 */
+	static int automaticReplacement(int id){
+		String name=nameOf(id).toLowerCase();
+		if(id==4||id==22||name.contains("mono")||name.contains("courier")||name.contains("monaco")||name.contains("\u7b49\u5e45"))return 16436;
+		if(id==2||id==20||id==16||id==14||id==34||name.contains("times")||name.contains("serif")&&!name.contains("sans")||name.contains("new york")||name.contains("palatino")||name.contains("century")||name.contains("garamond")||name.contains("georgia")||name.contains("mincho")||name.contains("\u660e\u671d"))return 16385;
+		return JAPANESE_SYSTEM_FONT;
+	}
+	/** Whether the bytes hold a complete Shift-JIS two-byte character (a lead $81-$9F/$E0-$FC and a trail $40-$7E/$80-$FC). */
+	static boolean hasShiftJisPair(byte[] text){
+		for(int i=0;i+1<text.length;i++){int c=text[i]&255,t=text[i+1]&255;
+			if((c>=0x81&&c<=0x9f||c>=0xe0&&c<=0xfc)&&(t>=0x40&&t<=0x7e||t>=0x80&&t<=0xfc))return true;}
+		return false;
+	}
+	/** The substitutions of the program whose thread asks (MacApp68k.run sets them; Thread Manager threads it starts inherit them). */
+	private static final InheritableThreadLocal<Substitution> substitution=new InheritableThreadLocal<Substitution>();
+	static void useSubstitution(Substitution s){if(s==null)substitution.remove();else substitution.set(s);}
+	/** The font number the running program's text in {@code id} is drawn with: its own substitution, or {@code id}. */
+	static int substitute(int id){Substitution s=substitution.get();return s==null?id:s.apply(id);}
+	/** The running program drew {@code text} asking for font {@code id} (QuickDraw's DrawText family, TextEdit): see {@link Substitution#noteDrawn}. */
+	static void noteDrawn(int id,byte[] text,Font font){Substitution s=substitution.get();if(s!=null)s.noteDrawn(id,text,font);}
+
 	static String nameOf(int id){
 		String name=NAMES.get(id);
 		if(name==null)name=programFamilyName(id);
@@ -92,6 +200,13 @@ final class Fonts68k {
 		if(lower.contains("osaka")||lower.contains("ゴシック")||lower.contains("gothic"))return 16384;
 		if(lower.contains("明朝")||lower.contains("mincho"))return 16385;
 		return 0;
+	}
+
+	/** Whether {@code name} is exactly a classic font's or an installed family's name (any case), not just like one. */
+	static boolean isFontName(String name){
+		if(name==null||name.isEmpty())return false;
+		for(String n:NAMES.values())if(n.equalsIgnoreCase(name))return true;
+		return InstalledFonts68k.familyNamed(name)!=null;
 	}
 
 	/** Supplies a program's own bitmapped strikes ('FOND'/'NFNT'/'FONT' resources) for font numbers it defines; see {@link BitmapFont68k}. */
@@ -128,13 +243,35 @@ final class Fonts68k {
 		for(InstalledFonts68k.Family f:InstalledFonts68k.families())if(!f.name.isEmpty()&&!names.contains(f.name))names.add(f.name);
 		return names;
 	}
+	/**
+	 * The TrueType families, as AppendResMenu(menu, 'sfnt') lists them: the classic table (drawn from host outlines, so
+	 * IsOutline says true for them too) plus the installed suitcases that carry an 'sfnt'. addDepth 1.0 counts this menu
+	 * and refuses to start ("at least one TrueType or Type 1 font") when it is empty.
+	 */
+	static java.util.List<String> outlineNames(){
+		java.util.List<String> names=new java.util.ArrayList<String>();
+		for(String n:NAMES.values())if(!names.contains(n))names.add(n);
+		for(InstalledFonts68k.Family f:InstalledFonts68k.families())if(!f.name.isEmpty()&&!names.contains(f.name)&&f.hasSfnt())names.add(f.name);
+		return names;
+	}
+	/** The families a program file carries itself (named 'FOND's, else size-0 'FONT's), named as {@link #nameOf} names them while it runs: the launcher's font substitution offers them first. */
+	static java.util.List<String> familiesOf(java.io.File program){
+		java.util.List<String> names=new java.util.ArrayList<String>();
+		try{ResourceFile68k rf=ResourceFile68k.open(program);
+			for(ResourceFile68k.Resource r:rf.ofType(ResourceFile68k.fourcc("FOND")))if(r.name!=null&&!r.name.isEmpty()&&!names.contains(r.name))names.add(r.name);
+			for(ResourceFile68k.Resource r:rf.ofType(ResourceFile68k.fourcc("FONT")))if((r.id&0x7f)==0&&r.name!=null&&!r.name.isEmpty()&&!names.contains(r.name))names.add(r.name);
+		}catch(java.io.IOException|RuntimeException e){}
+		return names;
+	}
 
 	/**
 	 * Java font for a classic font number, size and style (TextFace bits: bold 1, italic 2, underline 4, outline 8, shadow 16, condense 32, extend 64):
 	 * the program's own strike, else an installed suitcase's (any size: its bitmaps, its outlines or a scaled strike), else a host
-	 * font - wrapped as a {@link StyledFont68k} when the face asks for a style Java has no face for.
+	 * font - wrapped as a {@link StyledFont68k} when the face asks for a style Java has no face for. The family is the one the
+	 * program's font substitution draws instead, if any ({@link #substitute}).
 	 */
-	static Font font(int id,int size,int face){
+	static Font font(int id,int size,int face){return fontNumbered(substitute(id),size,face);}
+	private static Font fontNumbered(int id,int size,int face){
 		face&=0x7f;
 		if(size<=0)size=12; // txSize 0 means the system font size; some licence dialogs call TextSize(0) before TEStyleNew
 		if(!bitmapLookups.isEmpty()){BitmapFont68k strike=strike(id,size,face);if(strike!=null)return strike;}
@@ -147,10 +284,13 @@ final class Fonts68k {
 		String key=id+"/"+size+"/"+style+(japaneseSystem?"/J":"");
 		Font f;int fixed=fixedAdvance(id,size);
 		synchronized(cache){f=cache.get(key);if(f==null){f=withJapaneseFallback(new Font(familyFor(id),style,size));cache.put(key,f);if(romanScriptNumber(id))romanFonts.add(f);
-			if(id>=JAPANESE_SYSTEM_FONT&&id<JAPANESE_SYSTEM_FONT+512)japaneseFonts.add(f);}}
+			// under a Japanese system the system and application fonts (0, 1 and 3) are Osaka too: their lines are Osaka's 16
+			// pixels at 12 points, not the stand-in's 19 - dialogs laid out for them (Ambrosia's shareware notices, VISE alerts)
+			// lost their last line to the item's box
+			if(id>=JAPANESE_SYSTEM_FONT&&id<JAPANESE_SYSTEM_FONT+512||japaneseSystem&&(id==0||id==1||id==3))japaneseFonts.add(f);}}
 		// a host family without a bold face (Hiragino Mincho ProN has W3 only for Java): Java draws the regular face for BOLD,
 		// so the bold is QuickDraw's own smear of the plain glyphs (Netscape's <h1> and <b> in its Japanese Mincho were plain)
-		if((style&Font.BOLD)!=0&&!hasBoldFace(f)){Font plain=font(id,size,face&~TextStyle68k.BOLD&~TextStyle68k.SYNTHETIC);
+		if((style&Font.BOLD)!=0&&!hasBoldFace(f)){Font plain=fontNumbered(id,size,face&~TextStyle68k.BOLD&~TextStyle68k.SYNTHETIC);
 			if(plain instanceof StyledFont68k)plain=((StyledFont68k)plain).base;
 			String styledKey="fakebold/"+key+"/"+face;synchronized(cache){Font b=cache.get(styledKey);if(b==null){b=new StyledFont68k(plain,face,fixed);cache.put(styledKey,b);}return b;}}
 		if(fixed>0){String fixedKey="fixed/"+key+"/"+face;synchronized(cache){Font x=cache.get(fixedKey);if(x==null){x=new StyledFont68k(f,face,fixed);cache.put(fixedKey,x);}return x;}}
@@ -170,6 +310,7 @@ final class Fonts68k {
 	 * translation (VMTranslation) is drawn with, since a strike only has the characters of the program's own script.
 	 */
 	static Font hostFont(int id,int size,int face){
+		id=substitute(id);
 		if(size<=0)size=12;
 		int style=((face&1)!=0?Font.BOLD:0)|((face&2)!=0?Font.ITALIC:0);
 		String key="host/"+id+"/"+size+"/"+style+(japaneseSystem?"/J":"");

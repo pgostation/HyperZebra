@@ -229,17 +229,56 @@ public class OField extends OObject implements Cloneable {
 		CardWindow68k.partMoved(this, oldTop, oldLeft, oldTop+oldHeight, oldLeft+oldWidth); //an external's drawing there goes
 	}
 	public void setTextByInputarea(String in) {
+		splicedText = null;
 		setText2(in);
 		shownText = in; //入力されたテキストはもう部品(Swing)にある
 		((OCardBase)parent).changed = true;
 	}
 	/** The text this field's Swing component was last given (by setText or typing); null when unknown. */
 	private volatile String shownText;
+	/** What a script's put does to the style runs (HC 2.2 and J-2.3 measured, probe group Pan Field Style): put into the whole
+	 *  field drops them all (the text takes the field's own style; PUT_ALL); put into/before/after a chunk, or before/after the
+	 *  field, keeps the runs of the text it does not replace, and the new text takes the style of the character after it, at
+	 *  the end that of the last character (PUT_CHUNK; PUT_BEFORE/PUT_AFTER line up a value that repeats the old text's
+	 *  characters). QuickDraw Utilities' "Styled Text Fields" (put return after a styled field) and SendAEData's bold "Reply
+	 *  Text:" lost every run. TTalk's put says which, just before it writes the text; read once by the next setText. */
+	static final int PUT_ALL=2, PUT_CHUNK=0, PUT_BEFORE=-1, PUT_AFTER=1;
+	private static final ThreadLocal<Integer> putEdit = new ThreadLocal<Integer>();
+	static void putEditForNextText(Integer edit){ if(edit==null) putEdit.remove(); else putEdit.set(edit); }
+	/** put x before|after <field or chunk> runs as put (x) & (dest) into dest: PUT_BEFORE/PUT_AFTER for that statement, taken
+	 *  (and cleared) when it starts, so that a put inside the value's expression does not see it. */
+	private static final ThreadLocal<Integer> putAlign = new ThreadLocal<Integer>();
+	static void putAlignForNextPut(Integer align){ if(align==null) putAlign.remove(); else putAlign.set(align); }
+	static Integer takePutAlign(){ Integer align = putAlign.get(); putAlign.remove(); return align; }
+	/** (EDT) A script's text is being given to the Swing component: GUI_fldDocument must not take it for typing (it would
+	 *  compare the model's new text with the emptied document and drop every style run, and put "" into the model meanwhile). */
+	volatile boolean applyingText;
+	/** delete chunk says which characters [start, oldEnd) it takes out ({start, oldEnd, 0}): the runs follow exactly those, where
+	 *  lining the old and new texts up could pick the wrong one of repeated characters. Read once by the next setText. */
+	private static final ThreadLocal<int[]> exactChange = new ThreadLocal<int[]>();
+	static void changeForNextText(int[] change){ if(change==null) exactChange.remove(); else exactChange.set(change); }
 	public void setText(String in) {
+		TTalk.putIntoField(this); //a script's put closes this field if it is open
+		Integer edit = putEdit.get();
+		putEdit.remove();
+		int[] exact = exactChange.get();
+		exactChange.remove();
+		String before = styleList!=null && !styleList.isEmpty() && exact!=null && edit==null && in!=null ? getText() : null;
+		if(before!=null && exact[0]>=0 && exact[0]<=exact[1] && exact[1]<=before.length() &&
+				before.length()-(exact[1]-exact[0])+exact[2]==in.length()){
+			ArrayList<styleClass> spliced = splicedRuns(styleList, before.length(), exact[0], exact[1], exact[2], true);
+			styleList = spliced.isEmpty() ? null : spliced;
+			splicedText = in;
+		}
+		boolean hadRuns = styleList!=null && !styleList.isEmpty();
+		//other writers (delete chunk, an external's SetField, a table's cells): the runs follow the one place the text changed,
+		//unless preserveStylesForTextChange moved them for this text already (the resource editor's TextEditor)
+		if(in!=null && (edit!=null || !in.equals(splicedText))) spliceStylesForPut(in, edit!=null ? edit : PUT_CHUNK);
+		splicedText = null;
 		//部品がもう同じテキスト(スタイルなし)を表示していれば何も変わらない: 毎コマ同じ文字を入れるゲームの表示で、
 		//EDT への往復(lock screen 中は開始時の画面の絵も)を省く
 		if(in!=null && fld!=null && cardView==null && in.equals(shownText) && in.equals(super.getText()) &&
-				(styleList==null || styleList.isEmpty())) return;
+				!hadRuns && (styleList==null || styleList.isEmpty())) return;
 		setText2(in);
 		if(fld!=null) {
 			Runnable updateAndRepaint = () -> {
@@ -248,7 +287,9 @@ public class OField extends OObject implements Cloneable {
 				String text = getText();
 				//put keeps the field's scroll (HyperCard J-2.3: DicSGML puts its 332-line index into a scrolling field at
 				//scroll 0 and shows its top); the caret's catching up later (invokeLater) scrolled to the end
-				fld.keepScrollWhile(() -> fld.setText(text));
+				applyingText = true;
+				try{ fld.keepScrollWhile(() -> fld.setText(text)); }
+				finally{ applyingText = false; }
 				shownText = text;
 				if(scrollPane!=null) scrollPane.getVerticalScrollBar().setValue(scroll);
 				if(!PCARD.lockedScreen) {
@@ -310,6 +351,10 @@ public class OField extends OObject implements Cloneable {
 		return dst;
 	}
 
+	/** The background field a forCard view shows on another card (null: no view). Only the text is that card's own: other
+	 *  properties set on the view go to this field (TUtil.SetProperty). */
+	OField viewOf;
+
 	OField forCard(OCard cd) {
 		if(cd==null || card==null || !card.objectType.equals("background") || sharedText) return this;
 		if(cardView==cd || ((OBackground)card).viewCard==cd) return this;
@@ -317,6 +362,7 @@ public class OField extends OObject implements Cloneable {
 		try{ view = (OField)super.clone(); }
 		catch(CloneNotSupportedException e){ return this; }
 		view.cardView = cd;
+		view.viewOf = viewOf!=null ? viewOf : this;
 		view.fld = null;
 		view.scrollPane = null;
 		view.drop = null;
@@ -745,27 +791,76 @@ public class OField extends OObject implements Cloneable {
 		return (style&4)>0 || ((style&128)>0 && showGroups);
 	}
 
+	/** Typing (and the resource editor's text): the old text's runs moved to newText. */
 	void preserveStylesForTextChange(String newText) {
 		if(styleList==null || styleList.isEmpty()) return;
 		String oldText = getText();
-		int prefix=0;
-		while(prefix<oldText.length() && prefix<newText.length()
-				&& oldText.charAt(prefix)==newText.charAt(prefix)) prefix++;
-		int oldSuffix=oldText.length();
-		int newSuffix=newText.length();
-		while(oldSuffix>prefix && newSuffix>prefix
-				&& oldText.charAt(oldSuffix-1)==newText.charAt(newSuffix-1)){
-			oldSuffix--; newSuffix--;
+		int[] change = textChange(oldText, newText, false);
+		ArrayList<styleClass> spliced = splicedRuns(styleList, oldText.length(), change[0], change[1], change[2], false);
+		styleList.clear(); //in place: the card's bgfldList entry holds this list too
+		styleList.addAll(spliced);
+		splicedText = newText;
+	}
+	/** The text preserveStylesForTextChange last moved the runs for (setText then leaves them) */
+	private String splicedText;
+
+	/** A script's put (PUT_ALL / PUT_CHUNK / PUT_BEFORE / PUT_AFTER) changes the text to newText: the runs that stay. */
+	void spliceStylesForPut(String newText, int edit) {
+		if(styleList==null || styleList.isEmpty()) return;
+		if(edit==PUT_ALL){ styleList = null; return; } //a new list (setText2 hands it to the card): clones share the old one
+		String oldText = getText();
+		int[] change = textChange(oldText, newText, edit==PUT_BEFORE);
+		ArrayList<styleClass> spliced = splicedRuns(styleList, oldText.length(), change[0], change[1], change[2], true);
+		styleList = spliced.isEmpty() ? null : spliced;
+	}
+
+	/** {start, old end, new length} of the one place where oldText and newText differ. A value that repeats the characters
+	 *  around it can be lined up in several places: the latest (after, typing) or with suffixFirst the earliest (before). */
+	static int[] textChange(String oldText, String newText, boolean suffixFirst) {
+		int oldLength = oldText.length(), newLength = newText.length(), limit = Math.min(oldLength, newLength);
+		int prefix = 0, suffix = 0;
+		if(suffixFirst){
+			while(suffix<limit && oldText.charAt(oldLength-1-suffix)==newText.charAt(newLength-1-suffix)) suffix++;
+			while(prefix<limit-suffix && oldText.charAt(prefix)==newText.charAt(prefix)) prefix++;
+		}else{
+			while(prefix<limit && oldText.charAt(prefix)==newText.charAt(prefix)) prefix++;
+			while(suffix<limit-prefix && oldText.charAt(oldLength-1-suffix)==newText.charAt(newLength-1-suffix)) suffix++;
 		}
-		int startOffset=styleOffset(oldText, prefix);
-		int oldEndOffset=styleOffset(oldText, oldSuffix);
-		int newEndOffset=styleOffset(newText, newSuffix);
-		int delta=newEndOffset-oldEndOffset;
-		styleList.removeIf(run -> run.textPosition>=startOffset && run.textPosition<oldEndOffset);
-		for(styleClass run : styleList){
-			if(run.textPosition>=oldEndOffset) run.textPosition+=delta;
+		return new int[]{prefix, oldLength-suffix, newLength-suffix-prefix};
+	}
+
+	/** The style runs once old characters [start, oldEnd) became insLen new ones. The new characters take the style of the
+	 *  character after the change (at the end of the text the last character's) when takeNext - a script's put, HC measured -
+	 *  or when they begin the text; otherwise that of the character before them (typing, as TextEdit). The text after the
+	 *  change keeps its style also when a run began inside the replaced characters ("AAAbbb" with "bbb" bold, "Ab" replaced:
+	 *  the "bb" left became plain). */
+	static ArrayList<styleClass> splicedRuns(ArrayList<styleClass> runs, int oldLength, int start, int oldEnd, int insLen, boolean takeNext) {
+		ArrayList<styleClass> sorted = new ArrayList<styleClass>(runs);
+		sorted.sort((a,b) -> Integer.compare(a.textPosition, b.textPosition));
+		Integer inserted = takeNext || start==0 ? (oldLength==0 ? null : runAt(sorted, Math.min(oldEnd, oldLength-1))) : runAt(sorted, start-1);
+		Integer after = oldEnd<oldLength ? runAt(sorted, oldEnd) : null;
+		int delta = insLen-(oldEnd-start), newLength = oldLength+delta;
+		ArrayList<styleClass> out = new ArrayList<styleClass>();
+		for(styleClass run : sorted) if(run.textPosition<start) out.add(new styleClass(run.textPosition, run.styleId));
+		if(insLen>0 && inserted!=null) out.add(new styleClass(start, inserted));
+		if(after!=null) out.add(new styleClass(start+insLen, after));
+		for(styleClass run : sorted) if(run.textPosition>oldEnd) out.add(new styleClass(run.textPosition+delta, run.styleId));
+		//one run per place (the later one wins), none past the text, none that repeats the style before it
+		ArrayList<styleClass> result = new ArrayList<styleClass>();
+		for(styleClass run : out){
+			if(run.textPosition>=newLength) continue;
+			if(!result.isEmpty() && result.get(result.size()-1).textPosition==run.textPosition) result.remove(result.size()-1);
+			if(!result.isEmpty() && result.get(result.size()-1).styleId==run.styleId) continue;
+			result.add(run);
 		}
-		styleList.sort((a,b) -> Integer.compare(a.textPosition, b.textPosition));
+		return result;
+	}
+
+	/** The style id of the run that character position pos is in; null before the first run (the field's own style). */
+	private static Integer runAt(ArrayList<styleClass> sorted, int pos) {
+		Integer id = null;
+		for(styleClass run : sorted){ if(run.textPosition>pos) break; id = run.styleId; }
+		return id;
 	}
 
 	public void setColor(Color col) {
@@ -1583,6 +1678,9 @@ public class OField extends OObject implements Cloneable {
 		else {
 			MyScrollPane scrollpane = new MyScrollPane();
 			scrollpane.fldData=ofld;
+			//the view starts at the viewport's origin, not at the field's place on the card: a field above or left of the card
+			//(HCSTG PUGO's -9,-5) was a viewport position of 9,5 - its text 9px left and 5px up, and its scroll 5
+			ofld.fld.setLocation(0, 0);
 			scrollpane.setViewportView(ofld.fld);
 			scrollpane.setBounds(ofld.left, ofld.top, ofld.width, ofld.height);
 			scrollpane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
@@ -1786,7 +1884,11 @@ class MyScrollPane extends JScrollPane {
 				int room = view==null ? 0 : toLogicalScroll(Math.max(0, view.getPreferredSize().height-pane.getViewport().getExtentSize().height));
 				if(room>logical) return;
 			}
+			if(logical==ofld.scroll) return;
 			ofld.scroll = logical;
+			//HyperCard scrolls the field in its copy of the card and copies the field's rectangle into the window: an external that
+			//colours that copy (ColorizeHC's ColorFld) colours the scrolled text (its colour of the old text hid most of the new)
+			TUtil.partChangedOnScreen(ofld);
 		});
 		final int[] viewHeight = {-1};
 		pane.getViewport().addChangeListener(e -> {
@@ -1927,6 +2029,8 @@ class MyTextArea extends JTextArea {
 		boolean smear;
 		/** pixels QuickDraw adds to every glyph's advance for outline, shadow, condense and extend ({@link #styleExtra}) */
 		int extra;
+		/** a style boundary with no character of its run on this line (a run ending at the return before): no part in the line's height */
+		boolean noChars;
 	}
 
 	/** Whether {@code font} needs QuickDraw's smeared bold for {@code textStyle} (Geneva and Osaka have no bold face for Java) */
@@ -2277,6 +2381,35 @@ class MyTextArea extends JTextArea {
 		  return getRowHeight();
 	}
 
+	/** A word that runs on from the line's earlier runs into the run that overflows: the line ends at the last break before
+	 *  the word (a space or a character that wraps anywhere). Its earlier part, cut out of those runs, goes into carry to begin
+	 *  the next line. The width the line keeps, or -1 when the line is one word (it breaks where the run starts, as before). */
+	static int carryWordStart(java.util.List<LineSegment> line, java.util.List<LineSegment> carry) {
+		int last = line.size()-1;
+		while(last>=0 && line.get(last).str.isEmpty()) last--;
+		if(last<0 || !isWrapWordChar(line.get(last).str.charAt(line.get(last).str.length()-1))) return -1; //the run before ends the word
+		for(int s=last; s>=0; s--){
+			LineSegment seg = line.get(s);
+			int k = seg.str.length();
+			while(k>0 && isWrapWordChar(seg.str.charAt(k-1))) k--;
+			if(k==0 && s>0) continue; //all one word: the break is in a run before
+			if(k==0) return -1; //no break on the line
+			LineSegment tail = new LineSegment();
+			tail.str = seg.str.substring(k); tail.font = seg.font; tail.metrics = seg.metrics; tail.textStyle = seg.textStyle;
+			tail.color = seg.color; tail.textHeight = seg.textHeight; tail.ascent = seg.ascent; tail.smear = seg.smear; tail.extra = seg.extra;
+			tail.idx = java.util.Arrays.copyOfRange(seg.idx, k, seg.idx.length); tail.emptyIdx = seg.emptyIdx;
+			tail.width = runWidth(seg.metrics, tail.str, seg.smear, seg.extra);
+			if(!tail.str.isEmpty()) carry.add(tail);
+			for(int t=s+1; t<line.size(); t++) carry.add(line.get(t));
+			while(line.size()>s+1) line.remove(line.size()-1);
+			seg.str = seg.str.substring(0, k);
+			seg.idx = java.util.Arrays.copyOf(seg.idx, k);
+			seg.width = runWidth(seg.metrics, seg.str, seg.smear, seg.extra);
+			return seg.x+seg.width;
+		}
+		return -1;
+	}
+
 	static int nextTextLeft(int left, int drawWidth, boolean lineBreak,
 			boolean styleChange) {
 		if(lineBreak) return 0;
@@ -2291,7 +2424,12 @@ class MyTextArea extends JTextArea {
 	 */
 	static int[] styledLineBox(int lineTop, java.util.List<LineSegment> line) {
 		int maxAscent = 0, maxBelow = 0;
-		for(LineSegment ls : line){ maxAscent = Math.max(maxAscent, ls.ascent); maxBelow = Math.max(maxBelow, ls.textHeight-ls.ascent); }
+		boolean chars = false;
+		for(LineSegment ls : line) if(!ls.noChars) chars = true;
+		for(LineSegment ls : line){
+			if(chars && ls.noChars) continue; //HyperCard's TextEdit measures only the runs of the line's characters
+			maxAscent = Math.max(maxAscent, ls.ascent); maxBelow = Math.max(maxBelow, ls.textHeight-ls.ascent);
+		}
 		return new int[]{lineTop+maxAscent, lineTop+maxAscent+maxBelow};
 	}
 
@@ -2568,6 +2706,7 @@ class MyTextArea extends JTextArea {
 		//1行分のスタイル区間を溜めておき、行が確定してから行全体の幅で
 		//センタリング・右寄せを決める(区間ごとに寄せると2区間目以降が右にずれる)
 		java.util.ArrayList<LineSegment> line = new java.util.ArrayList<LineSegment>();
+		java.util.ArrayList<LineSegment> wrapCarry = new java.util.ArrayList<LineSegment>(); //(carryWordStart)
 		int lineWidth = 0; //現在の行に積んだ区間の幅の合計
 
 			for(int i=0; i<=displayText.length(); i++){
@@ -2607,7 +2746,9 @@ class MyTextArea extends JTextArea {
 					//allows ("aaaa bbbb cc" in Geneva 18 needs 102 pixels for "aaaa bbbb " on one line; the last word of the
 					//text needs no space). A line used to keep a character's width (the text size) free, so "Hardin Helper"
 					//(18pt bold, 127 pixels) wrapped in a 146-pixel field that HyperCard shows it in on one line.
-					boolean overflow = lineWidth+w>fldWidth;
+					//a dontWrap field never wraps, also where a styled line is wider than the field (French Pronunciation's
+					//"Table of Contents": each run after the edge broke the line, and an empty run threw in the wrap below)
+					boolean overflow = !fldData.dontWrap && lineWidth+w>fldWidth;
 					boolean isLineBreak = (!reprocessCharacter && (c=='\r' || c=='\n')) || overflow;
 					if(isLineBreak||(isStyleChange && i!=0)){ //この行を描画する
 
@@ -2637,6 +2778,12 @@ class MyTextArea extends JTextArea {
 								drawStr = drawStr.substring(0,len);
 							}else if(lineWidth>0){
 								//この区間は1語も入らない: 前の区間で行を終え、まるごと次の行へ送る
+								//A word whose start is in the runs before (one 18-point "g" in "gggg", QuickDraw Utilities'
+								//"It's" with a big "I") goes to the next line from its start, as HyperCard wraps: it broke "ggg|g"
+								if(!drawStr.isEmpty() && isWrapWordChar(drawStr.charAt(0))){
+									int kept = carryWordStart(line, wrapCarry);
+									if(kept>=0) lineWidth = kept;
+								}
 								drawStr = "";
 							}
 						}
@@ -2655,6 +2802,7 @@ class MyTextArea extends JTextArea {
 			seg.str = drawStr; seg.x = lineWidth; seg.width = drawWidth;
 			seg.font = g.getFont(); seg.metrics = fo; seg.textStyle = textStyle; seg.color = textColor;
 			seg.baseline = top; seg.textHeight = textHeight; seg.ascent = ascent; seg.idx = segIdx; seg.emptyIdx = i; seg.smear = smear; seg.extra = extra;
+			seg.noChars = drawStr.isEmpty() && !isLineBreak;
 			line.add(seg);
 
 					if(isLineBreak){
@@ -2687,6 +2835,9 @@ class MyTextArea extends JTextArea {
 						lineWidth = nextTextLeft(lineWidth, drawWidth, true, isStyleChange);
 						if(lineBottom>=0){ lineTop = lineBottom; top = lineTop+ascent; }
 						else{ top = nextTextTop(top, textHeight, true); lineTop = top-ascent; }
+						//the start of the wrapped word, in the runs it was in, begins the next line
+						for(LineSegment ls : wrapCarry){ ls.x = lineWidth; ls.baseline = top; lineWidth += ls.width; line.add(ls); }
+						wrapCarry.clear();
 						//HyperCard 2.x系から変換されたスタックは、元のMac OSとのフォント
 						//メトリクスの違いで文字が収まらなくなることがあるため、スクロールしない
 						//フィールドで文字がフィールドの高さからはみ出す場合、少しフォントサイズを
@@ -2751,9 +2902,11 @@ class MyTextArea extends JTextArea {
 			        	fo = g.getFontMetrics();
 						smear = smears(g.getFont(), textStyle);
 						extra = styleExtra(textStyle)*drawScale;
-						//a run of another size is as tall as its font (ascent+descent+leading), as HyperCard lays it out
-						if(!fldData.fixedLineHeight && textSize!=baseSize){
-							textHeight = Math.max(textSize+1, OField.naturalLineHeight(textFont, textSize, drawScale, fo));
+						//a run of another size or font is as tall as its font (ascent+descent+leading), as HyperCard lays it out;
+						//a stack's own strike has HyperCard's exact metrics (HCSTG PUGO: SMTip 32 rows 32 apart in an Osaka 32 field)
+						if(!fldData.fixedLineHeight && (textSize!=baseSize || !java.util.Objects.equals(textFont, baseFont))){
+							int natural = OField.naturalLineHeight(textFont, textSize, drawScale, fo);
+							textHeight = StackStrikeFont.isStackFont(g.getFont()) ? natural : Math.max(textSize+1, natural);
 							if((textStyle&8)>0 || (textStyle&16)>0) textHeight+=1;
 						}
 						if(fixedAscent<0){

@@ -81,8 +81,17 @@ final class StackTranslation {
 		final VMTranslation.Translator translator;
 		/** Counts the arrivals of translations: what was worked out for a field before is worked out again. */
 		volatile int generation;
+		/** Whether the text in its pictures is translated too (PictureTranslation; its settings, read once). */
+		final boolean pictures;
+		private PictureTranslation.Vocabulary vocabulary;
+		/** The stack's texts, which a misread line in a picture is snapped to (made when first wanted). */
+		synchronized PictureTranslation.Vocabulary vocabulary(){
+			if(vocabulary==null)vocabulary=PictureTranslation.Vocabulary.of(stackTexts(stack));
+			return vocabulary;
+		}
 		State(OStack stack){
 			this.stack=stack;file=fileOf(stack);
+			pictures=file!=null&&PictureTranslation.enabledFor(file);
 			VMTranslation.Config c=file==null?null:configFor(file);
 			if(c==null||!c.on){translator=null;return;}
 			String id=LauncherStore.identity(file),from;
@@ -141,6 +150,21 @@ final class StackTranslation {
 		OStack st=base!=null&&base.stack!=null?base.stack:PCARD.pc!=null?PCARD.pc.stack:null;
 		Map<String,String> e=StackLanguages.entries(st);
 		return e.isEmpty()?null:e;
+	}
+
+	/** The stack's own translations (StackLanguages) into HyperZebra's language, or null when it has none. */
+	static Map<String,String> ownTranslations(OStack st){
+		Map<String,String> e=StackLanguages.entries(st);
+		return e.isEmpty()?null:e;
+	}
+
+	/** The language a stack is written in: found from its texts when it was translated, else Japanese for a Japanese stack, English for others. */
+	static String languageGuess(OStack st){
+		File f=fileOf(st);
+		String lang=null;
+		if(f!=null)synchronized(detected){lang=detected.get(LauncherStore.identity(f));}
+		if(lang!=null)return lang;
+		return st!=null&&st.legacyTextEncoding==StackTextEncoding.JAPANESE?"ja":"en";
 	}
 
 	/** The translator for a part of a stack, or null: translation off, the language still being found, or an authoring tool chosen (the originals are edited). */
@@ -500,20 +524,23 @@ final class StackTranslation {
 	/**
 	 * Starts translating all of a stack's texts into the cache ("Resource Translation…" of a stack), into the language and with
 	 * the engine of its settings: the open stack itself when it is this one (with its changes), else the stack read from
-	 * its folder. Finds the language first (waits for the helper).
+	 * its folder. Finds the language first (waits for the helper), then reads the text in its pictures (PictureTranslation).
 	 */
-	static VMTranslation.Ahead ahead(File file) throws IOException{return ahead(file,false,false);}
+	static VMTranslation.Ahead ahead(File file) throws IOException{return ahead(file,false,false,null);}
+	static VMTranslation.Ahead ahead(File file,PictureTranslation.Progress pictures) throws IOException{return ahead(file,false,false,pictures);}
 	/**
 	 * @param collect the texts are not sent but collected (Translator.collecting) for an AI chat (LlmTranslation)
 	 * @param again texts translated already go again too
+	 * @param pictures told how far reading the text in the stack's pictures is (PictureTranslation), or null
 	 */
-	static VMTranslation.Ahead ahead(File file,boolean collect,boolean again) throws IOException{
+	static VMTranslation.Ahead ahead(File file,boolean collect,boolean again,PictureTranslation.Progress pictures) throws IOException{
 		OStack st=openStack(file);
 		if(st==null)st=read(file);
 		if(st==null)throw new IOException("The stack cannot be read.");
 		VMTranslation.Config c=configFor(file);
 		List<VMTranslation.ProgramText> texts=stackTexts(st);
 		String from=VMTranslation.AUTO.equals(c.from)?language(st,texts):c.from;
+		texts.addAll(PictureTranslation.aheadTexts(st,file,from,pictures)); // the text in its pictures (when tesseract is here)
 		String id=LauncherStore.identity(file);
 		synchronized(detected){detected.put(id,from);}
 		VMTranslation.Translator t=new VMTranslation.Translator(new VMTranslation.Config(true,from,c.to,c.engine),from,null);

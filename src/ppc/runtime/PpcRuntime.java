@@ -46,9 +46,14 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	/** The PowerPC stack (r1 starts near its top). */
 	int stackBase,stackTop;
 
-	PpcRuntime(MacApp68k app){
-		this.app=app;toolbox=app.toolbox;memory=app.memory;cpu68=app.cpu;
+	/** The program's name and file (for an external's runtime, the external's and its stack's). */
+	private final String name;private final File file;
+
+	PpcRuntime(MacApp68k app){this(app,app.toolbox,app.memory,app.cpu,app.name,app.file);}
+	private PpcRuntime(MacApp68k app,Toolbox68k toolbox,M68kMemory memory,M68kCpu cpu68,String name,File file){
+		this.app=app;this.toolbox=toolbox;this.memory=memory;this.cpu68=cpu68;this.name=name;this.file=file;
 		cpu=new PpcCpu(memory,this);cpu.setScheduler(this);
+		jitOn=PpcJit.wanted(app==null?null:app.ppcJitOverride);cpu.useJit(jitOn);
 		libraries=new PpcLibraries(this);
 	}
 
@@ -432,13 +437,21 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	boolean isRoutineDescriptor(int p){
 		try{return p!=0&&(p&1)==0&&memory.readWord(p)==MIXED_MODE_MAGIC&&memory.readByte(p+2)>=5;}catch(M68kCpuException e){return false;}
 	}
-	/** A routine descriptor of one routine (NewRoutineDescriptor); {@code isa} 0 = 68K, 1 = PowerPC. */
+	/**
+	 * A routine descriptor of one routine (NewRoutineDescriptor); {@code isa} 0 = 68K, 1 = PowerPC. It is a Ptr the Memory
+	 * Manager knows, as the real one's NewPtr block: Public Address copies its LDEF/CDEF descriptors into its "fake" 6-byte
+	 * definition resources with GetPtrSize + SetHandleSize + BlockMove - a size of 0 left the LDEF a bare JMP $0.
+	 */
 	int newRoutineDescriptor(int proc,int procInfo,int isa) throws M68kCpuException {
-		int rd=allocate(RD_HEADER+RD_RECORD,4);
+		int rd=allocate(RD_HEADER+RD_RECORD,4);toolbox.api.adoptPointer(rd,RD_HEADER+RD_RECORD);
 		memory.writeWord(rd,MIXED_MODE_MAGIC);memory.writeByte(rd+2,7);memory.writeByte(rd+3,0);memory.writeWord(rd+10,0);
 		int r=rd+RD_HEADER;
 		memory.writeLong(r,procInfo);memory.writeByte(r+5,isa);memory.writeWord(r+6,isa==ISA_PPC?0x04:0);memory.writeLong(r+8,proc);
 		return rd;
+	}
+	/** DisposeRoutineDescriptor: frees a descriptor made here (anything else is left alone). */
+	void disposeRoutineDescriptor(int rd) throws M68kCpuException {
+		if(rd!=0&&isRoutineDescriptor(rd)&&memory.isAllocated(rd)){toolbox.api.forgetPointer(rd);memory.free(rd);}
 	}
 	/** Whether {@code rd} is a routine descriptor (version 5 or later) with a PowerPC routine. */
 	static boolean isPowerPcDescriptor(M68kMemory memory,int rd) throws M68kCpuException {
@@ -528,6 +541,19 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	 */
 	/** D0 after the last register-based 68K call made from a register-based PowerPC routine that 68K code called (-1: none). */
 	private long nestedRegisterD0=-1;
+	/**
+	 * Prepares the PowerPC fragment of the fat external whose routine descriptor is at {@code rd}, as its first call through
+	 * {@link #mixedModeTrap} would; false (with the reason on stderr) when the CFM would not (a library it imports is not
+	 * installed): the caller runs its 68K routine then.
+	 */
+	boolean preparesExternal(int rd) throws M68kCpuException {
+		if(unpreparedExternals.contains(rd))return false;
+		int record=findRecord(rd,ISA_PPC);
+		if(record<0)return false;
+		try{syncEmulatorContext();recordTarget(rd,record);return true;}
+		catch(M68kException e){unpreparedExternals.add(rd);System.err.println("[ppc] a fat external's PowerPC code cannot be prepared, its 68K code runs: "+e.getMessage());return false;}
+	}
+	private final java.util.Set<Integer> unpreparedExternals=new java.util.HashSet<Integer>();
 	boolean mixedModeTrap(M68kCpu c,int rd) throws M68kException {
 		syncEmulatorContext();
 		int selectorInfo=memory.readByte(rd+9);
@@ -575,6 +601,9 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 				restoreRegisters68(saved68);
 				int slot=sp+offset;
 				if(resultSize==1)memory.writeByte(slot,result);else if(resultSize==2)memory.writeWord(slot,result);else if(resultSize==4)memory.writeLong(slot,result);
+				// ... and in D0 (scratch for a Pascal caller): Apple Click 1.0.2's INIT JSRs its PowerPC main (procInfo $20, no result
+				// slot reserved) and tests D0 - the caller's old D0 read as an error, it disposed the code it had just patched in
+				if(resultSize>0)c.d[0]=resultSize==1?(c.d[0]&~0xff)|(result&0xff):resultSize==2?(c.d[0]&~0xffff)|(result&0xffff):result;
 				c.a[7]=sp+offset;c.pc=returnAddress;
 				return true;}
 			case 1:case 5:case 9:{ // C (MPW: a long per argument; THINK C: ints are words), result in D0
@@ -617,8 +646,15 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 				if(resultSize==1)memory.writeByte(slot,result);else if(resultSize==2)memory.writeWord(slot,result);else if(resultSize==4)memory.writeLong(slot,result);
 				c.a[7]=slot;c.pc=returnAddress;
 				return true;}
-			case 15:{ // kSpecialCase: only MBarHook so far (Flash 4's Windows layer) - the menu rectangle's address on the stack, result in D0
+			case 15:{ // kSpecialCase: MBarHook (Flash 4's Windows layer) - the menu rectangle's address on the stack, result in D0 - and GNEFilterProc
 				int special=(procInfo>>>4)&0x3f;
+				if(special==11){ // kSpecialCaseGNEFilterProc (jGNEFilter): A1 = the event, the result word at 4(SP); PowerPC (EventRecord *, Boolean *).
+					// The fat INITs Aaron 1.3.1 and Cinema 1.0 install one: every WaitNextEvent of the program stopped in it
+					args.add(c.a[1]);args.add(sp+4);
+					callPpc(target,args);
+					restoreRegisters68(saved68);
+					c.a[7]=sp+4;c.pc=returnAddress;
+					return true;}
 				if(special!=12)throw new M68kCpuException(rd,String.format("Mixed Mode special case %d (procInfo $%08X) is not supported",special,procInfo));
 				args.add(memory.readLong(sp+4));
 				int result=callPpc(target,args);
@@ -721,6 +757,13 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 				case 15:{ // kSpecialCase: only MBarHook - one long on the stack (the caller pops it), result in D0. Disk Copy 6.3 calls
 					// its licence code resource ('infn' 5000) this way
 					int special=(procInfo>>>4)&0x3f;
+					if(special==11){ // GNEFilterProc: the next filter of the chain is 68K code - A1 = the event, the Boolean result as a word at 4(SP)
+						int result=args.length>1?args[1]:0;
+						cpu68.a[7]-=2;memory.writeWord(cpu68.a[7],result==0?0:memory.readByte(result)<<8);int slot=cpu68.a[7];
+						cpu68.a[1]=args.length>0?args[0]:0;
+						jumpTo68k(target,2);
+						if(result!=0)memory.writeByte(result,memory.readByte(slot));
+						return 0;}
 					if(special!=12)throw new M68kCpuException(target,String.format("Mixed Mode special case %d (procInfo $%08X) is not supported",special,procInfo));
 					cpu68.a[7]-=4;memory.writeLong(cpu68.a[7],args.length>0?args[0]:0);
 					jumpTo68k(target,4);
@@ -780,12 +823,12 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 
 	/** The known libraries the system provides natively (always served by {@link PpcLibraries}, never searched for). */
 	static final java.util.Set<String> SYSTEM_LIBRARIES=new java.util.HashSet<String>(java.util.Arrays.asList(
-		"InterfaceLib","ColorSync","PrivateInterfaceLib","MathLib","StdCLib","QuickTimeLib","ObjectSupportLib","DragLib","AppearanceLib",
+		"InterfaceLib","Textension","ColorSync","PrivateInterfaceLib","MathLib","StdCLib","QuickTimeLib","ObjectSupportLib","DragLib","AppearanceLib",
 		"ThreadsLib","SoundLib","ControlsLib","DialogsLib","WindowsLib","MenusLib","TranslationLib","AppleScriptLib",
 		"Translation", // Easy Open's library under the name AppleWorks 5 imports it by (Gestalt 'xlat' reports it for PowerPC)
 		"TextCommon","TextEncodingConverter","UnicodeConverter","ContextualMenu","IconServicesLib","FontManager","DisplayLib",
 		"SpeechLib","ControlStripLib","CFMPriv","ColorPickerLib","AppleGuideLib","CollectionsLib","DriverServicesLib","DriverLoaderLib",
-		"NameRegistryLib","QuickDrawText","UTCUtils","DateTimeUtils","InternetConfigLib","NavigationLib","FoldersLib",
+		"NameRegistryLib","QuickDrawText","UTCUtils","DateTimeUtils","InternetConfigLib","ICAp;InternetConfigLib","NavigationLib","FoldersLib",
 		"QTStreamLib","InputSprocketLib","DrawSprocketLib","OTUtilityLib","OTClientUtilLib","OTClientLib","OTInetClientLib",
 		"OpenTransportLib","OpenTptInternetLib","OpenTptAppleTalkLib","OpenTransportUtilLib","Math64Lib","VideoServicesLib",
 		"CodeFragmentMgr","MixedMode","OTNativeClientLib","OTNtvUtilLib","OTConfigLib","OTXTILib","CarbonLib","Apple;Carbon;Networking","Apple;Carbon;Multimedia","Apple;Carbon;Core","Apple;Carbon;Graphics",
@@ -795,16 +838,35 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	/** Whether library {@code name} is served natively: a system library, QuickDraw 3D / RAVE when {@link PpcRave} and {@link PpcQuickDraw3D} replace them, OpenGL ({@link PpcOpenGL}). */
 	static boolean isNativeLibrary(String name){return SYSTEM_LIBRARIES.contains(name)||PpcRave.NATIVE&&PpcRave.LIBRARY.equals(name)||PpcQuickDraw3D.NATIVE&&(PpcQuickDraw3D.LIBRARY.equals(name)||PpcQ3Viewer.LIBRARY.equals(name))||PpcOpenGL.isLibrary(name);}
 
+	/**
+	 * QuickTime's libraries, served natively over the Movie Toolbox traps - unless the installed QuickTime is a PowerPC one that
+	 * brings its own (QuickTime 5/6: QuickTimeLib in the QuickTime PowerPlug, QTStreamLib in QuickTime Streaming). Its
+	 * PowerPC components import those, functions the native ones lack included (QuickTimeExtensionLoaded, QTSNewPtr ...).
+	 */
+	private boolean guestQuickTimeLibrary(String name){return toolbox.guestQuickTime&&("QuickTimeLib".equals(name)||"QTStreamLib".equals(name));}
 	/** Something imports can be bound to. */
 	private interface Provider { int symbol(String name,int symbolClass,boolean weak) throws IOException,M68kException; }
 	private final Map<String,Provider> providers=new HashMap<String,Provider>();
+	/** While a program that runs in this process loads ({@link #launchInProcess}): the import libraries it got, instances of its
+	 *  own as in a process of its own - Ray Dream Studio's extensions keep which extension they are in RDDEngineLib4's globals,
+	 *  and the second one sharing the first one's instance never registered with the program. Null otherwise. */
+	private Map<String,Provider> closure;
 
 	/** Finds (loading it when needed) the library {@code name}; null when it cannot be found. */
-	private Provider provider(String name) throws IOException,M68kException {
+	private Provider provider(String name,File importer) throws IOException,M68kException {
+		if(closure!=null&&!isNativeLibrary(name)){ // a program run in this process gets instances of its own (launchInProcess)
+			Provider p=closure.get(name);if(p!=null)return p;
+			Fragment f=findLibraryFile(name,importer);if(f==null)return null;
+			p=fragmentProvider(f);closure.put(name,p);return p;
+		}
 		Provider p=providers.get(name);if(p!=null)return p;
 		for(Fragment f:fragments)if(f.name.equals(name)){p=fragmentProvider(f);providers.put(name,p);return p;}
+		if(isNativeLibrary(name)&&guestQuickTimeLibrary(name)){ // the installed QuickTime's own library when it has one
+			Fragment f=findLibraryFile(name,importer);
+			if(f!=null){p=fragmentProvider(f);providers.put(name,p);return p;}
+		}
 		if(isNativeLibrary(name)){p=nativeProvider(name);providers.put(name,p);return p;}
-		Fragment f=findLibraryFile(name);
+		Fragment f=findLibraryFile(name,importer);
 		if(f!=null){p=fragmentProvider(f);providers.put(name,p);return p;}
 		return null;
 	}
@@ -855,7 +917,7 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		if(symbolClass==Pef.CLASS_DATA)return allocate(256,8);
 		return nativeVector(name,new Native(){boolean told;@Override public void call(PpcRuntime rt,PpcCpu c) throws M68kException {
 			if(STRICT)throw new M68kMacApiException(c.lr,0,library+" function "+name+" is not implemented for PowerPC programs");
-			if(!told){told=true;System.err.println("[ppc "+app.name+"] "+library+" function "+name+" is not implemented: returns 0");}
+			if(!told){told=true;System.err.println("[ppc "+PpcRuntime.this.name+"] "+library+" function "+name+" is not implemented: returns 0");}
 			c.r[3]=0;
 		}});
 	}
@@ -866,7 +928,7 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	final List<File> registeredLibraryFiles=new ArrayList<File>();
 	private List<File> libraryFolders(){
 		List<File> l=new ArrayList<File>();
-		File dir=app.file.getAbsoluteFile().getParentFile();
+		File dir=file==null?null:file.getAbsoluteFile().getParentFile();
 		if(dir!=null){l.add(dir);File[] subs=dir.listFiles();if(subs!=null)for(File s:subs)if(s.isDirectory())l.add(s);}
 		try{File sys=toolbox.files.systemFolder;
 			if(sys!=null){File ext=new File(sys,"Extensions");l.add(ext);
@@ -883,12 +945,17 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		for(File s:subs)if(s.isDirectory()&&!s.getName().startsWith("."))addFoldersDeep(l,s,depth-1);
 	}
 	/** Loads the import library {@code name} from the application file or a library folder; null when it is nowhere. */
-	private Fragment findLibraryFile(String name) throws IOException,M68kException {
-		List<File> candidates=new ArrayList<File>();candidates.add(app.file);
+	private Fragment findLibraryFile(String name,File importer) throws IOException,M68kException {
+		List<File> candidates=new ArrayList<File>();if(this.file!=null)candidates.add(this.file);
 		for(File f:registeredLibraryFiles)if(!candidates.contains(f))candidates.add(f);
-		for(File dir:libraryFolders()){File[] files=dir.listFiles();if(files==null)continue;
+		List<File> folders=libraryFolders();
+		// the folder of the importing library comes first: Director 6 projectors unpack IMLLib, DPLib and MacromediaRuntimeLib
+		// into one Temporary Items folder and load them by file, so IMLLib's import of MacromediaRuntimeLib finds its sibling
+		File home=importer==null?null:importer.getAbsoluteFile().getParentFile();
+		if(home!=null&&!folders.contains(home))folders.add(0,home);
+		for(File dir:folders){File[] files=dir.listFiles();if(files==null)continue;
 			java.util.Arrays.sort(files);
-			for(File f:files)if(f.isFile()&&!f.equals(app.file)&&!f.getName().startsWith("."))candidates.add(f);}
+			for(File f:files)if(f.isFile()&&!f.equals(this.file)&&!f.getName().startsWith("."))candidates.add(f);}
 		// a file named like the library first (SoundSprocketLib next to the program)
 		for(File f:candidates)if(f.getName().equals(name)){Fragment fr=loadLibraryFrom(f,name);if(fr!=null)return fr;}
 		for(File f:candidates){if(f.length()<64)continue;Fragment fr=loadLibraryFrom(f,name);if(fr!=null)return fr;}
@@ -899,14 +966,14 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		try{rf=ResourceFile68k.open(file);}catch(IOException e){return null;}
 		for(FragmentEntry e:fragmentEntries(rf)){
 			if(e.architecture!=ARCH_PPC||!e.name.equals(name))continue;
-			if(e.usage!=USAGE_LIBRARY&&!(file.equals(app.file)&&e.usage!=USAGE_APPLICATION))continue;
+			if(e.usage!=USAGE_LIBRARY&&!(file.equals(this.file)&&e.usage!=USAGE_APPLICATION))continue;
 			if(e.where==2){byte[] code=resourceFragment(file,rf,e);if(code==null)continue;
 				System.err.println("[ppc] loading library \""+name+"\" from "+file.getName()+" (resource "+ResourceFile68k.typeName(e.offset)+" "+(short)e.length+")");
 				return loadFragment(name,file,code,0,code.length,2,e.offset,e.length);}
 			if(e.where!=1)continue;
 			// several 'cfrg' names for one container are aliases of one fragment: OpenDocLib answers for "OpenDoc Bento",
 			// "OpenDoc Shell"... (the OpenDoc 1.0 library names) - a second instance has its own globals and crashes
-			Fragment loaded=fragmentByContainer(file,e.offset);
+			Fragment loaded=closure!=null?null:fragmentByContainer(file,e.offset);
 			if(loaded!=null){if(TRACE)System.err.println("[ppc] library \""+name+"\" is the loaded \""+loaded.name+"\"");return loaded;}
 			byte[] data=dataFork(file);
 			if(TRACE||true)System.err.println("[ppc] loading library \""+name+"\" from "+file.getName());
@@ -921,7 +988,7 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	 * (REALbasic applications keep their STRuntime in a 'cPPC' resource compressed with their 'dcmp' 200). Null if missing.
 	 */
 	private byte[] resourceFragment(File file,ResourceFile68k rf,FragmentEntry e) throws M68kCpuException {
-		if(file.equals(app.file)){ResourceFile68k.Resource r=toolbox.resources.find(e.offset,(short)e.length);return r==null?null:toolbox.resources.data(r);}
+		if(app!=null&&file.equals(app.file)){ResourceFile68k.Resource r=toolbox.resources.find(e.offset,(short)e.length);return r==null?null:toolbox.resources.data(r);}
 		ResourceFile68k.Resource r=rf.get(e.offset,(short)e.length);return r==null?null:r.data();
 	}
 
@@ -947,12 +1014,15 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 			@Override public void placed(Pef.Instance sections){for(Pef.Export e:pef.exports)if(e.section!=-3){f.exports.put(e.name,sections.exportValue(e));f.exportClasses.put(e.name,e.symbolClass);}}
 			@Override public int resolve(Pef.Library lib,Pef.Symbol s,int index) throws IOException {
 				try{
-					Provider p=provider(lib.name);
+					Provider p=provider(lib.name,f.file);
 					if(p==null){
 						// natively implemented by name (SoundSprocket...): a weak import of it is present even without the library file
 						if((lib.weak()||s.weak)&&libraries.function(lib.name,s.name)!=null){p=nativeProvider(lib.name);providers.put(lib.name,p);}
 						else{
 							if(lib.weak()||s.weak){if(TRACE)System.err.println("[ppc] weak import "+lib.name+"/"+s.name+" of "+f.name+": library absent (0)");return 0;}
+							// a stack's external (no program here): the CFM does not prepare it (cfragNoLibraryErr), and its caller learns
+							// which library it lacks - an external whose every call answered 0 returned nothing (Java XCMD without MRJ's JManager2)
+							if(app==null)throw new IOException("it imports "+s.name+" from the library \""+lib.name+"\", which is not installed (cfragNoLibraryErr)");
 							System.err.println("[ppc] library \""+lib.name+"\" not found (imported by "+f.name+"): its functions answer 0");
 							p=nativeProvider(lib.name);providers.put(lib.name,p);
 						}
@@ -1008,8 +1078,11 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	/** A fragment from guest memory (GetMemFragment, 'fat' code resources). */
 	Fragment loadMemoryFragment(int address,int length,String name) throws M68kException {
 		try{
-			int n=length>0?length:guessContainerLength(address);
-			byte[] data=memory.readBytes(address,n);
+			int n;byte[] data;
+			// a container that is not in memory at all (a 68K Xtra's empty data fork read to a zero-size handle at the heap's end)
+			// is no PEF: cfragFragmentFormatErr, not a fault of the program
+			try{n=length>0?length:guessContainerLength(address);data=memory.readBytes(address,n);}
+			catch(M68kCpuException e){System.err.println("[ppc] GetMemFragment("+name+" at $"+Integer.toHexString(address)+", "+length+" bytes): unreadable -> cfragFragmentFormatErr");return null;}
 			Fragment f=loadFragment(name,null,data,0,n,0,address,n,address);
 			return f;
 		}catch(IOException e){throw new M68kCpuException(address,"cannot prepare the code fragment: "+e.getMessage());}
@@ -1017,8 +1090,11 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	/** GetMemFragment/FragPrepare: like {@link #loadMemoryFragment}, but a block that is no PEF container (an installer offering a 'fat' code resource, routine descriptor first) is answered with cfragFragmentFormatErr, as the CFM does, instead of stopping the program; null then. */
 	Fragment tryLoadMemoryFragment(int address,int length,String name) throws M68kException {
 		try{
-			int n=length>0?length:guessContainerLength(address);
-			byte[] data=memory.readBytes(address,n);
+			int n;byte[] data;
+			// a container that is not in memory at all (a 68K Xtra's empty data fork read to a zero-size handle at the heap's end)
+			// is no PEF: cfragFragmentFormatErr, not a fault of the program
+			try{n=length>0?length:guessContainerLength(address);data=memory.readBytes(address,n);}
+			catch(M68kCpuException e){System.err.println("[ppc] GetMemFragment("+name+" at $"+Integer.toHexString(address)+", "+length+" bytes): unreadable -> cfragFragmentFormatErr");return null;}
 			String dumpDir=System.getProperty("hzppc.dumpfrag"); // debug aid: the container as the program built it (decrypted trial wrappers)
 			if(dumpDir!=null)java.nio.file.Files.write(new java.io.File(dumpDir,name.replaceAll("[^A-Za-z0-9._-]","_")+".pef").toPath(),data);
 			return loadFragment(name,null,data,0,n,0,address,n,address);
@@ -1047,7 +1123,7 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 			Fragment f=fragmentByName(name);
 			if(f==null){
 				if(isNativeLibrary(name)){connection[0]=nativeConnection(name);main[0]=0;return NO_ERR;}
-				f=findLibraryFile(name);
+				f=findLibraryFile(name,null);
 			}
 			if(f==null)return CFRAG_NO_LIBRARY;
 			connection[0]=f.connection;main[0]=f.instance.main();return NO_ERR;
@@ -1075,6 +1151,77 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		return rt;
 	}
 	/**
+	 * The runtime of a HyperCard external's VM (no program there): the PowerPC code of a 'fat' external whose 68K half only
+	 * reports that it needs a Power Macintosh ({@link #powerPcOnlyFat}). {@code file} is the external's stack file.
+	 */
+	static PpcRuntime forExternal(Toolbox68k toolbox,M68kCpu cpu68,String name,File file) throws M68kCpuException {
+		PpcRuntime rt=new PpcRuntime(null,toolbox,toolbox.memory,cpu68,name,file);
+		rt.setUpStack(256*1024);
+		if(TRACE)System.err.println("[ppc "+name+"] the external's PowerPC code runs: PowerPC runtime started");
+		return rt;
+	}
+	private static boolean isPefAt(byte[] code,int at){return at>=0&&at+8<=code.length&&u4(code,at)==0x4a6f7921&&u4(code,at+4)==0x70656666;} // 'Joy!' 'peff'
+	/** The largest 68K routine taken for a stub that only answers the 68K Mac with an error. */
+	private static final int STUB_68K_LIMIT=1024;
+	/**
+	 * Whether a code resource is a 'safe fat' one whose 68K half only reports that it needs a Power Macintosh: a routine
+	 * descriptor with a PowerPC code fragment and a 68K routine of at most {@link #STUB_68K_LIMIT} bytes without one trap
+	 * (PgColorX 1.22's answers "68K is unsupported"). A 68K routine that does its work calls the Toolbox: such externals
+	 * run their PowerPC code too, with the 68K routine to fall back on ({@link #powerPcFat}). A descriptor with no 68K routine at all is PowerPC-only
+	 * too: HyperCard 2.3's native externals ('xcmd'/'xfcn' resources, URLAccess 1.3) are one PowerPC record and the fragment.
+	 */
+	static boolean powerPcOnlyFat(byte[] code){return fatKind(code)==FAT_PPC_ONLY;}
+	/**
+	 * Whether a code resource is a routine descriptor (a 'fat' or 'safe fat' one) with a PowerPC code fragment: an external's
+	 * VM runs that rather than its 68K routine (the PowerPC code runs through the JIT), and the 68K routine of one that does
+	 * its work is kept for when the fragment cannot be prepared (Toolbox68k.externalLoaded).
+	 */
+	static boolean powerPcFat(byte[] code){return fatKind(code)!=FAT_NONE;}
+	private static final int FAT_NONE=0,FAT_PPC_ONLY=1,FAT_BOTH=2;
+	private static int fatKind(byte[] code){
+		for(int rd=0;rd+RD_HEADER+RD_RECORD<=code.length&&rd<4096;rd+=2){
+			if(u2(code,rd)!=MIXED_MODE_MAGIC||(code[rd+2]&0xff)<5)continue;
+			int count=u2(code,rd+10)+1;
+			if(count>8||rd+RD_HEADER+count*RD_RECORD>code.length)continue;
+			// relative to the descriptor, or to the resource's start: Apple's safe fat header BlockMoves the descriptor there
+			// before calling it (when Mixed Mode is there)
+			int base=-1;
+			for(int candidate:new int[]{0,rd})for(int i=0;i<count&&base<0;i++){int r=rd+RD_HEADER+i*RD_RECORD;
+				if((code[r+5]&0x0f)==ISA_PPC&&isPefAt(code,candidate+u4(code,r+8)))base=candidate;}
+			if(base<0)return FAT_NONE;
+			int routine68k=-1;List<Integer> starts=new ArrayList<Integer>();starts.add(rd);
+			for(int i=0;i<count;i++){int r=rd+RD_HEADER+i*RD_RECORD;
+				if((u2(code,r+6)&PROC_IS_RELATIVE)==0)return FAT_NONE; // a code resource's routines lie in it
+				int at=base+u4(code,r+8);starts.add(at);
+				if((code[r+5]&0x0f)==ISA_68K)routine68k=at;
+			}
+			if(routine68k<0)return FAT_PPC_ONLY; // native PowerPC code only
+			if(routine68k>=code.length)return FAT_BOTH;
+			int end=code.length;for(int s:starts)if(s>routine68k&&s<end)end=s;
+			if(end-routine68k>STUB_68K_LIMIT)return FAT_BOTH;
+			for(int p=routine68k;p+1<end;p+=2)if((code[p]&0xf0)==0xa0)return FAT_BOTH;
+			return FAT_PPC_ONLY;
+		}
+		return FAT_NONE;
+	}
+	/** uppXExternalProcInfo: pascal void main(XCmdPtr paramPtr). */
+	static final int EXTERNAL_PROC_INFO=0xc0;
+	/**
+	 * A native external that is a bare code fragment ('Joy!peff' at its start) with the routine descriptor in front that a
+	 * HyperCard 2.3 'xcmd'/'xfcn' carries (one PowerPC record for {@code main(XCmdPtr)}, the fragment right after it), so its
+	 * VM calls it as it calls those; any other code comes back as it is.
+	 */
+	static byte[] withRoutineDescriptor(byte[] code){
+		if(!isPefAt(code,0))return code;
+		byte[] out=new byte[RD_HEADER+RD_RECORD+code.length];
+		out[0]=(byte)(MIXED_MODE_MAGIC>>>8);out[1]=(byte)MIXED_MODE_MAGIC;out[2]=7; // version 7, one routine (count-1 = 0)
+		int r=RD_HEADER;
+		out[r+3]=(byte)EXTERNAL_PROC_INFO;out[r+5]=ISA_PPC;out[r+7]=PROC_IS_RELATIVE|FRAGMENT_NEEDS_PREPARING|0x04; // kUseNativeISA
+		out[r+11]=RD_HEADER+RD_RECORD; // the fragment, relative to the descriptor
+		System.arraycopy(code,0,out,RD_HEADER+RD_RECORD,code.length);
+		return out;
+	}
+	/**
 	 * Gives the PowerPC CPU a stack of {@code size} bytes. A PowerPC program's runtime exists before the extensions' INITs run,
 	 * and their PowerPC code (QuickTime's trap patches) is called from 68K code then: without a stack r1 was 0 and the frames
 	 * went to the top of the address space (the 68K stack) - QuickTime then drew MovieMunger's controller in the old style.
@@ -1084,6 +1231,47 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	void setUpStack(int base,int size) throws M68kCpuException {
 		stackBase=base;stackTop=stackBase+size;
 		cpu.r[1]=(stackTop-128)&~15;memory.writeLong(cpu.r[1],0);
+	}
+
+	/**
+	 * Whether a PowerPC program that launches {@code target} runs it in its own process instead of a process of its own: a
+	 * PowerPC application fragment in a file of no application type the Finder launches (Ray Dream Studio 4's extensions are
+	 * 'RDEX' files the program launches with LaunchApplication). See {@link ThreadManager68k#newProgramTask}.
+	 */
+	static boolean runsInLauncher(File target){
+		if(target==null)return false;
+		switch(FinderInfo68k.type(target)){
+			case MacApp68k.TYPE_APPL:case 0x41505043:case 0x41505044:case 0x61707065:case 0x41505045:return false; // APPL, APPC, APPD, appe, APPE
+			case 0:return false; // no Finder info (a copy that lost it): a program of its own, as before
+			default:break;
+		}
+		try{FragmentEntry e=applicationFragment(ResourceFile68k.open(target));return e!=null&&e.where==1;}
+		catch(IOException e){return false;}
+	}
+	/**
+	 * Runs {@code target} (see {@link #runsInLauncher}) on a task of this process: its fragment is loaded next to the
+	 * program's own, its resource file opened as the one the program asks for first (CurResFile), and its main routine runs when
+	 * the program's event calls give the tasks a turn; {@code serial} is its process serial number. Returns the OSErr of LaunchApplication.
+	 */
+	int launchInProcess(File target,int serial) throws M68kException {
+		try{
+			FragmentEntry e=applicationFragment(ResourceFile68k.open(target));
+			int launcherMap=toolbox.resources.currentRefNum();
+			final int ref=toolbox.resources.openOrphan(target);
+			toolbox.resources.useResFile(launcherMap); // the launcher's CurResFile is its own: opening the file made it current
+			if(ref<0)return ref;
+			byte[] data=dataFork(target);
+			Fragment fr;Map<String,Provider> outer=closure;closure=new HashMap<String,Provider>();
+			try{fr=loadFragment(e.name,target,data,e.offset,e.length);}finally{closure=outer;}
+			final int main=fr.instance.main();
+			if(main==0)return CFRAG_NO_APPLICATION;
+			System.err.println("[ppc "+app.name+"] \""+target.getName()+"\" ("+e.name+") runs in this process, as on a Mac that shares one address space");
+			ThreadManager68k.ThreadRecord t=toolbox.threads.newProgramTask(cpu68,Math.max(1024*1024,e.stackSize),serial,c->{
+				toolbox.resources.useResFile(ref);
+				cpu.call(main,new int[0]);
+				if(TRACE)System.err.println("[ppc] \""+target.getName()+"\" returned from its main routine");});
+			return t==null?-108:NO_ERR;
+		}catch(IOException ex){System.err.println("[ppc] launch of "+target+" in this process: "+ex.getMessage());return -43;}
 	}
 
 	/** Loads the application's fragment and its libraries, then calls its main routine; returns when it returns. */
@@ -1119,6 +1307,8 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	// ------------------------------------------------------------------ scheduling
 
 	private long polledInstructions;
+	/** Whether the PowerPC code runs through the JIT (PpcJit): the settings are looked at again at every poll. */
+	private boolean jitOn;
 	/**
 	 * The pace of the "real machine" speed for PowerPC programs, in PowerPC instructions a second (millions): the machine most
 	 * PowerPC programs met, the iMac (G3 at 233 MHz, about an instruction a clock). The G3 runs the same user instruction set as
@@ -1131,10 +1321,12 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	@Override public void poll(PpcCpu c) throws M68kException {
 		if(STATS)statPoll(c);
 		if(cpu68.abortRequested())throw new M68kAbortException(c.pc);
+		boolean jit=PpcJit.wanted(app==null?null:app.ppcJitOverride);
+		if(jit!=jitOn){jitOn=jit;c.useJit(jit);}
 		long delta=c.instructions-polledInstructions;polledInstructions=c.instructions;
 		// a 68K program's pace counts 68K instructions: PowerPC code it calls (a fat library such as StuffIt Expander's
 		// UnStuffEnginePPC) runs natively on the Power Mac: REAL_MIPS PowerPC instructions in the time of DEFAULT_MIPS 68K ones
-		cpu68.charge(app!=null&&!app.powerPC?delta*Toolbox68k.DEFAULT_MIPS/REAL_MIPS:delta);
+		cpu68.charge(app==null||!app.powerPC?delta*Toolbox68k.DEFAULT_MIPS/REAL_MIPS:delta); // an external's too (HyperCard's 68K world)
 		if(STATS){long t=System.nanoTime();toolbox.poll(cpu68);statPollNanos+=System.nanoTime()-t;}
 		else toolbox.poll(cpu68);
 	}
@@ -1168,6 +1360,7 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		if(now-statStart<1_000_000_000L)return;
 		double secs=(now-statStart)/1e9;
 		StringBuilder sb=new StringBuilder(String.format("[ppc stats] %.1f PPC MIPS, %.1f 68K MIPS, poll+throttle %.0f ms;",(c.instructions-statInstructions)/secs/1e6,(cpu68.instructions-statInstructions68)/secs/1e6,statPollNanos/1e6/secs));
+		if(c.jit!=null)sb.append(' ').append(c.jit.statistics()).append(';');
 		Integer[] order=new Integer[statCount.length];for(int i=0;i<order.length;i++)order[i]=i;
 		java.util.Arrays.sort(order,(a,b)->Long.compare(statNanos[b],statNanos[a]));
 		for(int k=0;k<STATS_TOP&&k<order.length&&statCount[order[k]]>0;k++){int i=order[k];sb.append(String.format(" %s %d/%.0fms",nativeName(i),statCount[i],statNanos[i]/1e6/secs));}

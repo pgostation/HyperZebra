@@ -86,7 +86,8 @@ final class GTranslateAheadDialog extends JDialog {
 		if(reason!=null){ end(text("Not available:")+" "+text(reason), null); return; }
 		Thread t = new Thread(() -> {
 			try{
-				VMTranslation.Ahead a = stack ? StackTranslation.ahead(app) : VMTranslation.Ahead.start(app);
+				PictureTranslation.Progress pictures = (done, total) -> SwingUtilities.invokeLater(() -> readingPictures(done, total));
+				VMTranslation.Ahead a = stack ? StackTranslation.ahead(app, pictures) : VMTranslation.Ahead.start(app, pictures);
 				SwingUtilities.invokeLater(() -> begin(a));
 			}catch(Exception ex){
 				SwingUtilities.invokeLater(() -> end(text(stack ? "The stack cannot be read." : "The program's resources cannot be read."), stack ? null : ex.getMessage()));
@@ -94,6 +95,16 @@ final class GTranslateAheadDialog extends JDialog {
 		}, "Translate ahead");
 		t.setDaemon(true);
 		t.start();
+	}
+
+	/** Reading the text in the stack's pictures or the program's PICT resources (PictureTranslation, PictTranslation) before its texts go: picture {@code done} of {@code total}. */
+	private void readingPictures(int done, int total) {
+		if(finished() || ahead!=null || total==0) return;
+		heading.setText(text("Reading the text in the pictures…"));
+		bar.setIndeterminate(false);
+		bar.setMaximum(total);
+		bar.setValue(done);
+		bar.setString(done+" / "+total);
 	}
 
 	private void begin(VMTranslation.Ahead a) {

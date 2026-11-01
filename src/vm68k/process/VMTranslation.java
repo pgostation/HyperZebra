@@ -734,6 +734,21 @@ final class VMTranslation {
 		out.removeIf(t->Piece.of(t)==null);
 		return out;
 	}
+	/**
+	 * The script a program's own texts are written in, read from them (StackEncodingDetector), not the System it runs under:
+	 * an English program under the Japanese System of a Japanese HyperZebra has Mac OS Roman "©", "…" and curly quotes,
+	 * which read as half-width katakana in Shift-JIS (Compact Pro's "Copying…" went to the translator as "Copyingﾉ").
+	 * Texts that do not decide (plain ASCII) keep {@code system}.
+	 */
+	static StackTextEncoding programTextEncoding(ResourceFile68k rf,StackTextEncoding system){
+		List<byte[]> samples=new ArrayList<byte[]>();
+		for(String s:programStrings(rf,StackTextEncoding.ROMAN,4000)){
+			byte[] b;try{b=StackTextEncoding.ROMAN.encode(s);}catch(java.nio.charset.CharacterCodingException e){continue;} // its bytes again
+			for(byte c:b)if(c<0){samples.add(b);break;}
+		}
+		StackTextEncoding found=StackEncodingDetector.fromText(samples);
+		return found==StackTextEncoding.JAPANESE||found==StackTextEncoding.ROMAN?found:system;
+	}
 	/** The texts of one resource (MENU, STR#, STR, WIND, DLOG, CNTL, DITL), in order; nothing for other types. */
 	static void resourceStrings(ResourceFile68k.Resource r,StackTextEncoding encoding,List<String> out){
 		byte[] d;
@@ -825,18 +840,22 @@ final class VMTranslation {
 		Ahead(Translator t,String from,String to,String engine,int texts,int sent){translator=t;this.from=from;this.to=to;this.engine=engine;this.texts=texts;this.sent=sent;}
 		/** A program translated ahead (null for a stack): its file, its resources and the encoding they were read in. */
 		File program;ResourceFile68k resources;StackTextEncoding encoding;
+		/** The texts read in its pictures: drawn, not written into resources (no script or length limit). */
+		Set<String> pictureTexts=Collections.emptySet();
 		/** Writes the program's translated resources from what is translated now (ResourceTranslation). */
 		ResourceTranslation.Built makeResources() throws IOException{return ResourceTranslation.build(program,resources,translator,encoding);}
 		boolean sameLanguage(){return !translator.active();}
-		static Ahead start(File program) throws IOException{return start(program,false,false);}
+		static Ahead start(File program) throws IOException{return start(program,false,false,null);}
+		static Ahead start(File program,PictureTranslation.Progress pictures) throws IOException{return start(program,false,false,pictures);}
 		/**
 		 * @param collect the texts are not sent but collected (Translator.collecting) for an AI chat (LlmTranslation)
 		 * @param again texts translated already go again too
+		 * @param pictures told how far reading the text in its PICT resources is (PictTranslation), or null
 		 */
-		static Ahead start(File program,boolean collect,boolean again) throws IOException{
+		static Ahead start(File program,boolean collect,boolean again,PictureTranslation.Progress pictures) throws IOException{
 			ResourceFile68k rf=ResourceFile68k.open(program);
 			LauncherStore.AppSettings settings=LauncherStore.enabled?LauncherStore.get().settingsFor(program):null;
-			StackTextEncoding encoding=Toolbox68k.applicationEncoding(rf,settings!=null?settings.language:null);
+			StackTextEncoding encoding=programTextEncoding(rf,Toolbox68k.applicationEncoding(rf,settings!=null?settings.language:null));
 			Config c=configFor(program);
 			List<String> strings=programStrings(rf,encoding,4000);
 			String from=AUTO.equals(c.from)?programLanguage(strings,encoding):c.from;
@@ -846,9 +865,12 @@ final class VMTranslation {
 			if(collect)t.collecting=new ArrayList<Object[]>();
 			t.again=again;
 			List<ProgramText> texts=programTexts(rf,encoding);
+			Set<String> inPictures=new HashSet<String>();
+			if(ResourceTranslation.supports(c.to)&&PictureTranslation.enabledFor(program))texts.addAll(PictTranslation.texts(rf,from,encoding,pictures,inPictures)); // the text in its PICT resources
 			int count=0;for(ProgramText g:texts)for(String line:g.lines)if(Piece.of(line)!=null)count++;
 			int sent=t.prefetchProgram(texts,Integer.MAX_VALUE);
 			Ahead a=new Ahead(t,from,c.to,c.engine,count,sent);
+			a.pictureTexts=inPictures;
 			a.program=program;a.resources=rf;a.encoding=encoding;
 			return a;
 		}

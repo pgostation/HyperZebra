@@ -2,6 +2,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.*;
 
 /**
  * HyperTalk speak / the voices / the speech without any speech library: the text goes to the speech engine
@@ -23,6 +24,13 @@ final class Speech {
 	private static volatile int generation;
 	private static Engine engine;
 	private static List<String> voiceCache;
+	/** The installed Japanese voices (macOS) in the order `say -v ?` lists them. */
+	private static final List<String> japanese = new ArrayList<String>();
+	/** Classic voice names (kana and romaji) and the host voices they are spoken with, best first: female / male. */
+	private static final String[] CLASSIC_JAPANESE = {
+		"まさこ", "F", "Masako", "F", "ひろし", "M", "Hiroshi", "M"};
+	private static final String[] JAPANESE_FEMALE = {"Kyoko", "O-Ren", "Sandy", "Shelley", "Flo"};
+	private static final String[] JAPANESE_MALE = {"Otoya", "Hattori", "Reed", "Rocko", "Eddy", "Grandpa"};
 
 	private static synchronized Engine engine(){
 		if(engine==null){
@@ -86,9 +94,22 @@ final class Speech {
 		return pending>0 ? "speaking" : "done";
 	}
 
+	/** まさこ / ひろし (and Masako / Hiroshi) → an installed Japanese voice of that sex; any other name unchanged. */
+	private static String hostVoice(String voice){
+		for(int i=0; i<CLASSIC_JAPANESE.length; i+=2){
+			if(!voice.equalsIgnoreCase(CLASSIC_JAPANESE[i])) continue;
+			voices(); //fills the Japanese voice list
+			String[] prefer = CLASSIC_JAPANESE[i+1].equals("F") ? JAPANESE_FEMALE : JAPANESE_MALE;
+			for(String n : prefer) for(String j : japanese) if(j.equals(n) || j.startsWith(n+" ")) return j;
+			return japanese.isEmpty() ? "" : japanese.get(0);
+		}
+		return voice;
+	}
+
 	private static void run(String text, String voice) throws Exception {
 		List<String> cmd = new ArrayList<String>();
 		String input = text;
+		voice = hostVoice(voice);
 		switch(engine()){
 			case SAY:
 				cmd.add("say"); if(!voice.isEmpty()){ cmd.add("-v"); cmd.add(voice); }
@@ -146,12 +167,18 @@ final class Speech {
 			List<String> v = new ArrayList<String>();
 			try{
 				switch(engine()){
-					case SAY:
+					case SAY: {
 						for(String line : output("say", "-v", "?")){
-							int i = line.indexOf("  ");
-							if(i>0) v.add(line.substring(0, i).trim());
+							String[] row = sayVoiceRow(line);
+							if(row==null || v.contains(row[0])) continue; //the same line is listed twice for a compact and an enhanced voice
+							v.add(row[0]);
+							if(row[1].toLowerCase(Locale.ROOT).startsWith("ja")) japanese.add(row[0]);
 						}
+						//the classic Japanese voices of the Mac OS Speech Manager (HyperCard J 2.3's speak, "すぴぃちくろっく"
+						//asks for まさこ or ひろし): HyperZebra lists them when the Mac has Japanese voices and speaks with those
+						if(!japanese.isEmpty()) for(int i=0; i<CLASSIC_JAPANESE.length; i+=2) v.add(CLASSIC_JAPANESE[i]);
 						break;
+					}
 					case SAPI:
 						v.addAll(output("powershell", "-NoProfile", "-NonInteractive", "-Command",
 							"[Console]::OutputEncoding=[Text.Encoding]::UTF8;Add-Type -AssemblyName System.Speech;"
@@ -180,6 +207,17 @@ final class Speech {
 			voiceCache = v;
 		}
 		return String.join("\n", voiceCache);
+	}
+
+	private static final Pattern SAY_ROW = Pattern.compile("^(.*?)\\s+([a-z]{2,3}[_-][A-Za-z0-9]{2,4})\\s+#");
+
+	/** One line of `say -v ?` ("Name   en_US    # sample"): {voice name, locale}. The name ends before the locale column, which
+	 *  can follow a localized name by a single space ("Alice (イタリア語（イタリア）) it_IT    # …"). null when there is no name. */
+	static String[] sayVoiceRow(String line){
+		Matcher m = SAY_ROW.matcher(line);
+		if(m.find() && !m.group(1).trim().isEmpty()) return new String[]{m.group(1).trim(), m.group(2)};
+		int i = line.indexOf("  ");
+		return i>0 ? new String[]{line.substring(0, i).trim(), ""} : null;
 	}
 
 	private static List<String> output(String... cmd) throws Exception {

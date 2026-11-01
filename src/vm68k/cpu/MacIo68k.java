@@ -45,7 +45,7 @@ final class MacIo68k implements M68kMemory.IoDevice, M68kCpu.InterruptSource {
 
 	MacIo68k(Toolbox68k tb,M68kMemory memory,int base){
 		this.tb=tb;this.memory=memory;this.base=base;
-		sound=new SoundBuffer68k(memory.raw(),base+SOUND_OFFSET,SoundMixer68k.get());
+		sound=new SoundBuffer68k(memory,base+SOUND_OFFSET,SoundMixer68k.get());
 		// as the ROM leaves them: sound off, the main sound and screen buffers selected, the volume from parameter RAM (SPVolCtl)
 		int volume;try{volume=memory.readByte(0x208)&7;}catch(M68kCpuException e){volume=3;}
 		setPorts(0x80,0x48|volume);

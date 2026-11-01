@@ -113,6 +113,8 @@ public class OObject {
 	ArrayList<String>[] stringList;
 	ArrayList<TTalk.wordType>[] typeList;
 	ArrayList<Integer> handlerLineList;
+	/** a handler name with diacritical marks by the name without them, lower case (TTalk.ensureHandlerList); null when none */
+	java.util.Map<String,String> markedHandlers;
 	/** 実行時の構造キャッシュ(if文の構造、repeatの終わり、ハンドラ行の単語)。各項目は元の行の String と
 	 *  同一かを確かめてから使うので、スクリプトが書き換わっても古い内容は使われない(TTalk.ControlCacheEntry) */
 	java.util.concurrent.ConcurrentHashMap<Integer,Object> controlCache;
@@ -628,7 +630,8 @@ class OXWindow extends OObject {
 
 	/** The external window titled {@code name}, or null (no external keeps one). */
 	static OXWindow find(String name){
-		if(name==null||name.isEmpty()||!Xcmd68k.hasWindowSessions())return null;
+		// "" too: TrueIdle's window has no title, and its documented way to stop it is close window ""
+		if(name==null||!Xcmd68k.hasWindowSessions())return null;
 		Xcmd68k.ExternalWindow w=Xcmd68k.findWindow(name);
 		return w==null?null:new OXWindow(w);
 	}
@@ -820,7 +823,14 @@ class OPatternWindow extends OObject {
 class OHcWindow extends OObject {
 	static final OHcWindow scroll = new OHcWindow("Scroll", 0, 0, 120, 112);
 	static final OHcWindow fatbits = new OHcWindow("FatBits", 0, 0, 64, 64);
+	//the answer and ask dialogs (HC J-2.3 / 2.4 probe Oth25 Answer Window: the topLeft of window "Answer" is a point and a set one
+	//is where the next dialog comes up, but there is no window "Answer" and the windows do not list them). HyperCard 10th
+	//Anniversary: set the loc of window "answer" to 173,196 before an answer
+	static final OHcWindow answer = new OHcWindow("Answer", 0, 0, 400, 120);
+	static final OHcWindow ask = new OHcWindow("Ask", 0, 0, 335, 103);
 	boolean shown;
+	/** answer/ask: a script gave it a place (else the dialog is centred on the card window) */
+	boolean placed;
 	private OHcWindow(String name, int left, int top, int width, int height) {
 		objectType="hc window";
 		this.name=name;
@@ -831,7 +841,15 @@ class OHcWindow extends OObject {
 		n=n.trim();
 		if(n.equalsIgnoreCase("scroll")) return scroll;
 		if(n.equalsIgnoreCase("fatbits") || n.equalsIgnoreCase("fat bits")) return fatbits;
+		if(n.equalsIgnoreCase("answer")) return answer;
+		if(n.equalsIgnoreCase("ask")) return ask;
 		return null;
+	}
+	/** the answer/ask dialog's window, which "there is a window" does not find */
+	boolean isDialog(){ return this==answer || this==ask; }
+	/** where a dialog of a stack's script comes up, in the card window's coordinates: the place a script gave it, or centred */
+	java.awt.Point dialogTopLeft(int cardWidth, int cardHeight){
+		return placed ? new java.awt.Point(left, top) : new java.awt.Point((cardWidth-width)/2, (cardHeight-height)/2);
 	}
 	@Override public boolean getVisible(){ return shown; }
 	@Override public void setVisible(boolean visible){ shown=visible; }

@@ -596,7 +596,7 @@ final class HCResourceExport {
 		return out.toByteArray();
 	}
 
-	private static byte[] font(Rsrc.FontInfo info,BufferedImage image) throws IOException {
+	static byte[] font(Rsrc.FontInfo info,BufferedImage image) throws IOException {
 		int rowWords=(image.getWidth()+15)/16, height=info.fRectHeight>0?info.fRectHeight:image.getHeight();
 		ByteArrayOutputStream out=new ByteArrayOutputStream();DataOutputStream d=new DataOutputStream(out);
 		d.writeShort(info.fontType);d.writeShort(info.firstChar);d.writeShort(info.lastChar);d.writeShort(info.widMax);

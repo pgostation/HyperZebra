@@ -926,6 +926,7 @@ class GMenuBrowse implements ActionListener {
 		//window back in front of it). HyperZebra keeps the item disabled in its menu, but the command always works
 		if(item!=null && (menuName==null || menuName.isEmpty() || menuName.equalsIgnoreCase("Go")) &&
 				(item.equalsIgnoreCase("Next Window") || item.equals(PCARD.pc.intl!=null ? PCARD.pc.intl.getText("Next Window") : "Next Window"))){
+			if(TTalk.nextWindowStack()) return;
 			nextWindow();
 			return;
 		}
@@ -934,10 +935,33 @@ class GMenuBrowse implements ActionListener {
 		if(item!=null && (menuName==null || menuName.isEmpty() || menuName.equalsIgnoreCase("Edit") ||
 				(PCARD.pc.intl!=null && menuName.equalsIgnoreCase(PCARD.pc.intl.getText("Edit"))))){
 			String eng = PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(item) : item;
-			if((eng.equalsIgnoreCase("Copy Card") || item.equalsIgnoreCase("Copy Card")) && TTalk.findMenu("Edit")!=null &&
-					TTalk.findMenuItemIndex(TTalk.findMenu("Edit"), item)>=0){
+			//MACBOY Organiser deletes Edit menu items 11-15 (Copy Card among them) and still copies cards with doMenu "Copy Card": the
+			//command works when no menu has an item of that name, as Paste Card does
+			boolean copyCard = false;
+			if(eng.equalsIgnoreCase("Copy Card") || item.equalsIgnoreCase("Copy Card")){
+				JMenu edit = TTalk.findMenu("Edit");
+				copyCard = edit!=null && TTalk.findMenuItemIndex(edit, item)>=0;
+				if(!copyCard){
+					copyCard = true;
+					for(JMenu m : TTalk.menuList()) if(m!=null && TTalk.findMenuItemIndex(m, item)>=0){ copyCard = false; break; }
+				}
+			}
+			if(copyCard){
+				//Option-Copy Card copies a picture of the card as shown instead (PUGO SS: its map is a field of tiles in the
+				//stack's own font, put, Option-Copy Card, then Paste Picture on the map card)
+				if(GUI.key[12]>0){ GMenuPaint.copyCardPicture(); return; }
 				if(PCARD.pc.tool!=null) PaintTool.saveCdPictures();
 				CardClipboard.copy(PCARD.pc.stack.curCard);
+				return;
+			}
+			//Cut Card (HyperCard's Edit menu, not HyperZebra's): Copy Card, then Delete Card. Developer's Library's "Neue erste
+			//Karte" makes a new first card with New Card, Cut Card, Paste Card. Like the disabled item, nothing on the only card
+			if(eng.equalsIgnoreCase("Cut Card") || item.equalsIgnoreCase("Cut Card")){
+				OCard cutting = PCARD.pc.stack.curCard;
+				if(cutting==null || PCARD.pc.stack.cardIdList.size()<=1 || cutting.cantDelete || PCARD.pc.stack.cantDelete) return;
+				if(PCARD.pc.tool!=null) PaintTool.saveCdPictures();
+				CardClipboard.copy(cutting);
+				doMenuImpl("Delete Card");
 				return;
 			}
 			if(eng.equalsIgnoreCase("Paste Card") || item.equalsIgnoreCase("Paste Card")){
@@ -1011,6 +1035,9 @@ class GMenuBrowse implements ActionListener {
 			doMenu(item);
 			return;
 		}
+		//doMenu "Quit Hypercard","File" (umich My Private Diary): HyperZebra's File menu has no Quit item on macOS (it is in
+		//the application menu), so the HyperCard item quits as without the menu name
+		if(menu!=null && item!=null && item.trim().equalsIgnoreCase("Quit HyperCard")){ doMenu(item.trim()); return; }
 		if(menu!=null && !isRecentMenuItem(item)) throw new xTalkException("No such menu item: {0}", item);
 		if(menu==null && TTalk.chooseKeyboardsMenuItem(item)) return; //doMenu "U.S." (ScreenSaver Stack: the input source to use)
 		doMenu(item); //組み込みメニューの英語名など
@@ -2235,19 +2262,16 @@ class GMenuBrowse implements ActionListener {
 			TTalk.doScriptforMenu("send \"deleteCard\" to this card");
 			if(lastCardOfBg) TTalk.doScriptforMenu("send \"deleteBackground\" to this background");
 			if(PCARD.pc.stack.curCard!=deleting) return; //ハンドラがカードを移動した
+			//the card shown next is the one after the deleted card, the first card after the last one (HC J-2.3 measured)
 			int previd = 0;
 			for(int i=0; i<PCARD.pc.stack.cardIdList.size(); i++){
 				if(PCARD.pc.stack.cardIdList.get(i) == PCARD.pc.stack.curCard.id){
-					if(i>0){
-						previd = PCARD.pc.stack.cardIdList.get(i-1);
-					}else{
-						//最初のカードの場合
-						previd = PCARD.pc.stack.cardIdList.get(i+1);
-						PCARD.pc.stack.firstCard = previd;
-					}
+					int n = PCARD.pc.stack.cardIdList.size();
+					previd = PCARD.pc.stack.cardIdList.get(i+1<n ? i+1 : 0);
+					if(i==0) PCARD.pc.stack.firstCard = previd; //最初のカードの場合
 					//カード削除
 					PCARD.pc.stack.cardIdList.remove(i);
-					
+					break;
 				}
 			}
 			for(int i=0; i<PCARD.pc.stack.cdCacheList.size(); i++){
@@ -2282,9 +2306,9 @@ class GMenuBrowse implements ActionListener {
 			//フラグを立てておらず、他の変更のついでに保存されるのを当てにしていた
 			PCARD.pc.stack.changed = true;
 			
-			if(previd!=0){
-				TTalk.CallMessage("go cd id "+previd, "", null, false, true);
-			}
+			//at once: the rest of the handler is on that card (HC J-2.3 measured; newStack's `doMenu "Delete Card"` then
+			//`put … into cd fld archTest` stopped on the deleted card)
+			if(previd!=0) goToNewCard(previd);
 		}
 		else if(cmd.equalsIgnoreCase("Icon…")){
 			new ResEdit(PCARD.pc, "ICON", null);

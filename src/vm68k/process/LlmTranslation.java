@@ -44,7 +44,7 @@ final class LlmTranslation {
 		if(collected!=null)synchronized(collected){
 			for(Object[] c:collected){
 				String text=(String)c[1];
-				Item it=new Item(list.size()+1,(VMTranslation.Kind)c[0],text,ahead.translator.joined(text));
+				Item it=new Item(list.size()+1,(VMTranslation.Kind)c[0],text,ahead.translator.joined(text)||ahead.pictureTexts.contains(text)); // a picture's text is drawn: no limit
 				list.add(it);byId.put(it.id,it);
 			}
 		}
@@ -56,9 +56,11 @@ final class LlmTranslation {
 	 * Collects the texts of a program or a stack still to translate (with {@code again}, all of them), into the language
 	 * of its translation settings. Reads its resources or the stack and finds its language: not on the event thread.
 	 */
-	static LlmTranslation start(File file,boolean again) throws IOException{
+	static LlmTranslation start(File file,boolean again) throws IOException{return start(file,again,null);}
+	/** @param pictures told how far reading the text in a stack's pictures is (PictureTranslation), or null */
+	static LlmTranslation start(File file,boolean again,PictureTranslation.Progress pictures) throws IOException{
 		boolean stack=StackTranslation.isStackFile(file)||StackTranslation.openStack(file)!=null;
-		VMTranslation.Ahead a=stack?StackTranslation.ahead(file,true,again):VMTranslation.Ahead.start(file,true,again);
+		VMTranslation.Ahead a=stack?StackTranslation.ahead(file,true,again,pictures):VMTranslation.Ahead.start(file,true,again,pictures);
 		return new LlmTranslation(file,stack,a);
 	}
 

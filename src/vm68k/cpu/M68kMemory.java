@@ -35,6 +35,26 @@ final class M68kMemory {
 	boolean writeProtected(int address,int length){
 		return protectedPages.get(address>>>12)||protectedPages.get((int)(((address&0xffffffffL)+length-1)>>>12));
 	}
+	// ------------------------------------------------------------------ compiled PowerPC code
+	/** Writes into memory holding compiled PowerPC code are reported to the JIT (PpcJit), which drops that code. */
+	interface CodeListener { void codeWritten(int address,int length); }
+	/** The lines {@link #codeMarks} has a byte for: 64 bytes. */
+	static final int CODE_SHIFT=6;
+	private CodeListener codeListener;
+	/** Non-zero for each line that holds compiled code (the listener sets and clears them); null while nothing is compiled. */
+	private byte[] codeMarks;
+	synchronized void setCodeListener(CodeListener l){codeListener=l;if(l!=null&&codeMarks==null)codeMarks=new byte[(size>>>CODE_SHIFT)+1];}
+	CodeListener codeListener(){return codeListener;}
+	byte[] codeMarks(){return codeMarks;}
+	/** A write of {@code length} bytes at {@code address} into a marked line. */
+	private void codeWritten(int address,int length){CodeListener l=codeListener;if(l!=null)l.codeWritten(address,length);}
+	/** A bulk write (load, copy, fill, a block allocated or freed): reported when any of its lines holds compiled code. */
+	private void codeRange(int address,int length){
+		byte[] m=codeMarks;if(m==null||length<=0)return;
+		int first=address>>>CODE_SHIFT,last=(int)Math.min(m.length-1,((address&0xffffffffL)+length-1)>>>CODE_SHIFT);
+		for(int line=first;line<=last;line++)if(m[line]!=0){codeWritten(address,length);return;}
+	}
+
 	/** A program run in the 24-bit world (16 MB, the top address byte ignored; MacApp68k.addressing24): StripAddress masks with
 	 *  $FFFFFF, and master pointers may carry the program's own flags in their top byte. */
 	volatile boolean addressing24;
@@ -76,9 +96,97 @@ final class M68kMemory {
 	/** @param size power of two, at least 16 MB; @param heapStart first heap address. */
 	M68kMemory(int size, int heapStart) {
 		if(size<SIZE||Integer.bitCount(size)!=1)throw new IllegalArgumentException("memory size must be a power of two >= 16MB");
-		this.size=size;bytes=new byte[size];mask=size-1;romBase=size-ROM_SIZE;
+		this.size=size;bytes=new byte[size];mask=size-1;romBase=size-ROM_SIZE;spans();
 		this.heapStart=heapStart;heapEnd=romBase;
 		addFree(heapStart,heapEnd-heapStart);
+	}
+
+	// ------------------------------------------------------------------ one address space for several programs
+	// Classic Mac OS runs every program in one address space: each in a partition of its own, low memory swapped per process.
+	// A program launched into its launcher's space (MacApp68k.sharesAddressSpace) gets a memory of its own here - its own heap
+	// books, ROM and low memory - over the SAME bytes: its partition lies above the launcher's memory, and each sees the other's
+	// partition at the same addresses (the Apple Dylan IDE reads its Application Nub's runtime globals and stacks directly).
+	/** Bytes [0, lowEnd) are this program's own (low memory and the zone header room before the first heap): 0 unless it was
+	 *  launched into another program's address space. Accesses there take the slow path of the bounds check below. */
+	private int lowEnd;private byte[] low;
+	/** size-lowEnd-n for n = 1, 2, 4: an access is inside the shared bytes when (address-lowEnd) is at most this, unsigned. */
+	private int span1,span2,span4;
+	private void spans(){span1=size-lowEnd-1;span2=size-lowEnd-2;span4=size-lowEnd-4;}
+	/** The partitions of one shared address space; the first program's own memory is none of them. */
+	private static final class Space {
+		final M68kMemory root;final java.util.List<Partition> partitions=new java.util.ArrayList<Partition>();
+		Space(M68kMemory root){this.root=root;}
+	}
+	private static final class Partition {final int base,size;boolean inUse;Partition(int base,int size){this.base=base;this.size=size;}}
+	private Space space;private Partition partition;
+	/** Room below 16 MB the launcher lent this program (its "system heap" for {@link #allocateBelow}): start, length; 0 for none. */
+	private int lentStart,lentLength;
+	/** Bytes lent to a program launched into this space ({@link #lentStart}): taken from the launcher's heap below 16 MB. */
+	static final int LENT_LOW=2*1024*1024;
+	/** Where this program's partition starts (its application zone record), 0 when it has the address space to itself. */
+	int partitionBase(){return partition==null?0:partition.base;}
+	/** Bytes of this program's partition (MacApp68k sizes the A5 world and stack from it); the whole memory without one. */
+	int partitionSize(){return partition==null?romBase+ROM_SIZE:partition.size;}
+	/** Whether another program's memory shares these bytes. */
+	boolean shared(){return space!=null;}
+
+	/**
+	 * A memory for a program this one launches into its own address space: a partition of {@code partitionSize} bytes above
+	 * everything allocated so far (or one an earlier such program has left), low memory of its own below {@code privateLow}.
+	 * Null when that is not possible now: 24-bit or growable memories, more than 1 GB, or a new partition needed while another
+	 * program runs in this space (the bytes would have to be moved under it). Runs on this program's thread, in its _Launch.
+	 */
+	synchronized M68kMemory launchPartition(int partitionSize,int privateLow){
+		if(addressing24||growLimit>0||partitionSize<SIZE||(partitionSize&0xfffff)!=0)return null;
+		Space s=space!=null?space:new Space(this);
+		Partition p=null;
+		synchronized(s){
+			for(Partition q:s.partitions)if(!q.inUse&&q.size>=partitionSize){p=q;break;}
+			if(p==null){
+				for(Partition q:s.partitions)if(q.inUse)return null;
+				if(s.root!=this)return null; // only the first program's memory grows the space (it alone runs then)
+				long total=Long.highestOneBit((long)size+partitionSize);if(total<(long)size+partitionSize)total<<=1;
+				if(total>0x40000000L)return null;
+				int base=size;
+				try{bytes=Arrays.copyOf(bytes,(int)total);}catch(OutOfMemoryError e){return null;}
+				size=(int)total;mask=size-1;spans();
+				if(chunkSerial!=null){chunkSerial=Arrays.copyOf(chunkSerial,(size>>>CHUNK_SHIFT)+1);chunkTracked=Arrays.copyOf(chunkTracked,chunkSerial.length);superSerial=Arrays.copyOf(superSerial,(size>>>SUPER_SHIFT)+1);}
+				if(codeMarks!=null)codeMarks=Arrays.copyOf(codeMarks,(size>>>CODE_SHIFT)+1);
+				p=new Partition(base,partitionSize);s.partitions.add(p);
+			}
+			p.inUse=true;
+		}
+		space=s;
+		M68kMemory m=new M68kMemory(s,p,s.root.bytes,s.root.size,privateLow);
+		// QuickTime's code Handles must lie in the first 16 MB (see LOW_LIMIT): a little of the launcher's room there, if it has any
+		try{int lent=allocateBelow(LENT_LOW,4,LOW_LIMIT);if(lent+LENT_LOW+trailer()<=LOW_LIMIT){m.lentStart=lent;m.lentLength=LENT_LOW;}else free(lent);}
+		catch(M68kCpuException e){}
+		return m;
+	}
+	private M68kMemory(Space s,Partition p,byte[] bytes,int size,int privateLow){
+		space=s;partition=p;this.bytes=bytes;this.size=size;mask=size-1;romBase=p.base+p.size-ROM_SIZE;
+		lowEnd=privateLow;low=new byte[privateLow];spans();
+		heapStart=p.base;heapEnd=romBase;
+		addFree(heapStart,heapEnd-heapStart);
+	}
+	/** The program launched into another's address space ended: its partition is free for the next one, the lent room goes back. */
+	void releasePartition(){
+		Space s=space;Partition p=partition;if(s==null||p==null)return;
+		synchronized(s){p.inUse=false;}
+		if(lentLength>0){M68kMemory root=s.root;synchronized(root){if(root.isAllocated(lentStart))root.free(lentStart);}lentLength=0;}
+	}
+	/** A byte of the shared bytes or of this program's own low memory. */
+	private int byteAt(int address){return address<lowEnd?low[address]&0xff:bytes[address]&0xff;}
+	private void putByte(int address,int value){if(address<lowEnd)low[address]=(byte)value;else bytes[address]=(byte)value;}
+	/** An access the inline bounds test sent here: into this program's own low memory, else outside the address space. */
+	private int readOutside(int address,int length) throws M68kCpuException {
+		if(address>=lowEnd)check(address,length);
+		if(address+length<=lowEnd){int v=0;for(int i=0;i<length;i++)v=v<<8|low[address+i]&0xff;return v;}
+		check(address,length);int v=0;for(int i=0;i<length;i++)v=v<<8|byteAt(address+i);return v;
+	}
+	private void writeOutside(int address,int length,int value) throws M68kCpuException {
+		if(address>=lowEnd||address+length>lowEnd)check(address,length);
+		for(int i=0;i<length;i++)putByte(address+i,value>>>8*(length-1-i));
 	}
 
 	int size() { return size; }
@@ -95,11 +203,12 @@ final class M68kMemory {
 	/** Grows the memory so that a free run of {@code needed} bytes lies above the current end; false when the limit is reached.
 	 *  The array behind {@link #raw()} is replaced: its callers fetch it per use (the host converts window rows from it each tick). */
 	private boolean grow(int needed) {
-		if(growLimit<=size)return false;
+		if(growLimit<=size||space!=null)return false;
 		long newSize=size;while(newSize-size<needed&&newSize<growLimit)newSize*=2;
 		if(newSize-size<needed||newSize>growLimit)return false;
-		int oldSize=size;bytes=java.util.Arrays.copyOf(bytes,(int)newSize);size=(int)newSize;mask=size-1;
+		int oldSize=size;bytes=java.util.Arrays.copyOf(bytes,(int)newSize);size=(int)newSize;mask=size-1;spans();
 		if(chunkSerial!=null){chunkSerial=java.util.Arrays.copyOf(chunkSerial,(size>>>CHUNK_SHIFT)+1);chunkTracked=java.util.Arrays.copyOf(chunkTracked,chunkSerial.length);superSerial=java.util.Arrays.copyOf(superSerial,(size>>>SUPER_SHIFT)+1);}
+		if(codeMarks!=null)codeMarks=java.util.Arrays.copyOf(codeMarks,(size>>>CODE_SHIFT)+1);
 		addFree(oldSize,size-oldSize);
 		return true;
 	}
@@ -114,6 +223,7 @@ final class M68kMemory {
 		freeByAddress.clear();freeBySize.clear();freeBySizeLow.clear();reservedAfter.clear();freeBytes=0;
 		heapStart=start;heapEnd=Math.min(end,romBase);
 		reserveEnd=heapEnd-heapStart>8*SYSTEM_RESERVE?heapStart+SYSTEM_RESERVE:0;
+		if(lentLength>0){reserveEnd=lentStart+lentLength;addFree(lentStart,lentLength);} // the room lent below 16 MB is this program's system reserve
 		addFree(heapStart,heapEnd-heapStart);
 	}
 	private boolean inReserve(int address,int length){return address+length<=reserveEnd;}
@@ -129,21 +239,22 @@ final class M68kMemory {
 
 	int readByte(int address) throws M68kCpuException {
 		address = normalize(address);
-		check(address, 1);
+		if(Integer.compareUnsigned(address-lowEnd,span1)>0)return readOutside(address,1);
 		if(address<ioEnd&&address>=ioStart)return io.read(address-ioStart);
 		return bytes[address] & 0xff;
 	}
 
 	int readWord(int address) throws M68kCpuException {
 		address = normalize(address);
-		checkAligned(address, 2);
+		// the 68020 tolerates odd word accesses (the 68000 does not); programs compiled for 68020+ rely on it
+		if(Integer.compareUnsigned(address-lowEnd,span2)>0)return readOutside(address,2);
 		if(address<ioEnd&&address+2>ioStart)return ioRead(address,2);
 		return (bytes[address] & 0xff) << 8 | bytes[address + 1] & 0xff;
 	}
 
 	int readLong(int address) throws M68kCpuException {
 		address = normalize(address);
-		checkAligned(address, 4);
+		if(Integer.compareUnsigned(address-lowEnd,span4)>0)return readOutside(address,4);
 		if(address<ioEnd&&address+4>ioStart)return ioRead(address,4);
 		return (bytes[address] & 0xff) << 24 | (bytes[address + 1] & 0xff) << 16 |
 			(bytes[address + 2] & 0xff) << 8 | bytes[address + 3] & 0xff;
@@ -174,8 +285,9 @@ final class M68kMemory {
 	private int probeDeviceCount,probeOutside,pbRow0=Integer.MAX_VALUE,pbRow1,pbCol0=Integer.MAX_VALUE,pbCol1;
 	void writeByte(int address, int value) throws M68kCpuException {
 		address = normalize(address);if(WRITE_PROBE!=null)probe(address);if(ADDR_PROBE!=null)addrProbe(address,1,value);
-		check(address, 1);
+		if(Integer.compareUnsigned(address-lowEnd,span1)>0){writeOutside(address,1,value);return;}
 		bytes[address] = (byte)value;
+		byte[] code=codeMarks;if(code!=null&&code[address>>>CODE_SHIFT]!=0)codeWritten(address,1);
 		if(address<trackEnd&&address>=trackStart&&chunkTracked[address>>>CHUNK_SHIFT]!=0)touched(address,1);
 		if(address<watchEnd&&address>=watchStart)watched(address,1);
 		if(address<ioEnd&&address>=ioStart)io.write(address-ioStart,value&0xff);
@@ -183,9 +295,10 @@ final class M68kMemory {
 
 	void writeWord(int address, int value) throws M68kCpuException {
 		address = normalize(address);if(WRITE_PROBE!=null)probe(address);if(ADDR_PROBE!=null)addrProbe(address,2,value);
-		checkAligned(address, 2);
+		if(Integer.compareUnsigned(address-lowEnd,span2)>0){writeOutside(address,2,value);return;}
 		bytes[address] = (byte)(value >>> 8);
 		bytes[address + 1] = (byte)value;
+		byte[] code=codeMarks;if(code!=null&&code[address>>>CODE_SHIFT]!=0)codeWritten(address,2); // a line is marked from 3 bytes before its code
 		if(address<trackEnd&&address+2>trackStart&&chunkTracked[address>>>CHUNK_SHIFT]!=0)touched(address,2);
 		if(address<watchEnd&&address+2>watchStart)watched(address,2);
 		if(address<ioEnd&&address+2>ioStart)ioWrite(address,2,value);
@@ -193,11 +306,12 @@ final class M68kMemory {
 
 	void writeLong(int address, int value) throws M68kCpuException {
 		address = normalize(address);if(WRITE_PROBE!=null)probe(address);if(ADDR_PROBE!=null)addrProbe(address,4,value);
-		checkAligned(address, 4);
+		if(Integer.compareUnsigned(address-lowEnd,span4)>0){writeOutside(address,4,value);return;}
 		bytes[address] = (byte)(value >>> 24);
 		bytes[address + 1] = (byte)(value >>> 16);
 		bytes[address + 2] = (byte)(value >>> 8);
 		bytes[address + 3] = (byte)value;
+		byte[] code=codeMarks;if(code!=null&&code[address>>>CODE_SHIFT]!=0)codeWritten(address,4);
 		if(address<trackEnd&&address+4>trackStart&&chunkTracked[address>>>CHUNK_SHIFT]!=0)touched(address,4);
 		if(address<watchEnd&&address+4>watchStart)watched(address,4);
 		if(address<ioEnd&&address+4>ioStart)ioWrite(address,4,value);
@@ -209,7 +323,9 @@ final class M68kMemory {
 		address = normalize(address);
 		check(address, length);
 		if(ADDR_PROBE!=null&&address<ADDR_PROBE[1]&&address+length>ADDR_PROBE[0]){if(ADDR_PROBE_TRACE)new Throwable(String.format("[68K] load into probed range $%X +%d",address,length)).printStackTrace();else System.err.printf("[68K] load into probed range: $%X +%d pc $%X%n",address,length,probePc);}
-		System.arraycopy(data, offset, bytes, address, length);
+		if(address<lowEnd){for(int i=0;i<length;i++)putByte(address+i,data[offset+i]);if(address+length<=lowEnd)return;}
+		else System.arraycopy(data, offset, bytes, address, length);
+		codeRange(address,length);
 		if(address<trackEnd&&address+length>trackStart)touchedRange(address,length);
 		if(address<watchEnd&&address+length>watchStart)watched(address,length);
 	}
@@ -218,6 +334,7 @@ final class M68kMemory {
 	void read(int address, byte[] target, int offset, int length) throws M68kCpuException {
 		address = normalize(address);
 		check(address, length);
+		if(address<lowEnd){for(int i=0;i<length;i++)target[offset+i]=(byte)byteAt(address+i);return;}
 		System.arraycopy(bytes, address, target, offset, length);
 	}
 
@@ -334,7 +451,8 @@ final class M68kMemory {
 	synchronized void touch(int address,int length){
 		if(TOUCH_PROBE!=null&&length>0&&address<TOUCH_PROBE[1]&&address+length>TOUCH_PROBE[0])new Throwable("[68K] host write touches $"+Integer.toHexString(address)+"+"+length).printStackTrace();
 		if(length>0&&address<trackEnd&&address+length>trackStart)touchedRange(address,length);
-		if(length>0&&address<watchEnd&&address+length>watchStart)watched(address,length);}
+		if(length>0&&address<watchEnd&&address+length>watchStart)watched(address,length);
+		codeRange(address,length);}
 	/** Debug: how many tracked device bytes were written, and the rows touched. */
 	String describeTracking(){if(deviceBits==null)return "no tracking";long n=0;int firstRow=-1,lastRow=-1;for(int i=0;i<deviceBits.length;i++)n+=Long.bitCount(deviceBits[i]);
 		for(int o=0;o<deviceEnd-deviceStart;o+=deviceRowBytes){boolean any=false;for(int x=0;x<deviceRowBytes&&!any;x+=8){int b=o+x;if(b<deviceEnd-deviceStart&&(deviceBits[b>>>6]&(1L<<(b&63)))!=0)any=true;}if(any){if(firstRow<0)firstRow=o/deviceRowBytes;lastRow=o/deviceRowBytes;}}
@@ -419,6 +537,7 @@ final class M68kMemory {
 
 	byte[] readBytes(int address,int length) throws M68kCpuException {
 		address=normalize(address);check(address,length);
+		if(address<lowEnd){byte[] out=new byte[length];for(int i=0;i<length;i++)out[i]=(byte)byteAt(address+i);return out;}
 		return Arrays.copyOfRange(bytes,address,address+length);
 	}
 
@@ -429,7 +548,12 @@ final class M68kMemory {
 		check(destination, length);
 		if(ADDR_PROBE!=null&&destination<ADDR_PROBE[1]&&destination+length>ADDR_PROBE[0]&&ADDR_PROBE_TRACE)new Throwable("[68K] block copy into probed range").printStackTrace();
 		if(ADDR_PROBE!=null&&destination<ADDR_PROBE[1]&&destination+length>ADDR_PROBE[0])System.err.println("[68K] block copy into probed range: $"+Integer.toHexString(source)+" -> $"+Integer.toHexString(destination)+" +"+length+" pc $"+Integer.toHexString(probePc)+" sp $"+Integer.toHexString(probeSp));
-		System.arraycopy(bytes, source, bytes, destination, length);
+		if(source<lowEnd||destination<lowEnd){ // this program's own low memory on either side: a byte at a time, overlap as memmove
+			if(destination>source)for(int i=length-1;i>=0;i--)putByte(destination+i,byteAt(source+i));
+			else for(int i=0;i<length;i++)putByte(destination+i,byteAt(source+i));
+			if(destination+length<=lowEnd)return;}
+		else System.arraycopy(bytes, source, bytes, destination, length);
+		codeRange(destination,length);
 		if(destination<trackEnd&&destination+length>trackStart)touchedRange(destination,length);
 		if(destination<watchEnd&&destination+length>watchStart)watched(destination,length);
 		if(destination<ioEnd&&destination+length>ioStart){ // a BlockMove of samples into the sound buffer
@@ -438,7 +562,9 @@ final class M68kMemory {
 
 	void fill(int address,int length,int value) throws M68kCpuException {
 		address=normalize(address);check(address,length);
-		Arrays.fill(bytes,address,address+length,(byte)value);
+		if(address<lowEnd){for(int i=0;i<length;i++)putByte(address+i,value);if(address+length<=lowEnd)return;}
+		else Arrays.fill(bytes,address,address+length,(byte)value);
+		codeRange(address,length);
 		if(address<trackEnd&&address+length>trackStart)touchedRange(address,length);
 		if(address<watchEnd&&address+length>watchStart)watched(address,length);
 	}
@@ -479,31 +605,52 @@ final class M68kMemory {
 	 * In this mode every block keeps a 16-byte trailer (reallocate too), so the next block's header always has its room.
 	 */
 	volatile boolean blockHeaders;
+	/**
+	 * Real 24-bit block headers (MacApp68k.readsBlockHeaders24): the 8 bytes before each block hold what the 24-bit Memory
+	 * Manager keeps there - tag (bits 7-6: 1 nonrelocatable, 2 relocatable) with the size correction in the low nibble, the
+	 * physical size (header included) in the low 3 bytes, then the relative handle or the zone. Uninvited's resource cache
+	 * finds the end of each cached Handle's data from its header (move.l Lo3Bytes,Dn; subq #8,An; and.l (An),Dn) and walked
+	 * on forever over the zero bytes that stood there. The 8-byte trailer every block keeps is that room.
+	 */
+	volatile boolean blockHeaders24;
 	/** The zone written into block headers ({@link #blockHeaders}): the application zone record. */
 	volatile int headerZone;
 	/** Handle blocks (block -> Handle), for the relative handle of {@link #blockHeaders}. */
 	private final Map<Integer,Integer> blockHandles=new HashMap<Integer,Integer>();
 	/** Mac68kApi made {@code handle}'s master pointer point at {@code block} with {@code size} logical bytes: (re)writes its header. */
 	synchronized void noteHandleBlock(int handle,int block,int size){
-		if(!blockHeaders||block<=0)return;
+		if(!(blockHeaders||blockHeaders24)||block<=0)return;
 		block&=mask;Integer length=allocated.get(block);if(length==null)return;
 		blockHandles.put(block,handle);requested.put(block,Math.max(0,size));tagAt(block);
 	}
 	private void tagBlocks(int address,int size){
-		if(!(blockTags||blockHeaders)||address<=0)return;
+		if(!(blockTags||blockHeaders||blockHeaders24)||address<=0)return;
 		Integer length=allocated.get(address);if(length==null)return;
 		requested.put(address,Math.max(0,size));
 		tagAt(address);if(allocated.containsKey(address+length))tagAt(address+length); // this block's zero fill cleared the next one's tag
 	}
 	/** The tag byte of the block at {@code address}: in the previous block's trailer or free space (never another block's data). */
 	private void tagAt(int address){
-		int at=address-(blockHeaders?HEADER_SIZE:8);if(at<heapStart||at>=bytes.length||(!blockHeaders&&bytes[at]!=0))return;
+		boolean full=blockHeaders||blockHeaders24;
+		int at=address-(blockHeaders?HEADER_SIZE:8);if(at<heapStart||at>=bytes.length||(!full&&bytes[at]!=0))return;
 		// only in another block's trailer (a block ends exactly here) or in free space: a Handle the program points into a
 		// block by itself (THINK C carves its pieces) may sit where the books see no block, and its data must not change
 		Integer previous=endsAt.get(address);
+		// a block placed at an aligned address (PowerPC programs: blockAlignment 32) starts a little after the previous one ends,
+		// the gap left as free bytes: the header still goes into that block's trailer and the gap. Apple Dylan PPC's MCL found its
+		// region Handles' blocks headerless ("Invalid selection region in #<FRED-RECORD>")
+		for(int e=address-4;previous==null&&e>at;e-=4)previous=endsAt.get(e);
 		if(previous!=null){Integer used=requested.get(previous);if(used==null||previous+used>at)return;} // reallocate leaves no spare bytes
 		else{Map.Entry<Integer,Integer> free=freeByAddress.floorEntry(at);if(free==null||at>=free.getKey()+free.getValue())return;}
-		if(!blockHeaders){bytes[at]=(byte)0x80;return;}
+		if(!full){bytes[at]=(byte)0x80;return;}
+		if(!blockHeaders){ // 24-bit: tag + size correction, 24-bit physical size, relative handle or zone
+			Integer used=requested.get(address),length=allocated.get(address);
+			int logical=used!=null?used:length==null?0:Math.max(0,length-trailer()),physical=8+Math.max(4,(logical+3)&~3);
+			Integer handle=blockHandles.get(address);int second=handle!=null?handle-headerZone:headerZone;
+			bytes[at]=(byte)((handle!=null?0x80:0x40)|((physical-8-logical)&0x0f));
+			bytes[at+1]=(byte)(physical>>16);bytes[at+2]=(byte)(physical>>8);bytes[at+3]=(byte)physical;
+			bytes[at+4]=(byte)(second>>24);bytes[at+5]=(byte)(second>>16);bytes[at+6]=(byte)(second>>8);bytes[at+7]=(byte)second;
+			return;}
 		// the 32-bit Memory Manager's 12-byte header (the VM runs programs with 32-bit addressing: MPW Shell 3.0 finds the header
 		// 12 bytes before a block after StripAddress($80000000), 3.1 after the zone's heapType): tag (bits 7-6: 1 nonrelocatable,
 		// 2 relocatable), master pointer flags, reserved, size correction; the physical size; the relative handle or the zone
@@ -516,18 +663,21 @@ final class M68kMemory {
 		bytes[at+8]=(byte)(second>>24);bytes[at+9]=(byte)(second>>16);bytes[at+10]=(byte)(second>>8);bytes[at+11]=(byte)second;
 	}
 
-	synchronized int allocate(int size, int alignment) throws M68kCpuException {int a=allocateUntagged(size,alignment);tagBlocks(a,size);return a;}
-	synchronized int allocateOutside(int size,int lo,int hi) throws M68kCpuException {int a=allocateOutsideUntagged(size,lo,hi);tagBlocks(a,size);return a;}
-	synchronized int allocateBelow(int size,int alignment,int limit) throws M68kCpuException {int a=allocateBelowUntagged(size,alignment,limit);tagBlocks(a,size);return a;}
-	synchronized int allocateReserving(int size,int alignment,int reserve) throws M68kCpuException {int a=allocateReservingUntagged(size,alignment,reserve);tagBlocks(a,size);return a;}
-	synchronized boolean growInPlace(int address,int newSize){boolean grown=growInPlaceUntagged(address,newSize);if(grown)tagBlocks(address&mask,newSize);return grown;}
-	synchronized int reallocate(int address,int newSize,boolean mayMove) throws M68kCpuException {int a=reallocateUntagged(address,newSize,mayMove);tagBlocks(a,newSize);return a;}
+	// (the zero fill of a new block - and freeing one - replaces whatever compiled code was there: codeRange)
+	synchronized int allocate(int size, int alignment) throws M68kCpuException {int a=allocateUntagged(size,alignment);tagBlocks(a,size);codeRange(a,size+HEADER_TRAILER);return a;}
+	synchronized int allocateOutside(int size,int lo,int hi) throws M68kCpuException {int a=allocateOutsideUntagged(size,lo,hi);tagBlocks(a,size);codeRange(a,size+HEADER_TRAILER);return a;}
+	synchronized int allocateBelow(int size,int alignment,int limit) throws M68kCpuException {int a=allocateBelowUntagged(size,alignment,limit);tagBlocks(a,size);codeRange(a,size+HEADER_TRAILER);return a;}
+	synchronized int allocateReserving(int size,int alignment,int reserve) throws M68kCpuException {int a=allocateReservingUntagged(size,alignment,reserve);tagBlocks(a,size);codeRange(a,size+HEADER_TRAILER);return a;}
+	synchronized boolean growInPlace(int address,int newSize){boolean grown=growInPlaceUntagged(address,newSize);if(grown){tagBlocks(address&mask,newSize);codeRange(address&mask,newSize+HEADER_TRAILER);}return grown;}
+	synchronized int reallocate(int address,int newSize,boolean mayMove) throws M68kCpuException {int a=reallocateUntagged(address,newSize,mayMove);tagBlocks(a,newSize);codeRange(a,newSize+HEADER_TRAILER);return a;}
 
 	/** Allocates a zeroed block, aligned to {@link #blockAlignment} (4 bytes unless a PowerPC program runs). */
 	private static final int BLOCK_TRAILER=8;
 	/** The spare bytes after each block: 16 with {@link #blockHeaders} (room for the 32-bit Memory Manager's 12-byte header of the next block). */
 	private int trailer(){return blockHeaders?HEADER_TRAILER:BLOCK_TRAILER;}
 	private static final int HEADER_TRAILER=16,HEADER_SIZE=12;
+	/** The message of a failed allocation: how much was asked for and what the heap has left. */
+	private String outOfHeap(int size){return "out of 68K heap memory (a block of "+size+" bytes; "+freeBytes+" free, largest "+(freeBySize.isEmpty()?0:(int)(freeBySize.lastKey()>>>32))+")";}
 	private int allocateUntagged(int size, int alignment) throws M68kCpuException {
 		if(size<0)throw new M68kCpuException(0,"negative allocation");
 		int align=blockAlignment;
@@ -535,7 +685,7 @@ final class M68kMemory {
 			Map.Entry<Long,Boolean> fit=size<HIGH_ALLOCATION?freeBySizeLow.ceilingEntry(((long)search<<32)):null;
 			if(fit==null)fit=freeBySize.ceilingEntry(((long)search<<32));
 			if(fit==null){int fromReserve=allocateFromReserve(needed);if(fromReserve!=0)return fromReserve; // the last resort need not be aligned
-				if(grow(search))return allocate(size,alignment);throw new M68kCpuException(heapEnd,"out of 68K heap memory");}
+				if(grow(search))return allocate(size,alignment);throw new M68kCpuException(heapEnd,outOfHeap(size));}
 			long key=fit.getKey();int blockSize=(int)(key>>>32),address=(int)key;
 			removeFree(address,blockSize);
 			return placeAligned(address,blockSize,needed,align,size>=HIGH_ALLOCATION);}
@@ -547,7 +697,7 @@ final class M68kMemory {
 		if(fit==null)fit=freeBySize.ceilingEntry(((long)needed<<32));
 		if(fit==null){int fromReserve=allocateFromReserve(needed);if(fromReserve!=0)return fromReserve;
 			if(grow(needed))return allocate(size,alignment);
-			throw new M68kCpuException(heapEnd,"out of 68K heap memory");}
+			throw new M68kCpuException(heapEnd,outOfHeap(size));}
 		long key=fit.getKey();int blockSize=(int)(key>>>32),address=(int)key;
 		removeFree(address,blockSize);
 		// Big blocks (screen buffers, GWorlds, file buffers) take the top of their free block, small ones the bottom: the low
@@ -673,6 +823,7 @@ final class M68kMemory {
 		address&=mask; // a master pointer may carry flags in its top byte (24-bit Memory Manager, see Mac68kApi.moveMasterPointer)
 		Integer blockSize=removeBlock(address);
 		if(blockSize==null)return;
+		codeRange(address,blockSize);
 		if(FREE_WATCH!=0&&FREE_WATCH>=address&&FREE_WATCH<address+blockSize)new Throwable("[68K] freeing watched block $"+Integer.toHexString(address)+" ("+blockSize+" bytes)").printStackTrace();
 		Integer reserve=reservedAfter.remove(address);
 		int start=address,length=blockSize+(reserve==null?0:reserve);
@@ -733,7 +884,7 @@ final class M68kMemory {
 		address&=mask;Integer old=allocated.get(address);
 		if(old==null)return allocate(newSize,4);
 		if(reservedAfter.containsKey(address)&&growInPlace(address,newSize))return address;
-		int needed=Math.max(4,(newSize+3)&~3)+(blockHeaders?trailer():0);
+		int needed=Math.max(4,(newSize+3)&~3)+(blockHeaders||blockHeaders24?trailer():0);
 		if(needed<=old){
 			if(old-needed>=8){putBlock(address,needed);putBlock(address+needed,old-needed);free(address+needed);}
 			return address;
@@ -788,15 +939,9 @@ final class M68kMemory {
 		address = normalize(address);
 		check(address, 1);
 		int length = 0;
-		while(length < maximum && address + length < size && bytes[address + length] != 0) length++;
+		while(length < maximum && address + length < size && byteAt(address + length) != 0) length++;
 		if(length == maximum) throw new M68kCpuException(address, "unterminated XCMD string");
-		return Arrays.copyOfRange(bytes, address, address + length);
-	}
-
-	private void checkAligned(int address, int length) throws M68kCpuException {
-		// The 68020 tolerates odd word accesses; the 68000 does not. Applications compiled for
-		// 68020+ rely on it, so odd accesses are allowed here.
-		check(address, length);
+		return readBytes(address, length);
 	}
 
 	private void check(int address, int length) throws M68kCpuException {

@@ -87,8 +87,14 @@ final class SoundSynth68k implements Runnable {
 	private void enqueue(Entry e){synchronized(queue){queue.add(e);queue.notifyAll();}start();}
 	private synchronized void start(){
 		if(thread!=null&&thread.isAlive())return;if(!TSound.use){drainSilently();return;}
-		thread=new Thread(this,"68K synthesizer");thread.setDaemon(true);thread.start();
+		// each player is a thread with its own line: past this many at once (all programs together) the notes go unheard, as with no
+		// audio, rather than the host running out of threads
+		if(PLAYERS.incrementAndGet()>MAX_PLAYERS){PLAYERS.decrementAndGet();drainSilently();return;}
+		thread=new Thread(this,"68K synthesizer");thread.setDaemon(true);
+		try{thread.start();}catch(OutOfMemoryError|RuntimeException e){PLAYERS.decrementAndGet();thread=null;drainSilently();}
 	}
+	private static final int MAX_PLAYERS=64;
+	private static final java.util.concurrent.atomic.AtomicInteger PLAYERS=new java.util.concurrent.atomic.AtomicInteger();
 	/** No audio: callbacks still run, notes take no time. */
 	private void drainSilently(){Entry e;while((e=poll())!=null){if(e.level!=null){amplitude=e.level[0];volume=e.level[1];}else if(e.callback!=null)e.callback.run();}}
 	private Entry poll(){synchronized(queue){Entry e=queue.poll();playing=e!=null&&e.samples!=0;return e;}}
@@ -143,6 +149,6 @@ final class SoundSynth68k implements Runnable {
 			}
 			if(!stopped)line.drain();
 		}catch(LineUnavailableException|IllegalArgumentException unavailable){if(Mac68kApi.TRACE)System.err.println("[68K] synthesizer: "+unavailable);drainSilently();
-		}finally{playing=false;if(line!=null)try{line.close();}catch(RuntimeException ignored){}synchronized(this){thread=null;}if(!queue.isEmpty()&&!stopped)start();}
+		}finally{playing=false;if(line!=null)try{line.close();}catch(RuntimeException ignored){}PLAYERS.decrementAndGet();synchronized(this){thread=null;}if(!queue.isEmpty()&&!stopped)start();}
 	}
 }

@@ -70,6 +70,7 @@ final class SoundInput68k {
 			case 0x4c:result=setupAiffHeader(sp);break;
 			case 0x58:result=parseAiffHeader(sp);break;
 			case 0x5c:result=parseSndHeader(sp);break;
+			case 0x50:{int namePtr=memory.readLong(sp);if(namePtr!=0)macApi.application().writePascal(namePtr,"Built-in",255);break;} // private: the default input device's name (the Sound control panel's choice; Sound Recording Demo's SPBGetDefaultDevice)
 			default:result=SI_UNKNOWN_INFO_TYPE;break;
 		}
 		cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],result);return true;
@@ -87,8 +88,15 @@ final class SoundInput68k {
 			case 0x6368616e:memory.writeWord(infoData,d.channels);return NO_ERR;                          // chan
 			case 0x636f6d70:memory.writeLong(infoData,0x4e4f4e45);return NO_ERR;                          // comp: 'NONE'
 			case 0x6c65766c:memory.writeWord(infoData,d.level);return NO_ERR;                             // levl
-			case 0x6c6d6574:memory.writeWord(infoData,d.levelMeter?1:0);return NO_ERR;                    // lmet
-			case 0x696e7074:memory.writeWord(infoData,1);return NO_ERR;                                   // inpt
+			case 0x6c6d6574:memory.writeWord(infoData,d.levelMeter?1:0);memory.writeWord(infoData+2,d.levelMeter?d.level:0);return NO_ERR; // lmet: on/off, then the level 0..255 (Sound Recording Demo's meter)
+			case 0x6c6d6163:for(int i=0;i<d.channels;i++)memory.writeWord(infoData+2*i,d.levelMeter?d.level:0);return NO_ERR; // lmac (siActiveLevels): one level per channel
+			case 0x696e7074:case 0x736f7572:memory.writeWord(infoData,1);return NO_ERR;                   // inpt, sour (siInputSource, Sound.h): the one source
+			case 0x736e616d:{byte[] n="Built-in".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);byte[] t=new byte[3+n.length];t[1]=1;t[2]=(byte)n.length;System.arraycopy(n,0,t,3,n.length);memory.writeLong(infoData,macApi.createHandle(t));return NO_ERR;} // snam (siInputSourceNames): a Handle to a STR# list
+			case 0x63686163:memory.writeLong(infoData,(1<<d.channels)-1);return NO_ERR;                   // chac (siActiveChannels): channel bits
+			case 0x63686176:memory.writeWord(infoData,2);return NO_ERR;                                   // chav (siChannelAvailable)
+			case 0x6173796e:memory.writeWord(infoData,1);return NO_ERR;                                   // asyn: recording runs asynchronously
+			case 0x64636f6e:memory.writeWord(infoData,1);return NO_ERR;                                   // dcon (siDeviceConnected): siDeviceIsConnected
+			case 0x6f707464:memory.writeWord(infoData,0);return NO_ERR;                                   // optd (siOptionsDialog): no options dialog
 			case 0x7175616c:memory.writeLong(infoData,d.quality);return NO_ERR;                           // qual
 			case 0x61676320:case 0x706c7468:case 0x74776f73:case 0x636f6e74:memory.writeWord(infoData,0);return NO_ERR;   // agc, plth (playthrough), twos
 			case 0x6761696e:memory.writeLong(infoData,0x00010000);return NO_ERR;                          // gain: Fixed 1.0
@@ -119,7 +127,7 @@ final class SoundInput68k {
 			case 0x636f6d70:return memory.readLong(infoData)==0x4e4f4e45?NO_ERR:SI_UNKNOWN_INFO_TYPE;
 			case 0x61676320:case 0x706c7468:case 0x6761696e:case 0x74776f73:case 0x636f6e74:return NO_ERR; // ... cont (siContinuous): the recorder always streams
 			case 0x6c6d6574:d.levelMeter=memory.readWord(infoData)!=0;return NO_ERR;                     // lmet (siLevelMeterOnOff): Kingyo2 turns the meter on before it listens
-			case 0x696e7074:return NO_ERR;                                                                // inpt (siInputSource): the one source
+			case 0x696e7074:case 0x736f7572:return NO_ERR;                                                // inpt, sour (siInputSource): the one source
 			case 0x7175616c:{int q=memory.readLong(infoData);int[] f=quality(q); // qual (siRecordingQuality): Audacity 0.94 sets it right after opening and treats an error as "null input device"
 				if(f==null)return SI_UNKNOWN_INFO_TYPE;d.rate=f[0];d.sampleSize=f[1];d.channels=1;d.quality=q;return NO_ERR;}
 			default:return SI_UNKNOWN_INFO_TYPE;
@@ -130,9 +138,20 @@ final class SoundInput68k {
 
 	/** SPB: inRefNum 0, count 4, milliseconds 8, bufferLength 12, bufferPtr 16, completionRoutine 20, interruptRoutine 24, userLong 28, error 32. */
 	private int record(M68kCpu cpu,int spb,boolean async) throws M68kCpuException {
-		if(spb==0)return -50;Device d=devices.get(memory.readLong(spb));if(d==null)return SI_BAD_REF_NUM;
-		if(d.recorder!=null&&!d.recorder.finished)return SI_DEVICE_BUSY;
-		if(TSound.use&&!Sandbox.allowOther(macApi.application().name,Sandbox.USE_MICROPHONE,""))return SI_NO_SOUND_IN_HARDWARE; // recording is what reaches the microphone
+		if(spb==0)return -50;
+		int refused=recordRefused(spb);
+		// A request that cannot start ends at once with its error in the SPB too (not over a recording still running in this very block)
+		if(refused!=NO_ERR&&refused!=SI_NO_SOUND_IN_HARDWARE){if(refused!=SI_DEVICE_BUSY||devices.get(memory.readLong(spb)).recorder.spb!=spb)memory.writeWord(spb+32,refused);return refused;}
+		Device d=devices.get(memory.readLong(spb));
+		// The microphone not allowed (the Sandbox) - something a Mac never answers once the device is open: an asynchronous request
+		// is accepted and completes with the error, its completion routine called as for a recording that failed. The Sound Recording
+		// Demo's SPBRecordToHandleSync ignores SPBRecord's result and waits for its completion routine; it spun until the VM's
+		// instruction limit stopped it. A synchronous one answers the error.
+		if(refused!=NO_ERR){
+			memory.writeWord(spb+32,refused);if(!async)return refused;
+			Recorder r=new Recorder(d,spb,0,0);r.finished=true;r.error=refused;d.recorder=r;
+			macApi.application().later(new Runnable(){@Override public void run(){try{if(d.recorder==r)r.finishAsync();}catch(M68kCpuException e){throw Toolbox68k.wrap(e);}}});
+			return NO_ERR;}
 		int count=memory.readLong(spb+4),milliseconds=memory.readLong(spb+8),bufferLength=memory.readLong(spb+12),buffer=memory.readLong(spb+16);
 		long target=buffer==0?Long.MAX_VALUE:Math.max(0,bufferLength);
 		if(count>0)target=Math.min(target,count);
@@ -140,10 +159,18 @@ final class SoundInput68k {
 		if(buffer!=0&&target<=0){memory.writeLong(spb+4,0);memory.writeLong(spb+8,0);memory.writeWord(spb+32,0);return NO_ERR;}
 		Recorder r=new Recorder(d,spb,buffer,target);d.recorder=r;
 		if(!TSound.use){r.finished=true;finish(r,ABORT_ERR);return NO_ERR;}
+		memory.writeWord(spb+32,1); // in progress: the error field stays positive until the recording is complete
 		Thread t=new Thread(r,"68K sound input");t.setDaemon(true);t.start();
 		if(async)return NO_ERR;
 		while(!r.finished)try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();r.stop();break;}
 		r.deliverNow();r.finishAsync();return NO_ERR;
+	}
+	/** Why SPBRecord cannot start (no such device, it records already, the microphone is not allowed), else noErr. */
+	private int recordRefused(int spb) throws M68kCpuException {
+		Device d=devices.get(memory.readLong(spb));if(d==null)return SI_BAD_REF_NUM;
+		if(d.recorder!=null&&!d.recorder.finished)return SI_DEVICE_BUSY;
+		if(TSound.use&&!Sandbox.allowOther(macApi.application().name,Sandbox.USE_MICROPHONE,""))return SI_NO_SOUND_IN_HARDWARE; // recording is what reaches the microphone
+		return NO_ERR;
 	}
 	/** Writes the final counts into the SPB and runs the completion routine (pascal proc(inParamPtr), A0 = the block). */
 	private void finish(Recorder r,int error) throws M68kCpuException {
@@ -262,6 +289,16 @@ final class SoundInput68k {
 		putLong(a,12,0x434f4d4d);putLong(a,16,18);putWord(a,20,channels);putLong(a,22,frames);putWord(a,26,sampleSize);double80(a,28,rate);
 		putLong(a,38,0x53534e44);putLong(a,42,pcm.length+8);putLong(a,46,0);putLong(a,50,0);System.arraycopy(pcm,0,a,54,pcm.length);return a;
 	}
+	/** The 72-byte AIFF-C header SetupAIFFHeader writes for a compression type other than 'NONE': FVER, COMM with the type and an empty name, SSND (offset and blockSize 0) whose numBytes of data follow. */
+	static byte[] aifcHeader(int rate,int sampleSize,int channels,int numBytes,int frames,int compression){
+		byte[] a=new byte[72];
+		putLong(a,0,0x464f524d);putLong(a,4,72-8+numBytes);putLong(a,8,0x41494643);           // 'FORM' 'AIFC'
+		putLong(a,12,0x46564552);putLong(a,16,4);putLong(a,20,0xa2805140);                     // 'FVER' AIFC version 1
+		putLong(a,24,0x434f4d4d);putLong(a,28,24);putWord(a,32,channels);putLong(a,34,frames);putWord(a,38,sampleSize);double80(a,40,rate);
+		putLong(a,50,compression);                                                              // compressionType, empty compressionName (padded)
+		putLong(a,56,0x53534e44);putLong(a,60,numBytes+8);                                      // 'SSND'
+		return a;
+	}
 	/** SetupSndHeader(sndHandle, numChannels, sampleRate, sampleSize, compressionType, baseFrequency, numBytes, VAR headerLen). */
 	private int setupSndHeader(int sp) throws M68kCpuException {
 		int headerLenPtr=memory.readLong(sp),numBytes=memory.readLong(sp+4),baseFrequency=(short)memory.readWord(sp+8),compression=memory.readLong(sp+10),sampleSize=(short)memory.readWord(sp+14);
@@ -275,9 +312,16 @@ final class SoundInput68k {
 	/** SetupAIFFHeader(fRefNum, numChannels, sampleRate, sampleSize, compressionType, numBytes, numFrames): written at the file's mark. */
 	private int setupAiffHeader(int sp) throws M68kCpuException {
 		int numBytes=memory.readLong(sp+4),compression=memory.readLong(sp+8),sampleSize=(short)memory.readWord(sp+12),rate=memory.readLong(sp+14)>>>16,channels=(short)memory.readWord(sp+18),fRefNum=(short)memory.readWord(sp+20);
-		if(compression!=0x4e4f4e45&&compression!=0)return -50;
-		byte[] a=aiff(new byte[0],rate,sampleSize,channels);int frames=numBytes/Math.max(1,sampleSize/8*channels);
-		putLong(a,4,54+numBytes-8);putLong(a,22,frames);putLong(a,42,numBytes+8);
+		byte[] a;
+		if(compression==0x4e4f4e45||compression==0){
+			a=aiff(new byte[0],rate,sampleSize,channels);int frames=numBytes/Math.max(1,sampleSize/8*channels);
+			putLong(a,4,54+numBytes-8);putLong(a,22,frames);putLong(a,42,numBytes+8);
+		}else{
+			// any other type makes an AIFF-C file (FVER, COMM with the compression type and an empty name, SSND), as the Sound
+			// Manager does - Amadeus II 2.4 writes its scratch file as 16-bit 'twos' and quit at start-up when this said paramErr
+			int frames=memory.readLong(sp);if(frames==0)frames=numBytes/Math.max(1,sampleSize/8*channels);
+			a=aifcHeader(rate,sampleSize,channels,numBytes,frames,compression);
+		}
 		try{return macApi.fileManager().writeReference(fRefNum,-1,a)?NO_ERR:-51;}catch(IOException e){return -36;}
 	}
 	/** ParseAIFFHeader(fRefNum, VAR sndInfo: SoundComponentData, VAR numFrames, VAR dataOffset). */

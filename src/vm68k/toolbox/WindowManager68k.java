@@ -33,6 +33,9 @@ final class WindowManager68k {
 		int variant=-1;
 		/** The visRgn before BeginUpdate narrowed it to the update region (null outside BeginUpdate/EndUpdate). */
 		QdRegion updateVis;
+		/** What of the content PaintOne/PaintBehind would have erased since the last BeginUpdate (content-local), null for none:
+		 *  see {@link #expose}. */
+		QdRegion unerased;
 		/** The global visible part of the content {@link #calcVis} last gave it (null: not computed, or the window is hidden). */
 		QdRegion trueVis;
 		/** portRect.topLeft when BeginUpdate saved {@link #updateVis}: the origin the saved shape is in. */
@@ -57,6 +60,8 @@ final class WindowManager68k {
 		/** The Kaleidoscope scheme's frame the window is drawn in ({@link #themedFrame}), null for none; the frame last drawn
 		 *  (hit tests look at its clear pixels) and whether the program has drawn the grow box (it is part of the frame since). */
 		KaleidoscopeScheme68k.WindowFrame theme;java.awt.image.BufferedImage themeImage;boolean themeGrow;
+		/** The scheme's frame a window created hidden takes when it is first shown, unless it covers the screen by then ({@link #themedFrame}). */
+		KaleidoscopeScheme68k.WindowFrame pendingTheme;
 		/** The Platinum flavor of a dialog frame drawn natively ({@link #dialogFrame}: dBoxProc 1, altDBoxProc 6), -1 for none. */
 		int dialogFlavor=-1;
 		/** A Text Services Manager service window (NewServiceWindow): it floats in TSM's own layer, so the program's WindowList,
@@ -161,7 +166,10 @@ final class WindowManager68k {
 			case 0x916:{int w=pop(cpu);if(isCardRecord(w)){tb.cardWindow.showWindow(false);return true;}hide(w);return true;}
 			case 0x908:{boolean visible=memory.readByte(cpu.a[7])!=0;int w=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;if(isCardRecord(w)){tb.cardWindow.showWindow(visible);return true;}show(w,visible);return true;}
 			case 0x91f:case 0x920:{int w=pop(cpu);if(Boolean.getBoolean("hz68k.hosttrace"))System.err.println("[host] "+(trap==0x91f?"SelectWindow":"BringToFront")+" $"+Integer.toHexString(w)+" from pc $"+Integer.toHexString(cpu.pc)+" ret $"+Integer.toHexString(memory.readLong(cpu.a[7])));if(trap==0x91f)select(w);else bringToFront(w);return true;}
-			case 0x921:{int behind=memory.readLong(cpu.a[7]),w=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;if(Boolean.getBoolean("hz68k.hosttrace"))System.err.println("[host] SendBehind $"+Integer.toHexString(w)+" behind $"+Integer.toHexString(behind)+" from pc $"+Integer.toHexString(cpu.pc));Window win=windows.get(w);if(win!=null){behind=behindHyperCardWindow(w,behind);List<Window> before=new ArrayList<Window>(order);place(win,behind);exposeReordered(win,before);tb.host().placeBehind(w,behind);}return true;}
+			case 0x921:{int behind=memory.readLong(cpu.a[7]),w=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;if(Boolean.getBoolean("hz68k.hosttrace"))System.err.println("[host] SendBehind $"+Integer.toHexString(w)+" behind $"+Integer.toHexString(behind)+" from pc $"+Integer.toHexString(cpu.pc));Window win=windows.get(w);if(win!=null){behind=behindHyperCardWindow(w,behind);boolean wasActive=win.visible&&!win.floatingLayer&&memory.readByte(w+111)!=0&&activeFront()==w;List<Window> before=new ArrayList<Window>(order);place(win,behind);exposeReordered(win,before);tb.host().placeBehind(w,behind);
+				// the active window sent behind another: it is unhighlighted and deactivated and the window now in front is activated, as the ROM (HideWindow's way);
+				// NewsWatcher's "Cycle Windows" only calls SendBehind(front, nil) and waits for that activate event to enable its menu items
+				if(wasActive&&activeFront()!=w){unhighlight(win);tb.events.postActivate(w,false);activateNext();}}return true;}
 			case 0x924:memory.writeLong(cpu.a[7],frontWindowSkippingGhost());if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder("[68K] window list:");for(Window w:order)sb.append(String.format(" $%x%s kind=%d refCon=$%x next=$%x",w.record,w.visible?"":"(hidden)",(short)memory.readWord(w.record+108),memory.readLong(w.record+152),memory.readLong(w.record+144)));System.err.println(sb);}return true;
 			case 0x92c:return findWindow(cpu);
 			case 0x91a:{int title=memory.readLong(cpu.a[7]),w=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;setTitle(w,tb.readPascal(title));return true;}
@@ -217,7 +225,7 @@ final class WindowManager68k {
 					int[] r=trap==0x929?readRegion(shape):readRect(shape),portRect=readRect(port+16);
 					card.validate(r[0]-portRect[0],r[1]-portRect[1],r[2]-portRect[0],r[3]-portRect[1]);return true;}
 				if(w!=0&&shape!=0){int[] r=trap==0x929?readRegion(shape):readRect(shape); // ValidRect/ValidRgn
-				int[] portRect=readRect(w+16);validateUpdate(w,new int[]{r[0]-portRect[0],r[1]-portRect[1],r[2]-portRect[0],r[3]-portRect[1]});}return true;}
+				int[] portRect=readRect(w+16);validateUpdate(w,new int[]{r[0]-portRect[0],r[1]-portRect[1],r[2]-portRect[0],r[3]-portRect[1]},trap==0x929?qd.regionShapeOf(shape).offset(-portRect[1],-portRect[0]):null);}return true;}
 			case 0x904:{int w=pop(cpu);Window win=windows.get(w);if(win!=null&&win.custom)callWdef(win,6,0);else drawGrowIcon(w);return true;}
 			case 0x910:case 0xa48:{int dst=memory.readLong(cpu.a[7]);cpu.a[7]+=4;if(dst!=0)memory.writeLong(dst,wmgrPortOverride!=0?wmgrPortOverride:trap==0x910?wmgrClassicPort:wmgrPort);return true;} // GetWMgrPort / GetCWMgrPort
 			case 0x80a:{int w=pop(cpu);Window win=windows.get(w);memory.writeWord(cpu.a[7],win==null?0:win.procId&15);return true;}
@@ -296,25 +304,32 @@ final class WindowManager68k {
 		// (Revenge of Monsters takes portBits.bounds at offset 8 of such a window for its direct screen drawing).
 		int w=create(storage,WINDOW_SIZE,bounds,title,false,procId,behind,goAway,refCon,color);
 		if(w!=0&&wctb!=null)applyWindowColors(w,tb.resources.data(wctb));
+		if(w!=0&&color&&type==0x57494e44)tb.quickDraw.attachTemplatePalette(w,id);
 		if(w!=0&&visible)show(w,true);
 		return w;
 	}
 
 	/**
 	 * Extended 'WIND' positioning (the word the template carries after its title, as the Dialog Manager reads it from an
-	 * extended 'DLOG'): $28xx centred, $30xx the alert position (a third of the way down), $38xx staggered, on the main
-	 * screen ($xx0A), the parent window ($xx0B) or its screen ($xx0C) - this Window Manager has one screen, so all three
-	 * mean the main screen. GetNewWindow applies it before the window is shown: without it a window whose template bounds
-	 * were laid out for a 512x342 screen (Ultimate Spell's main window, (40,40)-(440,600) with $300A) stays in the
-	 * top-left corner of a large display.
+	 * extended 'DLOG'): the high byte's $28 centres, $30 takes the alert position (a third of the way down), $38 staggers;
+	 * its $80 bit places the window on the parent window - the frontmost one, where the user was working - and $40 on the
+	 * parent window's screen (one screen here: the main one); the low byte is always $0A (MacWindows.h
+	 * kWindowCenterParentWindow = $A80A, kWindowAlertPositionParentWindowScreen = $700A). GetNewWindow applies it before the
+	 * window is shown: without it a window whose template bounds were laid out for a 512x342 screen (Ultimate Spell's main
+	 * window, (40,40)-(440,600) with $300A) stays in the top-left corner of a large display, and Flappy Mac's play area
+	 * ($A80A) missed the hole in its centred ($280A) backdrop.
 	 */
-	private int[] positionTemplate(int[] bounds,int positioning) throws M68kCpuException {
-		int kind=(positioning>>>8)&0xff,on=positioning&0xff;
-		if((kind!=0x28&&kind!=0x30&&kind!=0x38)||on<0x0a||on>0x0c)return bounds;
+	int[] positionTemplate(int[] bounds,int positioning) throws M68kCpuException {
+		int kind=(positioning>>>8)&0x38;
+		if((kind!=0x28&&kind!=0x30&&kind!=0x38)||(positioning&0xff)!=0x0a||(positioning&0x0700)!=0)return bounds;
 		int[] screen=qd.screenBounds();int w=bounds[3]-bounds[1],h=bounds[2]-bounds[0];
 		int top=screen[0]+MacAppHost.MENU_BAR_HEIGHT,left=screen[1],bottom=screen[2],right=screen[3];
+		Window parent=(positioning&0x8000)!=0?windows.get(frontWindow()):null;
 		int x,y;
-		if(kind==0x38){x=left+20+windows.size()*20;y=top+20+windows.size()*20;}
+		if(parent!=null&&parent.width>0&&parent.height>0){
+			if(kind==0x38){x=parent.left+20;y=parent.top+20;}
+			else{x=parent.left+(parent.width-w)/2;y=Math.max(top,parent.top+(parent.height-h)/(kind==0x30?3:2));}
+		}else if(kind==0x38){x=left+20+windows.size()*20;y=top+20+windows.size()*20;}
 		else{x=left+Math.max(0,(right-left-w)/2);y=top+Math.max(0,(bottom-top-h)/(kind==0x30?3:2));}
 		if(Mac68kApi.TRACE)System.err.println("[68K] WIND positioning $"+Integer.toHexString(positioning)+": "+bounds[1]+","+bounds[0]+" -> "+x+","+y);
 		return new int[]{y,x,y+h,x+w};
@@ -358,9 +373,11 @@ final class WindowManager68k {
 	}
 
 	/** The content erased to the window's background: its tile when it has one, else its colour. */
-	private void eraseContent(int w,Window win) throws M68kCpuException {
+	private void eraseContent(int w,Window win) throws M68kCpuException {eraseContent(w,win,new int[]{0,0,Integer.MAX_VALUE,Integer.MAX_VALUE});}
+	/** The same in the content-local rectangle {@code r} {top,left,bottom,right}. */
+	private void eraseContent(int w,Window win,int[] r) throws M68kCpuException {
 		int[] t=win.contentTile;
-		if(t==null||!tb.api.quickDraw().fillWindowPortTile(w,java.util.Arrays.copyOfRange(t,2,t.length),t[0],t[1]))tb.api.quickDraw().fillWindowPort(w,win.contentColor);
+		if(t==null||!tb.api.quickDraw().fillWindowPortTile(w,java.util.Arrays.copyOfRange(t,2,t.length),t[0],t[1],r[0],r[1],r[2],r[3]))tb.api.quickDraw().fillWindowPort(w,win.contentColor,r[0],r[1],r[2],r[3]);
 	}
 	/** A 'ppat' as the window's background: its port's bkPixPat (the program's EraseRect) and what the content is erased to. */
 	void setContentPattern(int w,byte[] ppat) throws M68kCpuException {
@@ -416,7 +433,7 @@ final class WindowManager68k {
 		qd.describeWindowPixMap(record); // the port's PixMap record describes the screen at the window's position, as on a real Mac
 		win.dialogFlavor=dialogFrameFlavor(procId,bounds);
 		win.shownTitle=shownTitle(win);
-		if(win.dialogFlavor<0)win.theme=themedFrame(procId,bounds);
+		if(win.dialogFlavor<0){KaleidoscopeScheme68k.WindowFrame theme=themedFrame(procId,bounds);if(visible)win.theme=theme;else win.pendingTheme=theme;}
 		if(customWdef(procId)||win.dialogFlavor>=0||win.theme!=null)prepareCustomFrame(win,true);
 		int[] px=qd.windowPortPixels(record);
 		win.shownTitle=shownTitle(win);
@@ -499,8 +516,14 @@ final class WindowManager68k {
 			// The ROM asks a WDEF for its regions when the window becomes visible: MoveWindow/SizeWindow of a hidden window skip
 			// wCalcRgns, and WDEFs themselves ignore it while invisible (some palettes are created hidden, moved, then shown).
 			boolean adopted=!was&&!win.custom&&swappedDefinition(win);
-			if(adopted){win.theme=null;win.dialogFlavor=-1;tb.host().setCustomFrame(w);}
-			if(!was&&(win.custom||adopted)){prepareCustomFrame(win,false);int[] px=qd.windowPortPixels(w);tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveWindow(w,win.left+win.frameLeft,win.top+win.frameTop);}
+			if(adopted){win.theme=null;win.pendingTheme=null;win.dialogFlavor=-1;tb.host().setCustomFrame(w);}
+			// A window created hidden takes the scheme's frame now, where the program has put it: JumpStart 1st Grade 2001 opens its
+			// window hidden at its WIND's size, then moves and sizes it over the whole screen (title bar out of sight) and shows it.
+			// Framed at NewWindow, the host kept the drawn title bar on the display, inside the frame round the game screen.
+			boolean themed=false;
+			if(!was&&win.pendingTheme!=null){KaleidoscopeScheme68k.WindowFrame theme=win.pendingTheme;win.pendingTheme=null;
+				if(!coversScreen(new int[]{win.top,win.left,win.top+win.height,win.left+win.width})){win.theme=theme;themed=true;tb.host().setCustomFrame(w);}}
+			if(!was&&(win.custom||adopted||themed)){prepareCustomFrame(win,false);int[] px=qd.windowPortPixels(w);tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveWindow(w,win.left+win.frameLeft,win.top+win.frameTop);}
 			// A window shown again after being hidden gets its content erased to the background (the real
 			// Window Manager's PaintOne does this) before the update event asks the program to redraw it.
 			// With PaintWhite FALSE the Window Manager leaves the content alone: on a real Mac the window then shows the screen that
@@ -629,10 +652,13 @@ final class WindowManager68k {
 		int[] old=win.visible&&(left!=win.left||top!=win.top)?structureBounds(win):null;
 		win.left=left;win.top=top;qd.describeWindowPixMap(w);updateRegions(win);
 		if(old!=null)exposeBehind(win,old); // the record's portBits.bounds first: a WDEF computes its regions from it
-		tb.host().moveWindow(w,left+win.frameLeft,top+win.frameTop,byUser);rememberUserState(win);
+		tb.host().moveWindow(w,left+win.frameLeft,top+win.frameTop,byUser);if(byUser)rememberUserState(win);
 		calcVis();
 	}
-	/** WStateData.userState follows the window while it is not in its standard state, as the ROM WDEF keeps it (so zooming in returns to where the user left it). */
+	/** WStateData.userState follows the window the USER moves or resizes while it is not in its standard state (so zooming in
+	 *  returns to where the user left it; ZoomWindow saves it too when zooming out). A program's own MoveWindow/SizeWindow leave
+	 *  it alone, as the ROM does: CS ChemDraw 3.5 writes the place for a new document into userState, calls SizeWindow and then
+	 *  MoveWindow to userState's corner - rewritten by SizeWindow, the window went to 0,0 with its title bar off the screen. */
 	private void rememberUserState(Window win) throws M68kCpuException {
 		if(!win.zoomState)return;int h=memory.readLong(win.record+130),data=h==0?0:memory.readLong(h);if(data==0)return;
 		int[] std=readRect(data+8);boolean inStd=std[0]==win.top&&std[1]==win.left&&std[2]==win.top+win.height&&std[3]==win.left+win.width;
@@ -735,7 +761,7 @@ final class WindowManager68k {
 		}
 		if(exposed[2]<=exposed[0]||exposed[3]<=exposed[1])return;
 		int[] portRect=readRect(w+16);
-		unionUpdate(w,new int[]{exposed[0],exposed[1],exposed[2],exposed[3]});tb.events.postUpdate(w);
+		expose(win,new int[]{exposed[0],exposed[1],exposed[2],exposed[3]});
 		if(Mac68kApi.TRACE)System.err.println("[68K] window $"+Integer.toHexString(w)+" moved on screen: exposed "+java.util.Arrays.toString(exposed)+" portRect origin "+portRect[1]+","+portRect[0]);
 	}
 
@@ -800,7 +826,7 @@ final class WindowManager68k {
 				tb.host().resizeWindow(w,width,height,px[0],px[1],px[4]);
 				updateRegions(win);
 			}
-			tb.dialogs.windowResized(w);rememberUserState(win);
+			tb.dialogs.windowResized(w);if(!fromApplication)rememberUserState(win);
 			if(old!=null)exposeBehind(win,old); // a shrinking window uncovers the ones behind
 			calcVis();
 		}else if(fromApplication){
@@ -857,10 +883,13 @@ final class WindowManager68k {
 	 */
 	/** Java2D straight into the window's buffer, which covers its frame, within the global rectangle {@code r} (the painter draws in global coordinates). */
 	private void paintFrame(Window win,int[] r,AppearanceManager68k.Painter p) throws M68kCpuException {
-		java.awt.Graphics2D g=tb.quickDraw.frameSurface(win.record,new int[]{r[0]-win.top,r[1]-win.left,r[2]-win.top,r[3]-win.left});if(g==null)return;
+		// the surface is in the port's local coordinates: global - window position + the portRect's top-left (the origin). A
+		// control panel's window has its origin at 87,-1 (ControlPanelHost68k) and its title bar came out 87 pixels to the left.
+		int[] pr=readRect(win.record+16);int top=win.top-pr[0],left=win.left-pr[1];
+		java.awt.Graphics2D g=tb.quickDraw.frameSurface(win.record,new int[]{r[0]-top,r[1]-left,r[2]-top,r[3]-left});if(g==null)return;
 		// the Platinum helpers draw as on a fresh image (AppearanceManager68k.paint): normalized strokes, no antialiasing
 		g.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL,java.awt.RenderingHints.VALUE_STROKE_DEFAULT);g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING,java.awt.RenderingHints.VALUE_ANTIALIAS_OFF);
-		try{g.translate(-win.left,-win.top);p.paint(g);}finally{g.dispose();}
+		try{g.translate(-left,-top);p.paint(g);}finally{g.dispose();}
 		tb.quickDraw.flushSurfaces();
 	}
 	private int floater(Window win,int message,int param) throws M68kCpuException {
@@ -972,8 +1001,13 @@ final class WindowManager68k {
 	private KaleidoscopeScheme68k.WindowFrame themedFrame(int procId,int[] bounds){
 		if(!THEMED_WINDOWS)return null;int id=procId>>4,kind=procId&15;
 		if(!(id==0&&(kind==0||kind==4||kind==8||kind==12)||id==64&&kind<8)||customWdef(procId))return null;
-		int[] screen=qd.screenBounds();if(bounds[1]<=screen[1]&&bounds[3]>=screen[3]&&bounds[0]<=screen[0]+MacAppHost.MENU_BAR_HEIGHT&&bounds[2]>=screen[2]-MacAppHost.MENU_BAR_HEIGHT)return null;
+		if(coversScreen(bounds))return null;
 		KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);return scheme==null?null:scheme.documentWindow();
+	}
+	/** Whether a content rect {top, left, bottom, right} covers the whole screen, its top at most the menu bar's height down. */
+	private boolean coversScreen(int[] bounds){
+		int[] screen=qd.screenBounds();
+		return bounds[1]<=screen[1]&&bounds[3]>=screen[3]&&bounds[0]<=screen[0]+MacAppHost.MENU_BAR_HEIGHT&&bounds[2]>=screen[2]-MacAppHost.MENU_BAR_HEIGHT;
 	}
 	/** The WDEF 0 variant the themed window is drawn as now: the procID's, or the one the program switched it to by calling the
 	 *  System's WDEF itself (HyperCard's `hide titleBar`: plainDBox); -1 for an Appearance (WDEF 64) document. */
@@ -1448,7 +1482,25 @@ final class WindowManager68k {
 	private void exposeUnder(Window win,int[] covered) throws M68kCpuException {
 		int top=Math.max(covered[0],win.top),left=Math.max(covered[1],win.left),bottom=Math.min(covered[2],win.top+win.height),right=Math.min(covered[3],win.left+win.width);
 		if(bottom<=top||right<=left)return;
-		unionUpdate(win.record,new int[]{top-win.top,left-win.left,bottom-win.top,right-win.left});tb.events.postUpdate(win.record);
+		expose(win,new int[]{top-win.top,left-win.left,bottom-win.top,right-win.left});
+	}
+	/**
+	 * Content that comes into view again (a window in front went away, moved or went behind): it joins the update region, and the
+	 * update erases it first, as PaintOne/PaintBehind erase it on a real Mac before the update event (unless PaintWhite is
+	 * FALSE). Here the window's own buffer still holds its pixels, and programs draw their updates over what is there: TextEdit's
+	 * anti-aliased letters grew darker at each pass (HyperCard's script window brought in front of the card window). The erase
+	 * waits for BeginUpdate ({@link #eraseUnerased}) so the uncovered part is never shown blank before the program redraws it.
+	 */
+	private void expose(Window win,int[] r) throws M68kCpuException {
+		unionUpdate(win.record,r);tb.events.postUpdate(win.record);
+		if(memory.readWord(0x9dc)==0||tb.isDesktopWindow(win.record))return; // PaintWhite FALSE: the Window Manager leaves the content alone
+		QdRegion e=QdRegion.rect(r[0],r[1],r[2],r[3]);win.unerased=win.unerased==null?e:QdRegion.combine(win.unerased,e,QdRegion.UNION);
+	}
+	/** BeginUpdate: what {@link #expose} left unerased and the update region still holds goes to the background. */
+	private void eraseUnerased(Window win,int updateRgn) throws M68kCpuException {
+		QdRegion e=win.unerased;win.unerased=null;if(e==null)return;
+		e=QdRegion.combine(e,qd.regionShapeOf(updateRgn).offset(-win.left,-win.top),QdRegion.SECT);
+		for(int[] r:e.rects())eraseContent(win.record,win,r);
 	}
 	private void place(Window win,int behind){
 		order.remove(win);
@@ -1515,7 +1567,7 @@ final class WindowManager68k {
 					if(win.updateVis!=null)win.updateVis=vis.offset(win.updateOriginH-win.left,win.updateOriginV-win.top);
 					else{int[] portRect=readRect(win.record+16);qd.writeRegionShape(memory.readLong(win.record+24),vis.offset(portRect[1]-win.left,portRect[0]-win.top));}
 					QdRegion uncovered=before==null?null:QdRegion.combine(vis,before,QdRegion.DIFF);
-					if(uncovered!=null&&!uncovered.isEmpty()){int[] b=uncovered.bounds();if(CALC_VIS_TRACE)System.err.println("[68K] CalcVis: $"+Integer.toHexString(win.record)+" '"+win.title+"' uncovered "+java.util.Arrays.toString(b));unionUpdate(win.record,new int[]{b[0]-win.top,b[1]-win.left,b[2]-win.top,b[3]-win.left});tb.events.postUpdate(win.record);}
+					if(uncovered!=null&&!uncovered.isEmpty()){int[] b=uncovered.bounds();if(CALC_VIS_TRACE)System.err.println("[68K] CalcVis: $"+Integer.toHexString(win.record)+" '"+win.title+"' uncovered "+java.util.Arrays.toString(b));expose(win,new int[]{b[0]-win.top,b[1]-win.left,b[2]-win.top,b[3]-win.left});}
 				}
 				int[] s=structureBounds(win);above=QdRegion.combine(above,QdRegion.rect(s[0],s[1],s[2],s[3]),QdRegion.UNION);
 			}
@@ -1701,7 +1753,11 @@ final class WindowManager68k {
 	/** {left, top} of HyperCard's card window on the screen when {@code port} is its port (an external sees it there), else null. */
 	private int[] cardWindowPlace(int port){CardWindow68k card=tb.cardWindow;return card!=null&&port==card.record?card.screenPlace():null;}
 	/** Global -> local for a specific window ({h,v}). */
-	int[] globalToLocal(int window,int h,int v){Window w=windows.get(window);if(w==null)return new int[]{h,v};return new int[]{h-w.left,v-w.top};}
+	/** A global point in the window's local coordinates: its port's origin (portRect's top left) counts, as GlobalToLocal's does.
+	 *  A control panel's window has its origin at the Control Panel's 87,-1 (ControlPanelHost68k): clicks missed its items. */
+	int[] globalToLocal(int window,int h,int v) throws M68kCpuException {Window w=windows.get(window);if(w==null)return new int[]{h,v};return new int[]{h-w.left+(short)memory.readWord(window+18),v-w.top+(short)memory.readWord(window+16)};}
+	/** A global point relative to the window's content area (0,0 at its top left whatever the port's origin). */
+	int[] globalToContent(int window,int h,int v){Window w=windows.get(window);if(w==null)return new int[]{h,v};return new int[]{h-w.left,v-w.top};}
 
 	// ------------------------------------------------------------------ drawing helpers
 
@@ -1748,7 +1804,7 @@ final class WindowManager68k {
 			if(win.custom){int[] s=structureBounds(win);if(s[0]<exposed[2]&&s[2]>exposed[0]&&s[1]<exposed[3]&&s[3]>exposed[1]&&!exposedFrames.contains(win))exposedFrames.add(win);}
 			int top=Math.max(exposed[0],win.top),left=Math.max(exposed[1],win.left),bottom=Math.min(exposed[2],win.top+win.height),right=Math.min(exposed[3],win.left+win.width);
 			if(bottom<=top||right<=left)continue;
-			unionUpdate(win.record,new int[]{top-win.top,left-win.left,bottom-win.top,right-win.left});tb.events.postUpdate(win.record);
+			expose(win,new int[]{top-win.top,left-win.left,bottom-win.top,right-win.left});
 		}
 		if(!deferExposedFrames)drawExposedFrames();
 	}
@@ -1798,7 +1854,8 @@ final class WindowManager68k {
 		if(Mac68kApi.TRACE)System.err.println("[68K] BeginUpdate $"+Integer.toHexString(w)+" updateRgn (global) "+java.util.Arrays.toString(u)+" window at "+win.left+","+win.top+(win.updateVis!=null?" (nested)":""));
 		if(win.updateVis!=null)return;
 		int[] origin=readRect(w+16);win.updateOriginV=origin[0];win.updateOriginH=origin[1];
-		if(u[2]<=u[0]||u[3]<=u[1]){win.updateVis=qd.clipVisRgn(w,0,0,0,0);return;}
+		if(u[2]<=u[0]||u[3]<=u[1]){win.updateVis=qd.clipVisRgn(w,0,0,0,0);win.unerased=null;return;}
+		eraseUnerased(win,memory.readLong(w+122));
 		clearUpdate(w);
 		int[] portRect=readRect(w+16);int dv=portRect[0]-win.top,dh=portRect[1]-win.left;
 		if(u[0]+dv<=portRect[0]&&u[1]+dh<=portRect[1]&&u[2]+dv>=portRect[2]&&u[3]+dh>=portRect[3])return; // the whole content: nothing to narrow
@@ -1810,14 +1867,20 @@ final class WindowManager68k {
 		unionUpdate(w,new int[]{top-portRect[0],left-portRect[1],bottom-portRect[0],right-portRect[1]});tb.events.postUpdate(w);
 	}
 	void clearUpdate(int w) throws M68kCpuException {setRegion(memory.readLong(w+122),0,0,0,0);}
-	/** ValidRect/ValidRgn (content-local {@code r}): the update region is kept as its bounding box here, so an area that covers
-	 *  it empties it and a smaller one leaves it (the program may still get an update it has drawn already). Fractals! 1.0
-	 *  answers every update with InvalRect, BeginUpdate, EraseRect, EndUpdate, ValidRect: the update event that InvalRect
-	 *  queued used to come back at once, and the window was erased in a loop before the aggregate could grow. */
-	private void validateUpdate(int w,int[] r) throws M68kCpuException {
+	/** ValidRect/ValidRgn (content-local {@code r}, or the program's region {@code shape} moved by {@code r}'s offset): the
+	 *  area leaves the update region, as DiffRgn takes it out. Fractals! 1.0 answers every update with InvalRect, BeginUpdate,
+	 *  EraseRect, EndUpdate, ValidRect: the update event that InvalRect queued used to come back at once, and the window was
+	 *  erased in a loop before the aggregate could grow. What stays invalid comes back as another update event, as CheckUpdate
+	 *  makes one while the region is not empty: Premiere 1.0's Construction window draws ONE of its seven panes per update and
+	 *  validates that pane only - with the rest never asked for, only the work-area bar was ever drawn. */
+	private void validateUpdate(int w,int[] r,QdRegion shape) throws M68kCpuException {
 		int handle=memory.readLong(w+122);if(handle==0)return;int[] old=readRegion(handle);if(old[2]<=old[0]||old[3]<=old[1])return;
 		Window win=windows.get(w);int dv=win==null?0:win.top,dh=win==null?0:win.left;
-		if(r[0]+dv<=old[0]&&r[1]+dh<=old[1]&&r[2]+dv>=old[2]&&r[3]+dh>=old[3])setRegion(handle,0,0,0,0);
+		if(r[0]+dv<=old[0]&&r[1]+dh<=old[1]&&r[2]+dv>=old[2]&&r[3]+dh>=old[3]&&(shape==null||shape.isRect())){setRegion(handle,0,0,0,0);if(win!=null)win.unerased=null;return;}
+		QdRegion valid=shape!=null?shape:QdRegion.rect(r[0],r[1],r[2],r[3]);
+		QdRegion left=QdRegion.combine(qd.regionShapeOf(handle),valid.offset(dh,dv),QdRegion.DIFF);
+		qd.setRegion(handle,left);
+		if(!left.isEmpty())tb.events.postUpdate(w);else if(win!=null)win.unerased=null;
 	}
 	/** Whether an update event for {@code w} still has something to update: CheckUpdate derives the events from the window's
 	 *  update region, so one queued before a BeginUpdate/EndUpdate or ValidRect emptied it is not delivered. */
@@ -1828,6 +1891,7 @@ final class WindowManager68k {
 		int handle=memory.readLong(w+122);if(handle==0)return;int[] old=readRegion(handle);Window win=windows.get(w);int dv=win==null?0:win.top,dh=win==null?0:win.left;
 		r=new int[]{r[0]+dv,r[1]+dh,r[2]+dv,r[3]+dh};
 		if(old[2]<=old[0]||old[3]<=old[1])setRegion(handle,r[0],r[1],r[2],r[3]);
+		else if(memory.readWord(memory.readLong(handle))!=10)qd.setRegion(handle,QdRegion.combine(qd.regionShapeOf(handle),QdRegion.rect(r[0],r[1],r[2],r[3]),QdRegion.UNION)); // what a partial ValidRgn left keeps its shape
 		else setRegion(handle,Math.min(old[0],r[0]),Math.min(old[1],r[1]),Math.max(old[2],r[2]),Math.max(old[3],r[3]));
 	}
 

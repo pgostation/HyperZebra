@@ -35,6 +35,8 @@ class HCDateTime {
 		"(?:^|\\s+)([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}))?(?:\\s*([AaPp][Mm]))?$");
 	private static final Pattern SLASH_DATE = Pattern.compile("^([0-9]{1,4})/([0-9]{1,2})/([0-9]{1,4})$");
 	private static final Pattern DOT_DATE = Pattern.compile("^([0-9]{1,4})\\.([0-9]{1,2})\\.([0-9]{1,4})$");
+	/** a numeric date with more text after a comma or a space ("4/23/60,my birth") */
+	private static final Pattern LEADING_DATE = Pattern.compile("^([0-9]{1,4}/[0-9]{1,2}/[0-9]{1,4}|[0-9]{1,4}\\.[0-9]{1,2}\\.[0-9]{1,4})[\\s,]");
 	private static final Pattern ENGLISH_DATE = Pattern.compile(
 		"^(?:([A-Za-z]+),?\\s+)?([A-Za-z]+)\\.?\\s+([0-9]{1,2}),?\\s+([0-9]{1,4})$");
 	private static final Pattern JAPANESE_DATE = Pattern.compile(
@@ -45,6 +47,16 @@ class HCDateTime {
 	}
 
 	//---------------------------------------------------------------- 解析
+
+	/** convert's reading: the text, or a date with other text after it (HC J-2.3 / 2.4 probe Oth25 Convert Trailing: "4/23/60,my
+	 *  birth" and "12/2/92 my daughter" convert, "abc,4/23/60" stays an invalid date) - HyperCard 10th Anniversary's Events field
+	 *  keeps "4/23/60,my birth" lines and converts them to seconds */
+	static Calendar parseForConvert(String text){
+		Calendar whole = parse(text);
+		if(whole!=null || text==null) return whole;
+		Matcher m = LEADING_DATE.matcher(text.trim());
+		return m.find() ? parse(m.group(1)) : null;
+	}
 
 	/** HyperTalkの日付/時刻テキストをCalendar(ローカル時刻)にする。解釈できなければnull */
 	static Calendar parse(String text){
@@ -197,8 +209,8 @@ class HCDateTime {
 		if(f.equals("date")) f = "short date";
 		if(f.equals("time")) f = "short time";
 		if(f.equals("abbrev time")) f = "short time"; //the abbreviated time is the short time (AOL Airports: convert theTime to abbr time)
-		if(f.equals("english date")) f = "short date";
-		if(f.equals("english time")) f = "short time";
+		if(f.equals("english date")) f = "long date";
+		if(f.equals("english time")) f = "long time";
 		return f;
 	}
 

@@ -1208,7 +1208,7 @@ msgctxt "menu"
 msgid "Export Card Image…"
 msgstr "Exporter l’image de la carte…"
 
-#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java LauncherStore.java LlmTranslation.java MacAppHost.java ResourceTranslation.java StackTranslation.java VMTranslation.java
+#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Resource Translation…"
 msgstr "Traduction des ressources…"
@@ -1651,6 +1651,14 @@ msgid "Runs at the speed of a 68040 Mac / an iMac G3. Off: some games run too fa
 msgstr "Fonctionne à la vitesse d'un Mac 68040 / un iMac G3. Désactivé : certains jeux tournent trop vite."
 
 #: GPreferencesDialog.java
+msgid "PowerPC JIT compiler"
+msgstr "Compilateur JIT PowerPC"
+
+#: GPreferencesDialog.java
+msgid "Runs PowerPC programs faster. Off: the interpreter only."
+msgstr "Exécute plus vite les programmes PowerPC. Désactivé : l'interpréteur seul."
+
+#: GPreferencesDialog.java
 msgid "Control-arrow and Control-number go to the program, not to macOS (for games)."
 msgstr "Contrôle-flèche et Contrôle-chiffre vont au programme, pas à macOS (pour les jeux)."
 
@@ -1964,7 +1972,7 @@ msgstr "La traduction nécessite macOS 26 ou plus."
 msgid "The translation helper (hz-translate) is missing: build it with build.sh on a Mac with Xcode or the Command Line Tools."
 msgstr "L'outil d'aide à la traduction (hz-translate) est manquant : construisez-le avec build.sh sur un Mac avec Xcode ou les outils de ligne de commande."
 
-#: GTranslationForm.java
+#: GTranslationForm.java GTranslationSettingsDialog.java
 msgid "Checking…"
 msgstr "Vérification…"
 
@@ -2262,7 +2270,7 @@ msgstr "Cet ordinateur seulement"
 msgid "Built-in synthesizer"
 msgstr "Synthétiseur intégré"
 
-#: GPreferencesDialog.java
+#: GAppSettingsDialog.java GPreferencesDialog.java
 msgid "Automatic"
 msgstr "Automatique"
 
@@ -2562,7 +2570,7 @@ msgstr "Ressource SIZE"
 msgid "preferred"
 msgstr "préférée"
 
-#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
+#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
 msgid "none"
 msgstr "aucun"
 
@@ -2733,7 +2741,7 @@ msgstr "Ouvrir HyperZebra HD"
 msgid "Home stack not found"
 msgstr "Pile d'accueil introuvable"
 
-#: FileChooserPlaces.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
+#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
 msgid "HyperZebra HD"
 msgstr "HyperZebra HD"
 
@@ -2896,6 +2904,22 @@ msgstr "(immédiatement ; les scripts, l'affichage des cartes et les XCMD/XFCN t
 #: GAppSettingsDialog.java
 msgid "Processor:"
 msgstr "Processeur :"
+
+#: GAppSettingsDialog.java
+msgid "PowerPC code:"
+msgstr "Code PowerPC :"
+
+#: GAppSettingsDialog.java
+msgid "JIT compiler"
+msgstr "Compilateur JIT"
+
+#: GAppSettingsDialog.java
+msgid "Interpreter only"
+msgstr "Interpréteur seul"
+
+#: GAppSettingsDialog.java
+msgid "(at once, also while the program runs; the interpreter is slower)"
+msgstr "(immédiatement, même pendant l'exécution du programme ; l'interpréteur est plus lent)"
 
 #: GAppSettingsDialog.java
 msgid "System version:"
@@ -9683,6 +9707,18 @@ msgid "Invalid rectangle for the within operator: {0}"
 msgstr "Rectangle invalide pour l'opérateur within : {0}"
 
 #: TTalk.java
+msgid "Expected a point instead of {0}"
+msgstr "Un point est attendu au lieu de {0}"
+
+#: TTalk.java
+msgid "Expected a rectangle instead of {0}"
+msgstr "Un rectangle est attendu au lieu de {0}"
+
+#: TTalk.java
+msgid "An integer is required here"
+msgstr "Un nombre entier est requis ici"
+
+#: TTalk.java
 msgid "A card cannot be used as a container"
 msgstr "Une carte ne peut pas être utilisée comme conteneur"
 
@@ -10840,7 +10876,7 @@ msgstr "Ouvrir une pile"
 msgid "Open stack in new window"
 msgstr "Ouvrir dans une nouvelle fenêtre"
 
-#: GPaintDialog.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
+#: GPaintDialog.java MacAppHost.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
 msgid "OK"
 msgstr "OK"
 
@@ -11028,6 +11064,30 @@ msgstr "Clavier et manette"
 #: GAppSettingsDialog.java
 msgid "Files and Access"
 msgstr "Fichiers et accès"
+
+#: FileSystem68k.java GAppSettingsDialog.java InstalledFonts68k.java SystemResources68k.java
+msgid "Fonts"
+msgstr "Polices"
+
+#: GAppSettingsDialog.java
+msgid "Font substitution:"
+msgstr "Substitution de polices :"
+
+#: GAppSettingsDialog.java
+msgid "Replace:"
+msgstr "Remplacer :"
+
+#: GAppSettingsDialog.java
+msgid "Add Substitution"
+msgstr "Ajouter la substitution"
+
+#: GAppSettingsDialog.java
+msgid "(at once; easier: choose Fix Garbled Text… in the program's Apple menu and click the garbled text)"
+msgstr "(immédiatement ; plus simple : choisissez Corriger le texte illisible… dans le menu Pomme du programme et cliquez sur le texte illisible)"
+
+#: GAppSettingsDialog.java
+msgid "Automatic picks a Japanese font like the original"
+msgstr "Automatique choisit une police japonaise semblable à l'originale"
 
 #: GAppSettingsDialog.java
 msgid "Each item follows the shared setting, or has a value for this program only. Items set for this program are in bold; their tabs have a dot."
@@ -11482,6 +11542,34 @@ msgstr "Traduction des ressources avec un chat IA"
 msgid "Copy a request into ChatGPT or another AI chat and paste its answer back."
 msgstr "Copiez une demande dans ChatGPT ou un autre chat IA, puis recollez sa réponse."
 
+#: MacAppHost.java
+msgid "Fix Garbled Text…"
+msgstr "Corriger le texte illisible…"
+
+#: MacAppHost.java
+msgid "Click garbled text to show it in a Japanese font"
+msgstr "Cliquez sur le texte illisible pour l'afficher dans une police japonaise"
+
+#: MacAppHost.java
+msgid "Click the garbled text. (Esc cancels)"
+msgstr "Cliquez sur le texte illisible. (Échap pour annuler)"
+
+#: MacAppHost.java
+msgid "Undo the Change"
+msgstr "Annuler la modification"
+
+#: MacAppHost.java
+msgid "Text in {0} is now shown in {1}."
+msgstr "Le texte en {0} s'affiche maintenant en {1}."
+
+#: MacAppHost.java
+msgid "Fix Garbled Text"
+msgstr "Corriger le texte illisible"
+
+#: MacAppHost.java
+msgid "No text a font change fixes was found there. Click right on the garbled characters."
+msgstr "Aucun texte qu'un changement de police corrige n'a été trouvé à cet endroit. Cliquez juste sur les caractères illisibles."
+
 #: GTranslationForm.java GTranslationSettingsDialog.java
 msgid "Resource Translation with AI Chat… works without it."
 msgstr "« Traduction des ressources avec un chat IA… » fonctionne sans."
@@ -11681,4 +11769,40 @@ msgstr "reply incompréhensible"
 #: TUtil.java
 msgid "localizedText requires a text and optional values for {1}, {2}…"
 msgstr "localizedText demande un texte et, au besoin, des valeurs pour {1}, {2}…"
+
+#: GLlmTranslationDialog.java
+msgid "Reading the text in the pictures…"
+msgstr "Lecture du texte des images…"
+
+#: GTranslationForm.java
+msgid "Text in pictures:"
+msgstr "Texte dans les images :"
+
+#: GTranslationForm.java
+msgid "Check Again"
+msgstr "Vérifier à nouveau"
+
+#: GTranslationSettingsDialog.java
+msgid "Translate (read with Tesseract)"
+msgstr "Traduire (lu avec Tesseract)"
+
+#: GTranslationSettingsDialog.java
+msgid "Don't translate"
+msgstr "Ne pas traduire"
+
+#: GTranslationSettingsDialog.java
+msgid "(the pictures stay as they are: a translated copy is shown)"
+msgstr "(les images restent telles quelles : une copie traduite est affichée)"
+
+#: PictureTranslation.java
+msgid "Tesseract is not installed, so the text in pictures is not translated. Install it - macOS: brew install tesseract tesseract-lang; Windows: the Tesseract installer of UB Mannheim; Linux: the tesseract-ocr packages - and check again."
+msgstr "Tesseract n’est pas installé : le texte des images n’est donc pas traduit. Installez-le (macOS : brew install tesseract tesseract-lang ; Windows : l’installateur Tesseract de l’UB Mannheim ; Linux : les paquets tesseract-ocr), puis vérifiez à nouveau."
+
+#: PictureTranslation.java
+msgid "Tesseract {0} reads the text in pictures: {1} languages ({2}…)."
+msgstr "Tesseract {0} lit le texte des images : {1} langues ({2}…)."
+
+#: GTranslationSettingsDialog.java
+msgid "(its PICT resources, by Resource Translation…; the program file is never changed)"
+msgstr "(ses ressources PICT, par Traduction des ressources… ; le fichier du programme n’est jamais modifié)"
 

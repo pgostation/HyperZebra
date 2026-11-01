@@ -17,8 +17,12 @@ import javax.sound.sampled.UnsupportedAudioFileException;
 final class SoundManager68k {
 	private static final int NO_ERR=0,NOT_ENOUGH_HARDWARE_ERR=-201,RES_PROBLEM=-204,BAD_CHANNEL=-205,BAD_FORMAT=-206,NOT_ENOUGH_BUFFER_SPACE=-207;
 	private static final int CHANNEL_SIZE=36+128*8;
+	/** Channels one program may have open at once (Sound Manager 3 on a fast 68K Mac mixes about that many sampled channels). */
+	static final int MAX_CHANNELS=32;
 	private static final int NULL_CMD=0,QUIET_CMD=3,FLUSH_CMD=4,WAIT_CMD=10,PAUSE_CMD=11,RESUME_CMD=12,CALL_BACK_CMD=13,SYNC_CMD=14;
 	private static final int REINIT_CMD=5,FREQ_DURATION_CMD=40,REST_CMD=41,FREQ_CMD=42,AMP_CMD=43,TIMBRE_CMD=44,GET_AMP_CMD=45;
+	private static final int SCHEDULED_SOUND_EXTENDED_HEADER=4,EXTENDED_SOUND_BUFFER_SIZE_VALID=2;
+	private static final int SCHEDULED_SOUND_CMD=52,SCHEDULED_SOUND_DO_CALL_BACK=2,QUICKTIME_CONTINUATION=-3141;
 	private static final int VOLUME_CMD=46,GET_VOLUME_CMD=47,WAVE_TABLE_CMD=60,SOUND_CMD=80,BUFFER_CMD=81,RATE_CMD=82,CONTINUE_CMD=83,GET_RATE_CMD=85,RATE_MULTIPLIER_CMD=86,GET_RATE_MULTIPLIER_CMD=87;
 	// Sound.h: dbBufferReady = 1, dbLastBuffer = 4 (it was 2 here: SoundApp's MOD player flags its empty last buffer with 4 and then
 	// waits for scChannelBusy to clear before it disposes the channel - the stream ran on with 0-frame buffers and the program hung)
@@ -53,6 +57,10 @@ final class SoundManager68k {
 		int sp=cpu.a[7],callback=memory.readLong(sp),init=memory.readLong(sp+4),synth=(short)memory.readWord(sp+8),channelPointer=memory.readLong(sp+10);cpu.a[7]+=14;
 		int result=NO_ERR;
 		if(channelPointer==0)result=BAD_CHANNEL;
+		// A Mac runs out of CPU for more channels and SndNewChannel answers notEnoughHardwareErr (the "Channel Load Test" of the
+		// Sound Playback Demo opens channels until it does and reports the count; with no limit it went on until the host could
+		// start no more synthesizer threads and the script engine died)
+		else if(channels.size()>=MAX_CHANNELS)result=NOT_ENOUGH_HARDWARE_ERR;
 		else try {
 			// a record the caller passes in is used as it is (SDL sets userInfo and qLength before the call and reads userInfo
 			// back in its callBack); the Sound Manager sets up only its own fields there
@@ -69,7 +77,7 @@ final class SoundManager68k {
 	private boolean disposeChannel(M68kCpu cpu) throws M68kCpuException {
 		int sp=cpu.a[7];boolean quietNow=memory.readByte(sp)!=0;int channel=memory.readLong(sp+2);cpu.a[7]+=6;
 		ChannelState state=channels.remove(channel);int result=state==null?BAD_CHANNEL:NO_ERR;if(SND_TRACE)System.err.println("[snd] SndDisposeChannel $"+Integer.toHexString(channel)+" quietNow="+quietNow);
-		if(state!=null){clearPending(state);state.waitToken++;state.waiting=false;stopDoubleBuffer(state);stop(state,!quietNow);if(state.synthesizer!=null)state.synthesizer.stop();}writeResult(cpu,result);return true;
+		if(state!=null){clearPending(state);state.waitToken++;state.waiting=false;stopDoubleBuffer(state);stop(state,!quietNow);if(state.synthesizer!=null)state.synthesizer.stop();if(state.guest!=null){state.guest.close();state.guest=null;}}writeResult(cpu,result);return true;
 	}
 
 	/** SndControl(id, VAR cmd): the pre-System 7 way to ask a synthesizer about itself. availableCmd (24) / versionCmd (25)
@@ -78,10 +86,13 @@ final class SoundManager68k {
 		int sp=cpu.a[7],command=memory.readLong(sp),id=(short)memory.readWord(sp+4);cpu.a[7]+=6;
 		int result=NO_ERR;
 		if(command!=0){int kind=memory.readWord(command)&0x3fff;boolean known=id==5||id==1||id==3;
-			if(kind==24)memory.writeLong(command+4,known?1:0);            // availableCmd: param2 = 1 when the synthesizer is present
-			else if(kind==25)memory.writeLong(command+4,known?0x02000000:0); // versionCmd: 2.0
-			else if(kind==26)memory.writeLong(command+4,3);               // totalLoadCmd: percent of CPU the synthesizers use
-			else if(kind==27)memory.writeLong(command+4,1);               // loadCmd
+			// The answers of availableCmd, totalLoadCmd and loadCmd are in param1 (param2 carries the init options asked about; it got
+			// the answer too before, kept for programs that may read it there). QuickTime 6's sound media handler sends totalLoadCmd
+			// and refuses a sound track with notEnoughHardwareErr (-201) at a load of 75% or more - it read param1's garbage
+			if(kind==24){memory.writeWord(command+2,known?1:0);memory.writeLong(command+4,known?1:0);} // availableCmd: 1 when the synthesizer is present
+			else if(kind==25)memory.writeLong(command+4,known?0x02000000:0); // versionCmd: 2.0 (param2)
+			else if(kind==26){memory.writeWord(command+2,3);memory.writeLong(command+4,3);} // totalLoadCmd: percent of CPU the synthesizers use
+			else if(kind==27){memory.writeWord(command+2,1);memory.writeLong(command+4,1);} // loadCmd
 			else result=BAD_FORMAT;}
 		writeResult(cpu,result);return true;
 	}
@@ -231,6 +242,22 @@ final class SoundManager68k {
 			case CONTINUE_CMD:return playHeader(state,param2,true,true);
 			case REINIT_CMD:return NO_ERR; // reInitCmd: HyperCard sends it before every play; the channel keeps its settings
 			case CALL_BACK_CMD:if(command!=0)scheduleCallBack(state,command);return NO_ERR;
+			// scheduledSoundCmd (Sound Manager 3.3): a ScheduledSoundHeader - the sound header (a 66-byte union of the three
+			// header kinds), then flags.l, reserved.w, callBackParam1.w (72), callBackParam2.l (74), startTime (78). QuickTime 5/6's
+			// sound media handler feeds its sound track with it: each plays in queue order as soon as the sound before it ends (the
+			// start time against the channel's clock is not kept), and with kScheduledSoundDoCallBack the channel's callback gets
+			// a callBackCmd with the header's two parameters once it has played - the handler queues the next buffer then
+			case SCHEDULED_SOUND_CMD:{
+				if(param2==0)return BAD_FORMAT;
+				// an ExtendedScheduledSoundHeader (flags kScheduledSoundExtendedHdr) after the 94 bytes: recordSize, extendedFlags, bufferSize ...
+				// QDesign Music's packets come with their byte count (kExtendedSoundBufferSizeValid), which its decompressor reads
+				int flags=memory.readLong(param2+66);
+				state.bufferSize=(flags&SCHEDULED_SOUND_EXTENDED_HEADER)!=0&&(memory.readLong(param2+98)&EXTENDED_SOUND_BUFFER_SIZE_VALID)!=0?memory.readLong(param2+102):0;
+				int result;try{result=playHeader(state,param2,true,param1==QUICKTIME_CONTINUATION);}finally{state.bufferSize=0;}
+				if(result==NO_ERR&&(flags&SCHEDULED_SOUND_DO_CALL_BACK)!=0){
+					byte[] cmd=new byte[8];putWord(cmd,0,CALL_BACK_CMD);putWord(cmd,2,memory.readWord(param2+72));putLong(cmd,4,memory.readLong(param2+74));
+					scheduleCallBack(state,cmd);}
+				return result;}
 			default:return BAD_FORMAT;
 		}
 	}
@@ -252,7 +279,10 @@ final class SoundManager68k {
 	 * callBack(chan, VAR cmd), run on the emulation thread with the command copied into the channel's cmdInProgress.
 	 */
 	private void scheduleCallBack(final ChannelState state,int command) throws M68kCpuException {
-		if(state.callback==0)return;final byte[] cmd=new byte[8];for(int i=0;i<8;i++)cmd[i]=(byte)memory.readByte(command+i);final int generation=state.generation;
+		final byte[] cmd=new byte[8];for(int i=0;i<8;i++)cmd[i]=(byte)memory.readByte(command+i);scheduleCallBack(state,cmd);}
+	/** As above, for the callBackCmd {@code cmd} (8 bytes). */
+	private void scheduleCallBack(final ChannelState state,final byte[] cmd) throws M68kCpuException {
+		if(state.callback==0)return;final int generation=state.generation;
 		final Runnable run=new Runnable(){@Override public void run(){try{
 			Toolbox68k tb=macApi.application();if(tb==null||state.generation!=generation)return;M68kCpu cpu=tb.cpu;memory.load(state.channel+20,cmd);
 			if(Mac68kApi.TRACE||SND_TRACE)System.err.println("[68K] sound callback for channel $"+Integer.toHexString(state.channel));
@@ -344,7 +374,7 @@ final class SoundManager68k {
 	/** bufferCmd: the sound header's samples play once at the channel's rate. */
 	private int playHeader(ChannelState state,int header,boolean async,boolean continuing) throws M68kCpuException {
 		tap(state,header);
-		if(!continuing)state.mace=null; // a new sound: a MACE decompressor starts from its initial state
+		if(!continuing){state.mace=null;if(state.guest!=null){state.guest.close();state.guest=null;}} // a new sound: a decompressor starts from its initial state
 		AudioInputStream stream=headerStream(state,header);if(stream==null)return BAD_FORMAT;
 		if(!TSound.use)return NO_ERR;
 		return startClip(state,stream,async);
@@ -405,7 +435,7 @@ final class SoundManager68k {
 			if(compressionID!=0||!(format==0||name.equals("raw ")||name.equals("NONE"))){
 				int sampleSize=memory.readWord(header+62);
 				QuickTimeFile.SoundDescription d=QuickTimeSound.description(name,channels,sampleSize,rate);
-				if(!QuickTimeSound.canDecode(d))return null;
+				if(!QuickTimeSound.canDecode(d))return guestDecoded(state,(int)format,channels,sampleSize,rate,samples,frames);
 				// frames count packets for packet formats (ima4: 64 samples in 34 bytes a channel)
 				long bytes=(long)frames*d.bytesPerFrame;if(bytes>64L*1024*1024)return null;
 				try{short[] pcm=QuickTimeSound.decode(d,memory.readBytes(samples,(int)bytes),(long)frames*Math.max(1,d.samplesPerPacket));
@@ -416,6 +446,19 @@ final class SoundManager68k {
 		long bytes=(long)frames*channels*(sampleSize/8);if(bytes>Integer.MAX_VALUE)return null;
 		byte[] pcm=memory.readBytes(samples,(int)bytes);
 		return new AudioInputStream(new ByteArrayInputStream(pcm),new AudioFormat((float)rate,sampleSize,channels,sampleSize==16,true),frames);
+	}
+
+	/** A format only the installed system software decodes (QuickTime 6's 'QDM2'): its 'sdec' component expands it (GuestSoundDecoder);
+	 *  null (badFormat) without one. {@code frames} counts the header's packets. */
+	private AudioInputStream guestDecoded(ChannelState state,int format,int channels,int sampleSize,double rate,int samples,int frames) throws M68kCpuException {
+		Toolbox68k tb=macApi.application();if(tb==null||state==null)return null;
+		try{
+			GuestSoundDecoder g=state.guest;
+			if(g==null||g.format!=format||g.channels!=channels){if(g!=null)g.close();state.guest=g=GuestSoundDecoder.open(tb,format,channels,sampleSize,(int)(rate*65536),state.decompression);}
+			if(g==null)return null;
+			byte[] pcm=g.decode(samples,frames,sampleSize,(int)(rate*65536),state.bufferSize);
+			return new AudioInputStream(new ByteArrayInputStream(pcm),new AudioFormat((float)g.outputRate(rate),16,g.outputChannels,true,true),pcm.length/(2*g.outputChannels));
+		}catch(M68kCpuException e){throw e;}catch(M68kException e){System.err.println("[68K] sound decompressor '"+ResourceFile68k.typeName(format)+"': "+e.getMessage());return null;}
 	}
 
 	private int playBytes(ChannelState state,byte[] sound,boolean async) {
@@ -613,6 +656,15 @@ final class SoundManager68k {
 				case 0x48:{int value=memory.readLong(sp),kind=memory.readLong(sp+4);cpu.a[7]+=argBytes; // SetSoundOutputInfo(device, selector, infoPtr): a volume comes as the value itself
 					if(kind==0x766f6c75||kind==0x68766f6c)setOutputVolume(value);memory.writeWord(cpu.a[7],NO_ERR);return true;}
 				case 0x10:return getCompressionInfo(cpu,sp,argBytes);
+				// SndSetInfo(chan, selector, infoPtr): kept for the channel's decompressor - QuickTime 6's sound media handler describes the
+				// compressed input with 'dcfg' (an ExtendedSoundComponentData whose extensions are the sound description's 'wave' atoms,
+				// which QDesign Music cannot decode without)
+				case 0x40:{int info=memory.readLong(sp),kind=memory.readLong(sp+4),channel=memory.readLong(sp+8);cpu.a[7]+=argBytes;
+					ChannelState state=channels.get(channel);if(state!=null)state.info.put(kind,info);
+					if(state!=null&&kind==GuestSoundDecoder.DCFG&&info!=0)state.decompression=GuestSoundDecoder.Configuration.read(memory,info,state.compressionInfo); // copied: its atoms are QuickTime's
+					if(state!=null&&kind==GuestSoundDecoder.CMFA&&info!=0)state.compressionInfo=memory.readBytes(info,20); // the stream's CompressionInfo
+					if(SND_TRACE)System.err.println("[snd] SndSetInfo $"+Integer.toHexString(channel)+" '"+ResourceFile68k.typeName(kind)+"' $"+Integer.toHexString(info));
+					memory.writeWord(cpu.a[7],state==null?BAD_CHANNEL:NO_ERR);return true;}
 				case 0x44:{int info=memory.readLong(sp),kind=memory.readLong(sp+4);cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],outputInfo(kind,info));return true;} // GetSoundOutputInfo(device, selector, infoPtr)
 				case 0x04:{ // GetSoundHeaderOffset(sndHandle, VAR offset): where the first soundCmd/bufferCmd's header lies in a format 1/2 'snd '
 					// (it wrote nothing: Nanosaur added the garbage to *sndHandle and played soundCmd at an unmapped address - badFormat)
@@ -628,6 +680,10 @@ final class SoundManager68k {
 			if(midi().dispatch(cpu,selector))return true;
 			if(Mac68kApi.TRACE)System.err.printf("[68K] SoundDispatch: unknown MIDI Manager selector $%X%n",selector);
 			cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],MidiManager68k.INVALID_CMD_ERR);return true;}
+		// No Speech Manager: its calls that answer a value rather than an OSErr get 0 - SpeechManagerVersion (selector 0, a long)
+		// and SpeechBusy / SpeechBusySystemWide ($3C/$40, shorts); -220 in SpeechBusy read as "busy" (SpeakText's isSpeaking
+		// was true, a `repeat while` on it never ended)
+		if(group==0x0c&&(selector==0||selector==0x3c||selector==0x40)){cpu.a[7]+=argBytes;if(selector==0)memory.writeLong(cpu.a[7],0);else memory.writeWord(cpu.a[7],0);return true;}
 		cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],-220);return true; // speech and the rest: siNoSoundInHardware
 	}
 	private SoundInput68k input;
@@ -929,18 +985,31 @@ final class SoundManager68k {
 		@Override public void run(){
 			SourceDataLine l=null;
 			try{
-				int chunk=Math.max(chunks[0]==null?0:chunks[0].length,chunks[1]==null?0:chunks[1].length);
-				int bufferBytes=Math.max(chunk*2,(int)(format.getFrameRate()*frameBytes/5)); // two buffers, at least 200 ms
-				l=AudioSystem.getSourceDataLine(format);l.open(format,bufferBytes);line=l;applyVolume(state,l);if(!paused)l.start();
-				if(Mac68kApi.TRACE)System.err.println("[68K] double buffer: "+format+" chunk="+chunk+" line="+l.getBufferSize());
+				// the line plays the program's format, or 16-bit at the mixer's rate when CoreAudio cannot be given the program's rate
+				// (11127.27 Hz broke the host's audio after a minute: HostSampleRate)
+				HostSampleRate.Stream resampler=HostSampleRate.plain(format.getSampleRate())?null:new HostSampleRate.Stream(format);
+				AudioFormat lineFormat=resampler==null?format:resampler.output();int lineFrameBytes=lineFormat.getFrameSize();
+				int chunk=Math.max(chunks[0]==null?0:chunks[0].length,chunks[1]==null?0:chunks[1].length);if(resampler!=null)chunk=resampler.outputBytes(chunk);
+				int bufferBytes=Math.max(chunk*2,(int)(lineFormat.getFrameRate()*lineFrameBytes/5)); // two buffers, at least 200 ms
+				l=AudioSystem.getSourceDataLine(lineFormat);l.open(lineFormat,bufferBytes);line=l;applyVolume(state,l);if(!paused)l.start();
+				if(Mac68kApi.TRACE)System.err.println("[68K] double buffer: "+format+(resampler==null?"":" as "+lineFormat)+" chunk="+chunk+" line="+l.getBufferSize());
 				boolean[] isLast=new boolean[1];int underruns=0;long written=0;int outputVolume=SoundMixer68k.outputVolume();
+				// the stream's own clock: when the bytes written so far are due to have played. A line that takes samples faster than
+				// they play must not run the stream ahead of it: with the audio device stalled (another line's stop hanging in
+				// DirectAudioDevice.nStop) every write returned at once, Cythera's doubleBack mixed ~9000 buffers a second and the game
+				// behind it barely moved
+				double bytesPerNano=format.getFrameRate()*frameBytes/1e9;long lineNanos=(long)(l.getBufferSize()/(lineFormat.getFrameRate()*lineFrameBytes/1e9)),clockStart=System.nanoTime();
 				for(int i=0;!stopped;i^=1){
 					byte[] data=take(i,isLast);if(data==null)break;
 					if(outputVolume!=SoundMixer68k.outputVolume()){outputVolume=SoundMixer68k.outputVolume();applyVolume(state,l);} // SetSoundVol while it streams
 					if(written>0&&!paused&&l.available()>=l.getBufferSize()){underruns++;if(Mac68kApi.TRACE||SND_TRACE)System.err.println("[68K] double buffer $"+Integer.toHexString(state.channel)+" underrun #"+underruns+" after "+written+" bytes");}
 					written+=data.length;
-					int done=0;while(done<data.length&&!stopped)done+=l.write(data,done,data.length-done);
+					byte[] out=resampler==null?data:resampler.convert(data);
+					int done=0;while(done<out.length&&!stopped)done+=l.write(out,done,out.length-done);
 					if(isLast[0])break;
+					long now=System.nanoTime(),due=clockStart+(long)(written/bytesPerNano);
+					if(paused||due<now-lineNanos)clockStart=now-(long)(written/bytesPerNano); // paused or fallen behind: the clock goes on from now
+					else if(due-lineNanos>now)try{Thread.sleep(Math.max(1,(due-lineNanos-now)/1_000_000L));}catch(InterruptedException e){break;}
 					// An empty buffer (Shockwave Audio's decoder has nothing yet) is handed back no faster than the hardware's
 					// interrupt period, as the real Sound Manager does; at once, two streams posted ~36000 refills a second
 					// and starved the emulation thread the decoder and the movie run on
@@ -961,6 +1030,14 @@ final class SoundManager68k {
 		final int channel,synth,init,callback;final List<SoundMixer68k.Voice> voices=new ArrayList<SoundMixer68k.Voice>();int amplitude=255,volume=0x01000100;boolean paused;volatile DoubleBufferPlayer doubleBuffer;
 		/** The MACE decompressor of the sound playing (continueCmd buffers go on from its state). */
 		MaceDecoder.Stream mace;
+		/** The installed 'sdec' component expanding the channel's sound (a format no native decoder knows); its state runs on likewise. */
+		GuestSoundDecoder guest;
+		/** The decompression configuration SndSetInfo 'dcfg' gave the channel (format, rate and the sound description's atoms). */
+		GuestSoundDecoder.Configuration decompression;byte[] compressionInfo;
+		/** What SndSetInfo gave the channel, by selector. */
+		final java.util.Map<Integer,Integer> info=new java.util.HashMap<Integer,Integer>();
+		/** The byte count of the scheduled sound being played (its extended header), 0 when it gave none. */
+		int bufferSize;
 		/** The file of the last SndStartFilePlay on the channel. */
 		java.io.File filePlaying;Object fileOpen;
 		/** The square-wave/wave-table synthesizer once a note command arrived; the rateCmd multiplier (Fixed) for sampled sounds. */

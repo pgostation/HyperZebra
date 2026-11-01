@@ -175,6 +175,17 @@ final class PpcLibraries {
 	}
 	private void def(String name,PpcRuntime.Native n){functions.put(name,n);}
 	private void def(String library,String name,PpcRuntime.Native n){functions.put(library+"/"+name,n);}
+	/** A Device Manager Control ($A004) or Status ($A005) call on serial driver {@code refNum} with {@code csParam}; {@code outLen} bytes of csParam go to {@code out} afterwards. */
+	private int serialCall(int trap,int refNum,int csCode,byte[] csParam,int out,int outLen) throws M68kException {
+		if(!rt.toolbox.files.serialDriverOpen((short)refNum))return -28; // notOpenErr
+		int pb=rt.allocate(80,4);
+		try{
+			memory.writeWord(pb+24,refNum);memory.writeWord(pb+26,csCode);memory.load(pb+28,csParam,0,csParam.length);
+			int result=(short)rt.trap(trap,0,pb,0);
+			if(result==0&&out!=0)memory.copy(pb+28,out,outLen);
+			return result;
+		}finally{memory.free(pb);}
+	}
 	private int arg(int i) throws M68kCpuException {return rt.arg(i);}
 	private void ret(int v){rt.ret(v);}
 	private int deref(int handle) throws M68kCpuException {return handle==0?0:memory.readLong(handle);}
@@ -258,6 +269,10 @@ final class PpcLibraries {
 	/** The host file an FSSpec names, or null. */
 	File fileOf(int spec) throws M68kCpuException {
 		try{
+			// as the File Manager resolves it: a partial pathname in the name (Ray Dream Studio loads its extensions with
+			// GetDiskFragment of (vRefNum, the extensions folder's dirID, ":CObject")), Mac names of host files
+			File resolved=rt.toolbox.files.fileForSpec(spec);
+			if(resolved!=null&&resolved.exists())return resolved;
 			FileManager68k fm=rt.toolbox.files.fileManager;
 			File dir=fm.directoryForId(memory.readLong(spec+2),(short)memory.readWord(spec));
 			if(dir==null)return null;
@@ -291,6 +306,9 @@ final class PpcLibraries {
 		def("QTGetPixMapHandleGammaLevel",(r,c)->ret(pixMapGamma.getOrDefault(deref(arg(0)),MAC_GAMMA)));
 		def("QTSetPixMapPtrGammaLevel",(r,c)->{pixMapGamma.put(arg(0),arg(1));ret(0);});
 		def("QTSetPixMapHandleGammaLevel",(r,c)->{pixMapGamma.put(deref(arg(0)),arg(1));ret(0);});
+		// SndDispVersion(selector): InterfaceLib exports it, the 3.x headers no longer declare it (no glue in the generated table).
+		// BigEye calls it with 4 at start-up and jumped to address 0. The version of the Sound Manager (SndSoundManagerVersion's).
+		def("SndDispVersion",(r,c)->ret(0x03648000));
 		def("QTGetPixMapPtrRequestedGammaLevel",(r,c)->ret(pixMapRequestedGamma.getOrDefault(arg(0),0)));
 		def("QTGetPixMapHandleRequestedGammaLevel",(r,c)->ret(pixMapRequestedGamma.getOrDefault(deref(arg(0)),0)));
 		def("QTSetPixMapPtrRequestedGammaLevel",(r,c)->{pixMapRequestedGamma.put(arg(0),arg(1));ret(0);});
@@ -303,9 +321,19 @@ final class PpcLibraries {
 		def("ImageCodecGetDecompressLatency",(r,c)->ret(-32766)); // badComponentSelector, as for a codec without the call
 		def("AddClonedTrackToMovie",(r,c)->{if(arg(3)!=0)memory.writeLong(arg(3),0);ret(-4);}); // unimpErr
 		def("GetLogicalPageSize",(r,c)->ret(4096)); // DriverServicesLib
-		// Communications Resource Manager and serial driver glue: no serial ports are registered (Final Cut Pro looks for decks)
-		def("CRMSearch",(r,c)->ret(0));
-		def("SerStatus",(r,c)->ret(-28));def("SerReset",(r,c)->ret(-28));def("SerHShake",(r,c)->ret(-28)); // notOpenErr
+		// The Communications Resource Manager is CommToolbox68k's (its glue: the Modem Port and Printer Port are registered). A bare
+		// CRMSearch(0) stub stood here for Final Cut Pro; Newton Toolkit 1.6.4 looks for a serial port at start-up and stopped at
+		// "Could not start the application because of some unknown error" when none was found.
+		// Serial.h glue (InterfaceLib makes Control/Status calls): an open port is the 68K serial driver's (nothing connected:
+		// every call succeeds), an unopened one notOpenErr (Final Cut Pro asks ports it never opened). Pretzel 3.0b4 opens
+		// .AIn/.AOut and stopped at "Unexpected error, ID = -28" from SerReset when these always answered notOpenErr.
+		def("SerReset",(r,c)->ret(serialCall(0xa004,arg(0),8,new byte[]{(byte)(arg(1)>>>8),(byte)arg(1)},0,0)));
+		def("SerSetBuf",(r,c)->{int p=arg(1),n=arg(2);ret(serialCall(0xa004,arg(0),9,new byte[]{(byte)(p>>>24),(byte)(p>>>16),(byte)(p>>>8),(byte)p,(byte)(n>>>8),(byte)n},0,0));});
+		def("SerHShake",(r,c)->ret(serialCall(0xa004,arg(0),10,arg(1)==0?new byte[8]:memory.readBytes(arg(1),8),0,0)));
+		def("SerClrBrk",(r,c)->ret(serialCall(0xa004,arg(0),11,new byte[0],0,0)));
+		def("SerSetBrk",(r,c)->ret(serialCall(0xa004,arg(0),12,new byte[0],0,0)));
+		def("SerGetBuf",(r,c)->ret(serialCall(0xa005,arg(0),2,new byte[0],arg(1),4)));
+		def("SerStatus",(r,c)->ret(serialCall(0xa005,arg(0),8,new byte[0],arg(1),6)));
 		def("GetDefaultUser",(r,c)->ret(-922)); // noDefaultUserErr
 		// DriverLoaderLib (Mac OS 8.6+): programs weak-import it to tell the OS version (Heavy Metal F.A.K.K.2 demo); no driver is described
 		def("GetDriverInformation",(r,c)->ret(-56)); // nsDrvErr
@@ -393,14 +421,14 @@ final class PpcLibraries {
 			ret(arg(0)==0?0:r.newRoutineDescriptor(arg(0),arg(1),arg(2)&0xff));});
 		def("NewRoutineDescriptorTrap",(r,c)->ret(arg(0)==0?0:r.newRoutineDescriptor(arg(0),arg(1),arg(2)&0xff)));
 		def("NewFatRoutineDescriptor",(r,c)->{ // (m68kProc, powerPCProc, procInfo)
-			int rd=r.allocate(PpcRuntime.RD_HEADER+2*PpcRuntime.RD_RECORD,4);
+			int rd=r.allocate(PpcRuntime.RD_HEADER+2*PpcRuntime.RD_RECORD,4);r.toolbox.api.adoptPointer(rd,PpcRuntime.RD_HEADER+2*PpcRuntime.RD_RECORD);
 			memory.writeWord(rd,PpcRuntime.MIXED_MODE_MAGIC);memory.writeByte(rd+2,7);memory.writeWord(rd+10,1);
 			int r0=rd+PpcRuntime.RD_HEADER,r1=r0+PpcRuntime.RD_RECORD;
 			memory.writeLong(r0,arg(2));memory.writeByte(r0+5,PpcRuntime.ISA_68K);memory.writeLong(r0+8,arg(0));
 			memory.writeLong(r1,arg(2));memory.writeByte(r1+5,PpcRuntime.ISA_PPC);memory.writeWord(r1+6,0x04);memory.writeLong(r1+8,arg(1));
 			ret(rd);});
-		def("DisposeRoutineDescriptor",(r,c)->{int rd=arg(0);if(rd!=0&&r.isRoutineDescriptor(rd)&&memory.isAllocated(rd))memory.free(rd);});
-		def("DisposeRoutineDescriptorTrap",(r,c)->{int rd=arg(0);if(rd!=0&&r.isRoutineDescriptor(rd)&&memory.isAllocated(rd))memory.free(rd);});
+		def("DisposeRoutineDescriptor",(r,c)->r.disposeRoutineDescriptor(arg(0)));
+		def("DisposeRoutineDescriptorTrap",(r,c)->r.disposeRoutineDescriptor(arg(0)));
 		// Programs built without New<X>UPP (classic REALbasic, 何かon林檎) hand ThreadsLib their callbacks' TVectors: wrap them for the 68K Thread Manager
 		threadGlue("NewThread",7,1,THREAD_UPPS.get("ThreadEntry"));
 		threadGlue("SetThreadScheduler",1,0,THREAD_UPPS.get("ThreadScheduler"));
@@ -421,7 +449,7 @@ final class PpcLibraries {
 	/** GetDiskFragment: the fragment of a file's data fork at offset/length (0 = to the end), shared or private by findFlags. */
 	private int diskFragment(PpcRuntime r,int spec,int off,int len,int namePtr,int findFlags,int connPtr,int mainPtr,int errPtr) throws M68kException {
 		File f=fileOf(spec);
-		if(f==null||!f.isFile())return -43;
+		if(f==null||!f.isFile()){if(PpcRuntime.TRACE)System.err.printf("[ppc] GetDiskFragment: no file for vRefNum %d dirID %d \"%s\" (%s)%n",(short)memory.readWord(spec),memory.readLong(spec+2),rt.toolbox.readPascal(spec+6),f);return -43;}
 		try{
 			// CFM tells containers apart by location, not by name: kFindCFrag (2) only finds the loaded instance of this container,
 			// kReferenceCFrag (1) shares it, kPrivateCFragCopy (5: bit 2) always prepares a new one. Acrobat Reader 5 loads each plug-in
@@ -494,6 +522,7 @@ final class PpcLibraries {
 			if(f!=null){Integer v=f.exports.get(name);if(v==null){if(PpcRuntime.TRACE)System.err.println("[ppc] FindSymbol: \""+f.name+"\" has no "+name);ret(PpcRuntime.CFRAG_NO_SYMBOL);return;}addr=v;Integer k=f.exportClasses.get(name);if(k!=null)cls=k;}
 			else{String lib=r.nativeConnectionName(id);if(lib==null){ret(PpcRuntime.CFRAG_CONNECTION_ID);return;}
 				addr=r.nativeSymbol(lib,name,Pef.CLASS_TVECTOR,true);if(addr==0){ret(PpcRuntime.CFRAG_NO_SYMBOL);return;}}
+			if(PpcRuntime.TRACE)System.err.println("[ppc] FindSymbol "+name+" = "+Integer.toHexString(addr));
 			if(arg(2)!=0)memory.writeLong(arg(2),addr);if(arg(3)!=0)memory.writeByte(arg(3),cls);
 			ret(0);});
 		def("CountSymbols",(r,c)->{PpcRuntime.Fragment f=r.fragmentByConnection(arg(0));if(f==null){ret(r.nativeConnectionName(arg(0))!=null?0:PpcRuntime.CFRAG_CONNECTION_ID);if(arg(1)!=0)memory.writeLong(arg(1),0);return;}
@@ -510,6 +539,12 @@ final class PpcLibraries {
 	private void defineMemoryAndStrings(){
 		def("BlockZero",(r,c)->{if(arg(1)>0)memory.fill(arg(0),arg(1),0);});
 		def("BlockZeroUncached",(r,c)->{if(arg(1)>0)memory.fill(arg(0),arg(1),0);});
+		def("BlockClear",(r,c)->{if(arg(1)>0)memory.fill(arg(0),arg(1),0);}); // PrivateInterfaceLib: QuickTime 6's sound decompressors
+		// DriverServicesLib's string compare (QuickTime 6's 'yuvs' decompressor calls the weak import without testing it)
+		def("CStrCmp",(r,c)->{int a=arg(0),b=arg(1);for(int i=0;;i++){int x=memory.readByte(a+i),y=memory.readByte(b+i);if(x!=y||x==0){ret((short)(x-y));return;}}});
+		// PrivateInterfaceLib's system-heap helpers (weak imports of QuickTime 6's streaming library and components): one heap here
+		def("BeginSystemMode",(r,c)->ret(0));def("EndSystemMode",(r,c)->ret(0));
+		def("EnoughSystemHeapSlop",(r,c)->ret(1));
 		PpcRuntime.Native move=(r,c)->{int n=arg(2);if(n>0)memory.copy(arg(0),arg(1),n);};
 		def("BlockMoveData",move);def("BlockMoveUncached",move);def("BlockMoveDataUncached",move);def("BlockMove",move);
 		def("StackSpace",(r,c)->ret(Math.max(0,c.r[1]-r.stackBase)));
@@ -686,7 +721,11 @@ final class PpcLibraries {
 		int[][] longs={{0x316},{0x33c},{0x3e2},{0x8e0},{0xbf6}};String[] longNames={"HpChk","IAZNotify","FSQueueHook","JSwapFont","FScaleHFact"};
 		for(int i=0;i<longs.length;i++){final int a=longs[i][0];String n=longNames[i];
 			if(functions.get("LMGet"+n)==null)def("LMGet"+n,(r,c)->ret(memory.readLong(a)));if(functions.get("LMSet"+n)==null)def("LMSet"+n,(r,c)->memory.writeLong(a,arg(0)));}
-		int[][] bytes={{0x8d2},{0x8f3}};String[] byteNames={"CrsrObscure","QDExist"};
+		// QuickTime 6's INIT (QTPixMapExtensionPatch) reads SysVersion and saves/restores QDErr around its pixel map patches
+		int[][] words={{0x15a},{0xd6e}};String[] wordNames={"SysVersion","QDErr"};
+		for(int i=0;i<words.length;i++){final int a=words[i][0];String n=wordNames[i];
+			if(functions.get("LMGet"+n)==null)def("LMGet"+n,(r,c)->ret((short)memory.readWord(a)));if(functions.get("LMSet"+n)==null)def("LMSet"+n,(r,c)->memory.writeWord(a,arg(0)));}
+		int[][] bytes={{0x8d2},{0x8f3},{0x8f2}};String[] byteNames={"CrsrObscure","QDExist","WWExist"};
 		for(int i=0;i<bytes.length;i++){final int a=bytes[i][0];String n=byteNames[i];
 			if(functions.get("LMGet"+n)==null)def("LMGet"+n,(r,c)->ret(memory.readByte(a)));if(functions.get("LMSet"+n)==null)def("LMSet"+n,(r,c)->memory.writeByte(a,arg(0)));}
 		def("LMGetKeyMap",(r,c)->memory.copy(0x174,arg(0),16));
@@ -734,7 +773,7 @@ final class PpcLibraries {
 		def("InstallExceptionHandler",(r,c)->{ // (handler): program exceptions go to it (PpcCpu.deliverException); answers the previous one
 			int previous=c.exceptionHandler;c.exceptionHandler=arg(0);ret(previous);});
 		def("MaxApplZone",(r,c)->{});
-		def("MakeDataExecutable",(r,c)->{}); // no instruction cache to flush
+		def("MakeDataExecutable",(r,c)->{if(c.jit!=null)c.jit.invalidate(arg(0),arg(1));}); // (address, length): compiled code from there is dropped (PpcJit)
 		def("GetSoundVol",(r,c)->{if(arg(0)!=0)memory.writeWord(arg(0),SoundMixer68k.soundVol());}); // the shared output volume (SdVolume follows it)
 		def("SetSoundVol",(r,c)->{SoundMixer68k.setSoundVol(arg(0)&7);memory.writeByte(0x260,(memory.readByte(0x260)&~7)|(arg(0)&7));});
 		// InitZone(pgrowZone, cMoreMasters, limitPtr, startPtr) -> _InitZone with A0 = {startPtr, limitPtr, cMoreMasters, pGrowZone}:
@@ -867,9 +906,18 @@ final class PpcLibraries {
 		// follow Gestalt.
 		int sysv=rt.toolbox.baseSystemVersion;
 		g.put(0x73797376,sysv);         // sysv
-		g.put(0x61707072,0x0001|0x0002); // appr: Appearance Manager present, compatibility mode
+		// appr: the Appearance Manager is present, NOT in compatibility mode (gestaltAppearanceCompatMode, bit 1 = "system-wide
+		// appearance turned off", an option of Mac OS 8.0/8.1 only). Alsoft's Directory Optimization Grapher stopped with "requires
+		// Appearance Manager 1.0.1 or later ... or turn on System Wide Platinum Appearance" while bit 1 was set
+		g.put(0x61707072,0x0001);       // appr: gestaltAppearanceExists
 		g.put(0x61707672,0x0114);       // apvr: Appearance 1.1.4
 		g.put(0x63626f6e,0x0160);       // cbon: CarbonLib 1.6
+		// wind/menu/cntl: the Mac OS 8.5 Window, Menu and Control Managers are there (each answers its "present" mask, bit 0);
+		// 'wind' also has bit 2, gestaltHasFloatingWindows (Mac OS 8.6 and later: InitFloatingWindows, ShowFloatingWindows...).
+		// Amadeus II 3.2.3 tests 'wind' for bits 0 and 2 right after main: "Amadeus requires at least MacOS 8.6" otherwise
+		g.put(0x77696e64,0x0001|0x0004); // wind: gestaltWindowMgrPresent | 1<<gestaltHasFloatingWindows
+		g.put(0x6d656e75,1);            // menu: gestaltMenuMgrPresent
+		g.put(0x636e746c,1);            // cntl: gestaltControlMgrPresent
 		g.put(0x66626376,0x0011);       // fbcv: Find by Content (see defineFindByContent)
 		g.put(0x66626369,1);            // fbci: gestaltFBCindexingCritical - searches run at once
 		try{memory.writeWord(0x15a,sysv);}catch(M68kCpuException e){}

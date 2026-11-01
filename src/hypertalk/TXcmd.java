@@ -71,11 +71,17 @@ public class TXcmd {
 		return stack==null ? null : stack.rsrc!=null ? stack.rsrc : stack.closedResources;
 	}
 
-	/** Whether {@code stack}'s own resources hold the 68K external {@code name} ("command" XCMD, "function" XFCN). */
+	/** Whether {@code stack}'s own resources hold the external {@code name} ("command" XCMD, "function" XFCN) that the VM runs. */
 	static boolean has68kExternal(OStack stack, String name, String type){
 		Rsrc r = resourcesOf(stack);
-		Rsrc.xcmdClass x = r==null ? null : r.getXcmd(name, type);
-		return x!=null && x.platform!=null && x.platform.toLowerCase().contains("68k");
+		return runsInVm(r==null ? null : r.getXcmd(name, type));
+	}
+
+	/** Whether the 68K VM runs that external: 68K code (XCMD/XFCN), and the PowerPC code of HyperCard 2.3's native externals
+	 *  (xcmd/xfcn) through its Mixed Mode (Xcmd68k.powerPcCode) */
+	static boolean runsInVm(Rsrc.xcmdClass x){
+		String p = x==null || x.platform==null ? "" : x.platform.toLowerCase();
+		return p.contains("68k") || p.contains("ppc");
 	}
 
 	/** Runs {@code stack}'s own external {@code message}: HyperCard found it in that stack's resource fork as the message passed
@@ -117,8 +123,8 @@ public class TXcmd {
 		return applicationCopy;
 	}
 
-	/** Whether a 68K external (one the VM runs) of that name is in the message path: it takes the message before a built-in
-	 *  command of the same name (MacinTalk Stack's Speak XCMD over HyperZebra's speak) */
+	/** Whether an external the VM runs (68K, or PowerPC-only) of that name is in the message path: it takes the message before a
+	 *  built-in command of the same name (MacinTalk Stack's Speak XCMD over HyperZebra's speak) */
 	static boolean runnable68kExternal(String name, String type){
 		if(PCARD.pc==null || PCARD.pc.stack==null) return false;
 		OStack st = PCARD.pc.stack;
@@ -127,8 +133,7 @@ public class TXcmd {
 		if(!any) return false; //built-in commands run on without a lookup in stacks that carry no externals
 		OStack owner = externalOwner(name, type);
 		if(owner==null || owner.rsrc==null) return false;
-		Rsrc.xcmdClass x = owner.rsrc.getXcmd(name, type);
-		return x!=null && x.platform!=null && x.platform.toLowerCase().contains("68k");
+		return runsInVm(owner.rsrc.getXcmd(name, type));
 	}
 
 	/** The target of the message whose handler called the running external: its EvalExpr callback sees it as "the target"
@@ -171,7 +176,8 @@ public class TXcmd {
 		//外部コマンドがあれば、それがメッセージを受け取る(何もしない組み込みの代用 UxShowHideCS / UxSetDialogFont も)。
 		//以前は ret が「受け取り手なし」(1)のまま戻る分岐があり、文を式として評価し直して「showがわかりません」になっていた
 		result.ret = 0;
-		//The stack's own 68K external (or a using stack's, or Home's) runs in the 68K VM, as in HyperCard: the built-in stand-ins
+		//The stack's own 68K external (or a using stack's, or Home's) runs in the 68K VM, as in HyperCard (a PowerPC-only one -
+		//an xcmd/xfcn of HyperCard 2.3 - too, through the VM's Mixed Mode): the built-in stand-ins
 		//below (Movie, QTMovie, AddColor, KStealKeyX, …) are only for stacks that call one without carrying it (HyperCard 2.4's
 		//Movie is part of HyperCard itself). Myst Preview's Movie XCMD 1.2 has properties, callbacks and closeOnFinish that the
 		//stand-in never had. -Dhz.builtinXcmds=true puts the stand-ins first again (to compare).
@@ -181,7 +187,7 @@ public class TXcmd {
 		if(!BUILTIN_XCMDS_FIRST && !message.equalsIgnoreCase("AddColor")){
 			OStack owner = externalOwner(message, isFunc ? "function" : "command");
 			Rsrc.xcmdClass external = resourcesOf(owner)==null ? null : resourcesOf(owner).getXcmd(message, isFunc ? "function" : "command");
-			if(external!=null && external.platform!=null && external.platform.toLowerCase().contains("68k"))
+			if(runsInVm(external))
 				return run68kExternal(message, params, isFunc, result, owner, external);
 		}
 		if(0==message.compareToIgnoreCase("Movie")){
@@ -578,6 +584,15 @@ public class TXcmd {
 				}
 				Rsrc.setEnabledACObj(number-1, false);
 			}
+			else if(params.length>3 && params[0].equalsIgnoreCase("changeObjectColor")){
+				//AddColor changeObjectColor,bg|cd,<object number>,"r,g,b": the colour object's colour now, drawn by the next colorCard
+				String[] c = params[3].split(",");
+				if(c.length==3){
+					Rsrc.setColorACObj(params[1].trim().toLowerCase().startsWith("b"), externalNumber(params[2])-1,
+						new Color(Math.max(0, Math.min(255, externalNumber(c[0])/256)), Math.max(0, Math.min(255, externalNumber(c[1])/256)),
+							Math.max(0, Math.min(255, externalNumber(c[2])/256))));
+				}
+			}
 			else if(params.length>1 && params[0].equalsIgnoreCase("enableObject")){
 				int number = 1;
 				if(params.length>2){
@@ -905,6 +920,7 @@ public class TXcmd {
 						else{
 							bi = PCARD.pc.stack.rsrc.getImage(params[2], "PICT"); //by name, not its ID looked up again
 						}
+						bi = PictureTranslation.shown(PCARD.pc.stack, bi); //its text translated when the stack is
 						if(bi!=null){
 							p.x = bi.getWidth();
 							p.y = bi.getHeight();
@@ -1140,6 +1156,7 @@ public class TXcmd {
 					else{
 						bi = PCARD.pc.stack.rsrc.getImage(params[2], "PICT"); //by name, not its ID looked up again
 					}
+					bi = PictureTranslation.shown(PCARD.pc.stack, bi); //its text translated when the stack is
 
 					if(bi!=null){
 						Rectangle rect;
@@ -1294,8 +1311,7 @@ public class TXcmd {
 			if(owner==null) owner = PCARD.pc.stack;
 			Rsrc.xcmdClass external = owner.rsrc.getXcmd(message,
 				isFunc ? "function" : "command");
-			if(external==null || external.platform==null ||
-				!external.platform.toLowerCase().contains("68k")) {
+			if(!runsInVm(external)) {
 				System.out.println("未実装のXCMD/XFCN:"+message);
 				result.ret = 0;
 				throw new xTalkException("Unimplemented XCMD/XFCN: {0}", message);
@@ -1309,7 +1325,8 @@ public class TXcmd {
 	/** -Dhz.builtinXcmds=true: HyperZebra's stand-ins answer before a stack's own 68K external of the same name (the old order). */
 	static final boolean BUILTIN_XCMDS_FIRST = Boolean.getBoolean("hz.builtinXcmds");
 
-	/** Runs a 68K XCMD/XFCN resource of {@code owner} in the 68K VM; the result is what it returned. */
+	/** Runs an XCMD/XFCN resource of {@code owner} in the 68K VM (an xcmd/xfcn's PowerPC code through its Mixed Mode); the result
+	 *  is what it returned. */
 	private static Result run68kExternal(String message, String[] params, boolean isFunc, Result result, OStack owner, Rsrc.xcmdClass external)
 		throws xTalkException
 	{
@@ -1726,7 +1743,7 @@ public class TXcmd {
 				//"Bible" shows through the coloured buttons); an opaque one is the colour itself
 				java.awt.Composite composite = g.getComposite();
 				if(see) g.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.5f));
-				fillBevelled(g, area, obj.color, obj.bevel);
+				fillBevelled(g, area, obj.runColor!=null ? obj.runColor : obj.color, obj.bevel);
 				g.setComposite(composite);
 			}
 		}
@@ -1756,7 +1773,7 @@ public class TXcmd {
 			if(name==null || name.isEmpty()) return null;
 			if(!file){
 				BufferedImage pict = PictureFile.loadPICT(PCARD.pc.stack.rsrc.getFilePathAll(name, "PICT")); //by name, not its ID looked up again
-				if(pict!=null) return pict;
+				if(pict!=null) return PictureTranslation.shown(PCARD.pc.stack, pict); //its text translated when the stack is
 			}
 			java.util.List<File> candidates = new ArrayList<File>();
 			if(PCARD.pc.stack.file!=null){
@@ -1838,7 +1855,7 @@ public class TXcmd {
 			//PICTを描画
 			String path = PCARD.pc.stack.rsrc.getFilePathAll(pict, "PICT"); //by name, not its ID looked up again
 			//String path = (PCARD.pc.stack.file.getParent()+File.separatorChar+fileName);
-			BufferedImage pictbi = PictureFile.loadPICT(path);
+			BufferedImage pictbi = PictureTranslation.shown(PCARD.pc.stack, PictureFile.loadPICT(path)); //its text translated when the stack is
 			//mode "t" (transparent): the picture's white pixels leave what is under them (Superman vs. Bill Gates: the flying
 			//figures over the city, HC J-2.3); "o" copies the whole rectangle
 			boolean transparent = mode!=null && mode.trim().toLowerCase().startsWith("t");

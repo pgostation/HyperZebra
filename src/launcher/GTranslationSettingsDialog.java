@@ -20,8 +20,9 @@ import javax.swing.JPanel;
  * language it is translated into, the language it is written in (automatic: found from its texts), the engine - each
  * either "Follow the translation settings" (the launcher's Translation page) or its own - and
  * <ul>
- * <li>a stack: whether its button names and fields are shown translated;</li>
- * <li>a program: whether it runs with its translated resources (made by "Resource Translation…") and deleting them.</li>
+ * <li>a stack: whether its button names and fields are shown translated, and the text in its pictures (PictureTranslation);</li>
+ * <li>a program: whether it runs with its translated resources (made by "Resource Translation…") and deleting them, and
+ * whether Resource Translation… translates the text in its PICT resources (PictTranslation).</li>
  * </ul>
  * "Resource Translation…" (macOS's translators) and "AI Chat…" (GLlmTranslationDialog) at the bottom store the settings and
  * start it. Opened from the launcher's menus of a program or
@@ -33,8 +34,8 @@ final class GTranslationSettingsDialog extends JDialog {
 	private final File file;
 	private final boolean stack;
 	private final LauncherStore.AppSettings current;
-	/** A stack's "Show translation" (null for a program). */
-	private JComboBox<String> showCombo;
+	/** A stack's "Show translation" and "Text in pictures" (null for a program). */
+	private JComboBox<String> showCombo, picturesCombo;
 	private final JComboBox<String> toCombo, fromCombo, engineCombo;
 	/** A program's translated resources: use / don't use; null when it has none. */
 	private JComboBox<String> resourcesCombo;
@@ -62,6 +63,23 @@ final class GTranslationSettingsDialog extends JDialog {
 			showCombo = GAppSettingsDialog.plainCombo(new String[]{off, on});
 			showCombo.setSelectedIndex(Boolean.TRUE.equals(current.translate) ? 1 : 0);
 			GAppSettingsDialog.addRow(grid, c, "Show translation:", showCombo, "(at once)");
+		}
+		{
+			//絵の中の文字: スタックはカード・背景のピクチャとPICTをTesseractで読んで訳した写しを表示する(PictureTranslation)。
+			//プログラムはPICTリソースを「リソース翻訳…」で訳したリソースに入れる(PictTranslation)。どちらも元の絵は変わらない
+			picturesCombo = GAppSettingsDialog.plainCombo(new String[]{International.t("Translate (read with Tesseract)"), International.t("Don't translate")});
+			picturesCombo.setSelectedIndex(Boolean.FALSE.equals(current.translatePictures) ? 1 : 0);
+			JLabel pictureNote = GAppSettingsDialog.addRow(grid, c, "Text in pictures:", picturesCombo, "Checking…");
+			Thread t = new Thread(() -> {
+				String[] s = PictureTranslation.status(false);
+				javax.swing.SwingUtilities.invokeLater(() -> {
+					pictureNote.setText(GPreferencesDialog.wrap(s[0]!=null ? s[0] : International.t(stack ? "(the pictures stay as they are: a translated copy is shown)" : "(its PICT resources, by Resource Translation…; the program file is never changed)")));
+					if(s[0]!=null) pictureNote.setForeground(new java.awt.Color(0xb0, 0x40, 0x00));
+					Dimension p = getPreferredSize();
+					setSize(Math.max(getWidth(), p.width), Math.max(getHeight(), p.height));
+				});
+			}, "Tesseract status");
+			t.setDaemon(true); t.start();
 		}
 		String[] targetNames = new String[VMTranslation.TARGETS.length];
 		for(int k=0; k<targetNames.length; k++) targetNames[k] = VMTranslation.languageName(VMTranslation.TARGETS[k]);
@@ -158,6 +176,7 @@ final class GTranslationSettingsDialog extends JDialog {
 		i = fromCombo.getSelectedIndex(); s.translateFrom = i==0 ? null : VMTranslation.TARGETS[i-1];
 		if(engineCombo.isEnabled()){ i = engineCombo.getSelectedIndex(); s.translateEngine = i==0 ? null : VMTranslation.ENGINES[i-1]; }
 		if(showCombo!=null) s.translate = showCombo.getSelectedIndex()==1 ? Boolean.TRUE : null;
+		if(picturesCombo!=null) s.translatePictures = picturesCombo.getSelectedIndex()==1 ? Boolean.FALSE : null;
 		if(resourcesCombo!=null && resourcesCombo.isEnabled()) s.translatedResources = resourcesCombo.getSelectedIndex()==1 ? Boolean.FALSE : null;
 		store.putSettings(file, s);
 		if(stack) StackTranslation.setOn(file, Boolean.TRUE.equals(s.translate)); // also redraws the open stack in the new language

@@ -70,8 +70,23 @@ final class HyperCardResources68k {
 		// the application's owner resource: Drazga's NewMenu/ShowMenu (DevStack) take 'WILD' 0 as the place to keep their menu
 		// handles (they mark it $FFFF and grow it) and did nothing without one
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("WILD"),0,"",0x20,ownerString()));
+		// the Finder bundle: Rinaldi's 2.8+ externals (Align, FullSort …) ask GetResource('BNDL',128) whether they run in HyperCard
+		// (owner 'WILD') or the Player and only then use `the itemDelimiter`; without it a ";" list stayed one column
+		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("BNDL"),128,"",0x20,bundle()));
+		String[] documents={"APPL","STAK","STRN","BTSK"}; // the file types HyperCard's FREF 128-131 name, local IDs 0-3
+		for(int i=0;i<documents.length;i++){byte[] fref=new byte[7];System.arraycopy(documents[i].getBytes(java.nio.charset.StandardCharsets.US_ASCII),0,fref,0,4);fref[5]=(byte)i;
+			f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("FREF"),128+i,"",0x20,fref));}
 		for(Object[] c:CURSORS)f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("CURS"),(Integer)c[0],(String)c[1],0x20,cursor((String[])c[4],(Integer)c[2],(Integer)c[3])));
 		return f;
+	}
+
+	/** 'BNDL' 128 in the layout the Finder reads: owner 'WILD' id 0, then the types it maps (FREF and ICN#, local IDs 0-3 to
+	 *  resource IDs 128-131, as HyperCard's bundle has them). Built here, not copied. */
+	static byte[] bundle(){
+		java.nio.ByteBuffer b=java.nio.ByteBuffer.allocate(8+2*(6+4*4));
+		b.putInt(ResourceFile68k.fourcc("WILD")).putShort((short)0).putShort((short)1); // owner, its ID, number of types - 1
+		for(String type:new String[]{"FREF","ICN#"}){b.putInt(ResourceFile68k.fourcc(type)).putShort((short)3);for(int i=0;i<4;i++)b.putShort((short)i).putShort((short)(128+i));}
+		return b.array();
 	}
 
 	/** 'WILD' 0: a Pascal string naming the program, as HyperCard's owner resource holds its version line (the text is HyperZebra's). */

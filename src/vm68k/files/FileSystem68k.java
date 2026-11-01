@@ -24,6 +24,8 @@ final class FileSystem68k {
 	private static final String DISK_DRIVER=".HyperZebra_Disk";
 	private int nextDriverRef=-40;
 
+	/** The invisible desktop database files at the root of a startup disk (see the constructor; FileManager68k keeps them out of folder walks). */
+	static final String[] DESKTOP_DATABASE_FILES={"Desktop DB","Desktop DF"};
 	/** The startup disk "HyperZebra HD": the folder holding the virtual System Folder. */
 	static File bootVolumeDirectory(){
 		return new File(new File(System.getProperty("user.home")),"Library"+File.separator+"Application Support"+File.separator+"HyperZebra");
@@ -163,6 +165,9 @@ final class FileSystem68k {
 		// next to the System Folder, as on a real Mac. It nests inside the Home volume; the longest match wins in volumeIndexFor.
 		File bootVolume=systemFolder.getParentFile();
 		try{bootVolume.mkdirs();}catch(Exception ignored){}
+		// Every Mac volume has "Desktop DB" and "Desktop DF" at its root; Toast CD-ROM Pro looks for the startup disk's before it accepts a
+		// list of files (FSMakeFSSpec -> fnfErr dropped the list: "Result Code = -43"). Empty files do: the Finder makes its database anew.
+		if(bootVolume.isDirectory())for(String n:DESKTOP_DATABASE_FILES){File d=new File(bootVolume,n);try{if(!d.exists())d.createNewFile();}catch(Exception ignored){}}
 		if(bootVolume.isDirectory()){volumes.add(bootVolume);names.add(BOOT_VOLUME_NAME);}
 		// Debug aid: -Dhz68k.bootonly=true mounts the startup disk alone (a program under test cannot reach the host's folders)
 		boolean bootOnly=Boolean.getBoolean("hz68k.bootonly");
@@ -208,7 +213,7 @@ final class FileSystem68k {
 			if(trap>=0x01&&(ref==AppleTalk68k.MPP_REF||ref==AppleTalk68k.ATP_REF||ref==AppleTalk68k.XPP_REF||ref==AppleTalk68k.DSP_REF))return tb.appleTalk.handle(cpu,pb,trap,async); // .MPP/.ATP/.XPP: the AppleTalk glue uses the fixed refNums too
 			if(drivers.containsKey(ref)){
 				String driver=drivers.get(ref);int result;
-				if(trap==0x01){drivers.remove(ref);result=0;finish(cpu,pb,result,async);return true;}
+				if(trap==0x01){drivers.remove(ref);if(isSerialDriver(driver))tb.devices.setRomUnitOpened(ref,false);result=0;finish(cpu,pb,result,async);return true;}
 				if(driver.equalsIgnoreCase(".IPP")){return tb.macTcp.control(cpu,pb,trap,async);}
 				if(driver.startsWith(".Display")&&(trap==0x04||trap==0x05)){result=tb.quickDraw.videoDriver(pb,trap==0x05);if(Mac68kApi.TRACE)System.err.println("[68K] video driver "+(trap==0x05?"Status":"Control")+" csCode "+(short)memory.readWord(pb+26)+" -> "+result);finish(cpu,pb,result,async);return true;}
 				if(isSerialDriver(driver))return serial(cpu,pb,trap,async);
@@ -230,7 +235,8 @@ final class FileSystem68k {
 				// the disk again on an error (VISE installers asking for the next disk). That drive answers noErr + its vRefNum.
 				int pb=cpu.a[0],drive=(short)memory.readWord(pb+22);
 				if(addedDrives.containsKey(drive)){int[] mounted=mountAddedDrive(cpu,drive);if(mounted[1]!=0)memory.writeWord(pb+22,mounted[1]);finish(cpu,pb,mounted[0],async);return true;}
-				if(drive>0&&fileManager.volumeLocked(drive-1)){memory.writeWord(pb+22,-drive);finish(cpu,pb,0,async);return true;}
+				int onDrive=drive>0?fileManager.volumeIndexOfDrive(drive):-1;
+				if(onDrive>=0&&fileManager.volumeLocked(onDrive)){memory.writeWord(pb+22,-(onDrive+1));finish(cpu,pb,0,async);return true;}
 				finish(cpu,pb,-55,async);return true;}
 			case 0x0e:finish(cpu,cpu.a[0],-47,async);return true;   // UnmountVol: fBsyErr, the volume stays
 			case 0x17:case 0x35:{ // Eject / OffLine: host volumes stay mounted, like a fixed disk; a volume or drive that does not exist is nsvErr
@@ -283,6 +289,7 @@ final class FileSystem68k {
 			ref=nextDriverRef--;if(ref==AppleTalk68k.DSP_REF)ref=nextDriverRef--;
 		}
 		drivers.put(ref,name);memory.writeWord(pb+24,ref);
+		if(isSerialDriver(name))tb.devices.setRomUnitOpened(ref,true);
 		if(Mac68kApi.TRACE)System.err.println("[68K] OpenDriver "+name+" -> "+ref);
 		finish(cpu,pb,0,async);return true;
 	}
@@ -322,6 +329,8 @@ final class FileSystem68k {
 		if(name.equalsIgnoreCase(".MPP"))return -10;if(name.equalsIgnoreCase(".ATP"))return -11;
 		return 0;
 	}
+	/** Whether a serial driver (.AIn/.AOut/.BIn/.BOut) is open under {@code refNum}: the PowerPC Serial glue's calls go to it then. */
+	boolean serialDriverOpen(int refNum){String name=drivers.get(refNum);return name!=null&&isSerialDriver(name);}
 	private static boolean isSerialDriver(String name){return name.equalsIgnoreCase(".AIn")||name.equalsIgnoreCase(".AOut")||name.equalsIgnoreCase(".BIn")||name.equalsIgnoreCase(".BOut");}
 	/**
 	 * Serial ports with nothing connected: Control calls (SerReset/SerSetBuf/SerHShake...) succeed, Status reports an empty
@@ -476,7 +485,7 @@ final class FileSystem68k {
 		try{
 			int namePtr=memory.readLong(pb+18);
 			if(namePtr!=0&&memory.readByte(namePtr)>0){String n=tb.readPascal(namePtr);int colon=n.indexOf(':');
-				if(colon>0){String v=n.substring(0,colon);for(int i=0;i<fileManager.volumeNames.size();i++)if(fileManager.volumeNames.get(i).equalsIgnoreCase(v))return i;return -1;}}
+				if(colon>0)return fileManager.volumeIndexNamed(n.substring(0,colon));}
 			File volume=fileManager.namedVolume((short)memory.readWord(pb+22));
 			return volume==null?-1:fileManager.volumeIndexOf(volume);
 		}catch(IOException e){return -1;}
@@ -557,7 +566,7 @@ final class FileSystem68k {
 			switch(selector){
 				case 1:{int spec=memory.readLong(sp),name=memory.readLong(sp+4),dirId=memory.readLong(sp+8),vRef=(short)memory.readWord(sp+12);cpu.a[7]+=14;
 					memory.writeLong(pb+18,name);memory.writeWord(pb+22,vRef);memory.writeLong(pb+48,dirId);memory.writeLong(pb+28,spec);result=hfs(cpu,pb,0x1b);break;}
-				case 2:case 3:{int refPtr=memory.readLong(sp),perm=memory.readWord(sp+4)&0xff,spec=memory.readLong(sp+6);cpu.a[7]+=10;
+				case 2:case 3:{int refPtr=memory.readLong(sp),perm=memory.readByte(sp+4),spec=memory.readLong(sp+6);cpu.a[7]+=10; /* SignedByte: the high byte of its stack word (dfXFCNs fCopy opened the copy read-only) */
 					fromSpec(pb,spec);memory.writeByte(pb+27,perm);result=selector==2?hfs(cpu,pb,0x1a):osTrap(cpu,pb,0xa20a);if(refPtr!=0)memory.writeWord(refPtr,memory.readWord(pb+24));break;}
 				case 4:{int script=memory.readWord(sp),type=memory.readLong(sp+2),creator=memory.readLong(sp+6),spec=memory.readLong(sp+10);cpu.a[7]+=14;
 					fromSpec(pb,spec);result=osTrap(cpu,pb,0xa208);
@@ -582,7 +591,9 @@ final class FileSystem68k {
 					throw new M68kMacApiException(cpu.pc,0xaa52,"HighLevelFSDispatch selector "+selector);
 			}
 		}finally{memory.free(pb);}
-		memory.writeWord(cpu.a[7],result);return true;
+		memory.writeWord(cpu.a[7],result);
+		cpu.d[0]=(short)result; // the OSErr is in D0 as well: dfXFCNs fMove tests D0 after FSpCatMove (always "Move Error" before)
+		return true;
 	}
 	private void fromSpec(int pb,int spec) throws M68kCpuException {memory.fill(pb,128,0);memory.writeLong(pb+18,spec+6);memory.writeWord(pb+22,memory.readWord(spec));memory.writeLong(pb+48,memory.readLong(spec+2));}
 	private void fromSpecKeepInfo(int pb,int spec) throws M68kCpuException {memory.writeLong(pb+18,spec+6);memory.writeWord(pb+22,memory.readWord(spec));memory.writeLong(pb+48,memory.readLong(spec+2));memory.writeLong(pb+12,0);memory.writeWord(pb+16,0);}
@@ -1091,6 +1102,17 @@ final class FileSystem68k {
 		File base=fileManager.directoryForId(0,0);
 		try{return fileManager.resolveClassicPath(base,path);}catch(SecurityException e){return null;}
 	}
+	/**
+	 * The "poor man's search path" of the classic File Manager: an open by a bare name (no colon) on the default directory that
+	 * finds nothing there tries the blessed System Folder next. MacinTalk 1 is installed by dropping its driver file into the
+	 * System Folder, and its glue does OpenResFile("MacinTalk") (MacinTalk Stack, HyperMacintalk).
+	 */
+	File searchSystemFolder(String name,File found){
+		if(found!=null&&found.exists())return found;
+		if(name==null||name.isEmpty()||name.indexOf(':')>=0||systemFolder==null)return found;
+		try{File f=fileManager.resolveClassicPath(systemFolder,name);if(f!=null&&f.exists())return f;}catch(IOException|SecurityException e){}
+		return found;
+	}
 	void writeFileSpec(int spec,File file) throws IOException,M68kCpuException {
 		if(spec==0||file==null)return;
 		File parent=file.getAbsoluteFile().getParentFile();
@@ -1120,7 +1142,12 @@ final class FileSystem68k {
 		// "Need OpenGL version 1.2.1 or newer" when it is missing); the native OpenGL answers as 1.2.1, so a stub says so.
 		// It has no 'cfrg', so the Code Fragment Manager never takes it for a library.
 		if(PpcOpenGL.NATIVE)ensureStub(new File(new File(systemFolder,"Extensions"),"OpenGLEngine"),"shlbcfmg",OPENGL_VERS);
+		// Internet Config's application (1.x, with Anarchie 1.6) looks for Extensions:Internet Config Extension by name and offers
+		// to install it when it is missing, although the component (InternetConfig68k) answers; Mac OS 9 has the file. No INIT code.
+		if(!"false".equals(System.getProperty("hz68k.internetconfig")))ensureStub(new File(new File(systemFolder,"Extensions"),"Internet Config Extension"),"INITICAp",INTERNET_CONFIG_VERS);
 	}
+	/** 'vers' 2.0 final: the Internet Config InternetConfig68k reports (ICCGetVersion). */
+	private static final byte[] INTERNET_CONFIG_VERS={2,0,(byte)0x80,0,0,0,3,'2','.','0',3,'2','.','0'};
 	/** 'vers' 1.2.1 final: Apple OpenGL for Mac OS 9 as {@link PpcOpenGL} reports it. */
 	private static final byte[] OPENGL_VERS={1,0x21,(byte)0x80,0,0,0,5,'1','.','2','.','1',5,'1','.','2','.','1'};
 	private static void ensureStub(File file,String typeAndCreator){ensureStub(file,typeAndCreator,new byte[]{7,0x55,(byte)0x80,0,0,0,5,'7','.','5','.','5',5,'7','.','5','.','5'});}
@@ -1144,7 +1171,7 @@ final class FileSystem68k {
 		try{return tb.app!=null&&tb.app.file!=null&&tb.app.file.getCanonicalFile().equals(f.getCanonicalFile());}catch(IOException e){return false;}
 	}
 	File specialFolder(int type,boolean create){
-		File f;
+		File f;boolean onDemand=false; // a System Folder subfolder that is only there once something put it there
 		switch(type){
 			case 0x6d616373:f=systemFolder;break;                       // macs
 			case 0x70726566:f=new File(systemFolder,"Preferences");break; // pref
@@ -1153,12 +1180,13 @@ final class FileSystem68k {
 			case 0x6374726c:f=new File(systemFolder,"Control Panels");break; // ctrl
 			// temp: a "Temporary Items" folder at the root of the startup disk, as on a real Mac. The host's own temporary directory
 			// held 80,000 entries here and every name lookup in it took seconds (輪芸 saves its preferences through a temporary file at quit).
-			case 0x74656d70:f=new File(systemFolder.getParentFile(),"Temporary Items");break;
+			// It is there from start-up on System 7, so it is made whatever createFolder says (Sam's FindFolder XFCN asks kDontCreateFolder)
+			case 0x74656d70:f=new File(systemFolder.getParentFile(),"Temporary Items");create=true;break;
 			// trsh/empt: the startup disk's "Trash" folder at its root, as System 7 keeps it (the Finder looks for it in the root
 			// directory and gives up at start-up without it). Never the host's own Trash: a program emptying the Trash would
 			// delete what the user threw away outside HyperZebra.
 			case 0x74727368:case 0x656d7074:f=new File(systemFolder.getParentFile(),"Trash");create=true;break;
-			case 0x6465736b:f=new File(new File(System.getProperty("user.home")),"Desktop");break; // desk
+			case 0x6465736b:f=new File(new File(System.getProperty("user.home")),"Desktop");if(!f.isDirectory()){File d=finderDesktopFolder();if(d!=null)f=d;}break; // desk; without a host Desktop the startup disk's Desktop Folder (always there on System 7)
 			case 0x646f6373:f=new File(new File(System.getProperty("user.home")),"Documents");break; // docs
 			case 0x616d6e75:f=new File(systemFolder,"Apple Menu Items");break; // amnu
 			case 0x73747274:f=new File(systemFolder,"Startup Items");break; // strt
@@ -1179,6 +1207,13 @@ final class FileSystem68k {
 			case 0xc46e6574:f=new File(systemFolder,"Internet Plug-Ins");break; // ƒnet: kInternetPlugInFolderType
 			case 0x69737366:f=new File(systemFolder,"Internet Search Sites");break; // issf
 			case 0x636d6e75:f=new File(systemFolder,"Contextual Menu Items");break; // cmnu
+			// Extensions Manager's folders for turned-off items (System 7.5 'fld#'; Folders.h kExtensionDisabledFolderType...):
+			// AIM 4.3's French installer (VISE) asks 'extD' and 'strD' with kCreateFolder before installing its extensions
+			case 0x65787444:f=new File(systemFolder,"Extensions (Disabled)");onDemand=true;break;        // extD
+			case 0x63747244:f=new File(systemFolder,"Control Panels (Disabled)");onDemand=true;break;    // ctrD
+			case 0x6d616344:f=new File(systemFolder,"System Extensions (Disabled)");onDemand=true;break; // macD
+			case 0x73747244:f=new File(systemFolder,"Startup Items (Disabled)");onDemand=true;break;     // strD
+			case 0x73686444:f=new File(systemFolder,"Shutdown Items (Disabled)");onDemand=true;break;    // shdD
 			case 0x66617673:f=new File(systemFolder,"Favorites");break;        // favs
 			case 0xc4746578:f=new File(systemFolder,"Text Encodings");break;   // ƒtex
 			// qtex: "QuickTime Extensions" in the Extensions folder (the name QuickTime's own AddFolderDescriptor gives it), made when asked
@@ -1189,7 +1224,7 @@ final class FileSystem68k {
 		}
 		// the System Folder's own subfolders always exist on a real Mac (UxFindFolder("amnu") returned nothing for a missing
 		// "Apple Menu Items"), so they are made on first use whatever createFolder says; other folders only when asked
-		if(!f.exists()&&(create||systemFolder.equals(f.getParentFile())))f.mkdirs();
+		if(!f.exists()&&(create||!onDemand&&systemFolder.equals(f.getParentFile())))f.mkdirs();
 		if(type==0x74656d70&&f.isDirectory())rescueTemporaryItems(f);
 		return f.exists()?f:null;
 	}
@@ -1378,7 +1413,7 @@ final class FileSystem68k {
 		memory.writeLong(vcb+28,blockSize);memory.writeLong(vcb+32,blockSize); // vcbAlBlkSiz, vcbClpSiz
 		memory.writeLong(vcb+38,100);                                // vcbNxtCNID
 		memory.writeWord(vcb+42,FileManager68k.volumeBlocks(free,blockSize)); // vcbFreeBks
-		tb.writePascal(vcb+44,name,27);                              // vcbVN
+		tb.writePascal(vcb+44,fileManager.programName(name),27);     // vcbVN, as GetVolInfo names the volume
 		memory.writeWord(vcb+72,fileManager.driveOf(i));memory.writeWord(vcb+74,fileManager.driverRefOf(i)); // vcbDrvNum, vcbDRefNum: the fixed-disk driver of the drive queue and GetVolInfo (the Finder asks it for the volume icon)
 		memory.writeWord(vcb+76,0x485a);memory.writeWord(vcb+78,-(i+1)); // vcbFSID 'HZ' (an external file system: nobody computes disk blocks from our FCBs), vcbVRefNum
 		int tail=memory.readLong(0x35c);
@@ -1391,7 +1426,7 @@ final class FileSystem68k {
 		int block=memory.allocate(4+18,4);memory.fill(block,22,0);int element=block+4;
 		memory.writeByte(block,locked?0x80:0);memory.writeByte(block+1,fileManager.opticalVolume(i)?2:8); // flags: write-protected; removable optical media or fixed disk
 		memory.writeWord(element+4,1);                               // qType 1: dQDrvSz2 holds the high word of the size
-		memory.writeWord(element+6,i+1);                             // dQDrive (vcbDrvNum)
+		memory.writeWord(element+6,fileManager.driveOf(i));          // dQDrive (vcbDrvNum)
 		memory.writeWord(element+8,fileManager.driverRefOf(i));     // dQRefNum: fixed disk or CD driver, as in the VCB
 		memory.writeWord(element+10,0);                              // dQFSID: the File Manager's own
 		long sectors=Math.min(0x7fffffffL,total/512);
@@ -1574,8 +1609,9 @@ final class FileSystem68k {
 		int index=fileManager.mountVolume(image.folder,image.name,true);
 		if(index<before)return;
 		if(tb.app==null)return;
+		int drive=fileManager.assignImageDrive(index);
 		try{appendVolumeControlBlock(index);if(memory.readLong(0x352)==0)memory.writeLong(0x352,volumeControlBlocks[0]);}catch(M68kCpuException e){return;}
-		tb.events.postApplicationEvent(EventManager68k.DISK_EVT,index+1);
+		tb.events.postApplicationEvent(EventManager68k.DISK_EVT,drive);
 	}
 
 	/** GetAliasInfo: the names recorded in an alias (volume, file, parent folder and the folders above it). */

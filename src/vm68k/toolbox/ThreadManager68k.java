@@ -57,6 +57,9 @@ final class ThreadManager68k {
 		/** A Multiprocessing Services task: its body, whether it is held (created suspended, stopped at an exception), and
 		 *  while {@link #WAITING} what it waits for and until when (System.nanoTime, {@link #FOREVER}). */
 		boolean mp,suspended;TaskBody body;BooleanSupplier waitFor;long waitDeadline;
+		/** A program run inside the launcher's process (see {@link #newProgramTask}): an MP task whose event calls hand the processor back,
+		 *  with what a process of its own has: its serial number, its Apple event handlers and the high-level events sent to it. */
+		boolean program;int programSerial;java.util.Map<Long,int[]> programHandlers;java.util.ArrayDeque<EventManager68k.Event> programEvents;
 		ThreadRecord(int id){this.id=id;}
 	}
 	/** The machine state of one suspended coroutine thread. */
@@ -240,20 +243,29 @@ final class ThreadManager68k {
 		}
 	}
 
-	/** The thread to run next: the suggested one when ready, else the scheduler proc's choice, else round-robin after the current. */
-	private ThreadRecord pick(M68kCpu cpu,int suggested) throws M68kException {
+	private ThreadRecord pick(M68kCpu cpu,int suggested) throws M68kException {return pick(cpu,suggested,false);}
+	/**
+	 * The thread to run next, or null for none (the running thread goes on). A SetThreadScheduler proc decides first, as on the
+	 * real Thread Manager (it is shown the suggested thread too): its choice when that can run, and no switch at all when it names
+	 * the running thread and that one {@code mayStay} (a yield, not a stop or an end). Then the suggested thread when ready, then
+	 * round-robin after the current. Cythera's TTaskMaster::MyScheduler keeps the running thread while a conversation waits in a
+	 * nested event loop; switching anyway let the main thread's own event loop take the *MORE* click (the conversation's Done
+	 * then ended that outer loop, and the game quit) and let the map thread close the conversation on every frame.
+	 */
+	private ThreadRecord pick(M68kCpu cpu,int suggested,boolean mayStay) throws M68kException {
 		int depth=coroutines()?-1:cpu.nestingDepth();
-		ThreadRecord s=suggested==NO_THREAD||suggested==CURRENT_THREAD?null:threads.get(suggested);
-		if(s!=null&&s!=current&&s.state==READY&&!s.premade&&!s.mp&&reachable(s,depth))return s;
 		if(scheduler!=0){
 			int rec=memory.allocate(16,2);int chosen;
 			int[] d=cpu.d.clone(),a=cpu.a.clone();
 			try{memory.writeLong(rec,16);memory.writeLong(rec+4,current.id);memory.writeLong(rec+8,suggested);memory.writeLong(rec+12,0);
 				cpu.a[7]-=4;cpu.pushLong(rec);cpu.callPascal(scheduler,4);chosen=memory.readLong(cpu.a[7]);cpu.a[7]+=4;}
 			finally{memory.free(rec);System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);}
+			if(mayStay&&(chosen==current.id||chosen==CURRENT_THREAD))return null;
 			ThreadRecord c=threads.get(chosen);
 			if(c!=null&&c!=current&&c.state==READY&&!c.premade&&!c.mp&&reachable(c,depth))return c;
 		}
+		ThreadRecord s=suggested==NO_THREAD||suggested==CURRENT_THREAD?null:threads.get(suggested);
+		if(s!=null&&s!=current&&s.state==READY&&!s.premade&&!s.mp&&reachable(s,depth))return s;
 		List<ThreadRecord> all=new ArrayList<ThreadRecord>(threads.values());int at=all.indexOf(current);
 		for(int i=1;i<=all.size();i++){ThreadRecord t=all.get((at+i)%all.size());if(t!=current&&t.state==READY&&!t.premade&&!t.mp&&reachable(t,depth))return t;}
 		return null;
@@ -267,7 +279,7 @@ final class ThreadManager68k {
 	boolean yieldTo(M68kCpu cpu,int suggested,boolean stop) throws M68kException {
 		main(cpu);
 		if(critical>0&&!stop)return false;
-		ThreadRecord next=pick(cpu,suggested);
+		ThreadRecord next=pick(cpu,suggested,!stop);
 		if(next==null){if(stop)current.state=STOPPED;return false;}
 		current.state=stop?STOPPED:READY;
 		switchTo(cpu,next);return true;
@@ -281,7 +293,11 @@ final class ThreadManager68k {
 	 *  yields - Macintosh Common Lisp 4 (SK8 1.2 PPC) swaps its catch chain and stacks with each stack group, and a thread
 	 *  resumed from the main thread's WaitNextEvent threw to the main thread's catch frame. */
 	void yieldAtEventLoop(M68kCpu cpu) throws M68kException {
-		if(mpTasks>0||mp!=null&&mp.blueWorkPending())runTasks(cpu); // MP tasks are preemptive on a real Mac: here they run at the blue task's event calls
+		if(current!=null&&current.program)return; // a program run in the launcher's process has no event loop of its own: see yieldProgram
+		if(mpTasks>0||mp!=null&&mp.blueWorkPending()){
+			int map=tb.resources.currentRefNum(); // the Process Manager keeps a resource chain per process: the launcher's comes back after the tasks' turn
+			try{runTasks(cpu);}finally{tb.resources.useResFile(map);}
+		} // MP tasks are preemptive on a real Mac: here they run at the blue task's event calls
 		if(!yieldsItself&&threads.size()-mpTasks>1&&critical==0&&(current==null||current.id==APPLICATION_THREAD))yieldTo(cpu,NO_THREAD,false);
 	}
 	/** The program has yielded on its own (YieldToThread, YieldToAnyThread, SetThreadState stopping itself). */
@@ -475,6 +491,38 @@ final class ThreadManager68k {
 		threads.put(t.id,t);mpTasks++;
 		if(Mac68kApi.TRACE)System.err.println("[68K] MP task "+t.id+" created"+(suspended?" (suspended)":""));
 		return t;
+	}
+	/**
+	 * A program the launcher's own process runs instead of a process of its own, on a task of its own: the launched program shares
+	 * the launcher's address space on a real Mac and the two reach into each other's memory through pointers they pass around
+	 * (Ray Dream Studio hands its extensions - 'RDEX' files that are PowerPC applications - a table through Gestalt 'EVT ' and calls
+	 * the routines they register in it). Separate VMs cannot do that. The program runs when the launcher's event calls give the
+	 * tasks a turn; its own event calls end its turn ({@link #yieldProgram}).
+	 */
+	ThreadRecord newProgramTask(M68kCpu cpu,int ppcStackSize,int serial,TaskBody body){
+		ThreadRecord t=newTask(cpu,ppcStackSize,body,false);
+		if(t!=null){t.program=true;t.programSerial=serial;t.programHandlers=new java.util.HashMap<Long,int[]>();t.programEvents=new java.util.ArrayDeque<EventManager68k.Event>();}
+		return t;
+	}
+	/** Whether the running thread is a program the launcher's process runs ({@link #newProgramTask}). */
+	boolean inProgramTask(){return current!=null&&current.program;}
+	/** The Apple event handlers of the running program's own when it is one of those (null: the application's table). */
+	java.util.Map<Long,int[]> programHandlers(){return current!=null&&current.program?current.programHandlers:null;}
+	/** Queues a high-level event for the program of {@code serial} run in this process; false when there is none (it ended). */
+	boolean postToProgram(int serial,EventManager68k.Event e){
+		for(ThreadRecord t:threads.values())if(t.program&&t.programSerial==serial&&t.state!=STOPPED){t.programEvents.add(e);if(t.state==WAITING)t.waitDeadline=System.nanoTime();return true;}
+		return false;
+	}
+	/** Whether a program of {@code serial} runs in this process. */
+	boolean isProgram(int serial){for(ThreadRecord t:threads.values())if(t.program&&t.programSerial==serial&&t.state!=STOPPED)return true;return false;}
+	/** The next high-level event queued for the running program (null: none, or not such a program). */
+	EventManager68k.Event takeProgramEvent(){return current!=null&&current.program?current.programEvents.poll():null;}
+	/** The event call of such a program (WaitNextEvent with {@code sleepTicks}): the launcher's turn comes back, and this task
+	 *  runs again after the sleep (at least a tick, so a program polling for events does not keep the launcher's loop spinning). */
+	void yieldProgram(M68kCpu cpu,int sleepTicks) throws M68kException {
+		int map=tb.resources.currentRefNum();
+		try{waitFor(cpu,()->false,System.nanoTime()+Math.max(1,Math.min(sleepTicks,30))*16_666_667L);}
+		finally{tb.resources.useResFile(map);}
 	}
 	/** Holds or releases an MP task (created suspended, stopped at an exception): a held task is never picked. */
 	void setSuspended(ThreadRecord t,boolean suspended){t.suspended=suspended;}

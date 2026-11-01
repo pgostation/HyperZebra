@@ -391,6 +391,7 @@ final class HostQuickDraw68k {
 		int[] pen=qd.penLocation();int v=pen[0],h=pen[1];
 		int[] t=qd.textState();Font font=Fonts68k.font(t[0],t[3],t[1]);
 		qd.recordText(h,v,text); // an open picture gets the text too; some media windows render their title through a scaled picture
+		if(!qd.penHidden())Fonts68k.noteDrawn(t[0],text,font); // the fonts "Fix Garbled Text…" tries (Fonts68k.Substitution)
 		double[] extra=textExtra();
 		if(extra[0]!=0||extra[1]!=0){drawSpaced(text,h,v,font,t[2],t[1],extra);return;} // justified lines: a document's, never translated
 		awaiting=null;
@@ -998,7 +999,7 @@ final class HostQuickDraw68k {
 	private void currentWidthTable() throws M68kCpuException {int[] t=qd.textState();widthTable(currentFont(),t[0],t[3],t[1]);}
 	private int widthTable(Font font,int family,int size,int face) throws M68kCpuException {
 		if(widthTableHandle==0){widthTableHandle=tb.api.createHandle(new byte[1072]);}
-		String key=family+"/"+size+"/"+face;
+		String key=family+"/"+Fonts68k.substitute(family)+"/"+size+"/"+face; // a font substitution changed meanwhile: other widths
 		int table=memory.readLong(widthTableHandle);
 		if(!key.equals(widthTableKey)||table==0){
 			if(table==0){tb.api.loadHandle(widthTableHandle,new byte[1072]);table=memory.readLong(widthTableHandle);}
@@ -1217,6 +1218,23 @@ final class HostQuickDraw68k {
 		return image;
 	}
 
+	private final java.util.Map<Integer,int[]> iconCaches=new java.util.HashMap<Integer,int[]>(); // MakeIconCache handle -> {makeIcon proc, yourDataPtr}
+
+	/** PlotIconMethod / LoadIconCache: draws the icon theMethod(type, yourDataPtr) : Handle hands out for the rectangle. */
+	private void plotIconMethod(M68kCpu cpu,int rect,int align,int transform,int method,int data) throws M68kException {
+		if(rect!=0&&method!=0){
+			int top=(short)memory.readWord(rect),left=(short)memory.readWord(rect+2),bottom=(short)memory.readWord(rect+4),right=(short)memory.readWord(rect+6);
+			boolean small=bottom-top<32||right-left<32;int size=small?16:32;
+			int mask=iconFromMethod(cpu,method,data,small?0x69637323:0x49434e23),color=iconFromMethod(cpu,method,data,small?0x69637338:0x69636c38); // ics#/ICN#, ics8/icl8
+			int maskData=mask==0?0:memory.readLong(mask),colorData=color==0?0:memory.readLong(color);
+			BufferedImage image=null;
+			if(colorData!=0&&tb.api.handleSize(color)>=size*size)image=decode8Bit(colorData,size,size,maskData==0?0:maskData+size*size/8);
+			else if(maskData!=0)image=decodeIcon(maskData,size,size,tb.api.handleSize(mask)>=size*size/4?maskData+size*size/8:0);
+			if(Mac68kApi.TRACE)System.err.printf("[68K] PlotIconMethod (%d,%d,%d,%d) transform $%x mask $%x color $%x%n",top,left,bottom,right,transform,mask,color);
+			if(image!=null)drawAligned(transformIcon(image,transform),top,left,bottom,right,align);
+		}
+	}
+
 	private boolean iconDispatch(M68kCpu cpu) throws M68kException {
 		int selector=cpu.d[0]&0xffff;int argBytes=(selector>>>8)*2;int sel=selector&0xff;
 		int sp=cpu.a[7];
@@ -1242,18 +1260,16 @@ final class HostQuickDraw68k {
 				if(suite!=0&&rect!=0)plotIcons(suiteSource(suite),rect,align,transform);memory.writeWord(cpu.a[7],0);return true;}
 			case 0x05:{ // PlotIconMethod(rect, align, transform, theMethod, yourDataPtr): the icons come from theMethod(type, yourDataPtr) : Handle
 				int data=memory.readLong(sp),method=memory.readLong(sp+4),transform=memory.readWord(sp+8),align=memory.readWord(sp+10),rect=memory.readLong(sp+12);cpu.a[7]+=argBytes;
-				if(rect!=0&&method!=0){
-					int top=(short)memory.readWord(rect),left=(short)memory.readWord(rect+2),bottom=(short)memory.readWord(rect+4),right=(short)memory.readWord(rect+6);
-					boolean small=bottom-top<32||right-left<32;int size=small?16:32;
-					int mask=iconFromMethod(cpu,method,data,small?0x69637323:0x49434e23),color=iconFromMethod(cpu,method,data,small?0x69637338:0x69636c38); // ics#/ICN#, ics8/icl8
-					int maskData=mask==0?0:memory.readLong(mask),colorData=color==0?0:memory.readLong(color);
-					BufferedImage image=null;
-					if(colorData!=0&&tb.api.handleSize(color)>=size*size)image=decode8Bit(colorData,size,size,maskData==0?0:maskData+size*size/8);
-					else if(maskData!=0)image=decodeIcon(maskData,size,size,tb.api.handleSize(mask)>=size*size/4?maskData+size*size/8:0);
-					if(Mac68kApi.TRACE)System.err.printf("[68K] PlotIconMethod (%d,%d,%d,%d) transform $%x mask $%x color $%x%n",top,left,bottom,right,transform,mask,color);
-					if(image!=null)drawAligned(transformIcon(image,transform),top,left,bottom,right,align);
-				}
+				plotIconMethod(cpu,rect,align,transform,method,data);
 				memory.writeWord(cpu.a[7],0);return true;}
+			case 0x04:{int data=memory.readLong(sp),method=memory.readLong(sp+4),cachePtr=memory.readLong(sp+8);cpu.a[7]+=argBytes; // MakeIconCache(VAR theHandle, makeIcon, yourDataPtr): an empty handle standing for the (method, data) pair, the icons come from the method when LoadIconCache plots
+				int cache=tb.api.createHandle(new byte[]{0,0,0,0});iconCaches.put(cache,new int[]{method,data});if(cachePtr!=0)memory.writeLong(cachePtr,cache);memory.writeWord(cpu.a[7],0);return true;}
+			case 0x06:{int cache=memory.readLong(sp),transform=memory.readWord(sp+4),align=memory.readWord(sp+6),rect=memory.readLong(sp+8);cpu.a[7]+=argBytes; // LoadIconCache(rect, align, transform, theIconCache)
+				int[] c=iconCaches.get(cache);if(c!=null)plotIconMethod(cpu,rect,align,transform,c[0],c[1]);memory.writeWord(cpu.a[7],c==null?-50:0);return true;}
+			case 0x19:case 0x1b:{int out=memory.readLong(sp),cache=memory.readLong(sp+4);cpu.a[7]+=argBytes; // GetIconCacheData(theCache, VAR theData) / GetIconCacheProc(theCache, VAR theProc)
+				int[] c=iconCaches.get(cache);if(c!=null&&out!=0)memory.writeLong(out,c[sel==0x19?1:0]);memory.writeWord(cpu.a[7],c==null?-50:0);return true;}
+			case 0x1a:case 0x1c:{int v=memory.readLong(sp),cache=memory.readLong(sp+4);cpu.a[7]+=argBytes; // SetIconCacheData(theCache, theData) / SetIconCacheProc(theCache, theProc)
+				int[] c=iconCaches.get(cache);if(c!=null)c[sel==0x1a?1:0]=v;memory.writeWord(cpu.a[7],c==null?-50:0);return true;}
 			case 0x07:{int suitePtr=memory.readLong(sp);cpu.a[7]+=argBytes;int suite=tb.api.createHandle(new byte[]{1,0,0,0});suiteMembers.put(suite,new java.util.HashMap<Integer,Integer>());memory.writeLong(suitePtr,suite);memory.writeWord(cpu.a[7],0);return true;} // NewIconSuite: empty until AddIconToSuite
 			case 0x08:{int type=memory.readLong(sp),suite=memory.readLong(sp+4),icon=memory.readLong(sp+8);cpu.a[7]+=argBytes;if(suite!=0)suiteMembers.computeIfAbsent(suite,k->new java.util.HashMap<Integer,Integer>()).put(type,icon);memory.writeWord(cpu.a[7],suite==0?-50:0);return true;} // AddIconToSuite(theIconData, suite, theType)
 			case 0x09:{int type=memory.readLong(sp),suite=memory.readLong(sp+4),iconPtr=memory.readLong(sp+8);cpu.a[7]+=argBytes;int h=suite==0?0:suiteSource(suite).handle(type);if(iconPtr!=0)memory.writeLong(iconPtr,h);memory.writeWord(cpu.a[7],h==0?-192:0);return true;} // GetIconFromSuite
@@ -1463,6 +1479,8 @@ final class HostQuickDraw68k {
 	 * a full-screen window and copy pixels by index afterwards, so the table has to hold their colours.
 	 */
 	void activatePalette(int window) throws M68kCpuException {
+		if(window!=0&&qd.isGWorld(window)){Integer gp=windowPalettes.get(window);Palette g=gp==null?null:palettes.get(gp);
+			if(g!=null&&g.rgb.length!=0)qd.layoutPaletteInto(window,g.rgb,g.usage,g.tolerance);return;}
 		if(window==0||tb.windows.frontWindow()!=window)return;Integer ph=windowPalette(window);Palette p=ph==null?null:palettes.get(ph);
 		if(p==null||p.rgb.length==0)return;
 		if(qd.loadDeviceColors(p.rgb,p.usage,p.tolerance))colorsChanged(window);
@@ -1484,7 +1502,7 @@ final class HostQuickDraw68k {
 	/** AnimateEntry/AnimatePalette changed a palette's colours: a palette that is active (its window is frontmost) drives the screen's table. */
 	private void animatePalette(int window,Palette p) throws M68kCpuException {
 		if(window==0||p.rgb.length==0)return;int front=tb.windows.frontWindow();
-		if(front==window||front!=0&&!windowPalettes.containsKey(front)&&windowPalettes.get(-1)!=null&&windowPalettes.get(-1).equals(windowPalettes.get(window)))qd.loadDeviceColors(p.rgb,p.usage);
+		if(front==window||front!=0&&!windowPalettes.containsKey(front)&&windowPalettes.get(-1)!=null&&windowPalettes.get(-1).equals(windowPalettes.get(window)))qd.animateDeviceColors(p.rgb,p.usage);
 	}
 	/** SetPalette/NSetPalette. The default palette (window -1) takes effect at once for a front window that has none of its own:
 	 *  HyperCard's Terazza XFCN sets it from a picture's colour table and copies the picture by index right after, without ActivatePalette. */
@@ -1504,6 +1522,14 @@ final class HostQuickDraw68k {
 		return windowPalettes.get(-1);
 	}
 	private boolean defaultPaletteLoaded;
+	/** GetNewCWindow: the program's 'pltt' with the 'WIND's ID becomes the window's palette, as if SetPalette(w, GetNewPalette(id),
+	 *  TRUE) (IM V "Palette Manager"). AnGST 1.2.2 paints black label bars and writes on them with PmForeColor(0) of its 'pltt'
+	 *  128 (white) after GetNewCWindow(128): without the palette entry 0 was black and the labels vanished. */
+	void attachTemplatePalette(int window,int id) throws M68kCpuException {
+		ResourceFile68k.Resource r=tb.resources.find(0x706c7474,id);if(r==null||tb.resources.isSystem(r))return;
+		int res=tb.resources.detachedResourceQuietly(0x706c7474,id);if(res==0)return;
+		int p=paletteFromResource(res);paletteUpdates.put(p,UPDATES_FG|UPDATES_BK);setWindowPalette(window,p);
+	}
 	/** The window became the frontmost visible one: its palette (if any) takes effect, like the Palette Manager's activate patch. */
 	void windowActivated(int window){try{activatePalette(window);}catch(M68kCpuException ignored){}}
 
@@ -1627,7 +1653,9 @@ final class HostQuickDraw68k {
 				double[] out=convertColor(selector,in);
 				for(int i=0;i<3;i++)memory.writeWord(dst+2*i,(int)Math.round(Math.max(0,Math.min(1,out[i]))*65535));
 				return true;}
-			default:cpu.a[7]+=0;return true;
+			// Color Picker 2.x calls (NewPicker: $0217, $0319, $041A...) are not here: the high byte is the argument size in words, so
+			// pop the arguments and answer unimpErr in the OSErr result instead of leaving them on the stack
+			default:cpu.a[7]+=(selector>>>8)*2;if(selector>>>8!=0)memory.writeWord(cpu.a[7],-4);return true;
 		}
 	}
 	// ------------------------------------------------------------------ Picture Utilities (Pack 15)

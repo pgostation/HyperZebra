@@ -73,7 +73,10 @@ final class TextServices68k {
 			case 21:{if(!aware)result=ERR_NEVER_REGISTERED;aware=false;for(Document d:new ArrayList<Document>(documents.values()))delete(d);break;}
 			case 0:{ // NewTSMDocument(numOfInterface, supportedInterfaceTypes, VAR idocID, refcon)
 				int refcon=memory.readLong(sp),idPtr=memory.readLong(sp+4),types=memory.readLong(sp+8),count=(short)memory.readWord(sp+12);
-				if(!aware&&!tb.gestaltValues.containsKey(0x63626f6e)){result=ERR_NOT_AN_APP;break;} // a Carbon program ('cbon' answered) is TSM-aware without InitTSMAwareApplication, which Carbon lacks
+				// tsmNeverRegisteredErr without InitTSMAwareApplication (a Carbon program, 'cbon' answered, is TSM-aware without it, which
+				// Carbon lacks): WASTE's WENew passes that one error over and failed on tsmNotAnAppErr - the SIOUX consoles of Alsoft's
+				// List Open Files then divided by the line height of a NIL WASTE instance
+				if(!aware&&!tb.gestaltValues.containsKey(0x63626f6e)){result=ERR_NEVER_REGISTERED;break;}
 				Document d=new Document(nextId++,refcon);
 				for(int i=0;i<count&&types!=0;i++){int t=memory.readLong(types+i*4);if(t==TYPE_TSVC||t==TYPE_UDOC)d.tsvc=true;else if(t==TYPE_TSMTE){d.tsmte=true;int rec=refcon==0?0:memory.readLong(refcon);d.teHandle=rec==0?0:memory.readLong(rec);}else{result=ERR_UNSUPPORTED_TYPE;}}
 				if(result!=NO_ERR){if(idPtr!=0)memory.writeLong(idPtr,0);break;}

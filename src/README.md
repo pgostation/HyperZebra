@@ -3,7 +3,7 @@
 分野ごとのフォルダに分けて置いている。Java のパッケージは使っておらず、どのファイルも
 デフォルトパッケージのまま(パッケージ非公開のメンバーをフォルダをまたいで使っている)。
 フォルダは整理のためだけのもので、ファイルを別のフォルダへ移してもコードは変えなくてよい。
-`build.sh` / `build.ps1` / `jpackage.ps1` は `src/` の下の `*.java` を全部
+`build.sh` / `build.ps1` は `src/` の下の `*.java` を全部
 (`src/ffm` を除いて)コンパイルする。
 
 | フォルダ | 中身 | 主なファイル |
@@ -34,4 +34,5 @@
 | `ppc/graphics3d/` | QuickDraw 3D, RAVE, OpenGL, Game Sprockets | PpcQuickDraw3D, Q3View, PpcRave, PpcOpenGL |
 | `ffm/` | Java 22 以降の Foreign Function API を使う補助クラス(別にコンパイルし、リフレクションで読む) | NativeGamepadHid, NativeXattr, NativeCoreMidi |
 
-テストは `../tests/`、開発用の道具は `../tools/` にある。
+このリポジトリはjarのビルドに必要なソースのみを収録している。テストや開発・配布用の道具は含まない。
+`../tools/jdk.ps1` はWindowsビルド用のJDK検出・コマンド実行ヘルパー。

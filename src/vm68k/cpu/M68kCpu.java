@@ -484,6 +484,20 @@ final class M68kCpu {
 		if(result==0)sr|=FLAG_Z;else if(result<0)sr|=FLAG_N;
 	}
 
+	/** The Resource Manager's Toolbox routines end with MOVE.W D0,ResErr, so the condition codes show the error: `_Get1Resource; BNE.S fail`
+	 *  (the FORTRAN 1.1a2 updater took every successful load for a failure and quit at once). */
+	private static boolean isResourceTrap(int t){
+		switch(t){case 0x9a0:case 0x9a1:case 0x9a2:case 0x9a3:case 0x992:case 0x9aa:case 0x9ab:case 0x9ac:case 0x9b0:case 0x99d:case 0x80e:case 0x81f:case 0x820:case 0x999:case 0x99a:return true;default:return false;}
+	}
+
+	private void setResErrFlags(){
+		try{
+			sr&=~(FLAG_N|FLAG_Z|FLAG_V|FLAG_C);
+			short result=(short)memory.readWord(0xa60);
+			if(result==0)sr|=FLAG_Z;else if(result<0)sr|=FLAG_N;
+		}catch(M68kException e){}
+	}
+
 	private void aline(int op,int instructionPc) throws M68kException {
 		traps++; // a trap taken: work, not a runaway loop (a Director movie playing in MacroMind's PlayMovie XCMD runs for minutes on QuickDraw calls)
 		// Toolbox trap with the auto-pop bit ($Axxx | $0400): the trap word sits in a glue routine reached by JSR,
@@ -524,7 +538,7 @@ final class M68kCpu {
 		// _PtrAndHand $A9EF (CompileIt!'s string runtime does `_HandToHand; BEQ ok` and took every copy for a failure: the
 		// UxGetJFontList XFCN returned an empty list, "put x & y" lost x).
 		if(romHandler!=null)romHandler.inlineTrap(this,op);
-		if(trapHandler!=null && trapHandler.handle(this,op,instructionPc)) {int t=op&0x0fff;if((op&0x0800)==0||t==0x9e1||t==0x9e2||t==0x9e3||t==0x9e4||t==0x9ef)setResultCodeFlags();return;}
+		if(trapHandler!=null && trapHandler.handle(this,op,instructionPc)) {int t=op&0x0fff;if((op&0x0800)==0||t==0x9e1||t==0x9e2||t==0x9e3||t==0x9e4||t==0x9ef)setResultCodeFlags();else if(isResourceTrap(t))setResErrFlags();return;}
 		int entry=trapHandler==null?0:trapHandler.packageEntry(this,op);
 		if(entry!=0){pushLong(pc);pc=entry;return;}
 		String name=trapHandler==null?String.format("A-line trap $%04X",op):trapHandler.name(op);

@@ -60,9 +60,19 @@ final class DeviceManager68k {
 		memory.writeWord(header,0x4f00); // dReadEnable/dWritEnable/dCtlEnable/dStatEnable/dNeedGoodBye
 		memory.writeByte(header+18,name.length());for(int i=0;i<name.length();i++)memory.writeByte(header+19+i,name.charAt(i));
 		int dce=memory.allocate(DCE_SIZE,2);memory.fill(dce,DCE_SIZE,0);
-		memory.writeLong(dce,header);memory.writeWord(dce+4,0x4f00|D_OPENED);memory.writeWord(dce+24,refNum);
+		// the serial drivers are closed until a program opens them (FirstClass asks the unit table whether the modem port is in use)
+		memory.writeLong(dce,header);memory.writeWord(dce+4,0x4f00|(name.matches("\\.[AB](In|Out)")?0:D_OPENED));memory.writeWord(dce+24,refNum);
 		int master=memory.allocate(4,4);memory.writeLong(master,dce); // the unit table holds DCE Handles
 		memory.writeLong(unitTable+unit*4,master);
+	}
+
+	/** Sets or clears dOpened in the DCE of a ROM unit (the serial drivers, which the file system opens and closes natively). */
+	void setRomUnitOpened(int refNum,boolean opened) throws M68kCpuException {
+		int unit=~refNum&0xffff,table=memory.readLong(UTABLE_BASE);
+		if(refNum>=0||table==0||unit>=memory.readWord(UNIT_NTRY_CNT))return;
+		int master=memory.readLong(table+unit*4);if(master==0)return;
+		int dce=memory.readLong(master);if(dce==0)return;
+		int flags=memory.readWord(dce+4);memory.writeWord(dce+4,opened?flags|D_OPENED:flags&~D_OPENED);
 	}
 
 	// ------------------------------------------------------------------ DrvrInstall / DrvrRemove

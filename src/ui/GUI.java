@@ -212,6 +212,8 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			//修飾キーの押下/解放はダイアログ表示中などに取りこぼすので、どのキーイベントでも実際の状態に合わせる
 			if(e.getID()==KeyEvent.KEY_RELEASED || e.getID()==KeyEvent.KEY_PRESSED) syncModifiers(e);
 			if(inCardWindow(e) && stackKeys(e)) return true;
+			//フォーカス移動(Shift-Tab、Ctrl-Tab)に取られる前に
+			if(e.getID()==KeyEvent.KEY_PRESSED && inCardWindow(e) && tabShortcut(e)){ e.consume(); return true; }
 			if(isSystemMenuKeyWhileScriptOwnsKeys(e)){
 				//消費したキーイベントは部品のリスナーにもOS(Windows のシステムメニュー)にも渡らないので、カードウインドウの
 				//リスナー(key[]、keyDown)へはここで渡す
@@ -292,6 +294,47 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		return true;
 	}
 
+	/** Command-Tab presses in a row: browse, button, field tool (HyperCard's Command-Tab, Command-Tab-Tab, Command-Tab-Tab-Tab) */
+	private static int commandTabs;
+	private static long lastCommandTab;
+	/**
+	 * HyperCard's Tab shortcuts in the card window: Option-Tab shows or hides the Tools palette, Shift-Tab with a paint tool
+	 * the Patterns, Command-Tab chooses the browse tool, pressed again while Command is held the button tool, then the field
+	 * tool (macOS keeps Command-Tab for switching programs; Ctrl-Tab is Command-Tab on Windows/Linux). Returns whether it was one.
+	 */
+	static boolean tabShortcut(KeyEvent e){
+		if(e.getKeyCode()!=KeyEvent.VK_TAB) return false;
+		PCARD pc = PCARD.pc;
+		if(pc==null || pc.stack==null || pc.stack.curCard==null || pc.toolbar==null || pc.toolbar.tb==null) return false;
+		boolean cmd = commandDown(e), opt = StackSettings.hasOwnKey(12) ? key[12]>=2 : e.isAltDown();
+		if(cmd && !opt){
+			long now = System.currentTimeMillis();
+			commandTabs = now-lastCommandTab<1500 ? Math.min(commandTabs+1, 3) : 1;
+			lastCommandTab = now;
+			String tool = commandTabs==1 ? "browse" : commandTabs==2 ? "button" : "field";
+			if(StackProtection.effectiveUserLevel() < StackProtection.levelForTool(tool)) return true;
+			try{ TTalk.doScriptforMenu("choose "+tool+" tool"); }catch(xTalkException ex){}
+			return true;
+		}
+		if(cmd || controlDown(e)) return false;
+		if(opt && !e.isShiftDown()){
+			if(StackProtection.effectiveUserLevel() < 3) return true;
+			try{ TTalk.doScriptforMenu(pc.toolbar.tb.isVisible() ? "hide tool window" : "show tool window"); }catch(xTalkException ex){}
+			return true;
+		}
+		if(e.isShiftDown() && !opt && pc.tool!=null && AuthTool.tool==null && pc.pat!=null){
+			if(KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner() instanceof javax.swing.text.JTextComponent) return false;
+			PatButton pat = pc.pat;
+			if(pat.popup.isVisible()) pat.popup.setVisible(false);
+			else{
+				if(!pc.toolbar.tb.isVisible()){ try{ TTalk.doScriptforMenu("show tool window"); }catch(xTalkException ex){} }
+				if(pat.isShowing()) pat.popup.show(pat, 0, pat.getHeight());
+			}
+			return true;
+		}
+		return false;
+	}
+
 	static int scriptShortcutFor(int keyCode, int modifiers, boolean macOS) {
 		if(keyCode!=KeyEvent.VK_PERIOD) return SCRIPT_SHORTCUT_NONE;
 		boolean commandDown = (modifiers&InputEvent.META_DOWN_MASK)!=0 ||
@@ -354,6 +397,24 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		clickFieldLocalY = localY;
 		clickTextField = fld;
 		clickByScript = false;
+		//the clickText as it is now: a handler that goes to another card first still has it (HC J-2.3; 裏技通信's terms do
+		//go cd info / show cd fld the clickText). The field is then gone or shows another card's text
+		clickCard = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+		clickTextAtClick = null;
+		if(fld!=null && fld.fld!=null && !fld.outlineStyle && !fld.tableStyle){
+			try{
+				int[] r = TUtil.clickedTextRange(fld);
+				clickTextAtClick = r!=null && r.length==2 ? fld.fld.getText().substring(r[0], r[1]) : "";
+			}catch(Exception e){ /* read when asked, as before */ }
+		}
+	}
+    /** The card shown at the last field click, and the clickText then (null: not known) */
+    static volatile OCard clickCard;
+    static volatile String clickTextAtClick;
+    /** Whether the card shown now is not the one of the last field click (HC J-2.3: the clickChunk is then empty) */
+    static boolean clickOnOtherCard(){
+		OCard now = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+		return clickCard!=null && (now==null || now.id!=clickCard.id || now.stack!=clickCard.stack); //by id: a card comes back as a new object
 	}
 
     /** The last field click was the script's click at (set after noteFieldClick): below a list's text HyperCard J-2.3 counts the
@@ -398,6 +459,44 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		mouseDown = false;
 		if(TTalk.cursorHeldByPress && TTalk.idle) TTalk.resetIdleCursor(); //HyperCard is idle again: its browse cursor
 	}
+
+	/** The card, button, shape or locked field whose press sent mouseDown, held: it gets mouseStillDown over and over until the
+	 *  release, the pointer moving or not, as in HyperCard (an unlocked field is being edited and gets none; HyperCard J-2.3 in
+	 *  the 68K VM sends it to the card too). Swing reports only drags, so 家計簿's scroll arrow ("on mouseStillDown … set scroll
+	 *  … wait 4") did nothing when held still. One at a time: the next waits until the handler has ended and nothing else is
+	 *  queued. A button stops when disabled, a field when unlocked. */
+	private static javax.swing.Timer stillDownTimer;
+	private static OObject stillDownTarget;
+	public static void startStillDown(OObject obj){
+		stillDownTarget = obj;
+		if(stillDownTimer==null){
+			stillDownTimer = new javax.swing.Timer(16, e -> {
+				OObject b = stillDownTarget;
+				if(!mouseDown || b==null || !b.enabled || !(GButton.onCurrentCard(b) || PCARD.pc.stack!=null && b==PCARD.pc.stack.curCard)){
+					stillDownTarget = null;
+					stillDownTimer.stop();
+					return;
+				}
+				if(!TTalk.idle) return;
+				synchronized(TTalk.messageList){ if(!TTalk.messageList.isEmpty()) return; }
+				TTalk.CallMessage("mouseStillDown", b);
+			});
+		}
+		stillDownTimer.restart();
+	}
+
+	/** The object the press before went to ({@link #doublePress}). */
+	private static Object lastPressTarget;
+	/** Whether a press that the script gets messages for is the second click of a double-click. HyperCard J-2.3 (measured in
+	 *  the 68K VM) sends that click only mouseDoubleClick, on the card, a button, a check box or radio button and a locked field
+	 *  alike: mouseDown, mouseStillDown…, mouseUp, mouseDoubleClick - no mouseDown, mouseStillDown or mouseUp of its own. A third
+	 *  click is a click again; a click on another object is none. AWT counts the clicks (2, 4…); the object must be the one the
+	 *  press before went to. HyperZebra sent such a click mouseDown and mouseUp, and a button's mouseDoubleClick not at all. */
+	public static boolean doublePress(MouseEvent e, Object target){
+		boolean second = target!=null && target==lastPressTarget && e.getClickCount()>1 && e.getClickCount()%2==0;
+		lastPressTarget = target;
+		return second;
+	}
 	void addMouseListener(PCARD pc){
         pc.addMouseListener(this);
         pc.addMouseMotionListener(this);
@@ -420,9 +519,11 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
     	//届いて softReset が走り、最初のカードが2回表示されていた。
     	//mouseDown を送ったクリックの mouseUp は、その mouseDown ハンドラがまだ実行中でも送る
     	//(HyperCardは mouseDown ハンドラの終了後に mouseUp を送る)。
+    	//mouseReleased has already sent the mouseUp (or knew the release was outside the card)
+    	if(cardReleaseHandled){ cardReleaseHandled = false; cardClickCounted = false; return; }
     	boolean sentMouseUp = cardMouseDownSent;
     	if(cardMouseDownSent){
-    		TTalk.CallMessage("mouseUp",PCARD.pc.stack.curCard);
+    		TTalk.CallMessage(cardDoublePress ? "mouseDoubleClick" : "mouseUp",PCARD.pc.stack.curCard);
     	}
     	cardMouseDownSent = false;
     	//as for buttons: the click that sends mouseUp is not the mouseClick of its handler (扇風機's card loops
@@ -442,10 +543,19 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
     	reclaimFocusFromField();
 		
     	cardMouseDownSent = TTalk.idle;
+    	if(cardMouseDownSent) TTalk.closeOpenFieldByUser(); //a click on the card closes the open field (HC J-2.3)
     	cardClickCounted = false;
-    	if(cardMouseDownSent) TTalk.CallMessage("mouseDown",PCARD.pc.stack.curCard);
+    	cardReleaseHandled = false;
+    	//the second click of a double-click gets only mouseDoubleClick at its release (doublePress)
+    	cardDoublePress = cardMouseDownSent && doublePress(e, PCARD.pc.stack.curCard);
     	mouseDowned();
+    	if(cardMouseDownSent && !cardDoublePress){
+    		TTalk.CallMessage("mouseDown",PCARD.pc.stack.curCard);
+    		startStillDown(PCARD.pc.stack.curCard); //mouseStillDown while held, as HyperCard sends the card
+    	}
     }
+    //the card press is the second click of a double-click: its release sends mouseDoubleClick instead of mouseUp
+    private boolean cardDoublePress = false;
     /** フィールドからフォーカスを取り戻す(カードやシェイプのクリック) */
     static void reclaimFocusFromField() {
     	if(PCARD.pc.getFocusOwner()!=null &&
@@ -471,6 +581,23 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
     		mouseClicked();
     		cardClickCounted = true;
     	}
+    	//the mouseUp of a card press goes out here too: AWT sends no mouseClicked when the pointer moved a pixel or two
+    	//between press and release (trackpad jitter), and the card never got its mouseUp (ワイパーカード's mouseUp
+    	//starts the wiper). HyperCard sends it when the button is released inside the card.
+    	else if(cardMouseDownSent && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null){
+    		cardMouseDownSent = false;
+    		cardReleaseHandled = true;
+    		if(releasedInCard(e)) TTalk.CallMessage(cardDoublePress ? "mouseDoubleClick" : "mouseUp",PCARD.pc.stack.curCard);
+    	}
+    }
+    //mouseReleased sent the card's mouseUp (or dropped it), so the mouseClicked that may follow does nothing
+    private boolean cardReleaseHandled = false;
+    private static boolean releasedInCard(MouseEvent e){
+    	PCARD pc = PCARD.pc;
+    	Component c = e.getComponent();
+    	if(pc==null || pc.mainPane==null || c==null) return true;
+    	Point p = SwingUtilities.convertPoint(c, e.getPoint(), pc.mainPane);
+    	return p.x>=0 && p.y>=0 && p.x<pc.mainPane.getWidth() && p.y<pc.mainPane.getHeight();
     }
     public void mouseEntered(MouseEvent e) {
     }
@@ -773,11 +900,10 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 					stroke_frag = 0;
 				}
 				else {
-					Graphics g = PCARDFrame.pc.mainPane.getGraphics();
-					if(want==2) fldStroke(g);
-					else if(want==3) shapeStroke(g);
-					else btnStroke(g);
+					//輪郭はカードの描画(MyPanel.paint → paintPeekOutlines)で描く。getGraphics()で一度描くだけだと、
+					//カードが描き直されるたびに(フィールドのキャレット、スクリプトが変える部品、ボタンのロールオーバーなど)消えていた
 					stroke_frag = want;
+					PCARDFrame.pc.mainPane.repaint();
 					if(PCARD.editMode==0){
 						PCARD.editMode = 1;
 						GUI.removeAllListener();
@@ -915,6 +1041,15 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		}
 	}
 	
+	/** ピーク中(Command-Option)の部品の輪郭: カードを描くたびに描く(MyPanel.paint) */
+	static void paintPeekOutlines(Graphics g){
+		int kind = stroke_frag;
+		if(kind==0 || PCARDFrame.pc==null || PCARDFrame.pc.stack==null || PCARDFrame.pc.stack.curCard==null) return;
+		if(kind==2) fldStroke(g);
+		else if(kind==3) shapeStroke(g);
+		else btnStroke(g);
+	}
+
 	public static void btnStroke(Graphics g){
 		if(PCARDFrame.pc.stack.curCard==null) return;
 	    Graphics2D g2=(Graphics2D)g;
@@ -953,14 +1088,28 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		}
 	}
 
-	public static void dotStroke(Graphics2D g2, OObject obj){
+	/** 黒の破線の隙間を埋める白の破線(黒い背景の上でも見えるよう、白と黒を交互に) */
+	static final private BasicStroke STROKE_DOTTED_GAPS =
+		new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 2.0f, new float[]{2f}, 2.0f);
+
+	public static void dotStroke(Graphics2D g, OObject obj){
 		Rectangle2D.Float bounds = scaledOutlineBounds(obj, PCARD.scale());
-	    g2.setStroke(new BasicStroke(1.0f));
-	    g2.setPaint(Color.WHITE);
-	    g2.draw(bounds);
-	    g2.setPaint(Color.BLACK);
-	    g2.setStroke(STROKE_DOTTED);
-	    g2.draw(bounds);
+		//描画の状態(合成、XOR、アンチエイリアス)を受け継がない: ぼけたり半透明になると白と黒が交互に見えない
+		Graphics2D g2 = (Graphics2D)g.create();
+		try{
+			g2.setPaintMode();
+			g2.setComposite(java.awt.AlphaComposite.SrcOver);
+			g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF);
+			g2.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_NORMALIZE);
+			g2.setPaint(Color.BLACK);
+			g2.setStroke(STROKE_DOTTED);
+			g2.draw(bounds);
+			g2.setPaint(Color.WHITE);
+			g2.setStroke(STROKE_DOTTED_GAPS);
+			g2.draw(bounds);
+		}finally{
+			g2.dispose();
+		}
 	}
 
 	//obj.left/top/width/heightは論理座標なので、2倍表示モードでは物理座標に
@@ -988,6 +1137,8 @@ class GButton implements ActionListener, MouseListener, MouseMotionListener {
 	 *  (HyperCard sends it after the handler). JokerSystem's transparent JkHide button redraws the colour card in its
 	 *  mouseDown, so a quick click on Car Chaser's GameStart!! released before that ended and nothing started. */
 	private MyButton mouseDownSent;
+	/** The button whose press is the second click of a double-click (GUI.doublePress): its release sends mouseDoubleClick, not mouseUp. */
+	private MyButton doublePressed;
 
 	static boolean onCurrentCard(OObject b){
 		if(b==null || b.parent==null || PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return false;
@@ -1003,7 +1154,7 @@ class GButton implements ActionListener, MouseListener, MouseMotionListener {
 		if(e.getSource() instanceof MyButton) actionSent = (MyButton)e.getSource();
 		if(TTalk.idle==true/*&&parent==PCARD.pc.stack.curCard||parent.objectType.equals("background")&&
 				((OBackground)parent).viewCard==PCARD.pc.stack.curCard*/){
-			TTalk.CallMessage("mouseUp", ((MyButton)e.getSource()).btnData);
+			TTalk.CallMessage(e.getSource()==doublePressed ? "mouseDoubleClick" : "mouseUp", ((MyButton)e.getSource()).btnData);
 			actionSentMouseUp = true;
 		}else if(e.getSource()==mouseDownSent){
 			TTalk.callPendingMouseUp(mouseDownSent.btnData);
@@ -1032,11 +1183,17 @@ class GButton implements ActionListener, MouseListener, MouseMotionListener {
 		if(btn.btnData==null || btn.btnData.parent==null) return; //a button of a card that was just left (its data already released)
 		OCardBase parent = (OCardBase)btn.btnData.parent;
 		mouseDownSent = null;
+		doublePressed = null;
 		if(parent==PCARD.pc.stack.curCard||parent.objectType.equals("background")&&
 				((OBackground)parent).viewCard==PCARD.pc.stack.curCard){
 			if(TTalk.idle==true && ((MyButton)e.getSource()).btnData!=null && ((MyButton)e.getSource()).btnData.enabled==true){
-				TTalk.CallMessage("mouseDown", ((MyButton)e.getSource()).btnData);
-				mouseDownSent = btn;
+				TTalk.closeOpenFieldByUser(); //a click on a button closes the open field (HC J-2.3)
+				if(GUI.doublePress(e, btn.btnData)) doublePressed = btn; //no mouseDown: mouseDoubleClick at the release
+				else{
+					TTalk.CallMessage("mouseDown", ((MyButton)e.getSource()).btnData);
+					mouseDownSent = btn;
+					GUI.startStillDown(btn.btnData);
+				}
 	    	}
 		}
 		GUI.mouseDowned();
@@ -1049,12 +1206,13 @@ class GButton implements ActionListener, MouseListener, MouseMotionListener {
 		actionSent = null;
 		actionSentMouseUp = false;
 		boolean pressSentMouseDown = mouseDownSent==source;
+		boolean secondClick = doublePressed==source;
 		mouseDownSent = null;
+		doublePressed = null;
 		//Swingがactionを出さなかったクリック(押してから動いた等)だけをここで送る
 		if(!reported && TTalk.idle==true && source.btnData!=null && source.btnData.enabled==true
 				&& releasedInside(e)){
-			if(e.getClickCount()==2) TTalk.CallMessage("mouseDoubleClick", source.btnData);
-			TTalk.CallMessage("mouseUp", source.btnData);
+			TTalk.CallMessage(secondClick ? "mouseDoubleClick" : "mouseUp", source.btnData);
 			sentMouseUp = true;
 		}
 		else if(!reported && pressSentMouseDown && source.btnData!=null && source.btnData.enabled==true && releasedInside(e)){
@@ -1084,7 +1242,7 @@ class GButton implements ActionListener, MouseListener, MouseMotionListener {
 
 	@Override
 	public void mouseDragged(MouseEvent e) {
-		TTalk.CallMessage("mouseStillDown", ((MyButton)e.getSource()).btnData);
+		//mouseStillDown comes from GUI.startStillDown while held, dragged or not
 	}
 
 	@Override
@@ -1111,14 +1269,14 @@ class GCheckBox implements ActionListener, MouseListener, MouseMotionListener {
 	//「どのラジオボタンが点いていたか」を調べるスクリプトでは、クリックで
 	//勝手に点くと自分自身を記憶してしまい、キャンセル時に元へ戻せなかった。
 	//ハイライトの反映はmouseUpを積む前に済ませる(スクリプトスレッドとの競合を避ける)。
-	static void clicked(OButton btn, AbstractButton source){
+	static void clicked(OButton btn, AbstractButton source, boolean secondClick){
 		if(TTalk.idle==true){
 			if(btn.getAutoHilite()){
 				btn.setHilite(source.isSelected());
 			}else{
 				source.setSelected(btn.storedHilite());
 			}
-			TTalk.CallMessage("mouseUp", btn);
+			TTalk.CallMessage(secondClick ? "mouseDoubleClick" : "mouseUp", btn);
 		}
 		else{
 			//スクリプト実行中のクリックはmouseClickとして記録するだけで、ボタンは変えない
@@ -1128,35 +1286,32 @@ class GCheckBox implements ActionListener, MouseListener, MouseMotionListener {
 	}
 
 	public void actionPerformed (ActionEvent e) {
-		clicked(((MyCheck)e.getSource()).btnData, (MyCheck)e.getSource());
+		clicked(((MyCheck)e.getSource()).btnData, (MyCheck)e.getSource(), e.getSource()==doublePressed);
 	}
+	/** The check box whose press is the second click of a double-click (GUI.doublePress): mouseDoubleClick, no mouseDown/mouseUp. */
+	private Object doublePressed;
 
     public void mouseClicked(MouseEvent e) {
     	//
     }
     public void mousePressed(MouseEvent e) {
-		mouseDownSent = null;
+		doublePressed = null;
 		if(TTalk.idle==true){
-			TTalk.CallMessage("mouseDown", ((MyCheck)e.getSource()).btnData);
-			mouseDownSent = e.getSource();
+			TTalk.closeOpenFieldByUser();
+			if(GUI.doublePress(e, ((MyCheck)e.getSource()).btnData)) doublePressed = e.getSource();
+			else TTalk.CallMessage("mouseDown", ((MyCheck)e.getSource()).btnData);
 			GUI.mouseDowned();
+			if(doublePressed==null) GUI.startStillDown(((MyCheck)e.getSource()).btnData);
     	}else
     		GUI.mouseDowned();
     }
     public void mouseReleased(MouseEvent e) {
-		mouseDownSent = null;
+    	doublePressed = null; //Swing's action (actionPerformed) came first
     	GUI.mouseUped();
     }
-	/** The check box or radio button whose press sent mouseDown: its drag sends mouseStillDown. */
-	Object mouseDownSent;
-	/** mouseStillDown while the pointer is dragged with the button down, as for other buttons (UFO's stones are
-	 *  radio buttons thrown from "on mouseStillDown"). Not queued while a handler runs, so the queue cannot pile up. */
-	static void dragged(GCheckBox owner, MouseEvent e, OButton btn){
-		if(owner!=null && owner.mouseDownSent==e.getSource() && TTalk.idle && btn!=null && btn.enabled)
-			TTalk.CallMessage("mouseStillDown", btn);
-	}
+	//while held, a check box or radio button whose press sent mouseDown gets mouseStillDown from GUI.startStillDown,
+	//dragged or not, as other buttons (UFO's stones are radio buttons thrown from "on mouseStillDown")
 	public void mouseDragged(MouseEvent e) {
-		dragged(this, e, ((MyCheck)e.getSource()).btnData);
 	}
 	public void mouseMoved(MouseEvent e) {
 	}
@@ -1217,30 +1372,32 @@ class GPopup implements ActionListener, PopupMenuListener {
 
 
 class GRadio implements ActionListener, MouseListener, MouseMotionListener {
-	private final GCheckBox drag = new GCheckBox();
 	public void actionPerformed (ActionEvent e) {
 		//autoHiliteの扱いはチェックボックスと同じ(GCheckBox.clicked参照)
-		GCheckBox.clicked(((MyRadio)e.getSource()).btnData, (MyRadio)e.getSource());
+		GCheckBox.clicked(((MyRadio)e.getSource()).btnData, (MyRadio)e.getSource(), e.getSource()==doublePressed);
 	}
-	
+	/** The radio button whose press is the second click of a double-click (as GCheckBox). */
+	private Object doublePressed;
+
     public void mouseClicked(MouseEvent e) {
     	//
     }
     public void mousePressed(MouseEvent e) {
-		drag.mouseDownSent = null;
+		doublePressed = null;
 		if(TTalk.idle==true){
-			TTalk.CallMessage("mouseDown", ((MyRadio)e.getSource()).btnData);
-			drag.mouseDownSent = e.getSource();
+			TTalk.closeOpenFieldByUser();
+			if(GUI.doublePress(e, ((MyRadio)e.getSource()).btnData)) doublePressed = e.getSource();
+			else TTalk.CallMessage("mouseDown", ((MyRadio)e.getSource()).btnData);
 			GUI.mouseDowned();
+			if(doublePressed==null) GUI.startStillDown(((MyRadio)e.getSource()).btnData);
     	}else
     		GUI.mouseDowned();
     }
     public void mouseReleased(MouseEvent e) {
-		drag.mouseDownSent = null;
+    	doublePressed = null; //Swing's action (actionPerformed) came first
     	GUI.mouseUped();
     }
 	public void mouseDragged(MouseEvent e) {
-		GCheckBox.dragged(drag, e, ((MyRadio)e.getSource()).btnData);
 	}
 	public void mouseMoved(MouseEvent e) {
 	}
@@ -1261,12 +1418,9 @@ class GRadio implements ActionListener, MouseListener, MouseMotionListener {
 class GField implements MouseListener, MouseMotionListener {
 	@Override
     public void mouseClicked(MouseEvent e) {
-    	OField fld = ((MyTextArea)e.getSource()).fldData;
-    	if(fld!=null && fld.enabled) return; //ロックされたフィールドはmouseReleasedで送る(GButton.releasedInside)
-		if(TTalk.idle==true){
-			TTalk.CallMessage("mouseUp", fld);
-			if(e.getClickCount()==2) TTalk.CallMessage("mouseDoubleClick", fld);
-		}
+    	//ロックされたフィールドはmouseReleasedで送る(GButton.releasedInside)。ロックしていないフィールドのクリックは
+    	//編集で、mouseDown/mouseStillDown/mouseUp/mouseDoubleClick はフィールドにもカードにも届かない(HyperCard J-2.3
+    	//を68K VMで実測、Commandクリックでも同じ。mouseEnter/mouseWithin/mouseLeave は届く)。
 		//ハンドラ実行中のクリックは mouseReleased が the mouseClick にする。ここでも数えると1回のクリックが
 		//2回になり、wait until the mouseClick を2つ続けて抜けていた
     }
@@ -1282,6 +1436,7 @@ class GField implements MouseListener, MouseMotionListener {
     	//(HyperCard J-2.3/2.4。勇者の石の［Ｘ］［○］選択は実行中のクリックの clickChunk を見る)
     	GUI.noteFieldClick(fld, e.getX(), e.getY());
 		if(TTalk.idle==true){
+			if(!fld.enabled) TTalk.openFieldByUser(fld); //openField (the field open before closes)
 	    	//ロックしたフィールドのクリックは選択も挿入ポイントも作らない(HyperCard: the selectedChunk/selectedField は空)。
 	    	//リストフィールドは下で選択行を決める
 	    	GUI.clickField = fld.enabled && !fld.autoSelect ? null : fld;
@@ -1332,13 +1487,27 @@ class GField implements MouseListener, MouseMotionListener {
 					}
 				}
 			}
-			TTalk.CallMessage("mouseDown", fld);
-			if(fld.enabled && fld.autoSelect && fld.dontWrap) TTalk.runOnScriptThread(() -> reshowListField(fld));
+			//locked (lockText) only: an unlocked field's click is editing and sends no mouse messages (mouseClicked)
+			doublePressed = null;
+			mouseDownSent = null;
+			if(fld.enabled){
+				if(GUI.doublePress(e, fld)) doublePressed = fld; //no mouseDown: mouseDoubleClick at the release
+				else{
+					TTalk.CallMessage("mouseDown", fld);
+					mouseDownSent = fld;
+					if(fld.autoSelect && fld.dontWrap) TTalk.runOnScriptThread(() -> reshowListField(fld));
+					GUI.startStillDown(fld); //mouseStillDown while held
+				}
+			}
 			GUI.mouseDowned();
 		}
 		else
 			GUI.mouseDowned();
     }
+	/** The locked field whose press is the second click of a double-click (GUI.doublePress): mouseDoubleClick, no mouseDown/mouseUp. */
+	private OField doublePressed;
+	/** The locked field whose press sent mouseDown: its release sends mouseUp even while that mouseDown handler still runs. */
+	private OField mouseDownSent;
 	/** A list field selects the clicked line after its mouseDown handler, and that shows the field again: a mouseDown
 	 *  with only "hide me" leaves it visible (HyperCard J-2.3 in the 68K VM: the visible true, the line selected;
 	 *  自動選択フィールドの怪). Not when the handler went to another card or made it no list. */
@@ -1349,17 +1518,28 @@ class GField implements MouseListener, MouseMotionListener {
 	@Override
     public void mouseReleased(MouseEvent e) {
     	OField fld = ((MyTextArea)e.getSource()).fldData;
+    	boolean secondClick = doublePressed!=null && doublePressed==fld;
+    	boolean pressSentMouseDown = mouseDownSent!=null && mouseDownSent==fld;
+    	doublePressed = null;
+    	mouseDownSent = null;
+    	boolean sentMouseUp = false;
     	//ロックされたフィールド(lockText=enabled)は、押してから少し動いたクリックでもmouseUpにする
-    	if(fld!=null && fld.enabled){
+    	if(fld!=null && fld.enabled && GButton.releasedInside(e)){
     		if(TTalk.idle==true){
-    			if(GButton.releasedInside(e)){
-    				TTalk.CallMessage("mouseUp", fld);
-    				if(e.getClickCount()==2) TTalk.CallMessage("mouseDoubleClick", fld);
-    			}
+    			TTalk.CallMessage(secondClick ? "mouseDoubleClick" : "mouseUp", fld);
+    			sentMouseUp = true;
+    		}
+    		//a quick click whose mouseDown handler still runs: its mouseUp follows that handler, as for buttons (HyperCard)
+    		else if(pressSentMouseDown){
+    			TTalk.callPendingMouseUp(fld);
+    			sentMouseUp = true;
     		}
     	}
     	GUI.mouseUped();
-		GUI.mouseClicked();
+		//as for buttons: the click that sends mouseUp is not the mouseClick its handler waits for (it was when the script
+		//thread had started the handler before this line)
+		if(!sentMouseUp) GUI.mouseClicked();
+		else GUI.mouseDown = false;
     }
 	@Override
     public void mouseEntered(MouseEvent e) {
@@ -1376,7 +1556,7 @@ class GField implements MouseListener, MouseMotionListener {
 
 	@Override
 	public void mouseDragged(MouseEvent e) {
-		TTalk.CallMessage("mouseStillDown", ((MyTextArea)e.getSource()).fldData);
+		//a locked field's mouseStillDown comes from GUI.startStillDown while held, dragged or not; an unlocked one gets none
 	}
 
 	@Override
@@ -1418,8 +1598,14 @@ final class GShape implements MouseListener, MouseMotionListener {
 		GUI.clickH = PCARD.toLogical(v.getX()+e.getX());
 		GUI.clickV = PCARD.toLogical(v.getY()+e.getY());
 		mouseDownSent = TTalk.idle;
-		if(mouseDownSent) TTalk.CallMessage("mouseDown", v.shape);
+		if(mouseDownSent) TTalk.closeOpenFieldByUser();
+		secondClick = mouseDownSent && GUI.doublePress(e, v.shape); //as a button: mouseDoubleClick at the release, nothing now
+		if(mouseDownSent && !secondClick){
+			TTalk.CallMessage("mouseDown", v.shape);
+			GUI.startStillDown(v.shape); //mouseStillDown while held, dragged or not
+		}
 	}
+	private boolean secondClick;
 	@Override
 	public void mouseReleased(MouseEvent e) {
 		GUI.mouseUped();
@@ -1439,10 +1625,10 @@ final class GShape implements MouseListener, MouseMotionListener {
 		}
 		if(!inside) return;
 		if(sent){
-			TTalk.CallMessage("mouseUp", v.shape);
-			if(e.getClickCount()==2) TTalk.CallMessage("mouseDoubleClick", v.shape);
+			TTalk.CallMessage(secondClick ? "mouseDoubleClick" : "mouseUp", v.shape);
+			GUI.mouseDown = false; //as for buttons: the click that sends mouseUp is not the mouseClick of its handler
 		}
-		GUI.mouseClicked();
+		else GUI.mouseClicked();
 	}
 	@Override
 	public void mouseClicked(MouseEvent e) {
@@ -1457,8 +1643,7 @@ final class GShape implements MouseListener, MouseMotionListener {
 	}
 	@Override
 	public void mouseDragged(MouseEvent e) {
-		//ボタンと同じくドラッグ中に送る。ハンドラの実行中は積まない(キューが溢れないように)
-		if(mouseDownSent && TTalk.idle) TTalk.CallMessage("mouseStillDown", view(e).shape);
+		//mouseStillDown comes from GUI.startStillDown while held, dragged or not (as for buttons)
 	}
 	@Override
 	public void mouseMoved(MouseEvent e) {
@@ -1474,19 +1659,24 @@ class GUI_fldDocument implements DocumentListener {
 	
 	@Override
 	public void changedUpdate(DocumentEvent e) {
+		if(fld.applyingText) return; //a script's text (OField.setText): the field has it and its runs already
 		String text = fld.getMyTextArea().getText();
 		fld.preserveStylesForTextChange(text);
 		fld.setTextByInputarea(text);
 	}
 	@Override
 	public void insertUpdate(DocumentEvent e) {
+		edited();
 		changedUpdate(e);
-		
 	}
 	@Override
 	public void removeUpdate(DocumentEvent e) {
+		edited();
 		changedUpdate(e);
-		
+	}
+	/** Typed into (not a script's text): the open field sends closeField when it closes, also when the text is back as it was */
+	private void edited() {
+		if(!fld.applyingText && fld==TTalk.openField) TTalk.openFieldEdited = true;
 	}
 }
 

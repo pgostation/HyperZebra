@@ -73,8 +73,11 @@ final class HfsVolume {
 		byte[] extentsTree=v.bytes(extentsFile);
 		for(byte[][] record:leafRecords(extentsTree)){
 			byte[] key=record[0],data=record[1];
-			if(key.length<8||data.length<12)continue;
-			int forkType=u1(key,1),fileId=u4(key,2),fileBlock=u2(key,6);
+			// the key without its length byte (leafRecords): forkType, fileID, startBlock - read one byte further on, as if the
+			// length were still there, no record ever matched and a fork in more than three pieces ended in zeros (Crystal Quest
+			// 2.2c's resource map, the last 64 of its 262 blocks)
+			if(key.length<7||data.length<12)continue;
+			int forkType=u1(key,0),fileId=u4(key,1),fileBlock=u2(key,5);
 			int[] r=new int[7];r[0]=fileBlock;for(int i=0;i<6;i++)r[1+i]=u2(data,2*i);
 			v.overflow.computeIfAbsent(((long)fileId<<8)|forkType,k->new ArrayList<int[]>()).add(r);
 		}

@@ -397,8 +397,8 @@ final class DiskImages {
 			+"\n"+text("Mac programs see it from now on, the ones running now included.")
 			+"\n"+m.files+" "+text("files")+" · "+m.description;
 		String show=text("Show Contents"),open=null;
-		if(program!=null)open=text("Launch %1").replace("%1",FileManager68k.programName(StackTextEncoding.JAPANESE,program.getName()));
-		else if(stack!=null)open=text("Open %1").replace("%1",stack.getName());
+		if(program!=null)open=text("Launch %1").replace("%1",FileManager68k.displayName(program.getName()));
+		else if(stack!=null)open=text("Open %1").replace("%1",FileManager68k.displayName(stack.getName()));
 		new GDialog(owner(),message,null,show,open,"OK");
 		String clicked=GDialog.clicked;
 		if(show.equals(clicked)){if(!OStack.revealInFileManager(m.folder))new GDialog(owner(),m.folder.getPath(),null,"OK",null,null);}

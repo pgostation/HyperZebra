@@ -51,6 +51,12 @@ final class AppearanceManager68k {
 	 */
 	private final java.util.Map<Integer,Integer> rootControls=new java.util.HashMap<Integer,Integer>(),superControls=new java.util.HashMap<Integer,Integer>();
 	private int root(int window) throws M68kCpuException {Integer r=rootControls.get(window);return r!=null&&tb.controls.data(r)!=0?r:0;}
+	/** A dialog with kDialogFlagsUseControlHierarchy ('dlgx' / NewFeaturesDialog) gets its root control from the Dialog Manager (GetRootControl succeeds without a CreateRootControl call). */
+	void ensureRootControl(int window) throws M68kException {
+		if(root(window)!=0)return;
+		int h=tb.controls.create(window,(short)memory.readWord(window+16),(short)memory.readWord(window+18),(short)memory.readWord(window+20),(short)memory.readWord(window+22),new byte[]{0},true,0,0,0,256,0);
+		if(h!=0)rootControls.put(window,h);
+	}
 	private int superControl(int control) throws M68kCpuException {
 		int d=tb.controls.data(control);if(d==0)return 0;
 		Integer p=superControls.get(control);if(p!=null&&tb.controls.data(p)!=0)return p;

@@ -400,7 +400,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	
 	//アプリのバージョンはここだけに書く。release.sh / jpackage.sh / jpackage.ps1 はこの行を読んで
 	//パッケージのバージョンにするので、x.y.z(数字だけ)の形を保つこと。短い版(the short version)は x.y。
-	static final String longVersion="3.0.0";
+	static final String longVersion="3.0.1";
 	static final String version=longVersion.substring(0, longVersion.lastIndexOf('.'));
 
 	/**
@@ -620,6 +620,16 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		if(System.getProperty("hz68k.mips")==null) Toolbox68k.mips = enabled ? Toolbox68k.DEFAULT_MIPS : 0;
 		prefs.putBoolean("realSpeed68k", enabled);
 	}
+	//PowerPCアプリのコードをJITコンパイラ(PpcJit: よく通るコードをJavaバイトコードに変換)で動かすかどうか。デフォルトはON。
+	//OFFにするとインタプリタだけで動く(JITでおかしくなるアプリのため)。実行中のプログラムにも次のポーリングで反映される
+	//(アプリ個別の設定があればそちら)。-Dhzppc.jit が指定されているときはそちらが優先。
+	static boolean ppcJit = prefs.getBoolean("ppcJit", true);
+	static { PpcJit.sharedSetting = ppcJit; }
+	static void setPpcJit(boolean on){
+		ppcJit = on;
+		PpcJit.sharedSetting = on;
+		prefs.putBoolean("ppcJit", on);
+	}
 	//68K VMで起動したアプリが見る画面の色数(8=256色, 16, 32=フルカラー)。
 	//次に起動するアプリから反映される。デフォルトはフルカラー。
 	//-Dhz68k.depthpref=32 で設定を変えずにこの起動だけ設定の値を選べる(テスト用: macOSのJava Preferencesはuser.homeに
@@ -836,6 +846,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	 *  pass false - what they open gets its own permissions (a program, a stack: Sandbox). */
 	static int showFileChooser(final JFileChooser chooser, final Component parent, final boolean save, final boolean forScripts){
 		final int[] result = { JFileChooser.CANCEL_OPTION };
+		FileChooserIcons.install(chooser); // classic programs' and custom icons, which the host's own file view leaves blank
 		runOnEDT(new Runnable(){
 			public void run(){
 				result[0] = save ? chooser.showSaveDialog(parent) : chooser.showOpenDialog(parent);
@@ -998,6 +1009,17 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
     		path = null;
     	}
 
+    	//スタックでない書類(アーカイブ、ディスクイメージ、フォント、拡張機能など)は、Finderから開いたときやドロップと同じ振り分けに回す。
+    	//WindowsやLinuxのファイルの関連付けでは書類が起動引数で届く: .sit.hqx がスタックとして開かれ、PICTの一覧が出ていた
+    	if(path!=null){
+    		File document = new File(path);
+    		boolean stack = path.toLowerCase(java.util.Locale.ROOT).endsWith(".xml") || OStack.looksLikeHyperCardStack(path) || OStack.stackFileType(path)
+    			|| StackBundle.isPacked(document) || ZipExpander.isZip(document);
+    		if(document.isFile() && !stack){
+    			openFromHost(java.util.Collections.singletonList(document));
+    			path = null;
+    		}
+    	}
     	if(path!=null){
     		if(new File(path).exists()) ostack.openStackFile(path, false);
     		else pc.failureOpenFile(path);
@@ -1258,6 +1280,8 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
     public void emptyWindow() {
 		StackSettings.clear(); //スタックを閉じた: 個別設定はもう効かない
 		TTalk.startUpSent = false; //back to the launcher: the next stack opened starts a session of its own (startUp again)
+		TTalk.closeAllOpenFiles(); //files a script left open (stacks no longer close them when left)
+		TTalk.forgetOpenField();
 		if(GLauncher.enabled()){
 			if(stack==null || stack.cdCacheList==null) stack = new OStack(this); //閉じた(clean済み)スタックの代わりの空のスタック
 			runOnEDT(new Runnable(){ public void run(){

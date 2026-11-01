@@ -326,7 +326,9 @@ public class OStack extends OObject {
 	public Boolean getResizeable() {return resizable;}
 
 	public void clean(){
-		TTalk.closeAllOpenFiles(); //スタックを閉じるときは open file したファイルも閉じる
+		//files opened with open file stay open when the stack is left (HC J-2.3: open file, write, go stack X, write: both
+		//writes are in the file; ACM's export goes to Radar chart meker between its writes). They close with the session
+		//(PCARD.emptyWindow) or at quit
 		Xcmd68k.stackClosing(this); //外部ウインドウを開いたままの68K externalも閉じる(xCloseEvt)
 		CardWindow68k.stackClosing(this); //externalがカードに描いたもの(ColorizeHCの絵)を次のスタックに残さない
 		TXcmd.stackClosing(this); //Terazzaのスプライトも
@@ -945,6 +947,10 @@ public class OStack extends OObject {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+			//a data fork that starts like a stack but did not convert: openHCStack has already pointed path at the conversion
+			//(an .hzb folder that is not there), so the check below must not go by path (UbiQUE™ XFCN from a damaged archive got
+			//"error reading the XML data… opened write-protected")
+			boolean damagedStack = false;
 			if(STAKstr != null){
 				if(STAKstr.equals("STAK") || STAKstr.equals("pwpc")){ //"HCSApwpcpeff": PowerPC 版 HyperCard がスタックの前に付けるコードフラグメント(HCData.stackOffset)
 					//これはきっとHyperCardスタックファイル
@@ -955,12 +961,14 @@ public class OStack extends OObject {
 							finishOpen(isUsingOnly);
 							return true;
 						}
+						damagedStack = true;
 					}
 					else if(HCConvert.cancelled){
 						//文字コードの選択をキャンセル: 黙って戻る(以前はXMLとして読みに行って「読み込みに失敗」を出していた)
 						name="";
 						return false;
 					}
+					else damagedStack = true;
 				}
 				else if(true/*path.substring(path.length()-4).equals(".bin")*/){
 					//MacBinary形式では？
@@ -978,8 +986,8 @@ public class OStack extends OObject {
 			}
 			//Finder の種類が STAK なのにスタックとして読めなかったファイルは壊れたスタック: XML として読みに行くと
 			//「XMLデータの読み込み中にエラー…書き込み禁止で開きます」になるので、開けなかったことだけを伝える
-			if(new File(path).isFile() && stackFileType(path)){
-				System.err.println("damaged HyperCard stack (the data fork is not a stack): "+path);
+			if(damagedStack || (new File(path).isFile() && stackFileType(path))){
+				System.err.println("damaged HyperCard stack (the data fork is not a stack): "+inpath);
 			}
 			//XML形式として読む
 			else if(System.getProperty("java.version").startsWith("1.5")){

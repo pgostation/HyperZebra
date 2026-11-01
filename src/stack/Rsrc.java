@@ -940,11 +940,15 @@ public class Rsrc {
 				return false;
 			}
 		}
-		if(null==rsrcIdMap.remove(type+r.id)){
-			System.out.println("delete resource error");
-		}
-		if(null==rsrcNameMap.remove(type+r.name.toLowerCase())){
-			System.out.println("delete resource error");
+		rsrcIdMap.remove(type+r.id);
+		//the name entry may be another resource's of the same name (many unnamed icons; umich Icon Invasion's XCMD removes
+		//them): only this one's goes, and a namesake left takes the name
+		String nameKey = type+r.name.toLowerCase();
+		if(rsrcNameMap.get(nameKey)==r){
+			rsrcNameMap.remove(nameKey);
+			for(rsrcClass o : rsrcIdMap.values()){
+				if(o.type.equals(type) && o.name.equalsIgnoreCase(r.name)){ rsrcNameMap.put(nameKey, o); break; }
+			}
 		}
 		markChanged();
 		return true;
@@ -1154,7 +1158,7 @@ public class Rsrc {
 	}
 
 	//同名のXCMDが68K版とPowerPC版の両方あるスタックでは
-	//実行できる68K版を返す。68K版がなければPPC版(実行はできないが、書き出し・一覧用)
+	//68K版を返す。68K版がなければPPC版(HyperCard 2.3 のネイティブ外部コマンド: VM の Mixed Mode で PowerPC コードを実行する)
 	public xcmdClass getXcmd(String name, String type){
 		xcmdClass r = xcmdNameMap.get(xcmdKey(type, "mac68k", name));
 		if(r!=null) return r;
@@ -1461,6 +1465,20 @@ public class Rsrc {
 		}
 	}
 	
+	/** AddColor changeObjectColor,bg|cd,<number>,"r,g,b" (16-bit values): the colour of the current card's or background's number'th
+	 *  colour object (rectangle/button/field) from now on - held in memory only, the stack's own colour stays as it was saved
+	 *  (変数コントローラー's Sample: the sliders change the screen colour; the next colorCard draws it). */
+	public static void setColorACObj(boolean bg, int number, Color color){
+		OCard card = PCARD.pc.stack.curCard;
+		if(card==null) return;
+		for(addcolorClass c : PCARD.pc.stack.rsrc.addcolorList){
+			boolean mine = bg ? c.isBg && card.bg!=null && c.id==card.bg.id : !c.isBg && c.id==card.id;
+			if(!mine) continue;
+			if(number>=0 && number<c.objList.size() && !(c.objList.get(number) instanceof PictObject)) c.objList.get(number).runColor = color;
+			return;
+		}
+	}
+
 	class addcolorClass{
 		int id;
 		boolean isBg;
@@ -1640,6 +1658,8 @@ public class Rsrc {
 	class addcolorObjClass{
 		int bevel;
 		Color color;
+		/** the colour set by AddColor changeObjectColor: drawn instead of `color`, never saved */
+		Color runColor;
 		boolean visible;
 		
 		public addcolorObjClass(int bevel, Color color, boolean visible){

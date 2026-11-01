@@ -1196,9 +1196,10 @@ final class PpcCarbonUtilities {
 		// private, inferred as (Handle) / (Handle, Boolean): a Handle's lock bit (HGetState $A069, HLock $A029, HUnlock $A02A)
 		l.register(null,"GetLockedBitState",(r,c)->{int h=arg(0);retB(h!=0&&rt.toolbox.api.isHandle(h)&&(rt.trap(0xa069,0,h,0)&0x80)!=0);});
 		l.register(null,"SetLockedBitState",(r,c)->{int h=arg(0);if(h==0||!rt.toolbox.api.isHandle(h)){ret(NIL_HANDLE_ERR);return;}rt.trap((arg(1)&0xff)!=0?0xa029:0xa02a,0,h,0);ret(NO_ERR);});
-		// MakeExecutable / FlushToExecute(address, length): PpcCpu decodes every instruction from memory (no instruction cache, no
-		// translated code to drop), so freshly written code runs as it is - as MakeDataExecutable
-		l.register(null,"MakeExecutable",(r,c)->ret(NO_ERR));l.register(null,"FlushToExecute",(r,c)->ret(NO_ERR));
+		// MakeExecutable / FlushToExecute(address, length): as MakeDataExecutable - the interpreter has no instruction cache, and the
+		// JIT drops what it compiled from there (PpcJit; writes into compiled code drop it anyway)
+		l.register(null,"MakeExecutable",(r,c)->{if(c.jit!=null)c.jit.invalidate(arg(0),arg(1));ret(NO_ERR);});
+		l.register(null,"FlushToExecute",(r,c)->{if(c.jit!=null)c.jit.invalidate(arg(0),arg(1));ret(NO_ERR);});
 	}
 
 	// ================================================================== CarbonLib 1.6: odds and ends

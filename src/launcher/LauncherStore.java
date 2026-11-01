@@ -79,6 +79,8 @@ final class LauncherStore {
 		String gamepadMapping;
 		/** A fat program (68K and PowerPC code): true runs its PowerPC code; null follows the default (PowerPC, -Dhzppc.fat=false for 68K). */
 		Boolean powerPC;
+		/** PowerPC code through the JIT compiler (PpcJit: true) or the interpreter alone (false); null follows the Mac application settings. */
+		Boolean ppcJit;
 		/** The host keys that stand for Command, Option and Control in this program (ModifierKeys.format()); null follows the default. */
 		String modifierKeys;
 		/** The System version the program sees (Gestalt sysv, SysVersion), 0x0755 or 0x0922; null follows the standard (Mac OS 9.2.2). */
@@ -97,26 +99,33 @@ final class LauncherStore {
 		/** Its translated resources (ResourceTranslation, made by "Resource Translation…"): false = run with its own resources;
 		 *  null = use them when there are some for the language it is translated into. */
 		Boolean translatedResources;
+		/** A stack: false = the text in its pictures is not translated (PictureTranslation); null = it is, when the stack is. */
+		Boolean translatePictures;
 		/** Folders the user allowed the program to use ("Allow Its Folder and Below"), as "level\tpath" (Sandbox.Level). */
 		final List<String> grants=new ArrayList<String>();
+		/** Its font substitutions (Fonts68k.Substitution, as Font Patchin' made them), as "original\treplacement" family names:
+		 *  the program's text in the first is drawn in the second (an English iTunes's Lucida Grande in Osaka). */
+		final List<String> fontSubstitutions=new ArrayList<String>();
 		/** A copy of these settings (another program file gets them: a working copy, a moved program). */
 		AppSettings copy(){
 			AppSettings c=new AppSettings();c.depth=depth;c.screenSize=screenSize;c.screenScale=screenScale;c.screenTopLeft=screenTopLeft;c.smoothZoom=smoothZoom;c.wideDialogs=wideDialogs;c.controlKeys=controlKeys;
-			c.realSpeed=realSpeed;c.mips=mips;c.gamepadMapping=gamepadMapping;c.powerPC=powerPC;c.modifierKeys=modifierKeys;c.systemVersion=systemVersion;c.language=language;
-			c.accessPolicy=accessPolicy;c.readOnly=readOnly;c.grants.addAll(grants);
-			c.translate=translate;c.translateTo=translateTo;c.translateFrom=translateFrom;c.translateEngine=translateEngine;c.translatedResources=translatedResources;return c;
+			c.realSpeed=realSpeed;c.mips=mips;c.gamepadMapping=gamepadMapping;c.powerPC=powerPC;c.ppcJit=ppcJit;c.modifierKeys=modifierKeys;c.systemVersion=systemVersion;c.language=language;
+			c.accessPolicy=accessPolicy;c.readOnly=readOnly;c.grants.addAll(grants);c.fontSubstitutions.addAll(fontSubstitutions);
+			c.translate=translate;c.translateTo=translateTo;c.translateFrom=translateFrom;c.translateEngine=translateEngine;c.translatedResources=translatedResources;c.translatePictures=translatePictures;return c;
 		}
 		/** Takes what this program has not set from {@code other} (a moved program's old settings onto the new place's). */
 		void fillFrom(AppSettings o){
 			if(depth==null)depth=o.depth;if(screenSize==null)screenSize=o.screenSize;if(screenScale==null)screenScale=o.screenScale;if(screenTopLeft==null)screenTopLeft=o.screenTopLeft;if(smoothZoom==null)smoothZoom=o.smoothZoom;if(wideDialogs==null)wideDialogs=o.wideDialogs;
 			if(controlKeys==null)controlKeys=o.controlKeys;if(realSpeed==null&&mips==null){realSpeed=o.realSpeed;mips=o.mips;}if(gamepadMapping==null)gamepadMapping=o.gamepadMapping;
-			if(powerPC==null)powerPC=o.powerPC;if(modifierKeys==null)modifierKeys=o.modifierKeys;if(systemVersion==null)systemVersion=o.systemVersion;if(language==null)language=o.language;
+			if(powerPC==null)powerPC=o.powerPC;if(ppcJit==null)ppcJit=o.ppcJit;if(modifierKeys==null)modifierKeys=o.modifierKeys;if(systemVersion==null)systemVersion=o.systemVersion;if(language==null)language=o.language;
 			if(accessPolicy==null)accessPolicy=o.accessPolicy;if(readOnly==null)readOnly=o.readOnly;
 			if(translate==null)translate=o.translate;if(translateTo==null)translateTo=o.translateTo;if(translateFrom==null)translateFrom=o.translateFrom;if(translateEngine==null)translateEngine=o.translateEngine;
 			if(translatedResources==null)translatedResources=o.translatedResources;
+			if(translatePictures==null)translatePictures=o.translatePictures;
 			for(String g:o.grants)if(!grants.contains(g))grants.add(g);
+			if(fontSubstitutions.isEmpty())fontSubstitutions.addAll(o.fontSubstitutions);
 		}
-		boolean isEmpty(){return accessPolicy==null&&readOnly==null&&grants.isEmpty()&& depth==null&&screenSize==null&&screenScale==null&&screenTopLeft==null&&smoothZoom==null&&wideDialogs==null&&controlKeys==null&&realSpeed==null&&mips==null&&gamepadMapping==null&&powerPC==null&&modifierKeys==null&&systemVersion==null&&language==null&&translate==null&&translateTo==null&&translateFrom==null&&translateEngine==null&&translatedResources==null;}
+		boolean isEmpty(){return accessPolicy==null&&readOnly==null&&grants.isEmpty()&&fontSubstitutions.isEmpty()&& depth==null&&screenSize==null&&screenScale==null&&screenTopLeft==null&&smoothZoom==null&&wideDialogs==null&&controlKeys==null&&realSpeed==null&&mips==null&&gamepadMapping==null&&powerPC==null&&ppcJit==null&&modifierKeys==null&&systemVersion==null&&language==null&&translate==null&&translateTo==null&&translateFrom==null&&translateEngine==null&&translatedResources==null&&translatePictures==null;}
 	}
 
 	/** A tab of the dock (DragThing's tabs): a name (null = the first tab's default name), a colour (RGB, null = none) and its items' identity paths. */
@@ -508,6 +517,7 @@ final class LauncherStore {
 			v=p.getProperty("app."+i+".mips");if(v!=null)try{double m=Double.parseDouble(v);if(m>0&&m<Double.POSITIVE_INFINITY)s.mips=m;}catch(NumberFormatException ignored){}
 			s.gamepadMapping=p.getProperty("app."+i+".gamepad");
 			v=p.getProperty("app."+i+".ppc");if(v!=null)s.powerPC=Boolean.valueOf(v);
+			v=p.getProperty("app."+i+".jit");if(v!=null)s.ppcJit=Boolean.valueOf(v);
 			v=p.getProperty("app."+i+".sysv");if(v!=null)try{s.systemVersion=Integer.parseInt(v,16);}catch(NumberFormatException ignored){}
 			v=p.getProperty("app."+i+".lang");if("English".equals(v)||"Japanese".equals(v))s.language=v;
 			v=p.getProperty("app."+i+".access");if("ask".equals(v)||"allow".equals(v)||"deny".equals(v))s.accessPolicy=v;
@@ -516,8 +526,11 @@ final class LauncherStore {
 			v=p.getProperty("app."+i+".translate");if(v!=null)s.translate=Boolean.valueOf(v);
 			s.translateTo=p.getProperty("app."+i+".translate.to");s.translateFrom=p.getProperty("app."+i+".translate.from");s.translateEngine=p.getProperty("app."+i+".translate.engine");
 			v=p.getProperty("app."+i+".translate.resources");if(v!=null)s.translatedResources=Boolean.valueOf(v);
+			v=p.getProperty("app."+i+".translate.pictures");if(v!=null)s.translatePictures=Boolean.valueOf(v);
 			int grants=intOf(p,"app."+i+".grant.count");
 			for(int j=0;j<grants;j++){String g=p.getProperty("app."+i+".grant."+j);if(g!=null&&g.indexOf('\t')>0&&!s.grants.contains(g))s.grants.add(g);}
+			int fonts=intOf(p,"app."+i+".font.count");
+			for(int j=0;j<fonts;j++){String f=p.getProperty("app."+i+".font."+j);if(f!=null&&f.indexOf('\t')>0&&!s.fontSubstitutions.contains(f))s.fontSubstitutions.add(f);}
 			if(!s.isEmpty())apps.put(path,s);
 			if(oldDocuments){
 				int docs=intOf(p,"app."+i+".doc.count");
@@ -589,6 +602,7 @@ final class LauncherStore {
 			if(s.mips!=null)p.setProperty(k+".mips",mipsText(s.mips));
 			if(s.gamepadMapping!=null)p.setProperty(k+".gamepad",s.gamepadMapping);
 			if(s.powerPC!=null)p.setProperty(k+".ppc",s.powerPC.toString());
+			if(s.ppcJit!=null)p.setProperty(k+".jit",s.ppcJit.toString());
 			if(s.systemVersion!=null)p.setProperty(k+".sysv",String.format("%04x",s.systemVersion));
 			if(s.language!=null)p.setProperty(k+".lang",s.language);
 			if(s.accessPolicy!=null)p.setProperty(k+".access",s.accessPolicy);
@@ -599,7 +613,9 @@ final class LauncherStore {
 			if(s.translateFrom!=null)p.setProperty(k+".translate.from",s.translateFrom);
 			if(s.translateEngine!=null)p.setProperty(k+".translate.engine",s.translateEngine);
 			if(s.translatedResources!=null)p.setProperty(k+".translate.resources",s.translatedResources.toString());
+			if(s.translatePictures!=null)p.setProperty(k+".translate.pictures",s.translatePictures.toString());
 			if(!s.grants.isEmpty()){p.setProperty(k+".grant.count",Integer.toString(s.grants.size()));for(int j=0;j<s.grants.size();j++)p.setProperty(k+".grant."+j,s.grants.get(j));}
+			if(!s.fontSubstitutions.isEmpty()){p.setProperty(k+".font.count",Integer.toString(s.fontSubstitutions.size()));for(int j=0;j<s.fontSubstitutions.size();j++)p.setProperty(k+".font."+j,s.fontSubstitutions.get(j));}
 			i++;
 		}
 		File dir=file.getParentFile();if(dir!=null&&!dir.isDirectory())dir.mkdirs();

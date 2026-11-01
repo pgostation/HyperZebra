@@ -193,13 +193,14 @@ public class VEffect {
 		if(effects==null || effects.isEmpty()){ visualEffect(0, 0, 3, true); return; }
 		for(int i=0; i<effects.size(); i++){
 			int[] e = effects.get(i);
+			if(e[0]==0 && e.length>3 && e[3]!=0) holdPlain(e[2]); //written plain/cut: its speed's time passes
 			visualEffect(e[0], e[1], e[2], i==effects.size()-1);
 		}
 	}
 
 	//finish=false なら効果の終わりの画像を次の効果の開始画像(oldoff)として残し、画面は確定しない
 	public static void visualEffect(int effect, int toEffect, int speed, boolean finish) {
-		visualEffect(effect, toEffect, effectDuration(speed), finish, null);
+		visualEffect(effect, toEffect, effectDuration(effect, speed), finish, null);
 	}
 
 	/** AddColor's transitions (TXcmd.AddColor): only the rectangle area changes, from the picture taken by setOldOff to
@@ -352,8 +353,47 @@ public class VEffect {
 		}
 	}
 
+	/** HyperCard J-2.3's own effects (numbers 0-27, the order of GVisualEffectWindow.EFFECTS): how many ticks (1/60 s) each takes
+	 *  at the speeds very fast, fast, normal, slow, very slow. Measured in HyperCard J-2.3 in the 68K VM (go with `visual effect X
+	 *  <speed>`, the same with the VM unthrottled: it is the effect's own time, not the CPU's; probe groups group_vec27_vfx*). The
+	 *  speeds are not one scale: very slow is 6.5 times normal, and checkerboard/zoom open are the long ones, venetian blinds the short. */
+	private static final int[][] HC_TICKS = {
+		{2, 15, 30, 66, 197},     //0 plain / cut: HyperCard paces them too
+		{1, 12, 25, 53, 158},     //1 barn door open
+		{1, 12, 24, 53, 157},     //2 barn door close
+		{3, 17, 32, 69, 203},     //3 dissolve
+		{1, 6, 12, 26, 75},       //4 venetian blinds
+		{1, 24, 46, 101, 299},    //5 checkerboard
+		{1, 13, 26, 57, 169},     //6 iris open
+		{1, 13, 26, 57, 168},     //7 iris close
+		{2, 9, 18, 40, 118},      //8 scroll left
+		{2, 9, 18, 40, 119},      //9 scroll right
+		{2, 9, 18, 40, 118},      //10 scroll up
+		{2, 9, 18, 40, 119},      //11 scroll down
+		{1, 12, 25, 53, 158},     //12 wipe left
+		{1, 13, 24, 54, 157},     //13 wipe right
+		{1, 10, 20, 42, 126},     //14 wipe up
+		{1, 10, 20, 42, 126},     //15 wipe down
+		{1, 21, 42, 92, 273},     //16 zoom open (zoom out)
+		{1, 7, 13, 27, 77},       //17 zoom close (zoom in)
+		{4, 14, 27, 59, 173},     //18 shrink to top
+		{4, 14, 27, 59, 173},     //19 shrink to bottom
+		{5, 14, 27, 59, 173},     //20 shrink to center
+		{3, 15, 28, 61, 180},     //21 stretch from top
+		{3, 15, 29, 61, 179},     //22 stretch from bottom
+		{3, 15, 28, 61, 180},     //23 stretch from center
+		{4, 9, 19, 40, 118},      //24 push left
+		{4, 9, 18, 40, 119},      //25 push right
+		{3, 10, 18, 40, 119},     //26 push up
+		{4, 10, 18, 40, 118}};    //27 push down
+
 	/** The length of an effect at a speed: 1 very fast, 2 fast, 3 normal, 4 slow(ly), 5 very slow(ly) (ms); another
-	 *  number plays no frames */
+	 *  number plays no frames. HyperCard's effects 0-27 take HyperCard's time (HC_TICKS), HyperZebra's own ones a common table. */
+	static long effectDuration(int effect, int speed){
+		if(effect>=0 && effect<HC_TICKS.length && speed>=1 && speed<=5) return Math.round(HC_TICKS[effect][speed-1]*1000/60.0);
+		return effectDuration(speed);
+	}
+
 	static long effectDuration(int speed){
 		switch(speed){
 			case 1: return 100;
@@ -362,6 +402,16 @@ public class VEffect {
 			case 4: return 1000;
 			case 5: return 2000;
 			default: return 0;
+		}
+	}
+
+	/** `visual effect plain|cut <speed>` before a go / unlock screen: HyperCard lets the speed's time pass with nothing drawn
+	 *  (HC J-2.3 measured: 30 ticks at normal). A script thread's pause; an abort ends it. */
+	public static void holdPlain(int speed){
+		if(SwingUtilities.isEventDispatchThread()) return;
+		long end = System.nanoTime()+effectDuration(0, speed)*1_000_000L;
+		while(System.nanoTime()<end && !TTalk.stop){
+			try{ Thread.sleep(5); }catch(InterruptedException e){ Thread.currentThread().interrupt(); break; }
 		}
 	}
 

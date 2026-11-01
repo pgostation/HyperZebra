@@ -136,11 +136,14 @@ final class StackBundle {
 	static File iconFolder(File packed){
 		File open = folderOf(packed);
 		if(open!=null && open.isDirectory()) return open;
-		File dir = new File(new File(AppPaths.stateDirectory(), "Stack Icons"), digest(key(packed)).substring(0, 16));
+		File dir = new File(new File(AppPaths.stateDirectory(), ICON_CACHE), digest(key(packed)).substring(0, 16));
 		File stampFile = new File(dir, ".stamp");
 		String stamp = stamp(packed);
 		try{
-			if(stampFile.isFile() && new String(Files.readAllBytes(stampFile.toPath()), StandardCharsets.UTF_8).equals(stamp)) return dir;
+			if(stampFile.isFile() && new String(Files.readAllBytes(stampFile.toPath()), StandardCharsets.UTF_8).equals(stamp)){
+				if(!new File(dir, SOURCE).isFile()) writeSource(dir, packed); // made before the source was kept
+				return dir;
+			}
 		}catch(IOException ignored){}
 		synchronized(StackBundle.class){
 			deleteTree(dir);
@@ -154,6 +157,7 @@ final class StackBundle {
 					try(InputStream in = zip.getInputStream(e); OutputStream o = new FileOutputStream(new File(dir, n))){ copy(in, o, buffer); }
 				}
 				Files.write(stampFile.toPath(), stamp.getBytes(StandardCharsets.UTF_8));
+				writeSource(dir, packed);
 			}catch(IOException e){
 				return null;
 			}
@@ -168,7 +172,55 @@ final class StackBundle {
 	static File cacheFolder(File packed, String kind){
 		File dir = new File(new File(AppPaths.stateDirectory(), kind), digest(key(packed.getAbsoluteFile())).substring(0, 16));
 		dir.mkdirs();
+		if(!new File(dir, SOURCE).isFile()) try{ writeSource(dir, packed.getAbsoluteFile()); }catch(IOException ignored){}
 		return dir;
+	}
+
+	static final String ICON_CACHE = "Stack Icons", MOVIE_CACHE_KIND = "Movie Cache";
+	/** In a cache folder: the path of the stack file it was made from (purgeCaches). */
+	private static final String SOURCE = ".source";
+	/** A cache folder made before {@link #SOURCE} was written goes when it was not used for this long. */
+	static final long UNKNOWN_CACHE_MILLIS = 30L*24*60*60*1000;
+
+	private static void writeSource(File dir, File packed) throws IOException {
+		Files.write(new File(dir, SOURCE).toPath(), packed.getPath().getBytes(StandardCharsets.UTF_8));
+	}
+
+	/**
+	 * The caches made from stack files that are gone (deleted, moved, renamed): kept one folder per stack file for good,
+	 * they piled up in the state folder. A folder without its source (made before the source was kept) goes once it was
+	 * not used for {@link #UNKNOWN_CACHE_MILLIS}.
+	 */
+	static void purgeCaches(long now){
+		for(String kind: new String[]{ ICON_CACHE, MOVIE_CACHE_KIND }){
+			File[] dirs = new File(AppPaths.stateDirectory(), kind).listFiles(File::isDirectory);
+			if(dirs==null) continue;
+			for(File dir: dirs){
+				File source = new File(dir, SOURCE);
+				String packed = null;
+				try{ if(source.isFile()) packed = new String(Files.readAllBytes(source.toPath()), StandardCharsets.UTF_8).trim(); }
+				catch(IOException e){ continue; }
+				boolean gone = packed!=null ? !packed.isEmpty() && !new File(packed).isFile() && !onMissingVolume(new File(packed))
+					: now-newest(dir)>UNKNOWN_CACHE_MILLIS;
+				if(gone) synchronized(StackBundle.class){ deleteTree(dir); }
+			}
+		}
+	}
+
+	/** On a disk that is not there now (a drive letter, /Volumes/<name>, /media/…/<name>): the file may come back with it. */
+	private static boolean onMissingVolume(File f){
+		java.nio.file.Path p = f.getAbsoluteFile().toPath(), root = p.getRoot();
+		if(root==null || !Files.isDirectory(root)) return true;
+		String top = p.getNameCount()>2 ? p.getName(0).toString() : "";
+		int disk = top.equals("Volumes") || top.equals("mnt") ? 2 : top.equals("media") ? Math.min(3, p.getNameCount()-1) : 0;
+		return disk>0 && !Files.isDirectory(root.resolve(p.subpath(0, disk)));
+	}
+
+	private static long newest(File f){
+		long t = f.lastModified();
+		File[] children = f.isDirectory() ? f.listFiles() : null;
+		if(children!=null) for(File c: children) t = Math.max(t, newest(c));
+		return t;
 	}
 
 	private static boolean isIconEntry(String n){
@@ -323,10 +375,11 @@ final class StackBundle {
 
 	/**
 	 * At start-up: working folders left behind that hold nothing more than their files (or whose files were changed
-	 * elsewhere since) are removed; ones with changes that never reached their file stay for the next open.
+	 * elsewhere since) are removed; ones with changes that never reached their file stay for the next open. The icon and
+	 * movie caches of stack files that are gone go too ({@link #purgeCaches}).
 	 */
 	static void purgeStaleInBackground(){
-		Thread t = new Thread(StackBundle::purgeStale, "stack working copies");
+		Thread t = new Thread(() -> { purgeStale(); purgeCaches(System.currentTimeMillis()); }, "stack working copies");
 		t.setDaemon(true);
 		t.setPriority(Thread.MIN_PRIORITY);
 		t.start();

@@ -32,17 +32,24 @@ final class BinHex {
 		int start=text.indexOf("(This file must be converted with BinHex");
 		if(start>=0)start=text.indexOf(':',start);else start=text.indexOf(':');
 		if(start<0)throw new IOException("not a BinHex file: "+f.getName());
-		int end=text.indexOf(':',start+1);
-		if(end<0)throw new IOException("BinHex data is not closed by a colon: "+f.getName());
+		// The text between the colons, line by line. A file posted in parts (net.sources.mac: "Servant.79 (2 of 4)") carries the
+		// next article's mail headers between its pieces, or separator lines ("--- end of part 1 ---", "---", whose dashes are
+		// BinHex characters too): only lines made of BinHex characters belong to it, and the data ends at a line ending in a colon.
+		StringBuilder body=new StringBuilder();boolean closed=false;
+		for(String line:text.substring(start+1).split("[\r\n]",-1)){
+			line=line.trim();
+			if(line.isEmpty()||line.startsWith("---"))continue;
+			boolean last=line.endsWith(":");String data=last?line.substring(0,line.length()-1):line;
+			if(!isBinHexLine(data))continue;
+			body.append(data);
+			if(last){closed=true;break;}
+		}
+		if(!closed)throw new IOException("BinHex data is not closed by a colon: "+f.getName());
 		// 6-bit characters → bytes
 		ByteArrayOutputStream packed=new ByteArrayOutputStream();
 		int acc=0,bits=0;
-		for(int i=start+1;i<end;i++){
-			char c=text.charAt(i);
-			if(c=='\r'||c=='\n'||c=='\t'||c==' ')continue;
-			int v=c<128?VALUE[c]:-1;
-			if(v<0)throw new IOException("bad BinHex character '"+c+"' in "+f.getName());
-			acc=(acc<<6)|v;bits+=6;
+		for(int i=0;i<body.length();i++){
+			acc=(acc<<6)|VALUE[body.charAt(i)];bits+=6;
 			if(bits>=8){bits-=8;packed.write((acc>>>bits)&0xff);}
 		}
 		// run-length: 0x90 n repeats the previous byte n-1 more times; 0x90 0x00 is a literal 0x90
@@ -79,6 +86,11 @@ final class BinHex {
 		mb.nameBytes=name;mb.name=StackTextEncoding.ROMAN.decode(name);mb.type=type;mb.creator=creator;
 		mb.dataFork=data;mb.resourceFork=rsrc;
 		return mb;
+	}
+
+	private static boolean isBinHexLine(String line){
+		for(int i=0;i<line.length();i++){char c=line.charAt(i);if(c>=128||VALUE[c]<0)return false;}
+		return true;
 	}
 
 	/** Decodes into a MacBinary file beside the source (named after the file inside, ".bin" appended) and returns it. */

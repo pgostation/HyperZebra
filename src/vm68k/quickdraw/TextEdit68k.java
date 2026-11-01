@@ -47,6 +47,11 @@ final class TextEdit68k {
 	/** TEScrpLength (a word) / TEScrpHandle: the TextEdit scrap lives in low memory, where the TEToScrap/TEFromScrap glue
 	 *  (PutScrap/GetScrap on that handle) and programs that read it directly expect it. */
 	private static final int TE_SCRP_LENGTH=0xab0,TE_SCRP_HANDLE=0xab4;
+	/** The clikLoop TENew/TEStyleNew put in a record: the ROM's default click loop, answering TRUE (D0 = 1, Z clear). Programs
+	 *  keep it and call it from their own - SimpleText's AsmClikLoop (TESample) JSRs to it unconditionally, and with 0 there
+	 *  a click in its window jumped to address 0. */
+	private int defaultClikLoop;
+	private int defaultClikLoop(){if(defaultClikLoop==0)defaultClikLoop=tb.registerGate(c->{c.d[0]=1;c.sr&=~M68kCpu.FLAG_Z;});return defaultClikLoop;}
 
 	TextEdit68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;}
 
@@ -91,7 +96,7 @@ final class TextEdit68k {
 				State s=known(h)?records.get(h):null;if(s!=null){if(on)s.features|=1<<TE_F_AUTO_SCROLL;else s.features&=~(1<<TE_F_AUTO_SCROLL);}return true;}
 			case 0x9df:{int h=memory.readLong(cpu.a[7]),just=(short)memory.readWord(cpu.a[7]+4);cpu.a[7]+=6;if(known(h)){memory.writeWord(rec(h)+JUST,just);}return true;}
 			case 0x9d8:case 0x9d9:{int h=pop(cpu);activate(h,trap==0x9d8);return true;}
-			case 0x9ce:{int just=(short)memory.readWord(cpu.a[7]),box=memory.readLong(cpu.a[7]+2),length=memory.readLong(cpu.a[7]+6),text=memory.readLong(cpu.a[7]+10);cpu.a[7]+=14;textBox(length>0?memory.readBytes(text,length):new byte[0],box,just);return true;}
+			case 0x9ce:{int just=(short)memory.readWord(cpu.a[7]),box=memory.readLong(cpu.a[7]+2),length=memory.readLong(cpu.a[7]+6),text=memory.readLong(cpu.a[7]+10);cpu.a[7]+=14;byte[] bytes=length>0?memory.readBytes(text,length):new byte[0];if(Mac68kApi.TRACE)System.err.println("[68K] TETextBox text $"+Integer.toHexString(text)+" length "+length+" \""+tb.decode(bytes)+"\"");textBox(bytes,box,just);return true;}
 			case 0x83c:{int h=memory.readLong(cpu.a[7]),pt=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;memory.writeWord(cpu.a[7],known(h)?offsetAt(h,(short)pt,(short)(pt>>16)):0);return true;}
 			case 0x83d:return dispatch(cpu);
 			default:return false;
@@ -127,7 +132,7 @@ final class TextEdit68k {
 		memory.writeLong(r+IN_PORT,port);
 		int[] fi=Fonts68k.fontInfo(Fonts68k.font(t[0],t[3],t[1]));
 		memory.writeWord(r+LINE_HEIGHT,fi[0]+fi[1]+fi[3]);memory.writeWord(r+FONT_ASCENT,fi[0]);
-		memory.writeWord(r+WORD_BREAK,0);memory.writeLong(r+CARET_TIME,32);memory.writeWord(r+CR_ONLY,0);
+		memory.writeWord(r+WORD_BREAK,0);memory.writeLong(r+CLICK_LOOP,defaultClikLoop());memory.writeLong(r+CARET_TIME,32);memory.writeWord(r+CR_ONLY,0);
 		memory.writeLong(r+H_TEXT,tb.api.createHandle(new byte[0]));
 		memory.writeWord(r+N_LINES,1);memory.writeWord(r+LINE_STARTS,0);memory.writeWord(r+LINE_STARTS+2,0);
 		if(styled){int st=createStyleRec(t[0],t[1],t[3],fi[0]+fi[1]+fi[3],fi[0],tb.api.quickDraw().foregroundRgb48());memory.writeLong(r+TX_FONT,st);memory.writeWord(r+TX_SIZE,-1); // txSize -1: txFont/txFace hold the TEStyleHandle
@@ -236,6 +241,15 @@ final class TextEdit68k {
 		if(styleHandle(r)!=0)resetStyles(r,records.get(handle));
 		State state=records.get(handle);if(state!=null)state.nullStyle=null;
 		recalc(handle);memory.writeWord(r+SEL_START,bytes.length);memory.writeWord(r+SEL_END,bytes.length);
+		// the caret moves with the insertion point, undrawn (TESetText draws nothing): TEIdle blinked it where the empty text had
+		// left it - Myth II's installer fills its alert's edit text, makes it a static text, and a caret blinked before its first word
+		if(state!=null){placeCaret(handle);state.caretVisible=false;}
+	}
+	/** Where {@link #toggleCaret} inverts the caret: at the end of the selection, from the current line layout. */
+	private void placeCaret(int handle) throws M68kCpuException {
+		int r=rec(handle);State s=records.get(handle);if(s==null)return;
+		byte[] text=text(handle);Font font=font(r);int[] dest=rect(r+DEST);int[] tops=lineTops(r);int selEnd=memory.readWord(r+SEL_END);
+		int caretLine=lineOf(r,selEnd);s.caretX=xOf(r,text,font,caretLine,selEnd);s.caretY=dest[0]+tops[caretLine];s.caretHeight=tops[caretLine+1]-tops[caretLine];
 	}
 	/**
 	 * TESetText on a styled record: the old runs belong to the old text, so the new text becomes one run in the font the
@@ -408,6 +422,12 @@ final class TextEdit68k {
 		return out;
 	}
 	private Font segmentFont(int r,int styleIndex,Font base) throws M68kCpuException {return styleIndex<0?base:styleFont(r,styleIndex);}
+	/** The font number a segment's text asks for (before any font substitution): its style's, else the record's ({@link #font}). */
+	private int segmentFontId(int r,int styleIndex) throws M68kCpuException {
+		if(styleIndex<0&&styleHandle(r)!=0){int[][] runs=runs(r);styleIndex=runs!=null&&runs.length>0?runs[0][1]:0;}
+		if(styleIndex<0)return (short)memory.readWord(r+TX_FONT);
+		int e=styleElement(r,styleIndex);return e==0?0:(short)memory.readWord(e+6);
+	}
 	private int segmentFace(int r,int styleIndex) throws M68kCpuException {int e=styleIndex<0?0:styleElement(r,styleIndex);return e==0?face(r):memory.readByte(e+8);}
 	/** Width of text[start..end) through the style runs. */
 	private int measure(int r,byte[] text,int start,int end) throws M68kCpuException {
@@ -554,7 +574,7 @@ final class TextEdit68k {
 		int[] view=rect(r+VIEW),dest=rect(r+DEST);int[] tops=lineTops(r);int n=lineCount(r);
 		int selStart=memory.readWord(r+SEL_START),selEnd=memory.readWord(r+SEL_END);boolean active=memory.readWord(r+ACTIVE)!=0;
 		State s=records.get(handle);
-		if(s!=null){int caretLine=lineOf(r,selEnd);s.caretX=xOf(r,text,font,caretLine,selEnd);s.caretY=dest[0]+tops[caretLine];s.caretHeight=tops[caretLine+1]-tops[caretLine];}
+		if(s!=null)placeCaret(handle);
 		if(Mac68kApi.TRACE)System.err.println("[68K] TE update $"+Integer.toHexString(handle)+" port $"+Integer.toHexString(port)+" view "+java.util.Arrays.toString(view)+" dest "+java.util.Arrays.toString(dest)+" lines "+firstLine+".."+lastLine+" length "+text.length+" current $"+Integer.toHexString(tb.api.currentQuickDrawPort())+describeStyles(r));
 		if(port!=0&&(short)memory.readWord(port+66)<0)return; // pnVis < 0 (HidePen): TextEdit draws through QuickDraw, which draws nothing then - 奈美江ちゃんとの世界's runtime fills its invisible text blocks between HidePen/ShowPen
 		if(s!=null&&!s.editable&&firstLine==0&&lastLine==TO_BOTTOM&&drawTranslated(r,s,text,view,dest,erase))return; // a read-only record in the user's language (VMTranslation)
@@ -579,6 +599,7 @@ final class TextEdit68k {
 					int start=lineStart(r,i),x=xOf(r,text,font,i,start);
 					for(int[] seg:segments(r,start,trimmedEnd(text,start,lineEnd(r,i)))){Font f=segmentFont(r,seg[2],font);byte[] part=java.util.Arrays.copyOfRange(text,seg[0],seg[1]);
 						if(x>=view[3])break; // the rest of the line lies right of the view
+						Fonts68k.noteDrawn(segmentFontId(r,seg[2]),part,f);
 						int e=own&&seg[2]>=0&&styleHandle(r)!=0?styleElement(r,seg[2]):0;Object[] saved=e!=0?tb.api.quickDraw().saveForeground():null; // a styled run draws in its own colour (TESetStyle doColor)
 						if(saved!=null)tb.api.quickDraw().setForegroundRgb16(memory.readWord(e+12),memory.readWord(e+14),memory.readWord(e+16));
 						try{x+=textProc!=0?drawThroughTextProc(textProc,r,port,seg,x,y+ascent,f,part):tb.quickDraw.drawText(part,x,y+ascent,f,1,f instanceof BitmapFont68k?((BitmapFont68k)f).face:segmentFace(r,seg[2]));}finally{tb.api.quickDraw().restoreForeground(saved);}}}
@@ -598,7 +619,8 @@ final class TextEdit68k {
 				if(active&&selEnd>selStart&&selEnd>start&&selStart<end){int a=Math.max(start,selStart),b=Math.min(end,selEnd);int x1=xOf(r,text,font,i,a),x2=b>=end&&end>start&&text[end-1]=='\r'?dest[3]:xOf(r,text,font,i,b);g.setColor(SELECTION);g.fillRect(x1,y,Math.max(1,x2-x1),lineHeight);}
 				else if(!active&&s!=null&&(s.features&1<<TE_F_OUTLINE_HILITE)!=0&&selEnd>selStart&&selEnd>start&&selStart<end){/* an inactive record shows its selection only with outline highlighting turned on */int a=Math.max(start,selStart),b=Math.min(end,selEnd);int x1=xOf(r,text,font,i,a),x2=xOf(r,text,font,i,b);g.setColor(SELECTION);g.drawRect(x1,y,Math.max(1,x2-x1),lineHeight-1);}
 				int penX=xOf(r,text,font,i,start);
-				for(int[] seg:segments(r,start,trimmedEnd(text,start,end))){Font f=segmentFont(r,seg[2],font);String part=tb.decodeFor(f,java.util.Arrays.copyOfRange(text,seg[0],seg[1]));
+				for(int[] seg:segments(r,start,trimmedEnd(text,start,end))){Font f=segmentFont(r,seg[2],font);byte[] bytes=java.util.Arrays.copyOfRange(text,seg[0],seg[1]);String part=tb.decodeFor(f,bytes);
+					Fonts68k.noteDrawn(segmentFontId(r,seg[2]),bytes,f);
 					if(part.isEmpty())continue;g.setColor(segmentColor(r,seg[2],ink));if(Mac68kApi.TRACE)System.err.println("[68K] TE segment "+seg[0]+".."+seg[1]+" style "+seg[2]+" txFont "+memory.readWord(r+74)+" size "+memory.readWord(r+80)+" font "+f.getFontName()+"/"+f.getSize()+" at "+penX+","+(y+ascent)+" \""+part+"\"");Fonts68k.drawString(g,f,part,penX,y+ascent);penX+=Fonts68k.width(f,part);}
 				if(s!=null&&s.inlineRanges!=null)for(int k=0;k+2<s.inlineRanges.length;k+=3){ // inline input: the composed text is underlined the way TSMTE does it
 					int a=Math.max(start,s.inlineRanges[k]),b=Math.min(end,s.inlineRanges[k+1]),style=s.inlineRanges[k+2];if(b<=a||style==1)continue;
@@ -781,7 +803,7 @@ final class TextEdit68k {
 	/** The TERec's clikLoop, called over and over while TEClick tracks the mouse (editors keep their scroll bars in step and
 	 *  scroll the text with it); it answers in D0 whether to go on. Registers are the program's again afterwards. */
 	private boolean clikLoop(M68kCpu cpu,int handle) throws M68kException {
-		int loop=memory.readLong(rec(handle)+CLICK_LOOP);if(loop==0)return true;
+		int loop=memory.readLong(rec(handle)+CLICK_LOOP);if(loop==0||loop==defaultClikLoop)return true;
 		int[] d=cpu.d.clone(),a=cpu.a.clone();boolean more;
 		try{cpu.callPascal(loop,0);more=(cpu.d[0]&0xff)!=0;}
 		finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);}
@@ -791,8 +813,9 @@ final class TextEdit68k {
 		markEditable(handle);
 		int r=rec(handle);State s=records.get(handle);byte[] text=text(handle);
 		int offset=offsetAt(handle,h,v);
-		long now=System.currentTimeMillis();boolean doubleClick=now-memory.readLong(r+CLICK_TIME)*1000L/60L<500&&Math.abs(memory.readWord(r+CLICK_LOC)-offset)<=1&&!extend;
-		memory.writeLong(r+CLICK_TIME,tb.tickCount());memory.writeWord(r+CLICK_LOC,offset);
+		// clickTime is in ticks, as DoubleTime ($2F0) is (it was compared with the host's epoch milliseconds: never a double click)
+		int now=tb.tickCount();boolean doubleClick=now-memory.readLong(r+CLICK_TIME)<memory.readLong(0x2f0)&&Math.abs(memory.readWord(r+CLICK_LOC)-offset)<=1&&!extend;
+		memory.writeLong(r+CLICK_TIME,now);memory.writeWord(r+CLICK_LOC,offset);
 		int anchor=extend?s.anchor:offset;
 		if(doubleClick){int[] w=wordAt(text,offset);setSelection(handle,w[0],w[1],true);s.anchor=w[0];
 			while(tb.host().isMouseDown()){if(!clikLoop(cpu,handle))break;tb.events.idle(1);}return;}

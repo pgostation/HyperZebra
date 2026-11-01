@@ -75,8 +75,19 @@ final class PcExchange {
 		if(name.isEmpty())return null;
 		File exact=new File(folder,name);
 		if(exact.exists())return exact;
-		String[] names=folder.list();
+		String[] names=listing(folder);
 		if(names!=null)for(String n:names)if(n.equalsIgnoreCase(name))return new File(folder,n);
 		return null;
+	}
+
+	/** The names in {@code folder}, kept for a second: a catalog walk (PBCatSearch over a volume) asks for FINDER.DAT and RESOURCE.FRK
+	 *  of every file in a folder, and listing the folder each time made a search of a few thousand files take half a minute. */
+	private static File listedFolder;private static String[] listedNames;private static long listedAt;
+	private static synchronized String[] listing(File folder){
+		long now=System.currentTimeMillis();
+		if(folder.equals(listedFolder)&&now-listedAt<1000)return listedNames;
+		String[] names=folder.list();
+		listedFolder=folder;listedNames=names;listedAt=now;
+		return names;
 	}
 }

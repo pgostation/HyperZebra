@@ -59,6 +59,37 @@ final class SystemIcons68k {
 	/** Adds every family to the System file (resources marked purgeable, as the System's own). */
 	static void addTo(ResourceFile68k f){
 		for(java.util.Map.Entry<Integer,Painter> e:FAMILIES.entrySet())add(f,e.getKey(),e.getValue());
+		addSmallIcons(f);
+	}
+
+	/**
+	 * The System's small 1-bit icons 'SICN' -4000..-3985 (System 7: the generic family IDs; some lists hold the icon and its
+	 * mask, some the icon alone - the counts are those of a real System file): MegaWindow's SICN objects (`icon,...,SICN,-3997`)
+	 * drew nothing without them. The pictures are the families' own at 16 pixels, plus a few stand-ins for IDs no family has.
+	 */
+	private static void addSmallIcons(ResourceFile68k f){
+		Painter document=SystemIcons68k::document;
+		Object[][] list={{GENERIC_DOCUMENT,2},{GENERIC_FOLDER,2},{FLOPPY,2},{OPEN_FOLDER,1},{GENERIC_APPLICATION,2},{GENERIC_HARD_DISK,2},
+			{PRIVATE_FOLDER,1},{TRASH,2},{DESKTOP,1},{DESK_ACCESSORY,2},{-3990,1},{EDITION,2},{RAM_DISK,2},{CD_ROM,2},{-3986,1},{STATIONERY,1}};
+		for(Object[] e:list){int id=(Integer)e[0];
+			Painter painter=FAMILIES.get(id);
+			if(painter==null)painter=id==PRIVATE_FOLDER?SystemIcons68k::privateFolder:id==DESKTOP?SystemIcons68k::desktop:id==RAM_DISK?SystemIcons68k::ramDisk:id==CD_ROM?SystemIcons68k::cdRom:document;
+			byte[] both=iconAndMask(render(painter,16));
+			f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("SICN"),id,null,ResourceFile68k.RES_PURGEABLE,(Integer)e[1]==2?both:java.util.Arrays.copyOf(both,32)));
+		}
+	}
+	/** Small-icon-only IDs (Icons.h names): a private folder, the desktop, a RAM disk and a CD-ROM. */
+	static final int PRIVATE_FOLDER=-3994,DESKTOP=-3992,RAM_DISK=-3988,CD_ROM=-3987;
+	/** A folder with a strap and buckle across it. */
+	private static void privateFolder(Pen g){folder(g,false);g.fill(INK,1,16,30,18);g.box(METAL,13,14,18,20);}
+	/** A screen on a stand: the desktop. */
+	private static void desktop(Pen g){g.box(METAL,2,3,29,23);g.box(PAPER,5,6,26,20);g.box(METAL,10,25,21,29);}
+	/** A memory chip with its pins. */
+	private static void ramDisk(Pen g){g.box(METAL,4,9,27,23);for(int x=6;x<=24;x+=6){g.line(INK,x,5,x,9);g.line(INK,x,23,x,27);}g.fill(LED,7,13,10,16);}
+	/** A disc with its centre hole. */
+	private static void cdRom(Pen g){
+		g.g.setColor(METAL);g.g.fillOval(g.s(2),g.s(2),g.s(28),g.s(28));g.g.setColor(INK);g.g.drawOval(g.s(2),g.s(2),g.s(28),g.s(28));
+		g.g.setColor(PAPER);g.g.fillOval(g.s(12),g.s(12),g.s(8),g.s(8));g.g.setColor(INK);g.g.drawOval(g.s(12),g.s(12),g.s(8),g.s(8));
 	}
 
 	private static final java.util.Map<Long,byte[]> SERVED=new java.util.HashMap<Long,byte[]>();

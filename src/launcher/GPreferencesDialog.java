@@ -220,7 +220,7 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 	 */
 	static class VmForm extends JPanel {
 		private static final long serialVersionUID = 1L;
-		final JCheckBox realSpeedCheck, wideFileDialogsCheck, controlKeysCheck, smoothTextCheck, utf8TextFilesCheck, pngPictureFilesCheck, gamepadCheck;
+		final JCheckBox realSpeedCheck, ppcJitCheck, wideFileDialogsCheck, controlKeysCheck, smoothTextCheck, utf8TextFilesCheck, pngPictureFilesCheck, gamepadCheck;
 		final JComboBox<String> depthCombo, screenCombo, screenPlaceCombo, smoothCombo;
 		/** MIDI: what the Apple MIDI Driver's Modem Port and Printer Port are wired to on the host (MidiHost68k). */
 		final JComboBox<String> midiOutModemCombo, midiOutPrinterCombo, midiInModemCombo, midiInPrinterCombo;
@@ -237,6 +237,12 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 			realSpeedCheck.setSelected(PCARD.realSpeed68k);
 			realSpeedCheck.setBorder(BorderFactory.createEmptyBorder(16, 16, 0, 16));
 			add(realSpeedCheck);
+
+			ppcJitCheck = new JCheckBox(dialogText("PowerPC JIT compiler"));
+			ppcJitCheck.setToolTipText(dialogText("Runs PowerPC programs faster. Off: the interpreter only."));
+			ppcJitCheck.setSelected(PCARD.ppcJit);
+			ppcJitCheck.setBorder(BorderFactory.createEmptyBorder(8, 16, 0, 16));
+			add(ppcJitCheck);
 
 			wideFileDialogsCheck = new JCheckBox(dialogText("Wide file dialogs"));
 			wideFileDialogsCheck.setToolTipText(dialogText("Wide file dialogs for Mac programs (date, size, kind and sorting)"));
@@ -364,7 +370,7 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 			for(java.awt.Component c: getComponents()) if(c instanceof JLabel || c instanceof JCheckBox){ ((javax.swing.JComponent)c).setAlignmentX(LEFT_ALIGNMENT); c.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height)); }
 			if(live){
 				ActionListener now = new ActionListener(){ public void actionPerformed(ActionEvent e){ apply(); }};
-				for(javax.swing.AbstractButton b: new javax.swing.AbstractButton[]{realSpeedCheck, wideFileDialogsCheck, controlKeysCheck, smoothTextCheck, utf8TextFilesCheck, pngPictureFilesCheck, gamepadCheck}) b.addActionListener(now);
+				for(javax.swing.AbstractButton b: new javax.swing.AbstractButton[]{realSpeedCheck, ppcJitCheck, wideFileDialogsCheck, controlKeysCheck, smoothTextCheck, utf8TextFilesCheck, pngPictureFilesCheck, gamepadCheck}) b.addActionListener(now);
 				depthCombo.addActionListener(now); screenCombo.addActionListener(now); screenPlaceCombo.addActionListener(now); smoothCombo.addActionListener(now);
 				midiOutModemCombo.addActionListener(now); midiOutPrinterCombo.addActionListener(now); midiInModemCombo.addActionListener(now); midiInPrinterCombo.addActionListener(now);
 				appleTalkCombo.addActionListener(now);
@@ -391,6 +397,8 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 			if(newRealSpeed != PCARD.realSpeed68k){
 				PCARD.setRealSpeed68k(newRealSpeed);
 			}
+			//PowerPCのJITは実行中のプログラムにもすぐ(次のポーリングで)反映される
+			if(ppcJitCheck.isSelected() != PCARD.ppcJit) PCARD.setPpcJit(ppcJitCheck.isSelected());
 			//ファイルダイアログの広さは次に開くダイアログから反映される
 			boolean newWideFileDialogs = wideFileDialogsCheck.isSelected();
 			if(newWideFileDialogs != PCARD.wideFileDialogs68k){

@@ -64,11 +64,11 @@ final class ExternalScreenArea {
 			int x=DisplayZoom.unscale(r.x-at.x,pct),y=DisplayZoom.unscale(r.y-at.y,pct);
 			return new Rectangle(x,y,DisplayZoom.unscale(r.width,pct),DisplayZoom.unscale(r.height,pct));});
 	}
-	/** Whether {@code stack} or one of the stacks it uses has 68K externals (XCMD/XFCN; lower-case PowerPC ones do not run in HC stacks). */
+	/** Whether {@code stack} or one of the stacks it uses has externals the VM runs (XCMD/XFCN, and PowerPC-only xcmd/xfcn). */
 	static boolean hasExternals(OStack stack){
 		java.util.List<OStack> stacks=new java.util.ArrayList<OStack>();stacks.add(stack);if(stack.usingStacks!=null)stacks.addAll(stack.usingStacks);
 		for(OStack st:stacks){Rsrc r=st==null?null:st.rsrc!=null?st.rsrc:st.closedResources;if(r==null)continue;
-			for(Rsrc.xcmdClass x:r.getXcmdResources())if(x.platform!=null&&x.platform.toLowerCase().contains("68k"))return true;}
+			for(Rsrc.xcmdClass x:r.getXcmdResources())if(TXcmd.runsInVm(x))return true;}
 		return false;
 	}
 	/** The screen round the card window when no host holds it (guarded by the class): the last one moved as little as needed to

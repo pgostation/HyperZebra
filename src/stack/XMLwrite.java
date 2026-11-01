@@ -213,7 +213,10 @@ public class XMLwrite {
 	//いったん同じフォルダの一時ファイルへ書き切ってから本来の名前へ置き換える。
 	//直接上書きしていると、書き込み途中でクラッシュ・強制終了したときに
 	//_stack.xmlが途中までしか無い(壊れた)状態で残ってしまう。
+	//ファイルが既に同じ内容なら書かない: 開いて閉じただけのスタックも閉じるときに書き出され(読み込みで変更フラグが立つ)、
+	//そのたびに更新日が変わり、1ファイル形式(.hzb)は作り直されていた
 	static void writeAtomically(File file, byte[] data) throws IOException {
+		if(file.isFile() && file.length()==data.length && java.util.Arrays.equals(Files.readAllBytes(file.toPath()), data)) return;
 		File dir = file.getAbsoluteFile().getParentFile();
 		File temp = File.createTempFile(file.getName()+".", ".tmp", dir);
 		try {

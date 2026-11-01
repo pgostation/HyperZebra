@@ -207,7 +207,8 @@ final class GLlmTranslationDialog extends JDialog {
 		final int gen = ++generation;
 		Thread t = new Thread(() -> {
 			LlmTranslation s = null; String error = null;
-			try{ s = LlmTranslation.start(file, again); }
+			try{ s = LlmTranslation.start(file, again, (done, total) -> SwingUtilities.invokeLater(() -> {
+				if(gen==generation && session==null && total>0) status.setText(International.t("Reading the text in the pictures…")+" "+done+" / "+total); })); }
 			catch(Exception ex){ error = ex.getMessage(); }
 			final LlmTranslation got = s; final String e = error;
 			SwingUtilities.invokeLater(() -> { if(gen==generation) started(got, e); });

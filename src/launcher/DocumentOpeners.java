@@ -69,6 +69,22 @@ final class DocumentOpeners {
 		return r;
 	}
 
+	/** The one candidate for an archive that expands it (its bundle claims an archive type), null when there is none or
+	 *  several (the user chooses then): the launcher hands a .sit.hqx to StuffIt Expander instead of asking between it and every
+	 *  text editor (BinHex is 'TEXT'). */
+	static File expanderFor(File archive){
+		File found=null;
+		for(File app:candidates(archive)){FinderIcons68k.Bundle b=FinderIcons68k.bundleOf(app);boolean expands=false;for(int t:ARCHIVE_TYPES)if(b.claims(t))expands=true;
+			if(!expands)continue;if(found!=null)return null;found=app;}
+		return found;
+	}
+	/** Whether a known program expands archives: its bundle claims an archive type. A BinHex file is 'TEXT', so text editors are
+	 *  candidates for it too - they are no expander (the launcher then offers to install one first). */
+	static boolean expanderKnown(){
+		for(File app:knownPrograms(LauncherStore.get())){FinderIcons68k.Bundle b=FinderIcons68k.bundleOf(app);for(int t:ARCHIVE_TYPES)if(b.claims(t))return true;}
+		return false;
+	}
+
 	/**
 	 * Whether the program opens the document when it is dropped on the program's icon, the way the Finder decides
 	 * whether to highlight a program under a drag: the document's creator is the program's signature, the program's

@@ -49,7 +49,7 @@ final class MenuManager68k {
 	boolean handle(M68kCpu cpu,int trap) throws M68kException {
 		if(hyperCardMenusStale&&tb.app==null&&tb.stack!=null)syncHyperCardMenus();
 		switch(trap){
-			case 0x930:menuBar.clear();hierarchical.clear();loadMenuColors(0);changed();return true; // InitMenus: the menu bar's colours from 'mctb' 0
+			case 0x930:menuBar.clear();hierarchical.clear();loadMenuColors(0);menuBarSaveData();changed();return true; // InitMenus: the menu bar's colours from 'mctb' 0
 			case 0x931:{int title=memory.readLong(cpu.a[7]),id=(short)memory.readWord(cpu.a[7]+4);cpu.a[7]+=6;Menu m=new Menu();m.id=id;m.title=tb.readPascal(title);memory.writeLong(cpu.a[7],store(m,0));return true;}
 			case 0x9bf:{int id=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;int menu=getMenu(id);if(menu!=0)loadMenuColors(id);memory.writeLong(cpu.a[7],menu);return true;} // GetMenu adds the 'mctb' of the same ID
 			case 0x932:{int h=pop(cpu);remove(h);if(!tb.resources.release(h))tb.api.disposeHandleAndFree(h);changed();return true;}
@@ -61,8 +61,8 @@ final class MenuManager68k {
 			case 0x952:{int item=(short)memory.readWord(cpu.a[7]),h=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;Menu m=read(h);if(m!=null&&item>=1&&item<=m.items.size()){m.items.remove(item-1);shiftItemData(h,item,-1);if(item<31){int below=m.enableFlags&((1<<item)-1),above=m.enableFlags&~((1<<(item+1))-1);m.enableFlags=below|(above>>>1)|(1<<31);}else if(item==31)m.enableFlags|=1<<31;write(h,m);}return true;} // DeleteMenuItem: the flags of the items after it move up
 			case 0x935:{int before=(short)memory.readWord(cpu.a[7]),h=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;insertMenu(h,before);return true;}
 			case 0x936:{int id=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;int h=menuHandle(id);if(h!=0){menuBar.remove((Integer)h);hierarchical.remove((Integer)h);changed();}return true;} // DeleteMenu
-			case 0x937:menuBarDrawn=true;menuBarHatched=false;flush();return true; // DrawMenuBar: HyperCard's patch hatches the bar after it in background mode
-			case 0x81d:flush();return true;
+			case 0x937:menuBarDrawn=true;menuBarHatched=false;dirty=true;flush();return true; // DrawMenuBar: HyperCard's patch hatches the bar after it in background mode
+			case 0x81d:dirty=true;flush();return true;
 			case 0x934:menuBar.clear();hierarchical.clear();changed();return true;
 			case 0x9c0:{int id=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;memory.writeLong(cpu.a[7],getNewMenuBar(id));return true;}
 			case 0x93b:memory.writeLong(cpu.a[7],tb.api.createHandle(menuListBytes(menuBar,hierarchical)));return true; // GetMenuBar: a copy of MenuList
@@ -417,6 +417,7 @@ final class MenuManager68k {
 		Menu m=read(handle);if(m==null)return;
 		List<String> names=new ArrayList<String>();
 		if(type==0x464f4e44||type==0x464f4e54)names.addAll(Fonts68k.allNames());
+		else if(type==0x73666e74)names.addAll(Fonts68k.outlineNames()); // 'sfnt': the System's TrueType fonts (the System file here holds none)
 		else for(String n:tb.resources.resourceNames(type))if(!n.startsWith(".")&&!n.startsWith("%"))names.add(n); // '.'/'%' names are hidden (drivers, private resources)
 		java.util.Collections.sort(names,String.CASE_INSENSITIVE_ORDER);
 		int at=after<0?m.items.size():Math.min(m.items.size(),after);
@@ -974,6 +975,7 @@ final class MenuManager68k {
 	/** pascal void MDEF(short message, MenuHandle theMenu, Rect *menuRect, Point hitPt, short *whichItem), in the current port. */
 	private void callMdef(int handle,int message,int rect,int hitH,int hitV,int whichItem) throws M68kCpuException {
 		int mdef=memory.readLong(memory.readLong(handle)+6);int entry=memory.readLong(mdef);if(entry==0)return;
+		menuBarSaveData();
 		M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();if(message==M_CHOOSE)chooseCalls++;
 		try{cpu.pushWord(message);cpu.pushLong(handle);cpu.pushLong(rect);cpu.pushLong((hitV&0xffff)<<16|(hitH&0xffff));cpu.pushLong(whichItem);cpu.callPascal(entry,18);}
 		catch(M68kCpuException e){throw e;}catch(M68kException e){throw Toolbox68k.wrap(e);}
@@ -1242,6 +1244,17 @@ final class MenuManager68k {
 		// or one of its submenus) from MenuDisable - it always answered 0
 		memory.writeLong(MENU_DISABLE,result);
 		memory.writeLong(cpu.a[7],result);return true;
+	}
+	/**
+	 * MBSaveLoc ($B5C): the menu bar definition's data, which the MBDF allocates at InitMenus - lastMBSave (+0),
+	 * mbCustomStorage (+2), mbItemRect (+6), mbMenuDelay/mbMenuDrag (+14/+15), mbUglyScroll (+16), mbIconState (+18), then the
+	 * saved menus. Menu definitions read and write it: the Mercutio MDEF (Audiodeck 2.0.6) keeps the item rectangle and its
+	 * scroll flag there, behind nil checks that stopped it with TRAP #0 on a NIL handle.
+	 */
+	static final int MB_SAVE_LOC=0xb5c;
+	private void menuBarSaveData() throws M68kCpuException {
+		if(memory.readLong(MB_SAVE_LOC)!=0)return;
+		int h=tb.api.createHandle(new byte[256]);if(h!=0)memory.writeLong(MB_SAVE_LOC,h);
 	}
 	/** MenuDisable ($B54): the menu ID and item of the last choice, a disabled item's too, as MenuChoice returns it. */
 	static final int MENU_DISABLE=0xb54;

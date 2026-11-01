@@ -281,7 +281,7 @@ class GMenuPaint implements ActionListener {
 		else if(cmd.equalsIgnoreCase("Cut Picture")){
 			FloatingSelection f = PaintTool.floating();
 			if(f!=null){
-				setClipboardImage(f.image, f.width(), f.height());
+				setClipboardImage(scrapImage(f), f.width(), f.height());
 				copiedFrom = f.bounds(); copiedBy = ImageSelection.current;
 				PaintTool.discardFloating();
 			}
@@ -291,7 +291,7 @@ class GMenuPaint implements ActionListener {
 		else if(cmd.equalsIgnoreCase("Copy Picture")){
 			FloatingSelection f = PaintTool.floating();
 			if(f!=null){
-				setClipboardImage(f.image, f.width(), f.height());
+				setClipboardImage(scrapImage(f), f.width(), f.height());
 				copiedFrom = f.bounds(); copiedBy = ImageSelection.current;
 			}
 			else System.out.println("Error");
@@ -764,6 +764,31 @@ class GMenuPaint implements ActionListener {
 	static void externalPicture(Object owner, Rectangle frame){ copiedBy = owner; copiedFrom = frame; }
 	/** That scrap is no longer on the clipboard. */
 	static void externalPictureGone(Object owner){ if(copiedBy==owner) copiedFrom = null; }
+
+	/** Option-Copy Card: the card as shown (its fields and buttons too) goes on the clipboard, and Paste Picture puts it back
+	 *  at the card's top left. */
+	static void copyCardPicture(){
+		OStack st = PCARDFrame.pc.stack;
+		if(st==null) return;
+		BufferedImage img = Printing.captureCurrentCard(new Rectangle(0, 0, st.width, st.height), 1);
+		if(img==null) return;
+		setClipboardImage(img, img.getWidth(), img.getHeight());
+		copiedFrom = new Rectangle(0, 0, img.getWidth(), img.getHeight()); copiedBy = ImageSelection.current;
+	}
+
+	/** The picture Copy/Cut Picture puts on the clipboard. A Select-tool rectangle is opaque as on HyperCard's scrap (a 1-bit
+	 *  PICT): the card layer's transparent pixels become white, so Paste Picture covers what is below (Machina's part preview
+	 *  box showed every part pasted over the last one). A lasso selection keeps its shape. */
+	static BufferedImage scrapImage(FloatingSelection f){
+		if(!f.isRectangular()) return f.image;
+		BufferedImage out = new BufferedImage(f.width(), f.height(), BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = out.createGraphics();
+		g.setColor(Color.WHITE);
+		g.fillRect(0, 0, f.width(), f.height());
+		g.drawImage(f.image, 0, 0, null);
+		g.dispose();
+		return out;
+	}
 
 	public static void setClipboardImage(BufferedImage img, int width, int height) {
 		Toolkit kit = Toolkit.getDefaultToolkit();

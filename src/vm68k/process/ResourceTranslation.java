@@ -40,6 +40,31 @@ final class ResourceTranslation {
 	/** The resources a program's file is recognised by (its dialogs and menus, which it does not rewrite as it runs). */
 	private static final Set<String> SHAPE=new HashSet<String>(Arrays.asList("MENU","cmnu","DITL","DLOG","ALRT","WIND","CNTL"));
 
+	/**
+	 * Resources programs check against tampering, by the type of their signature resource: left exactly as they are ("TYPE id"
+	 * for a whole resource, "STR# id first-last" for string list entries, counted from 1). Compact Pro 1.32 adds up a CRC
+	 * of its 'CPCT', DLOG and DITL 301 and 302 (its registration dialogs) and entries 6-11 of STR# 128 (its name, copyright
+	 * and registration lines) as it starts, compares it with WIND 128's refCon and stops with "A required resource cannot
+	 * be loaded (22)" when they differ.
+	 */
+	private static final Map<String,String[]> SELF_CHECKED=Map.of(
+		"CPCT",new String[]{"DLOG 301","DITL 301","DLOG 302","DITL 302","STR# 128 6-11"});
+
+	/** The program's self-checked resources ({@link #SELF_CHECKED}): key -> its checked entries (from 1; empty = all of it). */
+	static Map<String,BitSet> selfChecked(ResourceFile68k rf){
+		Map<String,BitSet> out=new HashMap<String,BitSet>();
+		for(Map.Entry<String,String[]> e:SELF_CHECKED.entrySet()){
+			if(rf.ofType(ResourceFile68k.fourcc(e.getKey())).isEmpty())continue;
+			for(String item:e.getValue()){
+				String[] f=item.substring(5).split(" ");
+				BitSet entries=new BitSet();
+				if(f.length>1){String[] range=f[1].split("-");entries.set(Integer.parseInt(range[0]),Integer.parseInt(range[range.length-1])+1);}
+				out.put(ResourceFile68k.Resource.key(ResourceFile68k.fourcc(item.substring(0,4)),Integer.parseInt(f[0])),entries);
+			}
+		}
+		return out;
+	}
+
 	static boolean supports(String to){return to!=null&&(to.startsWith("ja")||ROMAN_LANGUAGES.contains(to.split("-")[0]));}
 
 	/** The System's script the translated resources are written in: Japanese for Japanese, else the program's own. */
@@ -172,12 +197,17 @@ final class ResourceTranslation {
 		final File program;final ResourceFile68k rf;final VMTranslation.Translator t;final StackTextEncoding programEncoding,encoding;final Built built;
 		/** Names of the files beside the program (lower case): a string naming one is a name it looks the file up by. */
 		final Set<String> nearby=new HashSet<String>();
+		/** What the program checks itself ({@link #selfChecked}). */
+		final Map<String,BitSet> checked;
 		final Font font;final int lineHeight;
+		/** The program's texts, which misread lines in its pictures are snapped to (PictTranslation; made when a PICT is first met). */
+		PictureTranslation.Vocabulary pictureVocabulary;
 
 		Builder(File program,ResourceFile68k rf,VMTranslation.Translator t,StackTextEncoding programEncoding,StackTextEncoding encoding,Built built){
 			this.program=program;this.rf=rf;this.t=t;this.programEncoding=programEncoding;this.encoding=encoding;this.built=built;
 			File folder=program.getAbsoluteFile().getParentFile();
 			if(folder!=null)collectNames(folder,2);
+			checked=selfChecked(rf);
 			font=Fonts68k.systemFont(encoding==StackTextEncoding.JAPANESE);
 			int[] fi=Fonts68k.fontInfo(font);lineHeight=Math.max(1,fi[0]+fi[1]+fi[3]);
 		}
@@ -198,7 +228,18 @@ final class ResourceTranslation {
 			List<ResourceFile68k.Resource> ditls=new ArrayList<ResourceFile68k.Resource>();
 			for(ResourceFile68k.Resource r:rf.all()){
 				String type=ResourceFile68k.typeName(r.type);
+				if(type.equals("PICT")){ // the text in a picture, read by Tesseract when translating ahead (PictTranslation)
+					if(!PictureTranslation.enabledFor(program))continue;
+					try{
+						if(pictureVocabulary==null)pictureVocabulary=PictTranslation.vocabulary(rf,programEncoding);
+						Object[] p=PictTranslation.translated(r.originalData(),t,programEncoding,pictureVocabulary,text->translate(VMTranslation.Kind.TEXT,text,false));
+						if(p!=null){out.put(r.key(),copy(r,(byte[])p[0]));built.texts+=(Integer)p[1];}
+					}catch(RuntimeException e){/* left as it is */}
+					continue;
+				}
 				if(!TYPES.contains(type)||(r.attributes&ResourceFile68k.RES_COMPRESSED)!=0)continue;
+				BitSet entries=checked.get(r.key());
+				if(entries!=null&&entries.isEmpty()){keep("checked by the program",type+" "+r.id,null);continue;}
 				if(type.equals("DITL")){ditls.add(r);continue;}
 				byte[] d;try{d=r.originalData();}catch(RuntimeException e){continue;}
 				byte[] tr;
@@ -206,7 +247,7 @@ final class ResourceTranslation {
 					switch(type){
 						case "MENU":tr=menu(d,4);break;
 						case "cmnu":tr=menu(d,8);break;
-						case "STR#":tr=stringList(d);break;
+						case "STR#":tr=stringList(d,entries==null?new BitSet():entries);break;
 						case "STR ":tr=titleAt(d,0,VMTranslation.Kind.TEXT,true);break;
 						case "WIND":tr=titleAt(d,18,VMTranslation.Kind.UI,false);break;
 						case "DLOG":tr=titleAt(d,20,VMTranslation.Kind.UI,false);break;
@@ -250,6 +291,8 @@ final class ResourceTranslation {
 		boolean looksLikeName(String text){
 			String s=text.trim();
 			if(nearby.contains(s.toLowerCase(Locale.ROOT)))return true;
+			if(Fonts68k.isFontName(s))return true; // a font the program asks GetFNum for: Compact Pro's "MONACO", "GENEVA"
+			if(s.matches("(\\p{Lu}\\p{Ll}+){3,}"))return true; // words run together: a table read by position ("JanFebMar…Dec") or a key
 			if(s.matches("(?i)(https?|ftp|file|news)://.*|(?i)mailto:.*"))return true;
 			String bare=s.replaceAll("(\\.\\.\\.|…|:)$",""); // a menu item's ellipsis, a label's colon
 			if(!bare.contains(" ")&&(bare.matches(".*[.:\\\\@_=<>{}\\[\\]$#|].*")||bare.startsWith("/")||bare.contains("//")))return true; // "Brightness/Contrast" is a label
@@ -293,7 +336,8 @@ final class ResourceTranslation {
 			return out.toByteArray();
 		}
 
-		byte[] stringList(byte[] d){
+		/** A string list; the entries in {@code checked} (from 1) keep their exact bytes (the program checks them). */
+		byte[] stringList(byte[] d,BitSet checked){
 			int n=(d[0]&255)<<8|d[1]&255,at=2;
 			// a list that is mostly codes and names ("pict", "tiff", "PICT.PICT"...) is a table the program looks things up in: kept whole
 			int names=0,codes=0,texts=0;
@@ -304,6 +348,11 @@ final class ResourceTranslation {
 			ByteArrayOutputStream out=new ByteArrayOutputStream();
 			out.write(d,0,2);
 			for(int i=0;i<n&&at<d.length;i++){
+				if(checked.get(i+1)){
+					int len=Math.min(d[at]&255,d.length-at-1);
+					keep("checked by the program",programEncoding.decode(d,at+1,len),null);
+					out.write(d,at,1+len);at+=1+len;continue;
+				}
 				String share=wrapped.get(i);
 				if(share==null){at=pascal(d,at,VMTranslation.Kind.TEXT,true,out);continue;}
 				int len=d[at]&255;
@@ -816,6 +865,11 @@ final class ResourceTranslation {
 			}
 			StackTextEncoding encoding=encodingNamed(meta.get("encoding")),programEncoding=encodingNamed(meta.get("programEncoding"));
 			if(encoding==null||programEncoding==null)return null;
+			if(VMTranslation.programTextEncoding(rf,programEncoding)!=programEncoding){ // made before the program's script was read from its texts
+				System.err.println("[68K] translated resources "+file.getName()+" read the program's texts as "+programEncoding+": not used (make them again)");
+				return null;
+			}
+			Map<String,BitSet> checked=selfChecked(rf);
 			String forced=System.getProperty("hz68k.language");
 			String chosen=forced!=null?(Toolbox68k.applicationEncoding()==StackTextEncoding.JAPANESE?"Japanese":"English"):settings!=null?settings.language:null;
 			if(chosen!=null&&!chosen.equals(systemLanguage(encoding))){
@@ -828,6 +882,7 @@ final class ResourceTranslation {
 				ResourceFile68k.Resource own=rf.get(r.type,r.id);
 				String sum=sums.get(ResourceFile68k.typeName(r.type)+"\t"+r.id);
 				if(own==null||sum==null||own.original!=null||!sum.equals(crc(own.data())))continue; // changed since it was translated
+				if(checked.containsKey(r.key())&&!checkedKept(own.data(),r.data(),checked.get(r.key())))continue; // the program would stop
 				List<String> was=new ArrayList<String>(),now=new ArrayList<String>();
 				VMTranslation.resourceStrings(own,programEncoding,was);
 				if(r.type==ResourceFile68k.fourcc("STR#"))overlay.addPage(strings(own.data(),programEncoding),strings(r.data(),encoding));
@@ -843,6 +898,20 @@ final class ResourceTranslation {
 			System.err.println("[68K] translated resources "+file.getName()+" cannot be read: "+e);
 			return null;
 		}
+	}
+	/** Whether a translated resource left what the program checks as it was: the string list entries, else all of it. */
+	private static boolean checkedKept(byte[] own,byte[] translated,BitSet entries){
+		if(entries.isEmpty())return Arrays.equals(own,translated);
+		List<byte[]> a=entryBytes(own),b=entryBytes(translated);
+		for(int i=entries.nextSetBit(0);i>=0;i=entries.nextSetBit(i+1))
+			if(i>a.size()||i>b.size()||!Arrays.equals(a.get(i-1),b.get(i-1)))return false;
+		return true;
+	}
+	private static List<byte[]> entryBytes(byte[] d){
+		List<byte[]> out=new ArrayList<byte[]>();
+		int n=d.length<2?0:(d[0]&255)<<8|d[1]&255;
+		for(int i=0,p=2;i<n&&p<d.length;i++){int len=Math.min(d[p]&255,d.length-p-1);out.add(Arrays.copyOfRange(d,p+1,p+1+len));p+=1+len;}
+		return out;
 	}
 	/** A string list's entries. */
 	private static List<String> strings(byte[] d,StackTextEncoding encoding){

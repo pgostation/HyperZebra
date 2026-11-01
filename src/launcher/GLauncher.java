@@ -1654,11 +1654,16 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		final int type = DocumentOpeners.typeOf(doc);
 		final boolean picture = isPicture(doc, type), archive = DocumentOpeners.isArchive(doc);
 		File chosen = type==0 ? null : LauncherStore.get().openerFor(type);
+		// the archive's own expander before any other that claims its type (Compact Pro claims SIT!, a .sit.hqx is StuffIt's)
+		if(chosen==null && archive && offerExpanders && ExtractorApps.ownExpanderMissing(doc) && offerExpanders(doc)) return true;
+		if(chosen==null && archive) chosen = ExtractorApps.ownExpander(doc);
 		if(chosen==null && archive) chosen = DocumentOpeners.obvious(doc);
+		if(chosen==null && archive) chosen = DocumentOpeners.expanderFor(doc);
 		if(chosen!=null){ instance.openDocuments(chosen, Collections.singletonList(doc)); return true; }
 		List<File> candidates = DocumentOpeners.candidates(doc);
 		if(candidates.isEmpty() && picture) return false; // HyperZebra's own picture editor, as always
-		if(candidates.isEmpty() && archive && offerExpanders && offerExpanders(doc)) return true;
+		// an archive nothing expands: the expander first, even when text editors could open a BinHex file (a .sit.hqx listed them)
+		if((candidates.isEmpty() || !DocumentOpeners.expanderKnown()) && archive && offerExpanders && offerExpanders(doc)) return true;
 		boolean resources = hasResources(doc);
 		if(candidates.isEmpty()){ // nothing opens it; a file with resources can still be looked at in the resource editor
 			String kind = type==0 ? "" : " ('"+ResourceFile68k.typeName(type)+"')", editor = text("Resource Editor");

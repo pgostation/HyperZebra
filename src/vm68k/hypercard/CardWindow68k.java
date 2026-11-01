@@ -287,6 +287,7 @@ final class CardWindow68k {
 		gammaSeen=qd.gammaVersion();seedGamma();
 		Surface card=new Surface(stack.getWindowTitle(),PCARD.pc.mainPane,PCARD.scalePercent(),false);surfaces.add(card);record=card.record;
 		card.placeOnScreen();
+		qd.hyperCardWindowsInFront=this::picturesInFront; // reads of the screen see the picture windows over the card (CSEE IDColor)
 		// HyperCard's message box is in the WindowList also while it is hidden (UxMsgBar finds it by its title "message"; made only
 		// when it showed as this VM started, it answered "Not exist msg window" for good when the box came up later). Its title is
 		// "Message" (HyperCard J-2.3 measured, Oct 24 2026): Palette XFCN walks the list to the window titled exactly "Message"
@@ -504,6 +505,23 @@ final class CardWindow68k {
 		try{flush();}catch(M68kCpuException ignored){}
 		followGamma();
 		closed=true;for(Surface s:surfaces)s.close();
+		qd.hyperCardWindowsInFront=null;
+	}
+	/** The picture command's windows shown over the card, front first, for QuickDraw68k.hyperCardWindowsInFront: {record, left,
+	 *  top, visible top, left, bottom, right} per window in the external's global coordinates (the picture's top left on the screen,
+	 *  the part of it the window shows). */
+	private int[] picturesInFront(){
+		if(closed||!tb.hosted())return null;
+		int[] r=new int[0];
+		for(int i=surfaces.size()-1;i>=0;i--){Surface s=surfaces.get(i);
+			if(s.picture==null||!s.shown()||s.picture.label==null||!s.picture.label.isShowing())continue;
+			try{java.awt.Point at=s.picture.label.getLocationOnScreen();java.awt.Point o=tb.host().toGuest(at);
+				java.awt.Point end=tb.host().toGuest(new java.awt.Point(at.x+s.picture.label.getWidth(),at.y+s.picture.label.getHeight()));
+				r=java.util.Arrays.copyOf(r,r.length+7);int k=r.length-7;
+				r[k]=s.record;r[k+1]=o.x;r[k+2]=o.y;r[k+3]=o.y;r[k+4]=o.x;r[k+5]=end.y;r[k+6]=end.x;}
+			catch(RuntimeException e){} // the window went away meanwhile
+		}
+		return r.length==0?null:r;
 	}
 
 	/** {@link QuickDraw68k#gammaVersion} of this VM's driver when the card window last took its table. */

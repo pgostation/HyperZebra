@@ -25,6 +25,8 @@ final class ResourceFile68k {
 		final int type;int id;String name;int attributes;private byte[] data;
 		/** Lazily read source (HyperZebra stack resource files): the file and the number of leading bytes to skip. */
 		File source;int sourcePrefix;
+		/** Makes the bytes on first use when no file holds them as they are (a stack's bitmap font, kept as a picture). */
+		java.util.function.Supplier<byte[]> maker;
 		/** VM handle currently holding the data, or 0. */
 		int handle;boolean changed;
 		/** Already fed through the program's $A0FC resource-reading patch (ResourceManager68k.data). */
@@ -70,6 +72,7 @@ final class ResourceFile68k {
 		/** The resource bytes, read from the source file on first use; System 7 compressed resources are expanded. */
 		byte[] data(){
 			if(data==null&&convertedSource())data=type==ICON_TYPE?iconBits(source):sndBits(source,name);
+			if(data==null&&maker!=null)data=maker.get();
 			if(data==null&&source!=null){
 				try{byte[] bytes=Files.readAllBytes(source.toPath());data=sourcePrefix>0&&bytes.length>=sourcePrefix?java.util.Arrays.copyOfRange(bytes,sourcePrefix,bytes.length):bytes;}
 				catch(IOException e){data=new byte[0];}
@@ -86,7 +89,7 @@ final class ResourceFile68k {
 			}
 			return data==null?new byte[0]:data;
 		}
-		void setData(byte[] bytes){data=bytes;source=null;}
+		void setData(byte[] bytes){data=bytes;source=null;maker=null;}
 		/** The program's own bytes while a translation (ResourceTranslation) is laid over them, else null. */
 		byte[] original;
 		/** The translation laid over the resource, as it was laid. */
@@ -105,7 +108,7 @@ final class ResourceFile68k {
 		int mapAttributes(){return attributes&~RES_CHANGED|(changed?RES_CHANGED:0)|(storedCompressed?RES_COMPRESSED:0);}
 		int length(){if((attributes&RES_COMPRESSED)!=0)return data().length;return storedLength();}
 		/** The size of the bytes as stored, without expanding a compressed resource (map images only need consistent offsets). */
-		int storedLength(){if(data==null&&source!=null)return convertedSource()?data().length:(int)Math.max(0,source.length()-sourcePrefix);return data==null?0:data.length;}
+		int storedLength(){if(data==null&&maker!=null)return data().length;if(data==null&&source!=null)return convertedSource()?data().length:(int)Math.max(0,source.length()-sourcePrefix);return data==null?0:data.length;}
 		String key(){return key(type,id);}
 		static String key(int type,int id){return type+":"+id;}
 	}

@@ -299,6 +299,7 @@ public class OButton extends OObject implements Cloneable {
 				//again, since a using stack may contain the named PICT with an ID that is
 				//also occupied by an unrelated PICT in the main stack.
 				BufferedImage bi = ((OCardBase)parent).stack.rsrc.getDisplayImage(name, "PICT");
+				if(bi!=null) bi = PictureTranslation.shown(((OCardBase)parent).stack, bi); //its text translated when the stack is
 				if(bi!=null){
 					if(scaleIcon || blendMode!=0) imageForScale = bi;
 					newIcon = makeButtonIcon(new ImageIcon( bi ));
@@ -622,6 +623,10 @@ public class OButton extends OObject implements Cloneable {
 	/** bg btn X of card Y for a card Y that is not displayed: a copy without Swing parts whose hilite is card Y's own
 	 *  (sharedHilite false). The displayed card, shared buttons and card buttons give this button itself. HC J-2.3 probe
 	 *  E BgButtonsRemote: the hilite of bg btn "Flag" of cd "_1" is that card's, set leaves the other cards alone. */
+	/** The background button a forCard view shows on another card (null: no view). Only the hilite is that card's own:
+	 *  other properties set on the view go to this button (TUtil.SetProperty). */
+	OButton viewOf;
+
 	OButton forCard(OCard cd) {
 		if(cd==null || card==null || !card.objectType.equals("background") || sharedHilite) return this;
 		if(cardView==cd || (cardView==null && ((OBackground)card).viewCard==cd)) return this;
@@ -629,6 +634,7 @@ public class OButton extends OObject implements Cloneable {
 		try{ view = (OButton)super.clone(); }
 		catch(CloneNotSupportedException e){ return this; }
 		view.cardView = cd;
+		view.viewOf = viewOf!=null ? viewOf : this;
 		view.btn = null; view.chkbox = null; view.radio = null; view.popup = null;
 		OBgButtonData data = view.cardHiliteData(false);
 		view.hilite = data!=null && data.check_hilite;
@@ -2312,13 +2318,7 @@ class MyButton extends JButton {
 		Graphics ig = img.createGraphics();
 		ic.paintIcon(this, ig, 0, 0);
 		ig.dispose();
-		Graphics2D g2 = (Graphics2D)g.create();
-		try{
-			g2.setPaintMode();
-			g2.setColor(Color.BLACK);
-			g2.setXORMode(Color.WHITE);
-			for(int y=0; y<h; y++) for(int x=0; x<w; x++) if((img.getRGB(x, y)>>>24)>=128) g2.fillRect(r.x+x, r.y+y, 1, 1);
-		}finally{ g2.dispose(); }
+		PictureFile.invert((Graphics2D)g, PictureFile.inversionImage(img, w, h), r.x, r.y);
 	}
 }
 
@@ -2469,11 +2469,7 @@ class RoundedCornerButton extends MyButton {
 		if(btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
         if(isBorderPainted()){
 	        initShape();
-	        Graphics2D g2 = (Graphics2D)g;
-	        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-	        g2.setColor(btnData.color);
-	        g2.draw(shape);
-	        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+	        paintFrame((Graphics2D)g);
         }
 		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
@@ -2485,6 +2481,19 @@ class RoundedCornerButton extends MyButton {
 			Rectangle outline = ButtonGUI.localOutlineBounds(getWidth(), getHeight());
 			g.drawRect(outline.x, outline.y, outline.width, outline.height);
 		}
+    }
+    /** The button's frame in its colour. */
+    protected void paintFrame(Graphics2D g2){
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(btnData.color);
+        g2.draw(shape);
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+    }
+    /** Fills the logical rectangle x,y,w,h of the button (its own coordinates) in window pixels, edges rounded as the card's. */
+    protected void fillLogical(Graphics g, int x, int y, int w, int h){
+        int l = PCARD.toPhysical(btnData.left), t = PCARD.toPhysical(btnData.top);
+        int px = PCARD.toPhysical(btnData.left+x)-l, py = PCARD.toPhysical(btnData.top+y)-t;
+        g.fillRect(px, py, PCARD.toPhysical(btnData.left+x+w)-l-px, PCARD.toPhysical(btnData.top+y+h)-t-py);
     }
     @Override
     public boolean contains(int x, int y) {
@@ -2574,18 +2583,31 @@ class RectButton extends RoundedCornerButton {
 		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
 		if(PCARD.pc.stack.curCard==null || btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
         if(btnData.style==4){
+	        //in card pixels: zoomed, the frame and the shadow are as thick as one of them (they were one window pixel)
 	        g.setColor(btnData.color);
-	        Rectangle b = getBounds();
-	        g.drawLine(0, 0, b.width-2, 0);
-	        g.drawLine(0, 0, 0, b.height-2);
-	        g.drawLine(b.width-1, 2, b.width-1, b.height);
-	        g.drawLine(b.width-2, 1, b.width-2, b.height);
-	        g.drawLine(2, b.height-1, b.width, b.height-1);
-	        g.drawLine(1, b.height-2, b.width, b.height-2);
+	        int w = btnData.width, h = btnData.height;
+	        fillLogical(g, 0, 0, w-1, 1);
+	        fillLogical(g, 0, 0, 1, h-1);
+	        fillLogical(g, w-1, 2, 1, h-2);
+	        fillLogical(g, w-2, 1, 1, h-1);
+	        fillLogical(g, 2, h-1, w-2, 1);
+	        fillLogical(g, 1, h-2, w-1, 1);
         }
         else{
         	super.paintBorder(g);
         }
+    }
+    /** A rectangle button's frame is one card pixel wide: drawn one window pixel wide at 2x, the white inside showed half a card
+     *  pixel past HyperCard's frame (G'S LAIR's title logo, which ColorizeHC draws inside it, had a white edge left and top). */
+    @Override
+    protected void paintFrame(Graphics2D g2){
+        if(btnData.style!=3){ super.paintFrame(g2); return; }
+        g2.setColor(btnData.color);
+        int w = btnData.width, h = btnData.height;
+        fillLogical(g2, 0, 0, w, 1);
+        fillLogical(g2, 0, h-1, w, 1);
+        fillLogical(g2, 0, 0, 1, h);
+        fillLogical(g2, w-1, 0, 1, h);
     }
 }
 
@@ -2846,14 +2868,88 @@ class MyPopup extends JComboBox {
 		btnData=btn;
 		this.setDoubleBuffered(PCARD.useDoubleBuffer);
 		//選択肢は表示だけ翻訳する(StackTranslation)。選んだ値(selectedText)は元のまま
+		//幅の狭いポップアップでは選択中の項目(index -1)をAquaには描かせず、paintで自分で描く
 		final javax.swing.ListCellRenderer<Object> base = getRenderer();
 		setRenderer((list, value, index, selected, focus) ->
-			base.getListCellRendererComponent(list, value instanceof String ? StackTranslation.popupItem(btnData, (String)value) : value, index, selected, focus));
+			base.getListCellRendererComponent(list, index==-1 && ownValue ? "" : value instanceof String ? StackTranslation.popupItem(btnData, (String)value) : value, index, selected, focus));
 	}
+
+	//Aquaのポップアップが選択中の項目を描く幅は、ボタンの幅より50px狭い
+	//(AquaComboBoxButton.doRendererPaint: 矢印ボタンの左右inset 2pxずつ、固定の左10px・
+	//矢印24px、さらに右inset 2px、レンダラの左右5pxずつ)。実機HCのポップアップは
+	//矢印部分の約20pxと余白数pxだけなので、WAKUREN君の「4月」(62px)や「1997年」(75px)
+	//は実機では全部見えるのに、Aquaでは「...」「19...」になっていた。
+	//そこで項目がこの幅に収まらないときだけ、小さいAquaの見た目(sizeVariant small:
+	//枠は左5px・矢印は右端から20px)にして、項目は枠の左端から矢印の手前まで自分で描く。
+	//収まる幅広のポップアップはAquaの描き方のまま変えない。
+	static final int AQUA_VALUE_INSETS = 50;
+	static final int NARROW_VALUE_LEFT = 8;
+	static final int NARROW_VALUE_RIGHT = 22;
+	private static final String SIZE_VARIANT = "JComponent.sizeVariant";
+	private boolean ownValue;
+
+	/** Whether Aqua's own drawing of the selected item shows text this wide in a pop-up this wide (physical pixels). */
+	static boolean fitsAquaValue(int width, int textWidth){
+		return textWidth <= width - AQUA_VALUE_INSETS;
+	}
+
+	/** The selected item as shown when it is too wide for Aqua's own drawing (drawn by {@link #paint}), else null. */
+	String narrowValueText(){
+		if(getUI()==null || !getUI().getClass().getName().startsWith("com.apple.laf.") || isEditable()) return null;
+		Object selected = getSelectedItem();
+		if(selected==null) return null;
+		String text = selected instanceof String && btnData!=null ? StackTranslation.popupItem(btnData, (String)selected) : selected.toString();
+		return fitsAquaValue(getWidth(), getFontMetrics(getFont()).stringWidth(text)) ? null : text;
+	}
+
+	//幅・フォント・選択項目が変わったら、小さいAquaの見た目にするかを決め直す。一度smallに
+	//したものは"regular"に戻す(nullで消すとAquaは枠を元の大きさに戻さない)
+	private void updateNarrowLook(){
+		if(getFont() instanceof javax.swing.plaf.UIResource) return; //HZのフォントを入れる前
+		Object variant = getClientProperty(SIZE_VARIANT);
+		if(narrowValueText()!=null){
+			if(!"small".equals(variant)) putClientProperty(SIZE_VARIANT, "small");
+		}
+		else if(variant!=null && !"regular".equals(variant)) putClientProperty(SIZE_VARIANT, "regular");
+	}
+
+	@Override
+	protected void selectedItemChanged(){
+		super.selectedItemChanged();
+		updateNarrowLook();
+	}
+
+	@Override
+	public void setFont(Font font){
+		super.setFont(font);
+		updateNarrowLook();
+	}
+
 	@Override
 	public void paint(Graphics g){
 		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
-		super.paint(g);
+		String own = narrowValueText();
+		ownValue = own!=null;
+		try{ super.paint(g); }
+		finally{ ownValue = false; }
+		if(own!=null) paintNarrowValue(g, own);
+	}
+
+	//AquaComboBoxButton.doRendererPaintと同じ高さ(上 高さ/2-8 から19px、レンダラの上下inset 1px)の中央に描く
+	private void paintNarrowValue(Graphics g, String text){
+		Graphics2D g2 = (Graphics2D)g.create();
+		try{
+			g2.setFont(getFont());
+			FontMetrics metrics = g2.getFontMetrics();
+			int right = getWidth()-NARROW_VALUE_RIGHT;
+			text = javax.swing.plaf.basic.BasicGraphicsUtils.getClippedString(this, metrics, text, right-NARROW_VALUE_LEFT);
+			int y = getHeight()/2-8+1+(17-metrics.getHeight())/2+metrics.getAscent();
+			g2.clipRect(0, 0, right, getHeight());
+			if((btnData.textStyle&8)!=0){ paintOutlineText(g2, text, NARROW_VALUE_LEFT, y); return; }
+			g2.setColor(isEnabled() ? getForeground() : javax.swing.UIManager.getColor("ComboBox.disabledForeground"));
+			javax.swing.plaf.basic.BasicGraphicsUtils.drawString(this, g2, text, NARROW_VALUE_LEFT, y);
+		}
+		finally{ g2.dispose(); }
 	}
 	//2倍拡大表示モードでは、呼び出し元は今まで通り論理座標(x,y,w,h)を渡してよい。
 	//実際のSwing上のサイズ・位置だけをここで拡大率倍する。
@@ -2888,6 +2984,7 @@ class MyPopup extends JComboBox {
 		}
 		Rectangle physical = PCARD.toPhysical(x+nameWidth, y, Math.max(0,width-nameWidth), height);
 		super.setBounds(physical.x, physical.y, physical.width, physical.height);
+		updateNarrowLook();
 	}
 	@Override
 	public void setVisible(boolean visible){
@@ -2909,18 +3006,19 @@ class MyPopup extends JComboBox {
 		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
 		this.validate();
 		super.paintComponent(g);
-		if((btnData.textStyle&8)!=0){
+		if((btnData.textStyle&8)!=0 && !ownValue){
 			Object selected=getSelectedItem();
-			if(selected!=null)paintOutlineText(g,selected.toString(),getInsets().left+4);
+			if(selected!=null){
+				Graphics2D g2=(Graphics2D)g;g2.setFont(getFont());FontMetrics metrics=g2.getFontMetrics();
+				paintOutlineText(g2,selected.toString(),getInsets().left+4,(getHeight()-metrics.getHeight())/2+metrics.getAscent());
+			}
 		}
 		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
 		}
 	}
 
-	private void paintOutlineText(Graphics g,String text,int x) {
-		Graphics2D g2=(Graphics2D)g;g2.setFont(getFont());FontMetrics metrics=g2.getFontMetrics();
-		int y=(getHeight()-metrics.getHeight())/2+metrics.getAscent();
+	private void paintOutlineText(Graphics2D g2,String text,int x,int y) {
 		g2.setColor(btnData.color);
 		g2.drawString(text,x-1,y);g2.drawString(text,x+1,y);g2.drawString(text,x,y-1);g2.drawString(text,x,y+1);
 		g2.setColor(btnData.bgColor);g2.drawString(text,x,y);

@@ -96,6 +96,9 @@ final class ImageCompression68k {
 				int sizePtr=memory.readLong(sp+8),similarity=memory.readLong(sp+4);
 				if(err==0&&sizePtr!=0)memory.writeLong(sizePtr,frameSize[0]);if(similarity!=0)memory.writeByte(similarity,0);break;}
 			case 0x1a:if(sequences().has(memory.readLong(sp)))err=0;break; // CDSequenceBusy
+			case 0x0c:stdPix(cpu,memory.readLong(sp+24),memory.readLong(sp+20),memory.readLong(sp+16),(short)memory.readWord(sp+14),memory.readLong(sp+10));break; // StdPix(src, srcRect, matrix, mode, mask, matte, matteRect, flags)
+			case 0x08:err=decompressImage(cpu,memory.readLong(sp+22),memory.readLong(sp+18),memory.readLong(sp+14),memory.readLong(sp+10),0,memory.readLong(sp+6),(short)memory.readWord(sp+4),memory.readLong(sp));break; // DecompressImage(data, desc, dst, srcRect, dstRect, mode, mask)
+			case 0x09:err=decompressImage(cpu,memory.readLong(sp+50),memory.readLong(sp+46),memory.readLong(sp+42),memory.readLong(sp+38),memory.readLong(sp+34),0,(short)memory.readWord(sp+32),memory.readLong(sp+28));break; // FDecompressImage(data, desc, dst, srcRect, matrix, mode, mask, matte, matteRect, accuracy, codec, bufferSize, dataProc, progressProc)
 			case 0x45:err=makeFilePreview((short)memory.readWord(sp+4));break; // MakeFilePreview(resRefNum, progress)
 			case 0x46:{int data=memory.readLong(sp);byte[] b=data==0?null:tb.api.handleContents(data); // AddFilePreview(resRefNum, previewType, previewData)
 				err=b==null?PictureCompression68k.PARAM_ERR:PictureCompression68k.addFilePreview(tb,(short)memory.readWord(sp+8),memory.readLong(sp+4),b);break;}
@@ -105,6 +108,7 @@ final class ImageCompression68k {
 			case 0x27:err=compressPictureFile((short)memory.readWord(sp+28),(short)memory.readWord(sp+26),memory.readLong(sp+16),memory.readLong(sp+4));break; // FCompressPictureFile(src, dst, colorDepth, ctable, quality, doDither, compressAgain, progressProc, cType, codec)
 			case 0x2a:{int picture=memory.readLong(sp+10);byte[] b=picture==0?null:tb.api.handleContents(picture); // MakeThumbnailFromPicture(picture, colorDepth, thumbnail, progress)
 				err=thumbnailOf(b,memory.readLong(sp+4));break;}
+			case 0x28:err=pictureFileHeader((short)memory.readWord(sp+8),memory.readLong(sp+4),memory.readLong(sp));break; // GetPictureFileHeader(refNum, frame, header)
 			case 0x29:err=drawPictureFile((short)memory.readWord(sp+8),memory.readLong(sp+4));break; // DrawPictureFile(refNum, frame, progress)
 			case 0x2b:err=thumbnailOf(PictureCompression68k.pictureOfFile(tb,(short)memory.readWord(sp+10),null),memory.readLong(sp+4));break; // MakeThumbnailFromPictureFile(refNum, colorDepth, thumbnail, progress)
 			default:break;
@@ -143,6 +147,63 @@ final class ImageCompression68k {
 		if(result==null)return PictureCompression68k.CODEC_ERR;
 		tb.api.loadHandle(thumbnail,result);return 0;
 	}
+	/**
+	 * StdPix: the uncompressed PixMap {@code src} (its {@code srcRect}, or its bounds) drawn into the current port where the
+	 * matrix puts it (no matrix: in place), by CopyBits with the mode and mask - the bottleneck QuickTime's picture drawing
+	 * goes through. QuickDraw Utilities' StdPix drew nothing (the selector was a no-op).
+	 */
+	private void stdPix(M68kCpu cpu,int src,int srcRect,int matrix,int mode,int mask) throws M68kException {
+		int port=tb.api.currentQuickDrawPort();if(port==0||src==0)return;
+		int map=src;if((memory.readWord(src+4)&0xc000)==0xc000){int h=memory.readLong(src);map=h==0?0:memory.readLong(h);if(map==0)return;} // a colour port's portBits (&port->portBits, as CopyBits takes it): its PixMap's bounds
+		int[] from=srcRect!=0?rect(srcRect):rect(map+6),to=mapped(from,matrix);
+		if(Mac68kApi.TRACE||QuickTime68k.QT_TRACE)System.err.println("[icm] StdPix src $"+Integer.toHexString(src)+" srcRect $"+Integer.toHexString(srcRect)+" matrix $"+Integer.toHexString(matrix)+" mask $"+Integer.toHexString(mask)+" "+java.util.Arrays.toString(from)+" -> "+java.util.Arrays.toString(to)+" port $"+Integer.toHexString(port)+" mode "+mode);
+		blit(cpu,src,port+2,from,to,mode,mask);
+	}
+	/**
+	 * DecompressImage / FDecompressImage: the image ({@code data} with its ImageDescription) decoded natively
+	 * ({@link QuickTimeImage68k}: raw, rle, smc, jpeg, png...) and drawn into the PixMap {@code dst} - its {@code srcRect} (or the
+	 * whole image) at {@code dstRect} or where the matrix puts it - by CopyBits with the mode and mask. QuickDraw Utilities'
+	 * FastDither draws a GWorld through FDecompressImage with a 'raw ' description (it answered codecUnimpErr, nothing drawn).
+	 */
+	private int decompressImage(M68kCpu cpu,int data,int desc,int dst,int srcRect,int matrix,int dstRect,int mode,int mask) throws M68kException {
+		byte[] description=desc==0?null:tb.api.handleContents(desc);
+		if(description==null||description.length<86||data==0||dst==0||memory.readLong(dst)==0)return PictureCompression68k.PARAM_ERR;
+		int width=MacApp68k.u2(description,32),height=MacApp68k.u2(description,34),depth=(short)MacApp68k.u2(description,82),bits=depth>32?depth-32:depth;
+		if(width<=0||height<=0||(long)width*height>16L*1024*1024)return PictureCompression68k.PARAM_ERR;
+		int size=MacApp68k.u4(description,44);
+		if(size<=0)size=(bits>=8?width*((bits+7)/8):(width*Math.max(1,bits)+7)/8)*height; // a description made by hand for 'raw ' rows often leaves dataSize 0
+		int[] argb=QuickTimeImage68k.decode(description,memory.readBytes(data,Math.min(size,64*1024*1024)));
+		if(Mac68kApi.TRACE||QuickTime68k.QT_TRACE)System.err.println("[icm] DecompressImage '"+QuickTimeImage68k.codecName(description)+"' "+width+"x"+height+" depth "+depth+(argb==null?" not decodable":""));
+		if(argb==null)return CODEC_UNIMP_ERR;
+		int[] whole={0,0,height,width},from=srcRect!=0?rect(srcRect):whole,to=dstRect!=0?rect(dstRect):mapped(from,matrix);
+		int pixels=memory.allocate(width*height*4,4),map=memory.allocate(50,4);
+		try{
+			for(int i=0;i<argb.length;i++)memory.writeLong(pixels+i*4,argb[i]&0xffffff);
+			memory.fill(map,50,0);memory.writeLong(map,pixels);memory.writeWord(map+4,0x8000|width*4);memory.writeWord(map+10,height);memory.writeWord(map+12,width);
+			memory.writeLong(map+22,0x00480000);memory.writeLong(map+26,0x00480000);memory.writeWord(map+30,16);memory.writeWord(map+32,32);memory.writeWord(map+34,3);memory.writeWord(map+36,8);
+			// the current port's own PixMap goes as the port's portBits, so the blit is clipped and reaches the screen as the port's drawing does
+			int port=tb.api.currentQuickDrawPort(),target=memory.readLong(dst);
+			if(port!=0&&(memory.readWord(port+6)&0xc000)==0xc000&&memory.readLong(port+2)==dst)target=port+2;
+			blit(cpu,map,target,from,to,mode,mask);
+		}finally{memory.free(map);memory.free(pixels);}
+		return 0;
+	}
+	/** CopyBits from the PixMap/BitMap {@code src} to {@code dst} with rectangles given as {top,left,bottom,right}. */
+	private void blit(M68kCpu cpu,int src,int dst,int[] from,int[] to,int mode,int mask) throws M68kException {
+		if(from[2]<=from[0]||from[3]<=from[1]||to[2]<=to[0]||to[3]<=to[1])return;
+		int rects=memory.allocate(16,4);
+		try{for(int i=0;i<4;i++){memory.writeWord(rects+i*2,from[i]);memory.writeWord(rects+8+i*2,to[i]);}
+			tb.api.quickDraw().copyBitsFrom(cpu,src,dst,rects,rects+8,mode,mask);}
+		finally{memory.free(rects);}
+	}
+	/** The bounding box of {@code r} under a QuickTime MatrixRecord (Fixed a b / c d / tx ty; u, v, w ignored), or r itself without one. */
+	private int[] mapped(int[] r,int matrix) throws M68kCpuException {
+		if(matrix==0)return r.clone();
+		double a=memory.readLong(matrix)/65536.0,b=memory.readLong(matrix+4)/65536.0,c=memory.readLong(matrix+12)/65536.0,d=memory.readLong(matrix+16)/65536.0,tx=memory.readLong(matrix+24)/65536.0,ty=memory.readLong(matrix+28)/65536.0;
+		double minX=Double.MAX_VALUE,minY=Double.MAX_VALUE,maxX=-Double.MAX_VALUE,maxY=-Double.MAX_VALUE;
+		for(int[] k:new int[][]{{r[1],r[0]},{r[3],r[0]},{r[1],r[2]},{r[3],r[2]}}){double x=k[0]*a+k[1]*c+tx,y=k[0]*b+k[1]*d+ty;minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
+		return new int[]{(int)Math.round(minY),(int)Math.round(minX),(int)Math.round(maxY),(int)Math.round(maxX)};
+	}
 	/** CompressSequenceBegin's sequences: {src PixMapHandle, srcRect, cType, quality, desc Handle} by sequence ID. */
 	private final Map<Integer,int[]> compressions=new HashMap<Integer,int[]>();private int nextSequence=0x5100;
 	private int[] rect(int p) throws M68kCpuException {return p==0?new int[4]:new int[]{(short)memory.readWord(p),(short)memory.readWord(p+2),(short)memory.readWord(p+4),(short)memory.readWord(p+6)};}
@@ -180,6 +241,25 @@ final class ImageCompression68k {
 		int[] frame={(short)memory.readWord(framePtr),(short)memory.readWord(framePtr+2),(short)memory.readWord(framePtr+4),(short)memory.readWord(framePtr+6)};
 		QuickDraw68k qd=tb.api.quickDraw();qd.drawPictureInto(qd.currentPortAddress(),0,picture,frame);return 0;
 	}
+	/**
+	 * GetPictureFileHeader: a PICT file's frame (picFrame) and its OpenCPicParams (srcRect, hRes, vRes, version, 2 reserved):
+	 * an extended version 2 header's resolution and source rectangle, otherwise the frame at 72 dpi. AntiAlias 1.01 sizes its
+	 * window and the picture it records by the frame; with codecUnimpErr it got an empty one (a grey window).
+	 */
+	private int pictureFileHeader(int refNum,int framePtr,int headerPtr) throws M68kException {
+		byte[] p=PictureCompression68k.pictureOfFile(tb,refNum,null);
+		if(p==null)return tb.files.fileManager.referenceLength(refNum)<0?-51:PictureCompression68k.CODEC_ERR; // rfNumErr
+		if(p.length<10)return PictureCompression68k.CODEC_ERR;
+		int[] frame={s2(p,2),s2(p,4),s2(p,6),s2(p,8)},src=frame.clone();int hRes=72<<16,vRes=72<<16,version=0;
+		if(p.length>=40&&s2(p,10)==0x0011&&s2(p,12)==0x02ff&&s2(p,14)==0x0c00){version=s2(p,16);
+			if(version==-2){hRes=s4(p,20);vRes=s4(p,24);src=new int[]{s2(p,28),s2(p,30),s2(p,32),s2(p,34)};}}
+		if(framePtr!=0)for(int i=0;i<4;i++)memory.writeWord(framePtr+2*i,frame[i]);
+		if(headerPtr!=0){for(int i=0;i<4;i++)memory.writeWord(headerPtr+2*i,src[i]);memory.writeLong(headerPtr+8,hRes);memory.writeLong(headerPtr+12,vRes);
+			memory.writeWord(headerPtr+16,version);memory.writeWord(headerPtr+18,0);memory.writeLong(headerPtr+20,0);}
+		return 0;
+	}
+	private static int s2(byte[] b,int at){return (short)(((b[at]&255)<<8)|(b[at+1]&255));}
+	private static int s4(byte[] b,int at){return ((b[at]&255)<<24)|((b[at+1]&255)<<16)|((b[at+2]&255)<<8)|(b[at+3]&255);}
 	/** CompressPictureFile: the PICT file {@code dst} (may be {@code src}) gets the picture of {@code src} compressed; the 512-byte header is kept. */
 	private int compressPictureFile(int src,int dst,int quality,int codec) throws M68kException {
 		byte[][] header={null};byte[] picture=PictureCompression68k.pictureOfFile(tb,src,header);

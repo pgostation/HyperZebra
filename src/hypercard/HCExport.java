@@ -230,7 +230,8 @@ final class HCExport {
 		b.position(0x1B0);
 		b.putInt(fontTableId).putInt(styleTableId);
 		b.putShort((short)Math.max(1, stack.height)).putShort((short)Math.max(1, stack.width));
-		b.position(0x400);
+		b.position(0x2C0);
+		for(int i=0; i<40; i++) b.putLong(patternBits(stack, i));
 		b.position(0x600);
 		b.put(script).put((byte)0).put(osa);
 		long sum = 0;
@@ -242,6 +243,51 @@ final class HCExport {
 				StackProtection.hash(StackProtection.passwordBytes(stack.unlockedPassword, stack.legacyTextEncoding)));
 		}
 		return b.array();
+	}
+
+	//HyperCard's own 40 paint patterns (as a new HyperCard stack has them), for a pattern whose file is missing
+	private static final long[] DEFAULT_PATTERNS = {
+		0x0000000000000000L, 0x8000000008000000L, 0x8800220088002200L, 0x8888222288882222L,
+		0x88AA22AA88AA22AAL, 0xCCAA33AACCAA33AAL, 0xEEAABBAAEEAABBAAL, 0xEEBBBBEEEEBBBBEEL,
+		0xFFBBFFEEFFBBFFEEL, 0xFFBBFFFFFFBBFFFFL, 0x8010022001084004L, 0xFFFFFFFFFFFFFFFFL,
+		0x8822882288228822L, 0x1122448811224488L, 0xC4800C6843023026L, 0xB130031BD8C00C8DL,
+		0xAA00AA00AA00AA00L, 0x8822552288225522L, 0x8855225588552255L, 0x77DD77DD77DD77DDL,
+		0x8000000000000000L, 0xAA55AA55AA55AA55L, 0x038448300C020101L, 0x8244394482010101L,
+		0x8814224188412214L, 0x8080413E080814E3L, 0x22048C7422179810L, 0xBE808808EB088880L,
+		0x25C8328964244C92L, 0xA29C41BE2AC914EBL, 0x40A00000040A0000L, 0x8040200002040800L,
+		0xAA00800088008000L, 0xFF80808080808080L, 0x081C22C180010204L, 0xFF808080FF080808L,
+		0xF87422478F172271L, 0xBF00BFBFB0B0B0B0L, 0xFF7FBE5DA2418000L, 0xFAF5FAF5A050A050L,
+	};
+
+	//パターンi(0〜39)の8x8を、STAKの0x2C0からの並び(1行1バイト、1=黒、MSBが左端)にする。HCData.readPatternsの逆
+	private static long patternBits(OStack stack, int i) {
+		BufferedImage image = loadPattern(stack, i);
+		if(image == null || image.getWidth() <= 0 || image.getHeight() <= 0) return DEFAULT_PATTERNS[i];
+		long bits = 0;
+		for(int y=0; y<8; y++) {
+			for(int x=0; x<8; x++) {
+				int pixel = image.getRGB(x%image.getWidth(), y%image.getHeight());
+				int luminance = (((pixel>>16)&0xFF)*299 + ((pixel>>8)&0xFF)*587 + (pixel&0xFF)*114)/1000;
+				bits <<= 1;
+				if((pixel>>>24) >= 128 && luminance < 128) bits |= 1;
+			}
+		}
+		return bits;
+	}
+
+	private static BufferedImage loadPattern(OStack stack, int i) {
+		String name = stack.Pattern == null ? null : stack.Pattern[i];
+		if(name == null || name.isEmpty() || stack.file == null || stack.file.getParentFile() == null) return null;
+		File file = new File(stack.file.getParentFile(), name);
+		if(!file.isFile()) return null;
+		try {
+			if(name.toLowerCase(java.util.Locale.ROOT).endsWith(".ppat"))
+				return HCResource.decodePpat(java.nio.file.Files.readAllBytes(file.toPath()));
+			BufferedImage image = StackProtection.readImage(file);
+			return image != null ? image : PictureFile.loadPbm(file.getPath());
+		} catch(IOException | RuntimeException e) {
+			return null;
+		}
 	}
 
 	private static void putRect(ByteBuffer b, java.awt.Rectangle rect) {

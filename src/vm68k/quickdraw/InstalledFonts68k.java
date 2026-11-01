@@ -48,6 +48,8 @@ final class InstalledFonts68k {
 		}
 		/** Whether the family has TrueType outlines (every size is real, as with System 7's TrueType Chicago). */
 		boolean hasOutlines(){SfntBitmaps68k s=sfnt();return s!=null&&s.outlines()!=null;}
+		/** The family associates an 'sfnt' (a size-0 entry): a TrueType family for AppendResMenu 'sfnt'. */
+		boolean hasSfnt(){for(int[] a:association)if(a[0]==0&&resources.get(SFNT,a[2])!=null)return true;return false;}
 		private byte[] strikeData(int strikeId){
 			if(strikeId==0)return null;
 			ResourceFile68k.Resource r=resources.get(NFNT,strikeId);if(r==null)r=resources.get(FONT,strikeId);

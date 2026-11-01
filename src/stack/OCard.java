@@ -494,10 +494,15 @@ public class OCard extends OCardBase {
 
 	//HCのスタックを変換
 	@SuppressWarnings("unchecked")
+	/** The largest card or background block read: a sanity bound only (64 MB), the block walk has checked the size already. */
+	static final int MAX_BLOCK_SIZE = 64<<20;
+
 	public boolean readCardBlock(DataInputStream dis, int blockSize){
 		//System.out.println("====readCardBlock====");
 
-		if(blockSize>2000000 || blockSize<50){
+		//(a card full of text fields can pass 2 MB: LottoGlueck's 196-field "Haufen" data card is 2491200 bytes)
+		if(blockSize>MAX_BLOCK_SIZE || blockSize<50){
+			stack.cdCacheList.remove(this); //no card was read: the listed cards are counted without it
 			return false;
 		}
 		
@@ -960,8 +965,8 @@ class MyLabel extends JLabel {
 		//	e.printStackTrace();
 		}
     	
-		//追加のペイントレイヤーがあれば平らにした絵(無ければpictそのもの)
-		BufferedImage pict = cd.composite();
+		//追加のペイントレイヤーがあれば平らにした絵(無ければpictそのもの)。絵の中の文字を訳したスタックでは訳した写し(PictureTranslation)
+		BufferedImage pict = PictureTranslation.shown(cd, cd.composite());
 		if(!cd.showPict||pict==null){
 			if(cd.objectType.equals("background")){
 				g.setColor(Color.WHITE);

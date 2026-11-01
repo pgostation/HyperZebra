@@ -128,7 +128,7 @@ final class StandardFile68k {
 			@Override public boolean accept(File dir,String name){File f=new File(dir,name);if(f.isDirectory())return true;int type=tb.files.fileManager.shownType(f);if(type==0)return true;for(int t:types)if(t==type)return true;return false;}};
 		File chosen=tb.host().ask(new Callable<File>(){@Override public File call(){
 			File native_=nativeDialog(prompt.isEmpty()?"Open":prompt,start,null,filter,false);if(native_!=null||nativeDialogShown)return native_;
-			JFileChooser chooser=new JFileChooser(start);chooser.setDialogTitle(prompt.isEmpty()?"Open":prompt);
+			JFileChooser chooser=new JFileChooser(start);chooser.setDialogTitle(prompt.isEmpty()?"Open":prompt);FileChooserIcons.install(chooser);
 			chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
 			if(types!=null&&types.length>0)chooser.setFileFilter(new FileFilter(){
 				@Override public boolean accept(File f){if(f.isDirectory())return true;int type=tb.files.fileManager.shownType(f);if(type==0)return true;for(int t:types)if(t==type)return true;return false;}
@@ -145,7 +145,7 @@ final class StandardFile68k {
 		if(unattended()){writeReply(reply,standard,unusedName(start,defaultName),true);return;}
 		File chosen=tb.host().ask(new Callable<File>(){@Override public File call(){
 			File native_=nativeDialog(prompt.isEmpty()?"Save":prompt,start,defaultName,null,true);if(native_!=null||nativeDialogShown)return native_;
-			JFileChooser chooser=new JFileChooser(start);chooser.setDialogTitle(prompt.isEmpty()?"Save":prompt);
+			JFileChooser chooser=new JFileChooser(start);chooser.setDialogTitle(prompt.isEmpty()?"Save":prompt);FileChooserIcons.install(chooser);
 			if(!defaultName.isEmpty())chooser.setSelectedFile(new File(start,defaultName));
 			return chooser.showSaveDialog(tb.host().anyWindow())==JFileChooser.APPROVE_OPTION?chooser.getSelectedFile():null;}});
 		if(chosen!=null)lastDirectory=chosen.getParentFile();
@@ -154,12 +154,21 @@ final class StandardFile68k {
 
 	/** A program run without the user (an expander's installer): its Save dialogs take the offered name in its own folder. */
 	private boolean unattended(){return tb.app!=null&&tb.app.unattended;}
-	/** The offered name in the folder, numbered when something of that name is there already (a folder an earlier run left). */
+	/** The offered name in the folder, numbered when something of that name is there already (a folder an earlier run left);
+	 *  a '/' in the Mac name is the host's ':'. */
 	private static File unusedName(File folder,String name){
 		if(name==null||name.trim().isEmpty())name="untitled";
+		name=FileManager68k.hostFileName(name.replace('/',':'));
 		File f=new File(folder,name);
 		for(int n=2;f.exists()&&n<100;n++){String numbered=name+" "+n;f=new File(folder,numbered.length()>31?name.substring(0,Math.max(1,31-(" "+n).length()))+" "+n:numbered);}
 		return f;
+	}
+	/** The host file a name typed in the Save dialog stands for, as the File Manager resolves it: a '/' in a Mac name is the host's
+	 *  ':' - Anubis W/PC's installer (StuffIt InstallerMaker) offers "Atto install W/PC folder", and the reply's folder became a
+	 *  nonexistent "Atto install W" (its DirCreate of "PC folder" then failed with dirNFErr -120). */
+	File typedFile(File folder,String name){
+		try{File f=tb.files.fileManager.childNamed(folder,name);if(f!=null)return f;}catch(IOException|RuntimeException e){}
+		return new File(folder,name);
 	}
 
 	/** Set by {@link #nativeDialog} when the platform panel was actually shown (so a cancel is not retried in Swing). */
@@ -275,7 +284,7 @@ final class StandardFile68k {
 				}catch(Exception e){/* no platform panel: Swing's chooser below */}
 				finally{if(kind==PANEL_FOLDER){if(property==null)System.clearProperty("apple.awt.fileDialogForDirectories");else System.setProperty("apple.awt.fileDialogForDirectories",property);}}
 			}
-			JFileChooser chooser=new JFileChooser(from);chooser.setDialogTitle(title);
+			JFileChooser chooser=new JFileChooser(from);chooser.setDialogTitle(title);FileChooserIcons.install(chooser);
 			chooser.setFileSelectionMode(kind==PANEL_FOLDER?JFileChooser.DIRECTORIES_ONLY:kind==PANEL_OBJECT?JFileChooser.FILES_AND_DIRECTORIES:JFileChooser.FILES_ONLY);
 			chooser.setMultiSelectionEnabled(multiple&&kind!=PANEL_SAVE);
 			if(button!=null&&!button.isEmpty())chooser.setApproveButtonText(button);
@@ -319,6 +328,8 @@ final class StandardFile68k {
 	/** State of one guest Standard File dialog. */
 	private final class Session {
 		final Request r;int window;DialogManager68k.Dialog dialog;int list;File directory;
+		/** The folder the list showed last (see {@link #rebuild}). */
+		File listed;
 		final List<File> entries=new ArrayList<File>();
 		/** Where the folder pop-up is drawn: the pop-up item (System 7 layouts) or, as the HFS Standard File Package does for the
 		 *  old getDlgID/putDlgID layouts, the strip just above the file list (some DITLs leave exactly that gap). */
@@ -407,7 +418,7 @@ final class StandardFile68k {
 		DialogManager68k.Item promptItem=s.promptItem>0?tb.dialogs.item(s.window,s.promptItem):null;
 		if(promptItem!=null&&!r.prompt.isEmpty()&&(r.dlgId==0||(promptItem.type&0x7f)==8))tb.dialogs.setText(s.window,s.promptItem,tb.encoding.encodeReplacing(r.prompt));
 		// the default name comes up selected, as in the ROM package: typing replaces it
-		if(s.nameItem>0){tb.dialogs.setText(s.window,s.nameItem,tb.encoding.encodeReplacing(unattended()?unusedName(s.directory,r.defaultName).getName():r.defaultName));tb.dialogs.selectText(s.window,s.nameItem,0,32767);}
+		if(s.nameItem>0){tb.dialogs.setText(s.window,s.nameItem,tb.encoding.encodeReplacing(unattended()?FileManager68k.displayName(unusedName(s.directory,r.defaultName).getName()):r.defaultName));tb.dialogs.selectText(s.window,s.nameItem,0,32767);}
 		// The package works in the dialog's port (SFGetFile does a SetPort of its own): the list's mouse tracking and the scroll
 		// bar's TrackControl read the mouse in the current port's coordinates, and the program's hook may restore whatever port
 		// it found (HyperCard's does), so every pass through the loop sets it again.
@@ -446,14 +457,23 @@ final class StandardFile68k {
 					File named=null;try{named=tb.files.fileFor((short)memory.readWord(r.reply+6),memory.readLong(r.reply+8),tb.readPascal(r.reply+12));}catch(IOException ex){}
 					if(named!=null){chosen=named;good=true;break;}
 				}
+				if(hit==s.openItem&&original!=s.openItem&&original!=s.listItem&&!r.newStyle&&!r.put){
+					// The same with an old-style hook (SFPGetFile runs on System 7's package, where opening a folder reaches the hook as
+					// sfHookOpenFolder): Open returned for one of its own buttons answers the selection as it is, a folder too. StuffIt
+					// InstallerMaker's "Install into" button does so and then checks reply.good; the folder was opened instead.
+					int row=tb.listManager.selectedRow(s.list);chosen=row>=0&&row<s.entries.size()?s.entries.get(row):s.directory;good=true;break;
+				}
 				if(hit==s.openItem){
 					int row=tb.listManager.selectedRow(s.list);File selected=row>=0&&row<s.entries.size()?s.entries.get(row):null;
 					if(r.put){
 						String name=tb.decode(tb.dialogs.text(s.window,s.nameItem)).trim();
 						if(name.isEmpty()){if(selected!=null&&selected.isDirectory()){enter(s,selected);}continue;}
-						chosen=new File(s.directory,name);good=true;break;
+						chosen=typedFile(s.directory,name);good=true;break;
 					}
 					if(selected!=null&&selected.isDirectory()){enter(s,selected);continue;}
+					// no selection and the user's own Open/Return: the real package dims Open then and Return does nothing
+					// (StandardFile v2's "get" on an empty list answered the folder as the chosen file)
+					if(selected==null&&original==s.openItem)continue;
 					// no selection: a dialog hook forced the exit (folder choosers): answer with the current folder
 					chosen=selected;good=true;break;
 				}
@@ -514,13 +534,15 @@ final class StandardFile68k {
 	 * it Open). Word 5.1's hook dims it on sfHookFirstCall when it passes no default name and leaves enabling it to the package.
 	 */
 	private void setUpSaveButton(Session s) throws M68kException {
-		if(!s.r.put||s.openItem<=0||s.nameItem<=0)return;
+		if(s.openItem<=0||s.r.put&&s.nameItem<=0||!s.r.put&&s.list==0)return;
 		DialogManager68k.Item item=tb.dialogs.item(s.window,s.openItem);int kind=item==null?0:item.type&0x7f;
 		if(item==null||item.handle==0||kind<4||kind>7)return;
 		int d=tb.controls.data(item.handle);if(d==0)return;
 		int row=s.list==0?-1:tb.listManager.selectedRow(s.list);File selected=row>=0&&row<s.entries.size()?s.entries.get(row):null;
-		byte[] typed=tb.dialogs.text(s.window,s.nameItem);
-		boolean enable=selected!=null&&selected.isDirectory()||typed!=null&&typed.length>0&&s.directory!=null&&s.directory.canWrite();
+		boolean enable;
+		if(s.r.put){byte[] typed=tb.dialogs.text(s.window,s.nameItem);
+			enable=selected!=null&&selected.isDirectory()||typed!=null&&typed.length>0&&s.directory!=null&&s.directory.canWrite();}
+		else enable=selected!=null; // a get dialog's Open: dimmed while nothing is selected (an empty folder), as SetUpOpenButton does
 		int hilite=enable?0:255,old=memory.readByte(d+17);
 		if(old!=hilite&&(old==0||old==255)){memory.writeByte(d+17,hilite);tb.controls.draw(item.handle);}
 	}
@@ -722,6 +744,7 @@ final class StandardFile68k {
 
 	private void rebuild(Session s) throws M68kException {
 		storeDirectory(s);
+		int was=s.list==0?-1:tb.listManager.selectedRow(s.list);File wasSelected=was>=0&&was<s.entries.size()?s.entries.get(was):null;
 		s.entries.clear();
 		File[] all=FileManager68k.catalogEntries(s.directory);if(all==null)all=new File[0]; // hidden files, packages and the host's system folders stay out, as in a folder walk
 		Arrays.sort(all,Comparator.comparing(File::getName,String.CASE_INSENSITIVE_ORDER));
@@ -756,6 +779,16 @@ final class StandardFile68k {
 		int[] iconArray=new int[icons.size()];for(int i=0;i<iconArray.length;i++)iconArray[i]=icons.get(i);
 		boolean detail=s.headerRect!=null;
 		tb.listManager.setRows(s.list,rows,iconArray,images.toArray(new java.awt.image.BufferedImage[0]),detail?details.toArray(new String[0][]):null,detail?new int[]{COLUMN_WIDTHS[detailColumn]}:null);
+		// A get dialog always has an item selected while its list has any, as System 7's does: the first one, the one still
+		// there after a re-sort, or the folder just left when going up. Hooks follow the selection through the reply: The
+		// Writing Center's picture chooser turns its button into "Open" with nothing selected and back into "Place in Document"
+		// only from a folder, so with no selection after entering a folder its pictures could not be placed.
+		if(!s.r.put&&s.list!=0&&!s.entries.isEmpty()){
+			int row=wasSelected==null?-1:s.entries.indexOf(wasSelected);
+			for(int i=0;row<0&&s.listed!=null&&i<s.entries.size();i++)if(canonical(s.entries.get(i)).equals(canonical(s.listed)))row=i;
+			tb.listManager.selectRow(s.list,Math.max(0,row));
+		}
+		s.listed=s.directory;
 		drawHeader(s);drawPreview(s);drawDiskName(s);drawFolderPopup(s);
 		mirrorSelection(s);
 	}
@@ -1148,6 +1181,7 @@ final class StandardFile68k {
 			return;
 		}
 		writeReply(r.reply,r.newStyle,chosen,r.put);
+		if(!r.newStyle&&chosen.isDirectory())try{memory.writeLong(r.reply+2,tb.files.directoryIdFor(chosen));}catch(IOException e){} // a folder's fType is its directory ID, as in the list
 		if(Mac68kApi.TRACE)System.err.println("[sf] reply "+chosen+" newStyle="+r.newStyle+" vRef="+(short)memory.readWord(r.reply+6)+" parID="+memory.readLong(r.reply+8)+" CurDirStore="+memory.readLong(CUR_DIR_STORE));
 	}
 

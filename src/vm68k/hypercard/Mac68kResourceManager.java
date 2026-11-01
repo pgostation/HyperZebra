@@ -28,7 +28,20 @@ final class Mac68kResourceManager {
 		file.stackOrigin=new java.util.IdentityHashMap<ResourceFile68k.Resource,Object[]>();
 		if(stack==null||stack.rsrc==null)return file;
 		List<ResourceFile68k.Resource> local=new ArrayList<ResourceFile68k.Resource>();
+		java.util.Set<Integer> nfnt=null;
 		for(Rsrc.rsrcClass resource:stack.rsrc.rsrcIdMap.values()){
+			// bitmap fonts are kept as pictures: an external sees them as the 'FONT' (or the 'NFNT' a FOND names) they were.
+			// FONT Maker's MakeFont looks its family up by name and rewrites the strikes; with none visible it took family
+			// 128 for every new font and overwrote the stack's own (TMIS was renamed "Next", its 32-point strike replaced)
+			if(resource.type.equals("font")){
+				if(nfnt==null)nfnt=fondStrikes(stack);
+				ResourceFile68k.Resource r=new ResourceFile68k.Resource(fourcc(nfnt.contains(resource.id)?"NFNT":"FONT"),resource.id,vmName(stack,resource.name),null,0);
+				Rsrc.rsrcClass font=resource;
+				r.maker=()->fontBytes(stack,font);
+				r.attributes=resource.attributes&Rsrc.KEPT_ATTRIBUTES;
+				local.add(r);
+				continue;
+			}
 			int type=classicType(resource.type);
 			if(type!=0&&isClassicResourceBytes(resource.type,resource.filename)){
 				int prefix=resource.type.equals("PICT")?512:0;
@@ -89,8 +102,28 @@ final class Mac68kResourceManager {
 			file.stackOrigin.put(r,origin(r));r.changed=false;any=true;
 		}
 		file.dirty=false;
-		if(any)stack.changed=true;
+		if(any){stack.changed=true;StackStrikeFont.forget(stack.rsrc);}
 		return any;
+	}
+	/** A bitmap font of the stack as the 'FONT' bytes it was imported from; a family-name record (no strike) is empty. */
+	private static byte[] fontBytes(OStack stack,Rsrc.rsrcClass font){
+		if(!(font.optionInfo instanceof Rsrc.FontInfo))return new byte[0];
+		try{java.awt.image.BufferedImage image=javax.imageio.ImageIO.read(resourceFile(stack,font.filename));
+			return image==null?new byte[0]:HCResourceExport.font((Rsrc.FontInfo)font.optionInfo,image);}
+		catch(java.io.IOException|RuntimeException e){System.err.println("[68K] cannot make font "+font.id+": "+e.getMessage());return new byte[0];}
+	}
+	/** The strike IDs the stack's FOND resources list (their font association tables): those were 'NFNT's. */
+	private static java.util.Set<Integer> fondStrikes(OStack stack){
+		java.util.Set<Integer> ids=new java.util.HashSet<Integer>();
+		for(Rsrc.rsrcClass fond:stack.rsrc.rsrcIdMap.values()){
+			if(!fond.type.equals("FOND")||fond.filename==null)continue;
+			try{byte[] b=java.nio.file.Files.readAllBytes(resourceFile(stack,fond.filename).toPath());
+				if(b.length<54)continue;
+				int count=((b[52]&255)<<8|(b[53]&255))+1;
+				for(int i=0,at=54;i<count&&at+6<=b.length;i++,at+=6)ids.add((int)(short)((b[at+4]&255)<<8|(b[at+5]&255)));}
+			catch(java.io.IOException|RuntimeException e){}
+		}
+		return ids;
 	}
 	/** What a resource was when it came from (or went into) the stack: type, ID, name, kept attributes. */
 	private static Object[] origin(ResourceFile68k.Resource r){return new Object[]{r.type,r.id,r.name,attributesOf(r)};}
@@ -125,8 +158,8 @@ final class Mac68kResourceManager {
 		String path=host.getAbsolutePath().replaceFirst("(?i)\\.hzb$","");
 		return java.text.Normalizer.normalize(path,java.text.Normalizer.Form.NFC).equals(java.text.Normalizer.normalize(file.getAbsolutePath(),java.text.Normalizer.Form.NFC));
 	}
-	/** The stack's own name for a classic resource type ('snd ' is "SND", as the import stores it). */
-	private static String hzType(String type){return type.equals("snd ")?"SND":type;}
+	/** The stack's own name for a classic resource type ('snd ' is "SND", 'FONT' and 'NFNT' "font", as the import stores them). */
+	private static String hzType(String type){return HCResource.storedType(type);}
 	/** A resource name from the VM (Mac Roman reading of the bytes, see {@link #vmName}) as the stack keeps it. */
 	private static String stackName(OStack stack,String name){
 		if(name==null||name.isEmpty())return name;

@@ -343,7 +343,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 	
 	private static boolean scriptChange;
 
-	static private boolean isBrowseTool(String cmd){
+	static boolean isBrowseTool(String cmd){
 		return PCARD.pc.intl.getToolText("Browse").equalsIgnoreCase(cmd) || PCARD.pc.intl.getToolEngText("Browse").equalsIgnoreCase(cmd);
 	}
 
@@ -382,7 +382,10 @@ class TBButtonListener implements ActionListener, MouseListener {
 			return result[0];
 		}
 		
-		if(!scriptChange && !isBrowseTool(cmd)) OStack.userEdit(); //ユーザーが編集用のツールを選んだ
+		if(!scriptChange && !isBrowseTool(cmd)){
+			OStack.userEdit(); //ユーザーが編集用のツールを選んだ
+			TTalk.closeOpenFieldByUser(); //the open field closes (a script's choose closed it already)
+		}
 		String before = toolInUse();
 		try{ return changeTool(cmd, ae); }
 		finally{
@@ -829,7 +832,12 @@ class TBCursor{
 			Graphics2D g2 = (Graphics2D) bi.getGraphics();
 			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 			g2.setColor(new Color(0,0,0));
-			g2.fillOval(16-i/2,16-i/2,i,i);
+			if(PaintTool.classicBrush>0){
+				//HyperCardのブラシは形そのものがカーソル
+				int[] shape = PaintTool.CLASSIC_BRUSHES[PaintTool.classicBrush-1];
+				for(int y=0; y<16; y++) for(int x=0; x<16; x++) if((shape[y]&(0x8000>>x))!=0) g2.fillRect(8+x, 8+y, 1, 1);
+			}
+			else g2.fillOval(16-i/2,16-i/2,i,i);
 
 			Point hotSpot = new Point(16, 16);
 			String name  = "brush-cursor";

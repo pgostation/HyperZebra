@@ -201,10 +201,11 @@ final class ControlManager68k {
 	int create(int window,int top,int left,int bottom,int right,byte[] title,boolean visible,int value,int min,int max,int procId,int refCon,NativeDefinition definition) throws M68kException {
 		byte[] record=new byte[RECORD_SIZE];
 		putLong(record,4,window);putWord(record,8,top);putWord(record,10,left);putWord(record,12,bottom);putWord(record,14,right);
-		// an Appearance kind's initial value is a parameter its CDEF reads at initCntl (the tab control's 'tab#', a picture's
-		// 'PICT'...) and the kind sets its fields itself: iTunes' Preferences tabs (value 1340, max 5) had no names when clamped
-		boolean parameter=definition==null&&AppearanceControls68k.handles(procId);
-		record[16]=(byte)(visible?0xff:0);putWord(record,18,parameter?value:clamp(value,min,max));putWord(record,20,min);putWord(record,22,max);putLong(record,36,refCon);
+		// The initial value is stored as passed, outside min..max too, as the ROM's NewControl does (only SetCtlValue pins it):
+		// a CDEF may take it as a parameter at initCntl - an Appearance kind's 'tab#' or 'PICT' (iTunes' Preferences tabs, value
+		// 1340, max 5, had no names when clamped), Alias Sketch's tool buttons their 'cicn' ID (20001 with min = max = 0: every
+		// tool showed the stop icon when it came out as 0).
+		record[16]=(byte)(visible?0xff:0);putWord(record,18,value);putWord(record,20,min);putWord(record,22,max);putLong(record,36,refCon);
 		int n=Math.min(255,title==null||title.length==0?0:title[0]&255);record[40]=(byte)n;if(title!=null)System.arraycopy(title,1,record,41,Math.min(n,title.length-1));
 		int handle=tb.api.createHandle(record);int data=memory.readLong(handle);
 		Control c=new Control(handle,window,procId);c.nativeDef=definition;controls.put(handle,c);
@@ -228,7 +229,6 @@ final class ControlManager68k {
 		if(definition==null)attachDefProc(c,data);
 		c.defProcSeen=memory.readLong(data+24);
 		if(c.cdef==0&&c.nativeDef==null&&AppearanceControls68k.handles(procId))c.nativeDef=appearanceKinds.attach(handle,procId); // no CDEF resource of that ID: the Java one
-		else if(parameter)memory.writeWord(data+18,clamp(value,min,max)); // the program's own CDEF of that ID: NewControl's usual clamp
 		if(visible)draw(handle);
 		return handle;
 	}
@@ -590,6 +590,7 @@ final class ControlManager68k {
 	}
 	/** A scroll bar's arrows, track and thumb: the Kaleidoscope scheme's (double arrows, a thumb of fixed size) when one is in use. */
 	KaleidoscopeScheme68k.Bar bar(int top,int left,int bottom,int right,int min,int max,int value){
+		if(max>min)value=clamp(value,min,max); // NewControl leaves an initial value outside min..max: the thumb shows it pinned
 		KaleidoscopeScheme68k k=KaleidoscopeScheme68k.active(tb);
 		KaleidoscopeScheme68k.Bar bar=k==null?null:k.bar(left,top,right,bottom,min,max,value);
 		return bar!=null?bar:nativeBar(top,left,bottom,right,min,max,value);
@@ -604,6 +605,7 @@ final class ControlManager68k {
 	}
 	/** {start,end} of the thumb along the track. */
 	static int[] thumbRange(int length,int arrow,int min,int max,int value){
+		if(max>min)value=Math.max(min,Math.min(max,value)); // an initial value outside min..max (NewControl keeps it) is drawn pinned
 		int track=length-2*arrow;int thumbSize=Math.max(16,Math.min(track,track/Math.max(2,(max-min)/8+2)));
 		int travel=Math.max(0,track-thumbSize);int start=arrow+(max>min?(int)((long)(value-min)*travel/(max-min)):0);
 		return new int[]{start,start+thumbSize};
@@ -776,7 +778,7 @@ final class ControlManager68k {
 		switch(message){
 			case 0:{ // drawCntl
 				if(memory.readByte(d+16)==0)return 0;int window=owner(c,d);
-				if(!tb.windows.isWindow(window)||(!tb.windows.window(window).visible&&!tb.api.quickDraw().pictureIsOpen()))return 0;
+				if(!drawableOwner(window))return 0;
 				drawAs(handle,d,c,window,procId);return 0;}
 			case 1:{int h=(short)param,v=(short)(param>>>16); // testCntl
 				int top=(short)memory.readWord(d+8),left=(short)memory.readWord(d+10),bottom=(short)memory.readWord(d+12),right=(short)memory.readWord(d+14);
@@ -792,6 +794,17 @@ final class ControlManager68k {
 		}
 	}
 
+	/**
+	 * Whether controls of {@code window} draw now: a shown window, or one a picture is recording. HyperCard's card window and
+	 * message box are no Window Manager windows, but externals put controls on the card (ScrollControl's NewControl over a
+	 * button, the ScrollBar XFCN's "paint" bar recorded with Draw1Control between OpenPicture and ClosePicture): never drawn.
+	 */
+	private boolean drawableOwner(int window) throws M68kCpuException {
+		boolean recording=tb.api.quickDraw().pictureIsOpen();
+		if(tb.windows.isWindow(window))return tb.windows.window(window).visible||recording;
+		return tb.cardWindow!=null&&tb.cardWindow.isWindowRecord(window)&&(memory.readByte(window+110)!=0||recording);
+	}
+
 	void drawAll(int window) throws M68kCpuException {List<Integer> list=controlsOf(window);for(int i=list.size()-1;i>=0;i--)draw(list.get(i));}
 
 	void draw(int handle) throws M68kCpuException {
@@ -800,7 +813,7 @@ final class ControlManager68k {
 		int window=owner(c,d);
 		// A control in an invisible window still draws while a picture records it - dialog editors record the
 		// buttons of an offscreen dialog into its mini-screen preview (same reason DialogManager.draw runs then).
-		if(!tb.windows.isWindow(window)||(!tb.windows.window(window).visible&&!tb.api.quickDraw().pictureIsOpen()))return;
+		if(!drawableOwner(window))return;
 		adoptDefProc(c,d);
 		if(c.cdef!=0){defProc(c,DRAW_CNTL,0);return;}
 		if(c.nativeDef!=null){try{c.nativeDef.draw(handle);}catch(M68kCpuException e){throw e;}catch(M68kException e){throw Toolbox68k.wrap(e);}}
@@ -914,15 +927,19 @@ final class ControlManager68k {
 
 	/** HideControl's erase (also MoveControl/SizeControl of a visible control): the rectangle is filled with the port's
 	 *  background and added to the update region, so whatever the control covered is drawn again (IM I-322) - iTunes moves
-	 *  its buttons when its window grows and redraws its metal backdrop only where the update region says. */
+	 *  its buttons when its window grows and redraws its metal backdrop only where the update region says. Only a push button
+	 *  takes the 4 pixels round it as well, where its default ring is drawn: HyperCard hides its script window's scroll bars at
+	 *  every deactivate and ValidRects each control rectangle, and the rings left over made one update of the whole window -
+	 *  TEUpdate drew the script over itself without an erase, and its smoothed letters grew darker at each switch. */
 	private void erase(int handle) throws M68kCpuException {
 		int d=data(handle);Control c=controls.get(handle);if(d==0||c==null)return;
 		int top=(short)memory.readWord(d+8),left=(short)memory.readWord(d+10),bottom=(short)memory.readWord(d+12),right=(short)memory.readWord(d+14);
-		int window=owner(c,d);
+		int window=owner(c,d),kind=classic(c.procId)&0xfff0,base=c.procId&7; // pushButProc, or the Appearance one (368, 374/375 with an icon)
+		int m=(kind==0||kind==368)&&base!=1&&base!=2?4:0;
 		Graphics2D g=tb.quickDraw.windowSurface(window,top-4,-32768,bottom+4,32767);if(g==null)return;
-		try{g.setColor(new Color(tb.api.quickDraw().colorsOf(window)[1]));g.fillRect(left-4,top-4,right-left+8,bottom-top+8);}
+		try{g.setColor(new Color(tb.api.quickDraw().colorsOf(window)[1]));g.fillRect(left-m,top-m,right-left+2*m,bottom-top+2*m);}
 		finally{g.dispose();}
-		if(tb.windows.isWindow(window))tb.windows.invalidate(window,top-4,left-4,bottom+4,right+4);
+		if(tb.windows.isWindow(window))tb.windows.invalidate(window,top-m,left-m,bottom+m,right+m);
 	}
 
 	static void drawButton(Graphics2D g,int left,int top,int right,int bottom,String title,boolean pressed,boolean disabled,FontMetrics fm){
@@ -990,7 +1007,7 @@ final class ControlManager68k {
 		int titleWidth=title.isEmpty()?0:c!=null&&c.popupTitleWidth>=0?c.popupTitleWidth:fm.stringWidth(title)+6;
 		if(titleWidth==0)title="";
 		KaleidoscopeScheme68k kaleidoscope=c!=null?KaleidoscopeScheme68k.active(tb):null;
-		g.setColor(kaleidoscope!=null&&kaleidoscope.hasPopup()?new Color(tb.api.quickDraw().colorsOf(owner(c,d))[1]):Color.WHITE);g.fillRect(left,top,right-left,bottom-top); // a scheme's pop-up sits on the window's background
+		g.setColor(kaleidoscope!=null&&kaleidoscope.hasPopup()?new Color(tb.api.quickDraw().colorsOf(owner(c,d))[1]):Color.WHITE);if(c==null||(c.procId&0xfff0)!=400)g.fillRect(left,top,right-left,bottom-top); // a scheme's pop-up sits on the window's background; an Appearance pop-up (400-family) never erases (ICQ's Network Settings "Protocol" group: white block over the Host/Port labels)
 		g.setColor(disabled?DISABLED:Color.BLACK);if(!title.isEmpty())Fonts68k.drawString(g,fm,title,left,top+(bottom-top-fm.getHeight())/2+fm.getAscent());
 		int bl=left+titleWidth,w=right-bl,h=bottom-top;
 		KaleidoscopeScheme68k scheme=kaleidoscope;

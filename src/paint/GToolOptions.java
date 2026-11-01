@@ -217,9 +217,9 @@ class GToolOptions {
 		JPanel row = row(BRUSH_SIZES.length);
 		for(int size : BRUSH_SIZES){
 			int d = Math.min(size*2, CELL-PAD*2);
-			row.add(new OptionCell(CELL, CELL, String.valueOf(size), size==PaintTool.brushSize,
+			row.add(new OptionCell(CELL, CELL, String.valueOf(size), PaintTool.classicBrush==0 && size==PaintTool.brushSize,
 				g -> g.fillOval((CELL-d)/2, (CELL-d)/2, d, d),
-				() -> { PaintTool.brushSize = size; changeCursor(); }, popup));
+				() -> { PaintTool.brushSize = size; PaintTool.classicBrush = 0; changeCursor(); }, popup));
 		}
 		return row;
 	}

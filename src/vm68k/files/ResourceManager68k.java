@@ -104,6 +104,8 @@ final class ResourceManager68k {
 	boolean isOpenFile(File f){try{File c=f.getCanonicalFile();for(ResourceFile68k r:files.values())if(r.file!=null&&r.file.getCanonicalFile().equals(c))return true;}catch(java.io.IOException ignored){}return false;}
 	void useResFile(int ref) throws M68kCpuException {if(files.containsKey(ref))setCurrent(ref);}
 	/** The refNum of the file a resource Handle was loaded from (HomeResFile), 0 for a non-resource Handle. */
+	/** The ID of the resource a Handle holds, or {@code fallback} when it is no resource Handle. */
+	int idOf(int handle,int fallback){ResourceFile68k.Resource r=byHandle.get(handle);return r==null?fallback:r.id;}
 	int homeRefNumOf(int handle){ResourceFile68k.Resource r=byHandle.get(handle);ResourceFile68k f=r==null?null:fileOf(r);return f==null?0:f.refNum;}
 	/** A resource of one specific open file. */
 	ResourceFile68k.Resource inFile(int ref,int type,int id){ResourceFile68k f=files.get(ref);return f==null?null:f.get(type,id);}
@@ -300,7 +302,7 @@ final class ResourceManager68k {
 				else if(Mac68kApi.TRACE)System.err.println("[68K] GetResource "+ResourceFile68k.typeName(type)+" "+id+" -> $"+Integer.toHexString(h)+" data $"+Integer.toHexString(memory.readLong(h))+" size "+tb.api.handleSize(h)+" current "+current);
 				memory.writeLong(cpu.a[7],h);return true;}
 			case 0x80c:{int id=(short)memory.readWord(cpu.a[7]),type=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;memory.writeLong(cpu.a[7],getResource(find(type,id,false)));return true;}
-			case 0x9a1:case 0x820:{int name=memory.readLong(cpu.a[7]),type=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;String n=resourceName(name);ResourceFile68k.Resource r=findNamed(type,n,trap==0x820);if(Mac68kApi.TRACE)System.err.println("[res] "+(trap==0x820?"Get1NamedResource ":"GetNamedResource ")+ResourceFile68k.typeName(type)+" \""+n+"\" -> "+(r==null?"not found":r.id));memory.writeLong(cpu.a[7],handleFor(r));if(r==null&&!typeExists(type,trap==0x820))setError(NO_ERR);return true;}
+			case 0x9a1:case 0x820:{int name=memory.readLong(cpu.a[7]),type=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;String n=resourceName(name);ResourceFile68k.Resource r=findNamed(type,n,trap==0x820);if(Mac68kApi.TRACE)System.err.println("[res] "+(trap==0x820?"Get1NamedResource ":"GetNamedResource ")+ResourceFile68k.typeName(type)+" \""+n+"\" -> "+(r==null?"not found":r.id));memory.writeLong(cpu.a[7],handleFor(r));return true;}
 			case 0x9a2:{int h=pop(cpu);ResourceFile68k.Resource r=byHandle.get(h);if(r==null){setError(RES_NOT_FOUND);return true;}if(memory.readLong(h)==0)tb.api.loadHandle(h,data(r));setError(NO_ERR);return true;}
 			case 0x9a3:case 0x992:{int h=pop(cpu);ResourceFile68k.Resource r=byHandle.remove(h);if(r==null){setError(RES_NOT_FOUND);return true;}r.handle=0;patchMapEntry(r);if(trap==0x992)tb.api.setResourceBit(h,false);if(trap==0x9a3){tb.menus.resourceReleased(h);if(!tb.isLoadedSegment(h))tb.api.disposeHandleAndFree(h);}setError(NO_ERR);return true;}
 			case 0x9c1:case 0x810:{int type=memory.readLong(cpu.a[7]);cpu.a[7]+=4;List<ResourceFile68k> files=indexed(trap==0x810);
@@ -485,8 +487,9 @@ final class ResourceManager68k {
 	 * (memFullErr ...) are still reported.
 	 */
 	private int getResource(ResourceFile68k.Resource r) throws M68kCpuException {int h=handleFor(r);if(r==null)setError(NO_ERR);return h;}
-	/** GetNamedResource/Get1NamedResource quirk (IM: More Macintosh Toolbox): when the TYPE is absent from every searched map, ResError is noErr, not resNotFound. */
-	private boolean typeExists(int type,boolean currentOnly){for(ResourceFile68k f:chain(currentOnly))if(!f.ofType(type).isEmpty())return true;return false;}
+	/* GetNamedResource/Get1NamedResource: a miss is resNotFound (handleFor), even when the TYPE is in no searched map - unlike
+	   GetResource above. Aldus Installer 3.x checks itself only when Get1NamedResource('KISW', "stuff") finds the type: with ResError
+	   noErr for its absent type it ran the check on NIL and warned "This application has been modified relative to its original state". */
 	/**
 	 * Resource names are kept byte for byte as Mac Roman strings (the codec ResourceFile68k reads the map with), whatever the
 	 * program's text encoding: under the Japanese encoding a name such as "\u00a5Splash" would otherwise decode to a different
@@ -557,6 +560,7 @@ final class ResourceManager68k {
 			memory.writeWord(entry,r.id);memory.writeWord(entry+2,-1);memory.writeLong(entry+4,(r.attributes&0xff)<<24);memory.writeLong(entry+8,0);
 			memory.writeLong(cell,map);
 			cpu.a[2]=entry;cpu.a[3]=entry;cpu.a[4]=cell;
+			if(Mac68kApi.TRACE)System.err.printf("[68K] $A0FC engine at $%08X for %s %d, SP=$%08X%n",engine,ResourceFile68k.typeName(r.type),r.id,cpu.a[7]);
 			cpu.call(engine);
 			int h=memory.readLong(entry+8);
 			if(h!=0){byte[] out=tb.api.handleContents(h);tb.api.disposeHandleAndFree(h);if(out!=null&&out.length>0){r.setData(out);r.expanded=true;
@@ -630,7 +634,8 @@ final class ResourceManager68k {
 	int detachedResource(int type,int id) throws M68kCpuException {
 		ResourceFile68k.Resource r=find(type,id,false);
 		if(r==null){setError(RES_NOT_FOUND);return 0;}
-		try{int h=tb.api.createHandle(data(r));setError(NO_ERR);return h;}catch(M68kCpuException e){setError(MEM_FULL_ERR);return 0;}
+		// the live Handle's bytes when the program loaded it: Opera 5's Carbon installer expands the ADCR picture of its splash dialog in place first
+		try{int h=tb.api.createHandle(currentData(r));setError(NO_ERR);return h;}catch(M68kCpuException e){setError(MEM_FULL_ERR);return 0;}
 	}
 	/** As above with GetResource's not-found rule (NIL, ResError noErr - see getResource): the GetIcon/GetPicture the Dialog
 	 *  Manager does for icon and picture items. Canvas 3.5's tool palettes have picture items with PICT IDs it never had (it
@@ -639,11 +644,14 @@ final class ResourceManager68k {
 		int h=detachedResource(type,id);if(h==0&&error==RES_NOT_FOUND)setError(NO_ERR);return h;
 	}
 
-	/** IUGetIntl: the itl0/itl1 of the system script (the Japanese ones for a Japanese program, when present). */
+	/** IUGetIntl: the itl0/itl1/itl2/itl4 of the system script (the Japanese ones for a Japanese program, when present). theID 2
+	 *  and 4 are itl2 and itl4 (Inside Macintosh: Text): Script Utilities' GetDefaultNumberParts read itl1 as NumberParts. */
 	int internationalResource(int id) throws M68kCpuException {
-		int type=id==0?0x69746c30:0x69746c31;
+		int type=id==0?0x69746c30:id==2?0x69746c32:id==4?0x69746c34:0x69746c31;
 		ResourceFile68k.Resource r=tb.encoding==StackTextEncoding.JAPANESE?find(type,SystemResources68k.JAPANESE_ITL,false):null;
-		return handleFor(r!=null?r:find(type,0,false));
+		if(r==null)r=find(type,0,false);
+		if(r==null&&id==2)return internationalResource(1); // no itl2 (a System without one): itl1 rather than NIL, as answered before the synthetic System had a stub itl2
+		return handleFor(r);
 	}
 
 	/** IUSetIntl(refNum, theID, intlHandle): a copy of the handle's data becomes the file's itl0 (theID 0) or itl1 resource 0,
@@ -717,8 +725,8 @@ final class ResourceManager68k {
 	private boolean openResFile(M68kCpu cpu,int trap) throws M68kCpuException {
 		File file=null;String asked=null;int perm=FS_CUR_PERM;
 		try{
-			if(trap==0x997){int name=pop(cpu);asked=tb.readPascal(name);file=tb.files.fileForClassicPath(asked);}
-			else if(trap==0x9c4){perm=memory.readByte(cpu.a[7]);int vRef=(short)memory.readWord(cpu.a[7]+2),name=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;asked=tb.readPascal(name);file=tb.files.fileFor(vRef,0,asked);} // name 4 + vRefNum 2 + permission byte (a word on the stack) = 8; popping 10 shifted the caller's saved registers (Speedometer's GDHandle came back <<16)
+			if(trap==0x997){int name=pop(cpu);asked=tb.readPascal(name);file=tb.files.searchSystemFolder(asked,tb.files.fileForClassicPath(asked));}
+			else if(trap==0x9c4){perm=memory.readByte(cpu.a[7]);int vRef=(short)memory.readWord(cpu.a[7]+2),name=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;asked=tb.readPascal(name);file=tb.files.fileFor(vRef,0,asked);if(vRef==0)file=tb.files.searchSystemFolder(asked,file);} // name 4 + vRefNum 2 + permission byte (a word on the stack) = 8; popping 10 shifted the caller's saved registers (Speedometer's GDHandle came back <<16)
 			else{perm=memory.readByte(cpu.a[7]);int name=memory.readLong(cpu.a[7]+2),dirId=memory.readLong(cpu.a[7]+6),vRef=(short)memory.readWord(cpu.a[7]+10);cpu.a[7]+=12;asked=tb.readPascal(name)+" in "+vRef+"/"+dirId;file=tb.files.fileFor(vRef,dirId,tb.readPascal(name));}
 		}catch(IOException e){file=null;}
 		int ref=openFile(file,perm);
@@ -959,7 +967,10 @@ final class ResourceManager68k {
 	/**
 	 * A compressed resource whose 'dcmp' is not one of the built-in 0-2 (a program's own decompressor, as ResEdit carries):
 	 * the program's 'dcmp' code runs as dcmp(source after the 18-byte header, destination, working, workingSize), the
-	 * convention the System's own 'dcmp' stubs follow. Null when there is no such 'dcmp' or it fails.
+	 * convention the System's own 'dcmp' stubs follow. A header version 9 'dcmp' opens with a table of three routine offsets
+	 * instead of code (the System's 'dcmp' 2 and 3: 6, $20, $12): the second one expands, as decompress(source, destination,
+	 * header) - Alliance Power Tools' 'dcmp' 128 (6, $A, 6); entered at its start it returned at once and every CODE was
+	 * zeros. Null when there is no such 'dcmp' or it fails.
 	 */
 	private byte[] guestDecompress(byte[] data) throws M68kCpuException {
 		int type=(data[6]&0xff)<<8|(data[7]&0xff),length=(data[8]&0xff)<<24|(data[9]&0xff)<<16|(data[10]&0xff)<<8|(data[11]&0xff);
@@ -977,8 +988,10 @@ final class ResourceManager68k {
 			int size=Math.max(length+slack,packed)+256;
 			destination=memory.allocate(size,2);int source=destination+size-packed;memory.load(source,java.util.Arrays.copyOfRange(data,18,data.length));
 			int workingSize=length+4096;working=memory.allocate(workingSize,2);
-			cpu.a[7]-=INTERRUPT_SLACK;cpu.pushLong(source);cpu.pushLong(destination);cpu.pushLong(working);cpu.pushLong(workingSize);
-			cpu.callPascal(memory.readLong(code),16);
+			int entry=memory.readLong(code),table=type==0x0901?routineTable(entry,tb.api.handleSize(code)):-1;
+			cpu.a[7]-=INTERRUPT_SLACK;
+			if(table>=0){memory.load(working,java.util.Arrays.copyOfRange(data,0,18));cpu.pushLong(source);cpu.pushLong(destination);cpu.pushLong(working);cpu.callPascal(entry+table,12);}
+			else{cpu.pushLong(source);cpu.pushLong(destination);cpu.pushLong(working);cpu.pushLong(workingSize);cpu.callPascal(entry,16);}
 			if(Mac68kApi.TRACE||DCMP_TRACE)System.err.printf("[68K] program 'dcmp' %d expanded a resource to %d bytes%n",id,length);
 			return memory.readBytes(destination,length);
 		}catch(M68kException e){System.err.println("[68K] program 'dcmp' "+id+" failed: "+e.getMessage());return null;}
@@ -986,6 +999,12 @@ final class ResourceManager68k {
 			if(destination!=0)memory.free(destination);if(working!=0)memory.free(working);}
 	}
 	private static final int INTERRUPT_SLACK=256;
+	/** The expanding routine's offset when a 'dcmp' starts with the version 9 table of three even in-code offsets, else -1. */
+	private int routineTable(int code,int size) throws M68kCpuException {
+		if(size<6)return -1;
+		for(int i=0;i<3;i++){int o=memory.readWord(code+2*i);if(o<6||(o&1)!=0||o>=size)return -1;}
+		return memory.readWord(code+2);
+	}
 
 	private boolean runDecompressor(M68kCpu cpu,int id) throws M68kCpuException {
 		int sp=cpu.a[7],savedD0=memory.readLong(sp),ret=memory.readLong(sp+4),destination=memory.readLong(sp+16),source=memory.readLong(sp+20);

@@ -82,12 +82,74 @@ final class PpcInternetConfig {
 	 *  name) standing for the host's browser. */
 	static byte[] defaults(String k){
 		if(k.equals("RealName")||k.equals("Organization")||k.equals("Email")||k.equals("WWWHomePage"))return new byte[1]; // set but empty, as in a fresh Internet Config (Acrobat Reader 5.0 reads RealName)
+		if(k.equalsIgnoreCase(MAPPING))return defaultMapping();
 		if(!k.equals("Helper•http")&&!k.equals("Helper•https")&&!k.equals("Helper•ftp"))return null;
 		byte[] spec=new byte[68];spec[0]='h';spec[1]='z';spec[2]='W';spec[3]='B';byte[] name="Web Browser".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);spec[4]=(byte)name.length;System.arraycopy(name,0,spec,5,name.length);
 		return spec;
 	}
 
 	// ------------------------------------------------------------------ file mappings
+
+	/** A fresh Internet Config's file mappings (the common extensions of the time): Anarchie 1.6 refuses to start ("install
+	 *  the component ... Internet Config 1.1 or later") when the "Mapping" preference is missing. Rows: extension, type,
+	 *  creator, flags (1 binary, 2 resource fork, 4 data fork, 0x10 not incoming, 0x20 not outgoing), application, MIME type, name. */
+	private static final String[][] DEFAULT_MAPPINGS={
+		{".txt","TEXT","ttxt","4","SimpleText","text/plain","Text"},
+		{".text","TEXT","ttxt","4","SimpleText","text/plain","Text"},
+		{".html","TEXT","ttxt","4","SimpleText","text/html","HTML"},
+		{".htm","TEXT","ttxt","4","SimpleText","text/html","HTML"},
+		{".c","TEXT","ttxt","4","SimpleText","text/plain","C Source"},
+		{".h","TEXT","ttxt","4","SimpleText","text/plain","C Header"},
+		{".hqx","TEXT","SITx","4","StuffIt Expander","application/mac-binhex40","BinHex"},
+		{".sit","SIT!","SITx","5","StuffIt Expander","application/x-stuffit","StuffIt Archive"},
+		{".sea","APPL","????","7","","application/x-sea","Self-Extracting Archive"},
+		{".cpt","PACT","CPCT","5","Compact Pro","application/mac-compactpro","Compact Pro Archive"},
+		{".bin","BINA","SITx","5","StuffIt Expander","application/macbinary","MacBinary"},
+		{".uu","TEXT","SITx","4","StuffIt Expander","text/plain","UUEncode"},
+		{".zip","ZIP ","SITx","5","StuffIt Expander","application/zip","ZIP Archive"},
+		{".gz","Gzip","SITx","5","StuffIt Expander","application/x-gzip","GNU Zip Archive"},
+		{".Z","ZIVU","SITx","5","StuffIt Expander","application/x-compress","Unix Compress Archive"},
+		{".tar","TARF","SITx","5","StuffIt Expander","application/x-tar","Unix Tape Archive"},
+		{".lzh","LHA ","LARC","5","MacLHA","application/x-lha","LHA Archive"},
+		{".gif","GIFf","ttxt","5","SimpleText","image/gif","GIF Picture"},
+		{".jpg","JPEG","ttxt","5","SimpleText","image/jpeg","JPEG Picture"},
+		{".jpeg","JPEG","ttxt","5","SimpleText","image/jpeg","JPEG Picture"},
+		{".png","PNGf","ttxt","5","SimpleText","image/png","PNG Picture"},
+		{".tif","TIFF","ttxt","5","SimpleText","image/tiff","TIFF Picture"},
+		{".tiff","TIFF","ttxt","5","SimpleText","image/tiff","TIFF Picture"},
+		{".pict","PICT","ttxt","5","SimpleText","image/x-pict","PICT Picture"},
+		{".pct","PICT","ttxt","5","SimpleText","image/x-pict","PICT Picture"},
+		{".bmp","BMPp","ttxt","5","SimpleText","image/bmp","Windows Bitmap"},
+		{".mov","MooV","TVOD","5","MoviePlayer","video/quicktime","QuickTime Movie"},
+		{".qt","MooV","TVOD","5","MoviePlayer","video/quicktime","QuickTime Movie"},
+		{".mpg","MPEG","TVOD","5","MoviePlayer","video/mpeg","MPEG Movie"},
+		{".avi","VfW ","TVOD","5","MoviePlayer","video/x-msvideo","AVI Movie"},
+		{".aif","AIFF","TVOD","5","MoviePlayer","audio/x-aiff","AIFF Sound"},
+		{".aiff","AIFF","TVOD","5","MoviePlayer","audio/x-aiff","AIFF Sound"},
+		{".au","ULAW","TVOD","5","MoviePlayer","audio/basic","Sun Audio"},
+		{".wav","WAVE","TVOD","5","MoviePlayer","audio/x-wav","Windows Sound"},
+		{".mid","Midi","TVOD","5","MoviePlayer","audio/x-midi","MIDI"},
+		{".mp3","MPG3","TVOD","5","MoviePlayer","audio/mpeg","MP3 Sound"},
+		{".pdf","PDF ","CARO","5","Acrobat Reader","application/pdf","Portable Document Format"},
+		{".ps","TEXT","ttxt","4","SimpleText","application/postscript","PostScript"},
+		{".rtf","TEXT","MSWD","4","Microsoft Word","application/rtf","Rich Text Format"},
+		{".doc","WDBN","MSWD","5","Microsoft Word","application/msword","Word Document"},
+		{".xls","XLS ","XCEL","5","Microsoft Excel","application/vnd.ms-excel","Excel Spreadsheet"},
+		{".exe","DEXE","????","5","","application/octet-stream","DOS Program"},
+	};
+	private static byte[] defaultMapping(){
+		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+		for(String[] m:DEFAULT_MAPPINGS){
+			java.io.ByteArrayOutputStream e=new java.io.ByteArrayOutputStream();
+			e.write(0);e.write(0);e.write(0);e.write(22);e.write(0);e.write(0); // totalLength (filled below), fixedLength, version
+			for(String four:new String[]{m[1],m[2]})e.write(four.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1),0,4); // type, creator
+			e.write(0);e.write(0);e.write(0);e.write(0); // no post-processing application
+			int flags=Integer.parseInt(m[3]);e.write(0);e.write(0);e.write(0);e.write(flags);
+			for(String str:new String[]{m[0],m[4],"",m[5],m[6]}){byte[] b=str.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);e.write(b.length);e.write(b,0,b.length);}
+			byte[] b=e.toByteArray();b[0]=(byte)(b.length>>>8);b[1]=(byte)b.length;out.write(b,0,b.length);
+		}
+		return out.toByteArray();
+	}
 
 	/** One packed map entry: where it starts in the "Mapping" value and its fields. */
 	static final class Entry {

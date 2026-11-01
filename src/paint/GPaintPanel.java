@@ -146,6 +146,8 @@ class MyPanel extends JPanel{
 		if(selTarget != null && g instanceof Graphics2D){
 			ButtonGUI.paintAnts((Graphics2D) g, selTarget);
 		}
+		//Command-Option のピークの輪郭も同じく毎回描く
+		if(GUI.stroke_frag != 0 && PCARD.pc != null && PCARD.pc.mainPane == this) GUI.paintPeekOutlines(g);
 	}
 
 

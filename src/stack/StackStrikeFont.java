@@ -55,6 +55,11 @@ final class StackStrikeFont {
 		return base.deriveFont(style&Font.ITALIC, (float)size);
 	}
 
+	/** Drops the fonts made from {@code rsrc}: its strikes changed (an external rewrote a 'FONT'). */
+	static void forget(Rsrc rsrc){
+		synchronized(fonts){ fonts.remove(rsrc); }
+	}
+
 	private static Font strikeFont(Rsrc rsrc, String name, int size){
 		String key = name.toLowerCase()+"/"+size;
 		synchronized(fonts){

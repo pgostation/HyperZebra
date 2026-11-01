@@ -996,6 +996,7 @@ final class PpcCarbon {
 		l.register(null,"AreFloatingWindowsVisible",(r,c)->ret(1));
 		l.register(null,"ShowFloatingWindows",(r,c)->ret(0));
 		l.register(null,"HideFloatingWindows",(r,c)->ret(0));
+		l.register(null,"InitFloatingWindows",(r,c)->ret(0)); // Mac OS 8.6 InterfaceLib (Gestalt 'wind' gestaltHasFloatingWindows): floating windows need no set-up here
 		l.register(null,"CloneWindow",(r,c)->ret(0));
 		l.register(null,"GetWindowOwnerCount",(r,c)->{if(arg(1)!=0)memory.writeLong(arg(1),1);ret(0);});
 		l.register(null,"IsWindowUpdatePending",(r,c)->{int rgn=memory.readLong(arg(0)+122);ret(rgn!=0&&(rt.toolbox("EmptyRgn",rgn)&0xff)==0?1:0);});
@@ -1433,7 +1434,7 @@ final class PpcCarbon {
 		for(Object[] u:new Object[][]{{"DMDisplayModeListIterator",0x00000fc0},{"DMComponentListIterator",0x00000fc0},{"DMNotification",0x000003c0},{"DMExtendedNotification",0x00000ec0}}){
 			final int info=(Integer)u[1];
 			l.register(null,"New"+u[0]+"UPP",(r,c)->ret(rt.newRoutineDescriptor(arg(0),info,PpcRuntime.ISA_PPC)));
-			l.register(null,"Dispose"+u[0]+"UPP",(r,c)->{int rd=arg(0);if(rd!=0&&rt.isRoutineDescriptor(rd)&&memory.isAllocated(rd))memory.free(rd);});
+			l.register(null,"Dispose"+u[0]+"UPP",(r,c)->rt.disposeRoutineDescriptor(arg(0)));
 		}
 		l.register(null,"DisposeEventHandlerUPP",(r,c)->{});
 		l.register(null,"DisposeEventLoopTimerUPP",(r,c)->{});

@@ -31,6 +31,8 @@ final class EventManager68k implements MacAppHost.Listener {
 		boolean posted;int element;
 		/** A key typed on HyperCard's card window, handed to an external without windows (see {@link #hostKeys}). */
 		CardKey cardKey;
+		/** The Open Application/Documents event of the launch: not seen by the program's first GetNextEvent/WaitNextEvent (see {@link #take}). */
+		boolean launch;
 		Event(int what){this.what=what;}
 	}
 
@@ -378,10 +380,17 @@ final class EventManager68k implements MacAppHost.Listener {
 		if(Mac68kApi.TRACE)System.err.println("[68K] Application Died event queued for process "+serial);
 	}
 	@Override public void postZoom(int window){}
-	@Override public void postOpenDocuments(final List<File> files){
-		Event e=new Event(HIGH_LEVEL_EVT);e.files=new ArrayList<File>(files);e.message=0x61657674;post(e); // 'aevt'
+	@Override public void postOpenDocuments(final List<File> files){postOpenDocuments(files,false);}
+	/** The launch's Open Application/Documents event (MacApp68k, high-level-event-aware programs). */
+	void postLaunchDocuments(List<File> files){postOpenDocuments(files,true);}
+	private void postOpenDocuments(List<File> files,boolean launch){
+		Event e=new Event(HIGH_LEVEL_EVT);e.files=new ArrayList<File>(files);e.message=0x61657674;e.launch=launch;post(e); // 'aevt'
 		if(Mac68kApi.TRACE)System.err.println("[68K] high-level event queued: "+(files.isEmpty()?"oapp":"odoc "+files));
 	}
+	/** Whether the program has made its first GetNextEvent/WaitNextEvent call. */
+	private boolean firstEventCallMade;
+	/** Whether a quit was asked for and not cancelled by the program (the program is closing down). */
+	public boolean quitInProgress(){return quitRequested;}
 	@Override public void postQuit(){
 		quitRequested=true;
 		startQuitTracking();
@@ -479,6 +488,8 @@ final class EventManager68k implements MacAppHost.Listener {
 	}
 	/** An Apple event sent by another running program (the where field carries its event ID, the message its class). */
 	void postAppleEvent(AppleEvents68k.Portable event,int senderSerial){Event e=new Event(HIGH_LEVEL_EVT);e.message=event.eventClass;e.appleEvent=event;e.senderSerial=senderSerial;post(e);}
+	/** An Apple event for a program this process runs on a task of its own (ThreadManager68k.newProgramTask); false when it is gone. */
+	boolean postAppleEventToProgram(int serial,AppleEvents68k.Portable event,int senderSerial){Event e=new Event(HIGH_LEVEL_EVT);e.message=event.eventClass;e.appleEvent=event;e.senderSerial=senderSerial;return tb.threads.postToProgram(serial,e);}
 	/** A raw high-level event from PostHighLevelEvent in another program: AcceptHighLevelEvent hands the buffer over. */
 	void postHighLevel(int eventClass,int eventId,byte[] buffer,int refcon,int senderSerial){Event e=new Event(HIGH_LEVEL_EVT);e.message=eventClass;e.menuItem=eventId;e.buffer=buffer;e.refcon=refcon;e.senderSerial=senderSerial;post(e);}
 	@Override public void postSuspendResume(boolean resume){Event e=new Event(OS_EVT);e.message=(1<<24)|(resume?1:0);post(e);}
@@ -544,6 +555,10 @@ final class EventManager68k implements MacAppHost.Listener {
 				// Some class libraries can treat a stale pointer's refCon as an object and stop with an error.
 				if((e.what==ACTIVATE_EVT||e.what==UPDATE_EVT)&&tb.windows!=null&&tb.windows.window(e.message)==null){it.remove();continue;}
 				if(e.what==UPDATE_EVT&&tb.windows!=null){updateWaiting=true;continue;}
+				// A launched program comes to the front during its first event call, which answers no Apple event yet: The Writing
+				// Center calls GetNextEvent(everyEvent) once right after InitDialogs, ignores what it gets, installs its handlers and
+				// then waits for 'oapp'; given to that first call, the event was lost and no window or menu ever appeared.
+				if(e.launch&&!firstEventCallMade)continue;
 				if(e.what==OS_EVT||e.what==HIGH_LEVEL_EVT){if(later==null)later=e;continue;}
 				if(remove)it.remove();
 				if(e.posted)fromElement(e);
@@ -644,6 +659,14 @@ final class EventManager68k implements MacAppHost.Listener {
 
 	private boolean waitNextEvent(M68kCpu cpu) throws M68kException {
 		int mask=memory.readWord(cpu.a[7]+12),eventPtr=memory.readLong(cpu.a[7]+8),sleep=memory.readLong(cpu.a[7]+4);cpu.a[7]+=14;
+		if(tb.threads.inProgramTask()){ // a program run in the launcher's process: the events are the launcher's, this is only its turn's end
+			Event own=(mask&HIGH_LEVEL_MASK)!=0?tb.threads.takeProgramEvent():null; // but the Apple events sent to it are its own
+			if(own!=null&&eventPtr!=0){writeEvent(eventPtr,own);tb.writeBoolean(cpu.a[7],true);return true;}
+			if(eventPtr!=0)writeEvent(eventPtr,null);
+			tb.writeBoolean(cpu.a[7],false);
+			tb.threads.yieldProgram(cpu,(int)Math.max(0,Math.min(sleep,30)));
+			return true;
+		}
 		if(probeTaken)endMenuProbe(); // the made-up menu-bar click went by without MenuSelect
 		tb.runEventWork();tb.updateTicks();tb.runTimers();tb.runPeriodic();tb.menus.flushIfDirty();
 		closeIgnoredGoAway();beforeEvents();serviceHostDrags(cpu);deliverPendingQuit();trackQuit();
@@ -671,6 +694,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		boolean result=os!=null?os:e!=null&&e.what!=NULL_EVENT;if(result&&tb.desk.offerEvent(cpu,eventPtr))result=false;
 		if(result&&tb.windows.offerSystemWindowEvent(cpu,eventPtr)){result=false;memory.writeWord(eventPtr,NULL_EVENT);}
 		tb.writeBoolean(cpu.a[7],gneFilter(cpu,eventPtr,result)); // WaitNextEvent is GetNextEvent to SystemEvent and the filter too
+		firstEventCallMade=true;
 		tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu); // input-method text for the TSM document, then other threads get their turn
 		return true;
 	}
@@ -706,7 +730,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		boolean result=os!=null?os:e!=null&&e.what!=NULL_EVENT;
 		if(remove&&result&&tb.desk.offerEvent(cpu,eventPtr))result=false;
 		if(remove&&result&&tb.windows.offerSystemWindowEvent(cpu,eventPtr)){result=false;memory.writeWord(eventPtr,NULL_EVENT);}
-		if(remove)result=gneFilter(cpu,eventPtr,result);
+		if(remove){result=gneFilter(cpu,eventPtr,result);firstEventCallMade=true;}
 		tb.writeBoolean(cpu.a[7],result);
 		if(remove){tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu);}
 		return true;

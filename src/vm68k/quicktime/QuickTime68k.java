@@ -31,6 +31,8 @@ final class QuickTime68k {
 	static final int VERSION=0x02500000;
 	static final boolean QT_TRACE=Boolean.getBoolean("hz68k.qttrace"); // logs every Movie Toolbox call with its top stack longs
 	static final int DEFAULT_TIME_SCALE=600,CONTROLLER_HEIGHT=16,CONTROLLER_MIN_WIDTH=160;
+	/** NewMovieFrom... flag: the movie is active from the start (Movies.h newMovieActive). */
+	static final int NEW_MOVIE_ACTIVE=1;
 	// Movie controller actions (MCDoAction / action filter)
 	static final int MC_IDLE=1,MC_DRAW=2,MC_ACTIVATE=3,MC_DEACTIVATE=4,MC_MOUSE_DOWN=5,MC_KEY=6,MC_PLAY=8,MC_GO_TO_TIME=12,MC_SET_VOLUME=14,MC_GET_VOLUME=15,MC_STEP=18,
 		MC_SET_LOOPING=21,MC_GET_LOOPING=22,MC_SET_PALINDROME=23,MC_GET_PALINDROME=24,MC_SET_GROW_BOX=25,MC_SIZE_CHANGED=26,MC_SET_SELECTION_BEGIN=29,MC_SET_SELECTION_DURATION=30,
@@ -196,6 +198,10 @@ final class QuickTime68k {
 			case 0x0037:{int durationPtr=memory.readLong(sp),timePtr=memory.readLong(sp+4),movie=memory.readLong(sp+8);cpu.a[7]+=12;Movie m=movies.get(movie); // GetMovieSelection(movie, time*, duration*)
 				if(timePtr!=0)memory.writeLong(timePtr,m==null?0:m.selectionTime);if(durationPtr!=0)memory.writeLong(durationPtr,m==null?0:m.selectionDuration);return true;}
 			case 0x0038:{int duration=memory.readLong(sp),time=memory.readLong(sp+4),movie=memory.readLong(sp+8);cpu.a[7]+=12;Movie m=movies.get(movie);if(m!=null){m.selectionTime=time;m.selectionDuration=duration;}return true;} // SetMovieSelection
+			case 0x003c:{int record=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie); // SetMovieTime(movie, TimeRecord*): the record's 64-bit value in its own time scale (0: the movie's)
+				if(m!=null&&record!=0){long value=(long)memory.readLong(record)<<32|Integer.toUnsignedLong(memory.readLong(record+4));int scale=memory.readLong(record+8);
+					long units=scale>0&&scale!=m.timeScale?value*m.timeScale/scale:value;seekUnits(m,(int)Math.max(0,Math.min(m.duration(),units)));draw(m);}
+				return true;}
 			case 0x003d:{int time=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie);if(m!=null){seekUnits(m,Math.max(0,Math.min(m.duration(),time)));draw(m);}return true;} // SetMovieTimeValue
 			case 0x003e:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);if(m!=null&&m.userData==0)m.userData=tb.api.createHandle(new byte[4]);memory.writeLong(cpu.a[7],m==null?0:m.userData);return true;} // GetMovieUserData
 			case 0x003f:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);memory.writeLong(cpu.a[7],m==null?0:tracks(m).size());return true;} // GetMovieTrackCount
@@ -221,6 +227,7 @@ final class QuickTime68k {
 			case 0x0052:{int track=memory.readLong(sp);cpu.a[7]+=4;memory.writeLong(cpu.a[7],track);return true;} // GetTrackAlternate: a track is its own only alternate
 			case 0x005f:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeLong(cpu.a[7],t==null?0:t.movie.userData!=0?t.movie.userData:(t.movie.userData=tb.api.createHandle(new byte[4])));return true;} // GetTrackUserData: empty, as the movie's
 			case 0x006b:{cpu.a[7]+=4;memory.writeWord(cpu.a[7],0);return true;} // GetMediaLanguage: English
+			case 0x0071:{int media=memory.readLong(sp);cpu.a[7]+=4;memory.writeLong(cpu.a[7],medias.containsKey(media)?media:0);return true;} // GetMediaHandler: the media itself stands for its handler instance (Sparkle 2.45 asks before it reads the sample descriptions)
 			case 0x0077:{int media=memory.readLong(sp);cpu.a[7]+=4;memory.writeLong(cpu.a[7],medias.containsKey(media)?1:0);return true;} // GetMediaSampleDescriptionCount
 			case 0x0096:{int time=memory.readLong(sp+4);cpu.a[7]+=8;memory.writeLong(cpu.a[7],time);return true;} // TrackTimeToMediaTime(time, track): one edit at the start
 			case 0x009c:{cpu.a[7]+=8;return true;} // SetMovieLanguage
@@ -275,10 +282,12 @@ final class QuickTime68k {
 			case 0x00ec:{int cb=memory.readLong(sp);cpu.a[7]+=4;if(callBacks.remove(cb)!=null)tb.api.disposeHandleAndFree(cb);return true;} // DisposeCallBack
 			case 0x00f0:{int changed=memory.readLong(sp),flags=memory.readWord(sp+4),resName=memory.readLong(sp+6),resId=memory.readLong(sp+10),ref=(short)memory.readWord(sp+14),moviePtr=memory.readLong(sp+16);cpu.a[7]+=20; // NewMovieFromFile
 				File file=openFiles.get(ref);int result=-2010;
-				if(file!=null){Movie m=newMovie(file);if(m!=null){if(moviePtr!=0)memory.writeLong(moviePtr,m.handle);if(resId!=0)memory.writeWord(resId,128);if(changed!=0)memory.writeByte(changed,0);result=0;}}
+				// newMovieActive (flag 1) makes it active; without it the movie stays still until SetMovieActive: L-ZONE's Director
+				// projector opens its QuickTime casts with flags 0 and reads GetMovieActive - they played at 0,0 of the stage too
+				if(file!=null){Movie m=newMovie(file);if(m!=null){m.active=(flags&NEW_MOVIE_ACTIVE)!=0;if(moviePtr!=0)memory.writeLong(moviePtr,m.handle);if(resId!=0)memory.writeWord(resId,128);if(changed!=0)memory.writeByte(changed,0);result=0;}}
 				if(result!=0&&moviePtr!=0)memory.writeLong(moviePtr,0);memory.writeWord(cpu.a[7],result);return true;}
-			case 0x00f1:{int changed=memory.readLong(sp),handle=memory.readLong(sp+6),moviePtr=memory.readLong(sp+10);cpu.a[7]+=14; // NewMovieFromHandle(movie*, h, flags, dataRefWasChanged*)
-				File file=handleMovieFile(handle==0?null:tb.api.handleContents(handle));Movie m=file!=null?newMovie(file):null;
+			case 0x00f1:{int changed=memory.readLong(sp),flags=memory.readWord(sp+4),handle=memory.readLong(sp+6),moviePtr=memory.readLong(sp+10);cpu.a[7]+=14; // NewMovieFromHandle(movie*, h, flags, dataRefWasChanged*)
+				File file=handleMovieFile(handle==0?null:tb.api.handleContents(handle));Movie m=file!=null?newMovie(file):null;if(m!=null)m.active=(flags&NEW_MOVIE_ACTIVE)!=0;
 				if(moviePtr!=0)memory.writeLong(moviePtr,m==null?0:m.handle);if(changed!=0)memory.writeByte(changed,0);memory.writeWord(cpu.a[7],m==null?COULD_NOT_RESOLVE_DATA_REF:0);return true;}
 			case 0x00f3:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);memory.writeLong(cpu.a[7],m==null?0x00010000:m.preferredRate);return true;} // GetMoviePreferredRate
 			case 0x00f4:{int rate=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie);if(m!=null)m.preferredRate=rate;return true;} // SetMoviePreferredRate
@@ -313,8 +322,8 @@ final class QuickTime68k {
 				int err=convertFileToMovieFile(input,output,creator,resIdPtr);if(err!=0)fail(err);memory.writeWord(cpu.a[7],err);return true;} // a failure shows in GetMoviesError (UxMovie: "Can't translate to movie")
 			case 0x01cc:{int creator=memory.readLong(sp+14),type=memory.readLong(sp+18),output=memory.readLong(sp+22),movie=memory.readLong(sp+30);cpu.a[7]+=34; // ConvertMovieToFile(movie, onlyTrack, outputFile, fileType, creator, scriptTag, resID*, flags, userComp)
 				int err=convertMovieToFile(movies.get(movie),output,type,creator);if(err!=0)fail(err);memory.writeWord(cpu.a[7],err);return true;}
-			case 0x0220:{int refType=memory.readLong(sp),dataRef=memory.readLong(sp+4),idPtr=memory.readLong(sp+8),moviePtr=memory.readLong(sp+14);cpu.a[7]+=18; // NewMovieFromDataRef(Movie*, flags, id*, dataRef, dataRefType)
-				File file=refType==0x616c6973&&dataRef!=0?tb.files.resolveAlias(tb.api.handleContents(dataRef)):null;Movie m=file!=null&&file.isFile()?newMovie(file):null;
+			case 0x0220:{int refType=memory.readLong(sp),dataRef=memory.readLong(sp+4),idPtr=memory.readLong(sp+8),flags=memory.readWord(sp+12),moviePtr=memory.readLong(sp+14);cpu.a[7]+=18; // NewMovieFromDataRef(Movie*, flags, id*, dataRef, dataRefType)
+				File file=refType==0x616c6973&&dataRef!=0?tb.files.resolveAlias(tb.api.handleContents(dataRef)):null;Movie m=file!=null&&file.isFile()?newMovie(file):null;if(m!=null)m.active=(flags&NEW_MOVIE_ACTIVE)!=0;
 				if(moviePtr!=0)memory.writeLong(moviePtr,m==null?0:m.handle);if(idPtr!=0)memory.writeWord(idPtr,m==null?0:128);memory.writeWord(cpu.a[7],m==null?INVALID_MOVIE:0);return true;}
 			case 0x0233:{int flags=memory.readLong(sp),eraseColor=memory.readLong(sp+4),windowPtr=memory.readLong(sp+8),heightPtr=memory.readLong(sp+12),widthPtr=memory.readLong(sp+16),statePtr=memory.readLong(sp+24);cpu.a[7]+=28; // BeginFullScreen(restoreState*, gd, width*, height*, window*, eraseColor*, flags)
 				memory.writeWord(cpu.a[7],beginFullScreen(statePtr,widthPtr,heightPtr,windowPtr,eraseColor,flags));return true;}
@@ -929,7 +938,7 @@ final class QuickTime68k {
 		if(m.asset==null)return;
 		if(m.asset.mp3!=null)m.stream=StreamingSound.of(m.asset.mp3);
 		else if(m.asset.hasAudio()){
-			try{AudioInputStream in=m.asset.audioStream();m.clip=AudioSystem.getClip();m.clip.open(in);}
+			try{AudioInputStream in=HostSampleRate.forHost(m.asset.audioStream());m.clip=AudioSystem.getClip();m.clip.open(in);} // (an 11127 Hz track broke the host's audio after a minute)
 			catch(Exception e){m.clip=null;}
 		}
 		if(m.clip==null&&m.stream==null&&m.asset.musicSequence!=null){

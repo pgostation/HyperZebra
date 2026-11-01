@@ -272,7 +272,7 @@ public class GVisualEffectWindow extends JFrame {
 		if(g==null) return;
 		try{
 			long start = System.currentTimeMillis();
-			VEffect.playFrames(effect, g, from, target, start, start+VEffect.effectDuration(speed));
+			VEffect.playFrames(effect, g, from, target, start, start+VEffect.effectDuration(effect, speed));
 			g.setPaintMode();
 			g.drawImage(target, 0, 0, null);
 			Toolkit.getDefaultToolkit().sync();

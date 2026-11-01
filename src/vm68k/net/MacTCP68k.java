@@ -39,6 +39,9 @@ final class MacTCP68k {
 		final ByteArrayOutputStream buffer=new ByteArrayOutputStream();boolean remoteClosed,terminated,closing;int state;Thread reader;
 		/** The TCPClosing ASR has been sent (see {@link #closingIfDrained}). */
 		boolean closingNotified;
+		Waiter waiting;Listener listener;
+		/** Asynchronous UDPReads still waiting: a release completes them at once (see {@link #tcpRelease}). */
+		final java.util.Set<Integer> pendingReads=java.util.Collections.synchronizedSet(new java.util.LinkedHashSet<Integer>());
 		/** An asynchronous TCPActiveOpen whose completion routine has not run yet: TCPStatus keeps reporting SYN-sent (6) until then, as MacTCP
 		 *  completes the call the moment the connection is established; otherwise a client may reuse the open parameter block before a late completion. */
 		volatile boolean opening;
@@ -105,11 +108,17 @@ final class MacTCP68k {
 	 *  parameter block as a C stack argument (kCStackBased in MacTCP.h), not only in A0 as other drivers pass it: Netscape
 	 *  Navigator 2.02 read a zero from its stack, logged "complete bad", never retired the call and hung at Quit waiting for
 	 *  network operations. A0 and D0 are set as well for completion routines written against the Device Manager convention. */
-	private void complete(int pb) throws M68kException {
+	private int completionDepth;
+	private void complete(final int pb) throws M68kException {
 		int proc=memory.readLong(pb+12);if(proc==0)return;
+		// A completion routine that issues the next asynchronous call and gets it back finished at once (a released stream, a datagram
+		// already waiting) would recurse without end (Maven 2.0d23 at Quit: StackOverflowError); MacTCP completes such a call after
+		// the routine has returned.
+		if(completionDepth>0){tb.later(new Runnable(){@Override public void run(){try{complete(pb);}catch(M68kException e){}}});return;}
 		M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();int sr=cpu.sr;
+		completionDepth++;
 		try{cpu.a[7]-=Toolbox68k.INTERRUPT_STACK_SLACK;cpu.a[0]=pb;cpu.d[0]=(short)memory.readWord(pb+16);cpu.pushLong(pb);cpu.call(proc);}
-		finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}
+		finally{completionDepth--;System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}
 	}
 	/** Completes an asynchronous call from a background thread: results are applied on the emulation thread. */
 	private void completeLater(final int pb,final int result,final Runnable before){
@@ -162,6 +171,26 @@ final class MacTCP68k {
 	}
 	private void writeOpenResult(int pb,Stream s) throws M68kCpuException {memory.writeLong(pb+CS+4,s.remoteHost);memory.writeWord(pb+CS+8,s.remotePort);memory.writeLong(pb+CS+10,s.localHost);memory.writeWord(pb+CS+14,s.localPort);}
 
+
+	/** A passive open waiting for a connection on a shared listening port. */
+	private static final class Waiter{final Stream s;final boolean[] done;final int[] result;Waiter(Stream s,boolean[] done,int[] result){this.s=s;this.done=done;this.result=result;}}
+	private static final class Listener{final int port;final ServerSocket server;final java.util.ArrayDeque<Waiter> waiters=new java.util.ArrayDeque<Waiter>();Listener(int port,ServerSocket server){this.port=port;this.server=server;}}
+	private final java.util.Map<Integer,Listener> listeners=new java.util.HashMap<Integer,Listener>();
+	/** Hands each incoming connection to the oldest waiting passive open; the port closes with the last one (a refused connection while none waits). */
+	private void startAcceptor(final Listener l){
+		Thread t=new Thread(new Runnable(){@Override public void run(){
+			try{while(true){
+				Socket socket=l.server.accept();Waiter w;
+				synchronized(listeners){w=l.waiters.poll();if(w!=null){w.s.waiting=null;w.s.listener=null;}}
+				if(w==null){socket.close();continue;}
+				try{attach(w.s,socket);}catch(IOException e){w.result[0]=OPEN_FAILED;w.s.state=0;}
+				signal(w.done);
+				synchronized(listeners){if(l.waiters.isEmpty()){l.server.close();listeners.remove(l.port);return;}}
+			}}catch(IOException e){
+				synchronized(listeners){Waiter w;while((w=l.waiters.poll())!=null){w.s.waiting=null;w.s.listener=null;if(!w.s.terminated)w.result[0]=OPEN_FAILED;w.s.state=0;signal(w.done);}listeners.remove(l.port,l);}
+			}
+		}},"MacTCP listen "+l.port);t.setDaemon(true);t.start();
+	}
 	private boolean tcpPassiveOpen(final int pb,boolean async) throws M68kException {
 		final Stream s=stream(pb);if(s==null){finish(pb,INVALID_STREAM,async);return true;}
 		final int port=memory.readWord(pb+CS+14);
@@ -170,16 +199,26 @@ final class MacTCP68k {
 		// the listener is bound before the call returns, and the port it got (and this host's address) are in the parameter block at
 		// once, as MacTCP fills localPort when it accepts the passive open: an FTP client puts them into its PORT command while the
 		// asynchronous open is still pending - Anarchie 2.0 polls csParam.open.localPort and waited forever for a non-zero port
+		if(port!=0){ // several passive opens on one local port (MacHTTP keeps a handful listening on 80) share one listener
+			Waiter waiter=new Waiter(s,done,result);
+			try{synchronized(listeners){
+				Listener l=listeners.get(port);
+				if(l==null||l.server.isClosed()){l=new Listener(port,new ServerSocket(port));listeners.put(port,l);startAcceptor(l);}
+				l.waiters.add(waiter);s.waiting=waiter;s.listener=l;}}
+			catch(IOException e){finish(pb,OPEN_FAILED,async);return true;}
+			s.localPort=port;s.state=2;
+		}else{
 		final ServerSocket server;
 		try{server=new ServerSocket(port);}catch(IOException e){finish(pb,OPEN_FAILED,async);return true;}
 		s.server=server;s.localPort=server.getLocalPort();s.state=2;
-		InetAddress local=localAddress();if(local!=null&&s.localHost==0)s.localHost=toInt(local);
-		memory.writeLong(pb+CS+10,s.localHost);memory.writeWord(pb+CS+14,s.localPort);
 		Thread t=new Thread(new Runnable(){@Override public void run(){
 			try{Socket socket=server.accept();server.close();s.server=null;attach(s,socket);}
 			catch(IOException e){if(!s.terminated)result[0]=OPEN_FAILED;s.state=0;}
 			finally{signal(done);}
 		}},"MacTCP listen");t.setDaemon(true);t.start();
+		}
+		InetAddress local=localAddress();if(local!=null&&s.localHost==0)s.localHost=toInt(local);
+		memory.writeLong(pb+CS+10,s.localHost);memory.writeWord(pb+CS+14,s.localPort);
 		if(async){waitAsync(done,pb,result,new Runnable(){@Override public void run(){try{writeOpenResult(pb,s);}catch(M68kCpuException e){}}});return true;}
 		waitFor(done,0);writeOpenResult(pb,s);finish(pb,result[0],false);return true;
 	}
@@ -276,9 +315,16 @@ final class MacTCP68k {
 		Stream s=stream(pb);if(s==null){finish(pb,INVALID_STREAM,async);return true;}
 		s.terminated=true;closeStream(s);streams.remove(s.pointer);
 		memory.writeLong(pb+CS,s.rcvBuff);memory.writeLong(pb+CS+4,s.rcvBuffLen);
+		// MacTCP ends the reads still pending when the stream goes, before the release returns: letting them finish a moment later ran
+		// Maven's completion routine after it had torn its state down (PPC code jumped to 0 at Quit)
+		java.util.List<Integer> pending;synchronized(s.pendingReads){pending=new java.util.ArrayList<Integer>(s.pendingReads);s.pendingReads.clear();}
+		for(int read:pending){memory.writeWord(read+16,COMMAND_TIMEOUT);complete(read);}
 		finish(pb,NO_ERR,async);return true;
 	}
 	private void closeStream(Stream s){
+		synchronized(listeners){Waiter w=s.waiting;Listener l=s.listener;
+			if(w!=null&&l!=null){l.waiters.remove(w);s.waiting=null;s.listener=null;signal(w.done);
+				if(l.waiters.isEmpty()){try{l.server.close();}catch(IOException ignored){}listeners.remove(l.port,l);}}}
 		try{if(s.socket!=null)s.socket.close();}catch(IOException ignored){}
 		try{if(s.server!=null)s.server.close();}catch(IOException ignored){}
 		if(s.datagram!=null)s.datagram.close();
@@ -311,7 +357,7 @@ final class MacTCP68k {
 		final int timeout=memory.readWord(pb+CS);
 		final boolean[] done={false};
 		Thread t=new Thread(new Runnable(){@Override public void run(){long deadline=timeout==0?Long.MAX_VALUE:System.currentTimeMillis()+timeout*1000L;while(!s.terminated&&System.currentTimeMillis()<deadline&&!shutDown){synchronized(s.packets){if(!s.packets.isEmpty())break;}try{Thread.sleep(5);}catch(InterruptedException e){break;}}signal(done);}},"MacUDP read");t.setDaemon(true);t.start();
-		if(async){Thread w=new Thread(new Runnable(){@Override public void run(){synchronized(done){while(!done[0]&&!shutDown){try{done.wait(50);}catch(InterruptedException e){return;}}}tb.later(new Runnable(){@Override public void run(){try{memory.writeWord(pb+16,deliverPacket(pb,s));complete(pb);}catch(M68kException e){throw Toolbox68k.wrap(e);}}});}},"MacUDP completion");w.setDaemon(true);w.start();return true;}
+		if(async){s.pendingReads.add(pb);Thread w=new Thread(new Runnable(){@Override public void run(){synchronized(done){while(!done[0]&&!shutDown){try{done.wait(50);}catch(InterruptedException e){return;}}}tb.later(new Runnable(){@Override public void run(){try{if(!s.pendingReads.remove(pb))return;memory.writeWord(pb+16,deliverPacket(pb,s));complete(pb);}catch(M68kException e){throw Toolbox68k.wrap(e);}}});}},"MacUDP completion");w.setDaemon(true);w.start();return true;}
 		waitFor(done,0);finish(pb,deliverPacket(pb,s),false);return true;
 	}
 	private int deliverPacket(int pb,Stream s) throws M68kCpuException {

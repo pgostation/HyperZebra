@@ -86,15 +86,16 @@ public class GDialog extends JDialog implements ActionListener {
 			setBounds(0,0,400,h+48);
 			setLocationRelativeTo(null);
 		}
+		placeForScript(OHcWindow.answer);
 		setUndecorated(true);//タイトルバー非表示
-		
+
 		SwingUtilities.invokeLater(new Runnable() {
 			@Override
 			public void run() {
 				if(defaultButton!=null) defaultButton.requestFocus();
 			}
 		});
-		
+
 		follow();
 		GPictWindow.prepareForModalDialog(this);
 		setVisible(true);
@@ -104,6 +105,16 @@ public class GDialog extends JDialog implements ActionListener {
 	}
 
 	private String shownPrompt(){ return translation==null ? prompt : translation.prompt(prompt); }
+
+	/** A stack's answer/ask comes up where a script put window "Answer"/"Ask" (HyperCard 10th Anniversary: set the loc of window
+	 *  "answer" to 173,196), in the card window's coordinates; HyperZebra's own dialogs stay centred. */
+	private void placeForScript(OHcWindow w){
+		if(translation==null || !w.placed || PCARD.pc==null) return;
+		try{
+			Point o = TUtil.getCardOriginOnScreen();
+			setLocation(o.x+PCARD.toPhysical(w.left), o.y+PCARD.toPhysical(w.top));
+		}catch(RuntimeException e){ /* no card window: centred */ }
+	}
 
 	/** A button that answers with {@code name} and shows its translation. */
 	private JButton namedButton(String name){
@@ -203,6 +214,7 @@ public class GDialog extends JDialog implements ActionListener {
 		int W = getWidth(), H = getHeight();
 		if(anchor!=null) setLocation(anchor.x+anchor.width/2-W/2, anchor.y+anchor.height/2-H/2);
 		else setLocationRelativeTo(null);
+		placeForScript(OHcWindow.ask);
 		SwingUtilities.invokeLater(new Runnable(){ public void run(){ field.requestFocusInWindow(); field.selectAll(); }});
 		follow();
 		GPictWindow.prepareForModalDialog(this);

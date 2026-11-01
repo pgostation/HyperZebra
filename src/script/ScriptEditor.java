@@ -2346,6 +2346,14 @@ class ScriptArea extends JTextPane {
 		}
 	}
 
+	/** the word comes right after "field"/"button" (unquoted): a part's name, also titlebar, menubar, msg or hypercard
+	 *  (ExtractIt! for Stacks: put "Volumes" into cd fld "TitleBar" / put theItem into cd fld TitleBar) */
+	private static boolean afterPartWord(ArrayList<String> words, ArrayList<TTalk.wordType> types, int i){
+		if(i<1 || types.get(i-1)==TTalk.wordType.STRING) return false;
+		String w = words.get(i-1);
+		return w=="field" || w=="fld" || w=="button" || w=="btn";
+	}
+
 	static void checkWordsLine2(String script, ArrayList<String> stringList, ArrayList<TTalk.wordType> typeList, boolean isCmd, StringBuilder handler, TreeSet<String> varSet)
 	{
 		String command = "";
@@ -2769,8 +2777,7 @@ class ScriptArea extends JTextPane {
 						|| str=="menu" || str=="part" || str=="menuitem"
 						|| (str=="panel" && !(i+1<stringList.size() && stringList.get(i+1)=="of"))
 						|| str=="shape"
-						|| str=="menubar" || str=="titlebar" || str=="msg" || str=="message"
-						|| str=="hypercard"
+						|| ((str=="menubar" || str=="titlebar" || str=="msg" || str=="message" || str=="hypercard") && !afterPartWord(stringList, typeList, i))
 						|| str=="me"
 						|| (str=="id" && i+1<stringList.size() && stringList.get(i+1)!="of"))
 					{
@@ -2796,19 +2803,22 @@ class ScriptArea extends JTextPane {
 					{
 						//HyperZebra 独自のプロパティは the/set の後ろだけ。HyperCard のスクリプトでは変数名・部品名
 						//(bg fld DATA of cd X、char DATA of C_DR、words in path of path)
+						//(… of window: an external window's own property, PrefsCleaner's Listoid: put text of window "orfan" into allfiles)
 						if((i>=1 && stringList.get(i-1)=="the") ||
 								(i>=1 && stringList.get(i-1)=="set") ||
-								(i+1<stringList.size() && stringList.get(i+1)=="of" && !TTalk.EXTENSION_PROPERTIES.contains(str)))
+								(i+1<stringList.size() && stringList.get(i+1)=="of" && (!TTalk.EXTENSION_PROPERTIES.contains(str) ||
+								 i+2<stringList.size() && stringList.get(i+2)=="window")))
 						{
 							typeList.set(i, TTalk.wordType.PROPERTY);
 							continue;
 						}
 					}
-					else if(!TTalk.funcSet.contains(str) && i>=1 && (stringList.get(i-1)=="the" || !TTalk.commandSet.contains(str)) &&
+					else if(!TTalk.funcSet.contains(str) && (i>=1 ? stringList.get(i-1)=="the" || !TTalk.commandSet.contains(str) : !isCmd) &&
 							i+2<stringList.size() && stringList.get(i+1)=="of" && stringList.get(i+2)=="window")
 					{
 						//外部ウィンドウ(XCMD の windoid)の独自プロパティ: the buttonClick of window "Progress"(UxProgressBar)。
-						//HyperCard と同じく the は無くてもよい: get displayMonth of window "Calendario"(wCalendar の説明どおりの書き方)
+						//HyperCard と同じく the は無くてもよい: get displayMonth of window "Calendario"(wCalendar の説明どおりの書き方)。
+						//式の先頭でも(Chartoid 2.7: if chartType of window wName = "pie")
 						typeList.set(i, TTalk.wordType.PROPERTY);
 						continue;
 					}
@@ -2853,7 +2863,10 @@ class ScriptArea extends JTextPane {
 			TTalk.wordType type = typeList.get(i);
 			if(type==TTalk.wordType.X){
 				String str = stringList.get(i);
-				if((str=="first"||str=="last"||str=="prev"||str=="previous"||str=="next") && i+1<stringList.size() && typeList.get(i+1)==TTalk.wordType.OBJECT){
+				//second…tenth / middle / any as first and last: get second cd fld and (middle cd btn) were "Cannot understand a
+				//field" / "No field named ")"" (HC J-2.3 probes group_sim_second_fld_*)
+				if((str=="first"||str=="last"||str=="prev"||str=="previous"||str=="next"||TTalk.isRelativeChunkSpecifier(str)) &&
+						i+1<stringList.size() && typeList.get(i+1)==TTalk.wordType.OBJECT){
 					typeList.set(i, TTalk.wordType.OBJECT);
 				}
 				if(TTalk.isRelativeChunkSpecifier(str) && i+1<stringList.size() && typeList.get(i+1)==TTalk.wordType.CHUNK){
@@ -3185,6 +3198,15 @@ class SEMenu {
 	    mi.addActionListener(listener); m.addSeparator();
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Comment")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, s));mi.addActionListener(listener);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Uncomment")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_EQUALS, s));mi.addActionListener(listener);
+	    //日本語(JIS)キーボードでは = は Shift-「-」なので Command-= が VK_EQUALS にならない。Command-Shift-「-」と、
+	    //US配列の = の位置にある「^」のキーでも外せるようにする
+	    final JMenuItem uncommentItem = mi;
+	    Action uncomment = new AbstractAction(){ private static final long serialVersionUID = 1L;
+	    	public void actionPerformed(ActionEvent e){ uncommentItem.doClick(0); } };
+	    InputMap keys = scriptEditor.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+	    keys.put(KeyStroke.getKeyStroke(KeyEvent.VK_MINUS, s_shift), "hzUncomment");
+	    keys.put(KeyStroke.getKeyStroke(KeyEvent.VK_CIRCUMFLEX, s), "hzUncomment");
+	    scriptEditor.getRootPane().getActionMap().put("hzUncomment", uncomment);
 	    m.addSeparator();
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Set Checkpoint")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, s));mi.addActionListener(listener);
 	    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Clear All Checkpoints")));mi.addActionListener(listener);
@@ -3212,6 +3234,51 @@ class SEMenu {
 
 //メニュー動作
 class SEMenuListener implements ActionListener {
+	/** The lines a Comment/Uncomment works on: every line the selection touches, the insertion point's line without one
+	 *  (a selection ending at the start of a line leaves that line out). Returns {start, end} without the last newline. */
+	static int[] commentLineRange(String text, int start, int end){
+		start = Math.max(0, Math.min(start, text.length()));
+		end = Math.max(start, Math.min(end, text.length()));
+		if(end>start && text.charAt(end-1)=='\n') end--;
+		int lineStart = text.lastIndexOf('\n', start-1)+1;
+		int lineEnd = text.indexOf('\n', end);
+		if(lineEnd<0) lineEnd = text.length();
+		return new int[]{lineStart, Math.max(lineStart, lineEnd)};
+	}
+	/** Puts "-- " after each line's indentation (blank lines stay blank when more than one line is commented). */
+	static String commentLines(String lines){
+		String[] ary = lines.split("\n", -1);
+		StringBuilder out = new StringBuilder();
+		for(int i=0; i<ary.length; i++){
+			if(i>0) out.append('\n');
+			String line = ary[i];
+			int indent = indentOf(line);
+			if(ary.length>1 && indent==line.length()){ out.append(line); continue; }
+			out.append(line, 0, indent).append("-- ").append(line, indent, line.length());
+		}
+		return out.toString();
+	}
+	/** Takes the "--" (and one space after it) from the start of each commented line; other lines stay as they are. */
+	static String uncommentLines(String lines){
+		String[] ary = lines.split("\n", -1);
+		StringBuilder out = new StringBuilder();
+		for(int i=0; i<ary.length; i++){
+			if(i>0) out.append('\n');
+			String line = ary[i];
+			int indent = indentOf(line);
+			if(!line.startsWith("--", indent)){ out.append(line); continue; }
+			int after = indent+2;
+			if(after<line.length() && line.charAt(after)==' ') after++;
+			out.append(line, 0, indent).append(line, after, line.length());
+		}
+		return out.toString();
+	}
+	private static int indentOf(String line){
+		int i = 0;
+		while(i<line.length() && (line.charAt(i)==' ' || line.charAt(i)=='\t' || line.charAt(i)=='　')) i++;
+		return i;
+	}
+
 	public void actionPerformed (ActionEvent e) {
 		String in_cmd = e.getActionCommand();
 		String cmd = PCARD.pc.intl.getEngText(in_cmd);
@@ -3351,47 +3418,17 @@ class SEMenuListener implements ActionListener {
 		if(cmd.equals("Next Window")){
 			PCARD.pc.stack.pcard.toFront();
 		}
-		if(cmd.equals("Comment")){
-			String allScript = area.getText();
-			int start = area.getSelectionStart();
-			int end = area.getSelectionEnd();
-			if(start==0 && end==0) return;
-			if(end==0) end = start;
-
-			String newScript = allScript.substring(0, start);
-			String[] scrAry = (allScript.substring(start, end)).split("\n");
-			for(int i=0; i<scrAry.length; i++){
-				int spacing = 0;
-				while(spacing<scrAry[i].length() && (scrAry[i].charAt(spacing)==' ' || scrAry[i].charAt(spacing)=='　')) spacing++;
-				scrAry[i] = scrAry[i].substring(0,spacing)+"-- "+scrAry[i].substring(spacing);
-
-				newScript += scrAry[i];
-				if(i<scrAry.length-1) newScript+="\n";
-			}
-			newScript += allScript.substring(end);
-			area.setText(newScript);
-		}
-		if(cmd.equals("Uncomment")){
-			String allScript = area.getText();
-			int start = area.getSelectionStart();
-			int end = area.getSelectionEnd();
-			if(start==0 && end==0) return;
-			if(end==0) end = start;
-
-			String newScript = allScript.substring(0, start);
-			String[] scrAry = (allScript.substring(start, end)).split("\n");
-			for(int i=0; i<scrAry.length; i++){
-				int spacing = 0;
-				while(spacing<scrAry[i].length() && (scrAry[i].charAt(spacing)==' ' || scrAry[i].charAt(spacing)=='　')) spacing++;
-				int comment = 0;
-				while(spacing<scrAry[i].length() && (scrAry[i].charAt(spacing+comment)==' ' || scrAry[i].charAt(spacing+comment)=='-')) comment++;
-				scrAry[i] = scrAry[i].substring(0,spacing)+scrAry[i].substring(spacing+comment);
-
-				newScript += scrAry[i];
-				if(i<scrAry.length-1) newScript+="\n";
-			}
-			newScript += allScript.substring(end);
-			area.setText(newScript);
+		if(cmd.equals("Comment") || cmd.equals("Uncomment")){
+			//選択範囲が掛かる行全部(選択が無ければ挿入ポイントの行)を、行単位で置き換える(全体の setText だと Undo と表示位置が失われる)
+			if(!area.isEditable()) return;
+			String text = area.getText();
+			int[] range = commentLineRange(text, area.getSelectionStart(), area.getSelectionEnd());
+			String lines = text.substring(range[0], range[1]);
+			String changed = cmd.equals("Comment") ? commentLines(lines) : uncommentLines(lines);
+			if(changed.equals(lines)) return;
+			area.select(range[0], range[1]);
+			area.replaceSelection(changed);
+			area.select(range[0], range[0]+changed.length());
 		}
 		if(cmd.equals("Set Checkpoint")){
 			area.toggleCheckpoint(area.caretLine());

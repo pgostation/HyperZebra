@@ -103,7 +103,8 @@ final class StandardCompression68k implements Components68k.Native {
 			case TPRL:s.temporalQuality=memory.readLong(info);s.frameRate=memory.readLong(info+4);s.keyFrameRate=memory.readLong(info+8);return 0;
 			case DRAT:s.dataRate=memory.readLong(info);s.frameDuration=memory.readLong(info+4);s.minSpatialQuality=memory.readLong(info+8);s.minTemporalQuality=memory.readLong(info+12);return 0;
 			case CLUT:{int h=memory.readLong(info);s.colorTable=h==0?0:tb.api.createHandle(tb.api.handleContents(h));return 0;}
-			case PROG:s.progress[0]=memory.readLong(info);s.progress[1]=memory.readLong(info+4);return 0;
+			// -1 instead of an ICMProgressProcRecord: the component's own progress dialog (All JPEG 1.0; it read 4 bytes at $FFFFFFFF)
+			case PROG:if(info==-1){s.progress[0]=s.progress[1]=0;return 0;}s.progress[0]=memory.readLong(info);s.progress[1]=memory.readLong(info+4);return 0;
 			case XPRC:for(int i=0;i<3;i++)s.extendedProcs[i]=memory.readLong(info+4*i);return 0;
 			case PREF:s.preferenceFlags=memory.readLong(info);return 0;
 			case SSTA:{int h=memory.readLong(info);byte[] b=h==0?null:tb.api.handleContents(h);return b!=null&&restore(s,b)?0:PARAM_ERR;}

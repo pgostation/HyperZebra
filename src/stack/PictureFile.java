@@ -377,6 +377,15 @@ public class PictureFile {
 		finally { try { stream.close(); } catch (IOException e) {} }
 	}
 
+	/** A picture's data as a PICT resource holds it (no 512-byte file header), or null when it cannot be read. */
+	static BufferedImage loadPICT(byte[] picture){
+		if(picture==null) return null;
+		BufferedInputStream stream = new EndLimitedStream(new java.io.SequenceInputStream(new java.io.ByteArrayInputStream(new byte[512]), new java.io.ByteArrayInputStream(picture)));
+		try { return loadPICT(stream); }
+		catch(ReadPastEnd e) { return null; }
+		catch(RuntimeException e) { return null; }
+	}
+
 	/** A file that is no PICT read as one: its "frame" asks for thousands of rows long after the end of the file */
 	private static final class ReadPastEnd extends RuntimeException {
 		ReadPastEnd(){ super("not a PICT", null, false, false); }
@@ -856,6 +865,9 @@ public class PictureFile {
 						rgb = palette[idx]&0xFFFFFF;
 					}
 					int at = y*size.width+x, before = pixels[at];
+					//a pixel the picture inverts stays the inverted card under a bit that leaves the destination as it is: BlackPict's
+					//NEKO is its picture inverted in srcXor and then the picture in srcOr, solid black on white but the cat over black
+					if(inverted!=null && inverted[at] && leavesDestination(rgb, mode, colorSource, opColor, backColor)) continue;
 					boolean inverts = ((before>>>24)==0 || inverted!=null && inverted[at]) && invertsDestination(rgb, mode, colorSource, opColor, backColor);
 					if(inverts && inverted!=null && inverted[at]){inverted[at] = false; pixels[at] = 0; continue;} //inverted twice: the card again
 					if(inverts){if(inverted==null) inverted = new boolean[size.width*size.height]; inverted[at] = true;}
@@ -912,28 +924,49 @@ public class PictureFile {
 		return new javax.swing.Icon(){
 			public int getIconWidth(){ return icon.getIconWidth(); }
 			public int getIconHeight(){ return icon.getIconHeight(); }
+			private BufferedImage inversion; //the mask at the size last drawn
 			public void paintIcon(java.awt.Component c, java.awt.Graphics g, int x, int y){
-				int w = getIconWidth(), h = getIconHeight(), mw = mask.getWidth(), mh = mask.getHeight();
+				int w = getIconWidth(), h = getIconHeight();
 				if(w<=0 || h<=0) return;
+				BufferedImage inv = inversion;
+				if(inv==null || inv.getWidth()!=w || inv.getHeight()!=h) inversion = inv = inversionImage(mask, w, h);
 				Graphics2D g2 = (Graphics2D)g.create();
 				try{
 					g2.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 					g2.drawImage(base, x, y, w, h, null);
-					g2.setColor(Color.BLACK);
-					g2.setXORMode(Color.WHITE);
-					for(int v=0; v<h; v++){
-						int my = (int)((long)v*mh/h);
-						for(int u=0; u<w; ){
-							if((mask.getRGB((int)((long)u*mw/w), my)>>>24)<128){u++; continue;}
-							int end = u+1;
-							while(end<w && (mask.getRGB((int)((long)end*mw/w), my)>>>24)>=128) end++;
-							g2.fillRect(x+u, y+v, end-u, 1);
-							u = end;
-						}
-					}
+					invert(g2, inv, x, y);
 				}finally{ g2.dispose(); }
 			}
 		};
+	}
+	/**
+	 * Black where {@code mask} is opaque (alpha 128 or more), transparent elsewhere, sampled to {@code w} x {@code h} (nearest
+	 * pixel): what {@link #invert} XORs onto the card.
+	 */
+	public static BufferedImage inversionImage(BufferedImage mask, int w, int h){
+		int mw = mask.getWidth(), mh = mask.getHeight();
+		BufferedImage inv = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		int[] out = ((java.awt.image.DataBufferInt)inv.getRaster().getDataBuffer()).getData();
+		int[] row = new int[mw];
+		for(int v=0; v<h; v++){
+			mask.getRGB(0, (int)((long)v*mh/h), mw, 1, row, 0, mw);
+			for(int u=0; u<w; u++) if((row[(int)((long)u*mw/w)]>>>24)>=128) out[v*w+u] = 0xFF000000;
+		}
+		return inv;
+	}
+	/**
+	 * Inverts the destination under the black pixels of {@code inversion} (from {@link #inversionImage}) in one XOR drawImage.
+	 * The Metal pipeline flushes its queue and copies the surface for each XOR operation, so a fillRect per run or pixel took
+	 * seconds a paint (BlackPictDemo's moving NEKO button, a hilited icon).
+	 */
+	public static void invert(Graphics2D g, BufferedImage inversion, int x, int y){
+		Graphics2D g2 = (Graphics2D)g.create();
+		try{
+			g2.setPaintMode();
+			g2.setColor(Color.BLACK);
+			g2.setXORMode(Color.WHITE);
+			g2.drawImage(inversion, x, y, null);
+		}finally{ g2.dispose(); }
 	}
 	/** Whether a bits opcode's pixel inverts the destination whatever it is (white becomes black and black white). */
 	static boolean invertsDestination(int rgb, int mode, boolean colorSource, int opColor, int backColor){
@@ -941,6 +974,13 @@ public class PictureFile {
 		mode = booleanTransferMode(mode, colorSource);
 		if(mode==32 || mode==36) return false;
 		return transferRgb(rgb, 0xFFFFFF, mode, opColor, backColor)==0 && transferRgb(rgb, 0x000000, mode, opColor, backColor)==0xFFFFFF;
+	}
+	/** Whether a bits opcode's pixel leaves the destination as it is, white and black alike (a white bit in srcOr, a black one in srcBic...). */
+	static boolean leavesDestination(int rgb, int mode, boolean colorSource, int opColor, int backColor){
+		rgb &= 0xFFFFFF;
+		mode = booleanTransferMode(mode, colorSource);
+		if(mode==32) return false;
+		return transferRgb(rgb, 0xFFFFFF, mode, opColor, backColor)==0xFFFFFF && transferRgb(rgb, 0x000000, mode, opColor, backColor)==0;
 	}
 
 	/**

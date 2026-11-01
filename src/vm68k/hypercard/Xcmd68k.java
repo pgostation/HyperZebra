@@ -26,7 +26,7 @@ final class Xcmd68k {
 	static final int CARD_WINDOW_RECORD = 0x00100000, MESSAGE_WINDOW_RECORD = CARD_WINDOW_RECORD+0xa0;
 	private static final int STACK_TOP = 0x00fff000, STACK_CLEARED = 0x4000;
 	private static final int PARAMETER_CAPACITY = 64 * 1024;
-	private static final int XCMD_BLOCK_SIZE = 128;
+	private static final int XCMD_BLOCK_SIZE = 128, XCMD_BLOCK_SLACK = 384;
 	private static final int RETURN_VALUE_OFFSET = 66;
 	private static final int PASS_FLAG_OFFSET = 70;
 	private static final int ENTRY_POINT_OFFSET = 72;
@@ -87,6 +87,7 @@ final class Xcmd68k {
 			int stray=memory.allocate(STRAY_A4_BLOCK,4);memory.fill(stray,STRAY_A4_BLOCK,0);strayA4=stray+STRAY_A4_BLOCK/2;
 			macApi=new Mac68kApi(memory,stack);
 			macApi.application().hyperCardWindowRecords=windowRecords;
+			macApi.application().externalLoaded(CODE_BASE,code,name);
 			callbacks=new HyperCard68kCallbacks(memory,macApi,0);
 			callbacks.session=this;
 			cpu=new M68kCpu(memory,0,macApi,callbacks);
@@ -135,6 +136,7 @@ final class Xcmd68k {
 			int data=memory.allocate(Math.max(code.length,2),2),handle=memory.allocate(4,2);
 			memory.load(data,code);memory.writeLong(handle,data);macApi.registerExistingHandle(handle,code.length);
 			codeAt.put(key,data);
+			macApi.application().externalLoaded(data,code,new File(key).getName());
 			return data;
 		}
 
@@ -148,7 +150,9 @@ final class Xcmd68k {
 			// globals (a nonrelocatable block) sat between the external's Handles in its kept VM, and Core Collection's FolderContents
 			// could not grow its locked result Handle past them (memFullErr: "files" lost names)
 			if(running==0&&macApi.application().externalA5World()==0)macApi.application().openCardWindow(cpu);
-			int block = memory.allocate(XCMD_BLOCK_SIZE, 2);memory.fill(block,XCMD_BLOCK_SIZE,0);
+			// with room behind it: HyperCard's block lives in its own stack frame, where writing past its 128 bytes harms nothing.
+			// FoxTools' Xtherm keeps its window at paramPtr+176, which landed on the next heap block (its window's colours: cyan labels)
+			int block = memory.allocate(XCMD_BLOCK_SIZE+XCMD_BLOCK_SLACK, 2);memory.fill(block,XCMD_BLOCK_SIZE+XCMD_BLOCK_SLACK,0);
 			memory.writeWord(block, parameters.length);
 			List<Integer> handles=new ArrayList<Integer>();
 			for(int i=0;i<parameters.length;i++) {
@@ -356,6 +360,7 @@ final class Xcmd68k {
 		// pointer the handler was given is good only in the running external's VM - a VM of its own saw garbage there
 		Session caller=key!=null&&stack!=null?callingSessionOf(stack):null;
 		if(caller!=null){session=caller;if(code==null&&!caller.codeAt.containsKey(key))try{code=Files.readAllBytes(new File(key).toPath());}catch(IOException e){throw new M68kCpuException(CODE_BASE,"cannot read the external "+key+": "+e.getMessage());}}
+		code=powerPcCode(code,xcmd,name);
 		if(session==null&&key!=null)synchronized(sessions){session=sessions.get(key);if(session!=null&&session.isShutDown()){sessions.remove(key);session=null;}}
 		if(session==null&&key!=null&&stack!=null&&code!=null)session=keptSessionOf(stack); // join the stack's kept VM (shared heap)
 		if(session==null)session=new Session(code,encoding,stack,key,name==null?"":name);
@@ -395,6 +400,23 @@ final class Xcmd68k {
 			else if(key!=null){synchronized(sessions){sessions.put(key,session);}trimSessions(session);}
 		}
 		return result;
+	}
+
+	/**
+	 * The code of a PowerPC external (HyperCard 2.3's 'xcmd'/'xfcn'): its routine descriptor runs the fragment through the VM's
+	 * Mixed Mode (PpcRuntime.powerPcOnlyFat, Toolbox68k.externalLoaded); a bare fragment gets the descriptor such a resource
+	 * has. A PowerPC external in any other form would be run as 68K code, so it is refused by name. 68K code comes back as it is.
+	 */
+	private static byte[] powerPcCode(byte[] code,Rsrc.xcmdClass xcmd,String name) throws M68kCpuException {
+		if(code==null)return null;
+		code=PpcRuntime.withRoutineDescriptor(code);
+		if(isPowerPc(xcmd)&&!PpcRuntime.powerPcOnlyFat(code))throw new M68kCpuException(CODE_BASE,"the PowerPC external "+(xcmd.name!=null?xcmd.name:name)+" is neither a routine descriptor for a code fragment nor a code fragment");
+		return code;
+	}
+	/** Whether the external is a PowerPC one (an 'xcmd'/'xfcn' resource: platform "macppc", not "mac68k"). */
+	static boolean isPowerPc(Rsrc.xcmdClass xcmd){
+		String p=xcmd==null||xcmd.platform==null?"":xcmd.platform.toLowerCase();
+		return !p.contains("68k")&&p.contains("ppc");
 	}
 
 	/** When each external last ran in a VM of its own (by key), to keep the VM of one that is called over and over. */
@@ -483,6 +505,19 @@ final class Xcmd68k {
 	static void pumpIfDue(){
 		long now=System.nanoTime();if(now-lastPumpNanos<20_000_000L)return;
 		lastPumpNanos=now;pump(true);
+	}
+
+	/** The host menu bar was clicked while menus of {@code owner} (an external's Toolbox) are in it: its windows that registered
+	 *  menus get xMBarClickedEvt at the next pump (see {@link XWindows68k#noteMenuBarClicked}). */
+	static void menuBarClicked(Object owner){
+		for(Session s:sessions())if(!s.isShutDown()&&s.macApi.application()==owner)s.xwindows.noteMenuBarClicked();
+		lastPumpNanos=0;
+	}
+	/** Item {@code item} of the external menu {@code menuId} of {@code owner} was chosen: true when one of its windows registered
+	 *  that menu and gets the choice as xMenuEvt (HyperCard sends no doMenu then). */
+	static boolean menuChosen(Object owner,int menuId,int item){
+		for(Session s:sessions())if(!s.isShutDown()&&s.macApi.application()==owner&&s.xwindows.noteMenuChoice(menuId,item)){lastPumpNanos=0;return true;}
+		return false;
 	}
 
 	/** the mouseClick: takes a click queued for an external window (made while a handler ran); false when there is none. */

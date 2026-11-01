@@ -73,6 +73,7 @@ final class Extensions68k {
 			catch(Exception e){System.err.println("[68K "+owner()+"] extension "+file.getName()+" failed: "+e.getMessage());
 				int pc=e instanceof M68kCpuException?((M68kCpuException)e).pc:tb.cpu.pc;
 				if(Mac68kApi.TRACE)System.err.println(tb.cpu.dumpState(pc));
+				if(PpcRuntime.TRACE&&tb.app!=null&&tb.app.ppc!=null)System.err.println(tb.app.ppc.describe(pc)); // the INIT's PowerPC code went wrong
 				if(tb.app!=null)tb.app.crashDump(pc);}
 		}
 	}
@@ -152,9 +153,10 @@ final class Extensions68k {
 			// protocol (a hook routine at $918 unless negative, a patch index and a break range at $920-$925) and jump through
 			// whatever an application name put there otherwise. The length byte is $FF too: QuicKeys' engine driver opens only
 			// when it finds that (start-up time) and answered openErr otherwise, leaving its control panel all dimmed.
-			byte[] curApName=new byte[32];System.arraycopy(tb.memory.raw(),0x910,curApName,0,32);
+			byte[] curApName=tb.memory.readBytes(0x910,32);
 			tb.memory.fill(0x910,32,0xff);
-			try{tb.callRoutine(entry);}finally{tb.cpu.a[7]=saved;tb.resources.useResFile(savedCurrent);tb.memory.load(0x910,curApName);}
+			try{tb.callRoutine(entry);}
+			finally{tb.cpu.a[7]=saved;tb.resources.useResFile(savedCurrent);tb.memory.load(0x910,curApName);}
 		}
 	}
 
@@ -219,13 +221,25 @@ final class Extensions68k {
 		if(files==null)return false;
 		// hidden files are not loaded (loadFolder): an AppleDouble "._QuickTime™" is another file's sidecar, not the extension (one left alone in Extensions made every
 		// program wait for a QuickTime that never loaded: "the installed QuickTime extension did not install the trap")
-		for(File f:files){if(!f.isFile()||f.getName().startsWith("."))continue;String n=f.getName().replaceAll("[^A-Za-z]","");if(n.equals("QuickTime")&&(f.length()>0||ResourceFile68k.nativeForkLength(f)>0||ResourceFile68k.AppleDouble.findSidecar(f)!=null)&&quickTimeMajorVersion(f)<5)return true;}
+		for(File f:files){if(!f.isFile()||f.getName().startsWith("."))continue;String n=f.getName().replaceAll("[^A-Za-z]","");if(n.equals("QuickTime")&&(f.length()>0||ResourceFile68k.nativeForkLength(f)>0||ResourceFile68k.AppleDouble.findSidecar(f)!=null)&&(quickTimeMajorVersion(f)<5||runsPowerPcQuickTime(systemFolder)))return true;}
 		return false;
 	}
 	/**
-	 * The major version in the extension's 'vers' 1 (0 when unreadable). QuickTime 5 and later need a PowerPC: QuickTime 6's
-	 * INIT stops in its PowerPC part (QTPixMapExtensionPatch), so with it installed the native Movie Toolbox stays in charge
-	 * and its family is skipped, as when no QuickTime is installed.
+	 * Whether the installed QuickTime is a PowerPC one that runs here: QuickTime 5 and 6 come with the QuickTime PowerPlug
+	 * (QuickTimeLib) and nearly all their components only in PowerPC code, which Components68k runs on the Power Macintosh the
+	 * extensions see. Its Movie Toolbox itself stays 68K code, as on a real Power Mac.
+	 */
+	static boolean runsPowerPcQuickTime(File systemFolder){
+		if(!Toolbox68k.POWERPC_MACHINE||!Toolbox68k.PPC_EXTENSIONS||!Components68k.PPC_COMPONENTS)return false;
+		File[] files=new File(systemFolder,"Extensions").listFiles();
+		if(files==null)return false;
+		for(File f:files)if(f.isFile()&&!f.getName().startsWith(".")&&f.getName().replaceAll("[^A-Za-z]","").equals("QuickTimePowerPlug"))return true;
+		return false;
+	}
+	/**
+	 * The major version in the extension's 'vers' 1 (0 when unreadable). QuickTime 5 and later need a PowerPC: without the
+	 * PowerPC components ({@link #runsPowerPcQuickTime}) the native Movie Toolbox stays in charge and its family is skipped, as
+	 * when no QuickTime is installed.
 	 */
 	private static int quickTimeMajorVersion(File f){
 		String key=f.getAbsolutePath()+"\u0000"+f.lastModified();

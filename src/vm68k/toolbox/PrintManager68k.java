@@ -165,6 +165,24 @@ final class PrintManager68k {
 		memory.writeWord(p+46,rowBytes);memory.writeWord(p+48,ph);memory.writeWord(p+50,pw);memory.writeWord(p+52,(short)Math.min(32767,rowBytes*ph));memory.writeWord(p+54,1);memory.writeByte(p+56,0);memory.writeByte(p+57,1);memory.writeByte(p+58,1);memory.writeByte(p+59,0); // prXInfo
 		memory.writeWord(p+62,s.firstPage);memory.writeWord(p+64,s.lastPage);memory.writeWord(p+66,s.copies);memory.writeByte(p+68,0);memory.writeByte(p+69,1); // prJob: iFstPage, iLstPage, iCopies, bJDocLoop (draft), fFromUsr
 	}
+	/**
+	 * The printer driver's 'PREC' 0, the print record PrintDefault starts from: US Letter at 72 dpi with half-inch margins less
+	 * a quarter (the page Java's printing defaults to when it knows no printer). It sits in the System file here, where the
+	 * printer resource file PrOpen opens would be in the resource chain: Swivel 3D reads it right after PrOpen and, without
+	 * one, stopped at every start with "Memory is Full.".
+	 */
+	static byte[] defaultPrintRecord(){
+		byte[] r=new byte[TPRINT_SIZE];int paperW=612,paperH=792,ix=18,iy=18,iw=paperW-36,ih=paperH-36;
+		put(r,0,3);                                                                                          // iPrVersion
+		for(int info:new int[]{2,32}){put(r,info+2,72);put(r,info+4,72);put(r,info+10,ih);put(r,info+12,iw);} // prInfo/prInfoPT: iVRes, iHRes, rPage
+		put(r,16,-iy);put(r,18,-ix);put(r,20,paperH-iy);put(r,22,paperW-ix);                                 // rPaper, relative to the page
+		put(r,24,W_DEV|W_DEV_PORTRAIT);put(r,26,paperH*120/72);put(r,28,paperW*120/72);r[31]=1;               // prStl: wDev, iPageV, iPageH, feed
+		int rowBytes=((iw+31)/32)*4;
+		put(r,46,rowBytes);put(r,48,ih);put(r,50,iw);put(r,52,Math.min(32767,rowBytes*ih));put(r,54,1);r[57]=1;r[58]=1; // prXInfo
+		put(r,62,1);put(r,64,9999);put(r,66,1);r[69]=1;                                                       // prJob: pages 1-9999, one copy
+		return r;
+	}
+	private static void put(byte[] b,int at,int word){b[at]=(byte)(word>>8);b[at+1]=(byte)word;}
 	/** The job fields a program may have edited itself (copies, page range). */
 	private void readJob(int h,Session s) throws M68kCpuException {
 		int p=h==0?0:memory.readLong(h);if(p==0)return;
@@ -182,7 +200,9 @@ final class PrintManager68k {
 	}
 	private boolean jobDialog(int h) throws M68kCpuException {
 		Session s=session(h);readJob(h,s);
-		if(headless()||!dialogs){fillRecord(h,s);return true;}
+		// no dialog shown: as a confirmed one with no range - all pages (PrintReport calls PrJobDialog on a fresh record and
+		// prints while iLstPage >= the page: the record's uninitialised 0 ended the report after its first row)
+		if(headless()||!dialogs){s.firstPage=1;s.lastPage=9999;s.copies=Math.max(1,s.copies);fillRecord(h,s);return true;}
 		s.attributes=new HashPrintRequestAttributeSet();s.attributes.add(new Copies(s.copies));
 		boolean ok;try{ok=job().printDialog(s.attributes);}catch(RuntimeException e){ok=false;}
 		if(!ok)return false;

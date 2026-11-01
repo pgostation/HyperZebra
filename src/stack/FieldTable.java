@@ -64,6 +64,8 @@ final class FieldTable extends MyScrollPane {
 	private boolean widthsChanged;
 	private boolean reloadPending;
 	private boolean mouseDownSent;
+	/** The press that sent nothing is the second click of a double-click (GUI.doublePress): mouseDoubleClick at its release. */
+	private boolean secondClick;
 	private boolean pointerInside;
 	private static final javax.swing.PopupFactory PLAIN_POPUPS = new javax.swing.PopupFactory();
 	/** Set when a press opened the column menu: its release neither sorts nor sends mouseUp. */
@@ -593,9 +595,13 @@ final class FieldTable extends MyScrollPane {
 				f.clickColumn = row>=0 && column>=0 ? column+1 : 0;
 				if(row>=0) GUI.clickLine = "line "+(row+1)+" of "+f.getShortName();
 			}
-			if(!TTalk.idle) return;
+			//locked only, as other fields: an unlocked one's click is editing and sends no mouse messages (HyperCard)
+			if(!TTalk.idle || !f.enabled) return;
 			mouseDownSent = true;
+			secondClick = GUI.doublePress(e, f); //as other fields: no mouseDown, mouseDoubleClick at the release
+			if(secondClick) return;
 			TTalk.CallMessage("mouseDown", f);
+			GUI.startStillDown(f); //mouseStillDown while held
 		}
 		@Override public void mouseReleased(MouseEvent e){
 			GUI.mouseUped();
@@ -608,13 +614,18 @@ final class FieldTable extends MyScrollPane {
 			Point p = toPane(e);
 			boolean inside = new Rectangle(0, 0, getWidth(), getHeight()).contains(p);
 			if(sent && inside && TTalk.idle){
-				TTalk.CallMessage("mouseUp", fldData);
-				if(e.getClickCount()==2) TTalk.CallMessage("mouseDoubleClick", fldData);
+				TTalk.CallMessage(secondClick ? "mouseDoubleClick" : "mouseUp", fldData);
+				GUI.mouseDown = false; //as for buttons: the click that sends mouseUp is not the mouseClick of its handler
 			}
-			GUI.mouseClicked();
+			//a quick click whose mouseDown handler still runs: its mouseUp follows that handler (as for buttons, HyperCard)
+			else if(sent && inside && !secondClick){
+				TTalk.callPendingMouseUp(fldData);
+				GUI.mouseDown = false;
+			}
+			else GUI.mouseClicked();
 		}
 		@Override public void mouseDragged(MouseEvent e){
-			if(mouseDownSent && TTalk.idle && fldData!=null) TTalk.CallMessage("mouseStillDown", fldData);
+			//mouseStillDown comes from GUI.startStillDown (locked fields only)
 		}
 		@Override public void mouseMoved(MouseEvent e){
 			if(TTalk.idle && browsing() && fldData!=null) TTalk.CallMessage("mouseWithin", fldData);

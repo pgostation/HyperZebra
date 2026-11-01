@@ -43,6 +43,8 @@ final class FileManager68k {
 	/** New files {@link #convertNewFile} wrote to the host as UTF-8: {the program's own bytes, the bytes written}, kept so a program that
 	 *  retypes the file as something other than 'TEXT' gets its bytes back (see {@link #revertRetypedText}). */
 	private final Map<String,byte[][]> utf8NewFiles=new HashMap<String,byte[][]>();
+	/** Files the program created on the host: a program among them gets its bundle's icon as its host Finder icon when this program ends ({@link #giveNewProgramsIcons}). */
+	private final java.util.Set<String> createdFiles=new java.util.LinkedHashSet<String>();
 	/** Whether text files a program creates are written to the host as UTF-8 with LF line ends (the Preferences dialog: PCARD.utf8TextFiles68k; -Dhz68k.utf8text=false turns it off). */
 	static volatile boolean utf8TextFiles=!"false".equals(System.getProperty("hz68k.utf8text"));
 	/** Whether host PNG files are shown to programs as PICT files and PICT files they create are saved as PNG (PCARD.pngPictureFiles68k; -Dhz68k.pngpict=false turns it off). */
@@ -178,6 +180,11 @@ final class FileManager68k {
 		return hostName;
 	}
 	private static boolean isAscii(String s){for(int i=0;i<s.length();i++)if(s.charAt(i)>=0x80)return false;return true;}
+	/** The Mac name of a host file as the user reads it: Windows escapes undone and ':' back to '/', in no program encoding (a Roman disc's "AmandaStories®" stays "®", never "ｨ"). */
+	static String displayName(String hostName){
+		if(File.separatorChar=='\\')hostName=decodeWindowsName(hostName);
+		return Normalizer.normalize(hostName.replace(':','/'),Normalizer.Form.NFC);
+	}
 	/** The host file name for a Mac name (escaped on Windows): disk images written into host folders use it. */
 	static String hostFileName(String name){return windowsName(name);}
 	/** Escape Mac file-name characters that Win32 cannot put in a path. The private-use marker is escaped too. */
@@ -325,8 +332,29 @@ final class FileManager68k {
 	/** Volumes on a drive a program added (_AddDrive) and mounted through its own driver: volume index -> {drive, driver refNum}. */
 	final Map<Integer,int[]> guestDrives=new HashMap<Integer,int[]>();
 	private final java.util.Set<File> opticalRoots=new java.util.HashSet<File>();
-	/** The drive number of volume {@code index}: the program's drive, or index + 1 for the host volumes. */
-	int driveOf(int index){int[] d=guestDrives.get(index);return d!=null?d[0]:index+1;}
+	/**
+	 * Drives of the disk images mounted while a program runs: volume index -> drive number. A Mac numbers its removable SCSI and
+	 * image drives from 5 up (1-4 belong to the floppy and HD20 drives): Apple Installer 3.4's "Please insert the disk" dialog
+	 * hands the diskEvt's drive number back as its item hit, and item 4 is its Stop - Adobe Dimensions' Disk 2, mounted as
+	 * drive 4, ended the installation as "cancelled" (or "not the correct disk").
+	 */
+	private final Map<Integer,Integer> imageDrives=new HashMap<Integer,Integer>();
+	/**
+	 * The drive number of volume {@code index}: the program's drive, a disk image's own (see {@link #imageDrives}), or index + 5
+	 * for the host volumes - fixed disks, never in the floppy drives 1 and 2: VISE installers take a volume in drive 1 or 2 for a
+	 * floppy, and Master Tracks Pro 6's ejected "HyperZebra HD" (drive 1) again and again waiting for its Disk#2 there.
+	 */
+	int driveOf(int index){int[] d=guestDrives.get(index);if(d!=null)return d[0];Integer image=imageDrives.get(index);return image!=null?image:index+FIRST_FIXED_DRIVE;}
+	static final int FIRST_FIXED_DRIVE=5;
+	/** The index of the volume in drive {@code drive}, or -1. */
+	int volumeIndexOfDrive(int drive){for(int i=0;i<volumes.size();i++)if(driveOf(i)==drive)return i;return -1;}
+	/** Gives the disk image mounted as volume {@code index} the first free drive number from 5 up and answers it. */
+	int assignImageDrive(int index){
+		java.util.Set<Integer> used=new java.util.HashSet<Integer>();
+		for(int i=0;i<volumes.size();i++)if(i!=index)used.add(driveOf(i));
+		int drive=5;while(used.contains(drive))drive++;
+		imageDrives.put(index,drive);return drive;
+	}
 	/** The driver refNum of volume {@code index}: the program's driver, or the disk image's fixed/optical driver. */
 	int driverRefOf(int index){int[] d=guestDrives.get(index);return d!=null?d[1]:opticalVolume(index)?CD_DRIVER_REF:DISK_DRIVER_REF;}
 	boolean opticalVolume(int index){
@@ -359,15 +387,16 @@ final class FileManager68k {
 	private File volumeRootFor(int volumeReference) throws IOException {int ref=(short)volumeReference;if(ref<0&&ref>=-volumes.size())return volumes.get(-ref-1).getCanonicalFile();if(ref==0)ref=defaultVolumeRef;if(ref<0&&ref>=-volumes.size())return volumes.get(-ref-1).getCanonicalFile();WorkingDirectory working=workingDirectories.get(ref);if(working!=null){File d=directories.get(working.directoryId);if(d!=null){int index=volumeIndexFor(d);if(index>=0)return volumes.get(index).getCanonicalFile();}}return root==null?null:root.getCanonicalFile();}
 	/**
 	 * The volume a GetVolInfo/Eject names by ioVRefNum alone: 0 the default volume, a volume reference number (-1, -2 ...), a
-	 * working directory, or a drive number (1, 2 ... - the drive of volume n is n); null when none of them exists, where the
+	 * working directory, or a drive number (5, 6 ... - the drive of volume n is n + 4, a disk image's its own); null when none of them exists, where the
 	 * File Manager answers nsvErr. {@link #volumeRootFor} falls back to the startup volume instead, which open calls rely on.
 	 */
 	File namedVolume(int volumeReference) throws IOException {
 		int ref=(short)volumeReference;
 		if(ref>0)for(Map.Entry<Integer,int[]> e:guestDrives.entrySet())if(e.getValue()[0]==ref&&e.getKey()<volumes.size())return volumes.get(e.getKey()).getCanonicalFile();
+		if(ref>0)for(Map.Entry<Integer,Integer> e:imageDrives.entrySet())if(e.getValue()==ref&&e.getKey()<volumes.size())return volumes.get(e.getKey()).getCanonicalFile();
 		if(ref==0||ref<0&&ref>=-volumes.size())return volumeRootFor(ref);
 		if(workingDirectories.containsKey(ref))return volumeRootFor(ref);
-		if(ref>0&&ref<=volumes.size())return volumes.get(ref-1).getCanonicalFile();
+		if(ref>0){int i=volumeIndexOfDrive(ref);if(i>=0)return volumes.get(i).getCanonicalFile();}
 		return null;
 	}
 	private boolean isVolumeRoot(File canonical) throws IOException {return canonicalVolumes().contains(canonical);}
@@ -378,7 +407,17 @@ final class FileManager68k {
 		return canonicalVolumeRoots;
 	}
 	String volumeNameOf(File path){try{return volumeNameFor(path);}catch(IOException e){return path.getName();}}
-	private String volumeNameFor(File path) throws IOException {int index=volumeIndexFor(path);return index<0?(root==null?"":root.getName()):volumeNames.get(index);}
+	/** A volume's name as the program reads it: in its own encoding, as {@link #programName} gives file names (a Roman disk's "®" is the byte $A8). */
+	private String volumeNameFor(File path) throws IOException {int index=volumeIndexFor(path);return index<0?(root==null?"":root.getName()):programName(volumeNames.get(index));}
+	/**
+	 * The index of the volume a program names {@code name} (no colon), or -1: by its host name or by the name the program reads
+	 * ({@link #programName}). A Roman disk "AmandaStories®" is "AmandaStoriesｨ" to a program under the Japanese system - the
+	 * same byte $A8 - and AmandaStories' MacroMind Player opens its first movie by the full path "Amandastories®:...".
+	 */
+	int volumeIndexNamed(String name){
+		for(int i=0;i<volumeNames.size();i++)if(sameMacName(volumeNames.get(i),name)||sameMacName(programName(volumeNames.get(i)),name))return i;
+		return -1;
+	}
 	/** Public helpers for the application layer. */
 	/** Driver refNum reported for every host volume (unit 38, the last SCSI disk driver slot); FileSystem68k answers its Status calls.
 	 *  It must differ from QuickDraw68k.VIDEO_DRIVER_REF (-33): both were -33 for a while and the disk driver swallowed the video
@@ -389,7 +428,10 @@ final class FileManager68k {
 	 *  disk, but never past the 32 KB of a 2 GB HFS volume - the block counts are 16-bit fields, and programs multiply them by the
 	 *  block size in 32-bit arithmetic (programs choosing the volume with the most free bytes otherwise saw negative products for a
 	 *  32 MB block size), and some take the block size itself for 16 bits (MacPaint 1.5 read a 64 KB one as 0: "The disk is almost
-	 *  full"). A big host disk is therefore described as 1 GB (32767 blocks of 32 KB). */
+	 *  full"). Past 16 KB it is 32256 bytes (63 x 512; HFS block sizes are any multiple of 512), not 32 KB: that is still a positive
+	 *  INTEGER, and some programs multiply it by ioVFrBlk with MULS.W - The Writing Center read 32768 as -32768, so the free space
+	 *  came out negative and every Save said "There is not enough space left on the disk". A big host disk is therefore described
+	 *  as about 1 GB (32767 blocks of 32256 bytes). */
 	/** A fork's physical length: whole allocation blocks (GetFInfo's physical sizes, FolderSize's on-disk total equalled the logical ones). */
 	static long physical(long length,int block){return (length+block-1)/block*block;}
 	/** The allocation block size of the volume the file is on (the ioVAlBlkSiz GetVolInfo reports for it), by volume. */
@@ -400,7 +442,9 @@ final class FileManager68k {
 		if(block==null){block=volumeBlockSize(volumeTotalSpace(volume));allocationBlocks.put(index,block);}
 		return block;
 	}
-	static int volumeBlockSize(long totalBytes){int blockSize=4096;while(totalBytes/blockSize>MAX_VOLUME_BLOCKS&&blockSize<0x8000)blockSize*=2;return blockSize;}
+	static int volumeBlockSize(long totalBytes){int blockSize=4096;while(totalBytes/blockSize>MAX_VOLUME_BLOCKS&&blockSize<0x4000)blockSize*=2;return totalBytes/blockSize>MAX_VOLUME_BLOCKS?MAX_BLOCK_SIZE:blockSize;}
+	/** The biggest allocation block size reported: the largest multiple of 512 a signed 16-bit multiply still reads as positive. */
+	static final int MAX_BLOCK_SIZE=0x7e00;
 	/** Most blocks a volume's total/free counts (ioVNmAlBlks, ioVFrBlk, vcbNmAlBlks, vcbFreeBks) report: Pascal declares them INTEGER,
 	 *  and programs sign-extend them - FlipBookMaker 1.1 multiplies `movea.w ioVFrBlk` by the block size, so 65535 free blocks read as
 	 *  -1 and every project was "out of disk space". A real volume only got there when more than half of a big disk was free. */
@@ -427,6 +471,13 @@ final class FileManager68k {
 	void setDefaultDirectory(File directory) throws IOException {defaultVolumeRef=workingDirectoryRefFor(directory);searchFirst=directory.getCanonicalFile();}
 	/** The program's own folder: PBCatSearch visits it before the rest of its volume. */
 	private File searchFirst;
+	/** The folder holding the program's own folder, when that is not a volume's root: walked right after it for a creator. */
+	private File nearFolder(){
+		File near=searchFirst==null?null:searchFirst.getParentFile();
+		if(near==null||!near.isDirectory())return null;
+		String c=Sandbox.canonical(near);for(File v:volumes)if(Sandbox.canonical(v).equals(c))return null;
+		return near;
+	}
 	/** vRefNum (volume or working directory) of the default directory. */
 	int defaultVolumeRef(){return defaultVolumeRef;}
 	/** Directory ID of the default directory (2 for a volume root). */
@@ -460,7 +511,7 @@ final class FileManager68k {
 			case 0x13:return flush(cpu,false);
 			case 0x45:return flush(cpu,true);
 			case 0x60:return hfsDispatch(cpu,(opcode&0x0200)!=0);
-			case 0x14:return getVolume(cpu);
+			case 0x14:return getVolume(cpu,(opcode&0x0200)!=0);
 			case 0x15:return setVolume(cpu,(opcode&0x0200)!=0);
 			case 0x18:return getPosition(cpu);
 			case 0x41:return setFileLock(cpu,(opcode&0x0200)!=0,true);
@@ -485,7 +536,7 @@ final class FileManager68k {
 	}
 	private boolean createDirectory(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File parent=baseFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM),memory.readLong(pb+IO_NAME_PTR));if(parent==null)result=FNF_ERR;else {File path=resolveFrom(parent,memory.readLong(pb+IO_NAME_PTR));if(path==null)result=BD_NAM_ERR;else {result=createFolder(path);/* ioNamePtr may be a partial pathname below ioDirID: AppleScript creates ":Scripting Additions:Dialects" from the Extensions folder */if(result==NO_ERR)memory.writeLong(pb+48,directoryId(path));}}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Creates the folder {@code path} (PBDirCreate, FSCreateDirectoryUnicode); a result code. */
-	int createFolder(File path) throws IOException {if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR;Sandbox.checkFile(path,Sandbox.Access.CREATE,requester);return path.mkdir()?NO_ERR:IO_ERR;}
+	int createFolder(File path) throws IOException {if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR;Sandbox.checkFile(path,Sandbox.Access.CREATE,requester);return path.mkdir()?NO_ERR:path.getParentFile().canWrite()?IO_ERR:WPR_ERR/* the host folder is not writable (the root of the host disk): a locked volume to the program, not an I/O error - Sniffer Dog's installer reported success after -36 */;}
 	private boolean openWorkingDirectory(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File directory=directoryFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM));
 		// ioNamePtr may name the directory (a partial pathname from ioWDDirID: applications may open a support folder in the System Folder; a volume
 		// name alone stands for the volume); a leaf name that is no folder is ignored, as programs leave file names in the block from earlier calls; a pathname that names nothing is fnfErr (Illustrator 8 probes ...:CMS and recursed forever when it "existed")
@@ -496,12 +547,12 @@ final class FileManager68k {
 	private boolean closeWorkingDirectory(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_VREF_NUM),result;if(reference==-1)result=NO_ERR;else result=workingDirectories.remove(reference)==null?RF_NUM_ERR:NO_ERR;return finish(cpu,pb,result);}
 	private boolean getWorkingDirectoryInfo(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+26),reference=(short)memory.readWord(pb+IO_VREF_NUM),result=NO_ERR;WorkingDirectory value=null;try{if(index>0){int at=1;for(WorkingDirectory candidate:workingDirectories.values())if(at++==index){value=candidate;break;}memory.writeWord(pb+IO_VREF_NUM,-1);}else if(reference<0&&reference>=-Math.max(1,volumes.size()))value=new WorkingDirectory(2,0);else value=workingDirectories.get(reference);
 		if(value==null)result=RF_NUM_ERR;else {File d=value.directoryId==2?volumeRootFor(reference):directories.get(value.directoryId);int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0)writePascal(output,d==null?root.getName():volumeNameFor(d));memory.writeLong(pb+28,value.processId);memory.writeWord(pb+32,d==null?-1:volumeRefNumFor(d));memory.writeLong(pb+48,value.directoryId);}}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
-	private boolean getCatalogInfo(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+IO_DIR_INDEX),result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File base=directoryFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM)),path;if(base==null&&index==0&&memory.readLong(pb+48)==1){/* ioDirID 1 (fsRtParID) is the parent of every volume root: the name is the volume (Classilla's profile code asks for "Home" that way and quit on -43) */File volume=volumeNamedByCatalogName(memory.readLong(pb+IO_NAME_PTR));if(volume!=null){writeCatalogInfo(pb,volume);return finish(cpu,pb,NO_ERR);}}if(base==null&&index==0&&(namesFullPath(memory.readLong(pb+IO_NAME_PTR))||hostColonPath(memory.readLong(pb+IO_NAME_PTR))))base=volumeRootFor(0);/* a full pathname ignores ioDirID: Pro Tools' installer asks for "HD:Digidesign:Pro Tools:" with the file number a previous call left there */if(base==null)return finish(cpu,pb,FNF_ERR);if(index>0){File[] entries=sortedEntries(base);if(index>entries.length)return finish(cpu,pb,FNF_ERR);path=entries[index-1].getCanonicalFile();}
+	private boolean getCatalogInfo(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+IO_DIR_INDEX),result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File base=directoryFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM)),path;if(base==null&&index==0&&memory.readLong(pb+48)==1){/* ioDirID 1 (fsRtParID) is the parent of every volume root: the name is the volume (Classilla's profile code asks for "Home" that way and quit on -43) */File volume=volumeNamedByCatalogName(memory.readLong(pb+IO_NAME_PTR));/* only the volume ioVRefNum names when it names one: Fontographer 4's installer asks (Install Disk 1, fsRtParID, "Disk 2") whether Disk 2 is in the drive yet, and a noErr for the mounted Disk 2 made it look for Disk 2's files on Disk 1 */int asked=(short)memory.readWord(pb+IO_VREF_NUM);if(volume!=null&&asked!=0){File askedRoot=volumeRootFor(asked);if(askedRoot!=null&&volumeIndexFor(askedRoot)!=volumeIndexFor(volume))volume=null;}if(volume!=null){writeCatalogInfo(pb,volume);return finish(cpu,pb,NO_ERR);}}if(base==null&&index==0&&(namesFullPath(memory.readLong(pb+IO_NAME_PTR))||hostColonPath(memory.readLong(pb+IO_NAME_PTR))))base=volumeRootFor(0);/* a full pathname ignores ioDirID: Pro Tools' installer asks for "HD:Digidesign:Pro Tools:" with the file number a previous call left there */if(base==null)return finish(cpu,pb,FNF_ERR);if(index>0){File[] entries=sortedEntries(base);if(index>entries.length)return finish(cpu,pb,FNF_ERR);path=entries[index-1].getCanonicalFile();}
 		else if(index<0){path=base;}else{int namePtr=memory.readLong(pb+IO_NAME_PTR);path=namePtr==0||memory.readByte(namePtr)==0?base:resolveFrom(base,namePtr);} // index 0 with no name: the directory ioDirID itself (IM Files 2-183); some applications ask for their own folder that way
 		// ioNamePtr is an input for index 0 and stays as it is (some programs look up a data folder and then append file
 		// names to that same string); indexed and directory (-1) lookups return the name.
 		if(path==null||!path.exists())result=FNF_ERR;else {int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0&&index!=0)writePascal(output,isVolumeRoot(path.getCanonicalFile())?volumeNameFor(path):macNameOf(path));if(index==0)materializeView(path);writeCatalogInfo(pb,path);result=NO_ERR;}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
-	private File volumeNamedByCatalogName(int namePtr) throws M68kCpuException {if(namePtr==0||memory.readByte(namePtr)==0)return null;String n=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr)));if(n.endsWith(":"))n=n.substring(0,n.length()-1);for(int i=0;i<volumeNames.size();i++)if(volumeNames.get(i).equalsIgnoreCase(n))return volumes.get(i);return null;}
+	private File volumeNamedByCatalogName(int namePtr) throws M68kCpuException {if(namePtr==0||memory.readByte(namePtr)==0)return null;String n=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr)));if(n.endsWith(":"))n=n.substring(0,n.length()-1);int i=volumeIndexNamed(n);return i<0?null:volumes.get(i);}
 	private boolean setCatalogInfo(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+IO_DIR_INDEX),result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File base=index<0?directoryFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM)):baseFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM),memory.readLong(pb+IO_NAME_PTR)),path;if(base==null)result=FNF_ERR;else {int namePtr=memory.readLong(pb+IO_NAME_PTR);path=index<0||namePtr==0||memory.readByte(namePtr)==0?base:resolveFrom(base,namePtr);/* no name: the directory ioDirID itself, as for PBGetCatInfo (Core Collection's ChangeType touches the parent folder's date with the block GetCatInfo filled and reported "Could not change type." on -43) */if(path==null||!path.exists())result=FNF_ERR;else result=setCatalogEntry(path,(memory.readByte(pb+IO_FL_ATTRIB)&1)!=0,memory.readBytes(pb+32,16),memory.readBytes(pb+84,16),memory.readLong(pb+72),memory.readLong(pb+76),memory.readLong(pb+80));}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/**
 	 * Catalog information a program sets (PBSetCatInfo, FSSetCatalogInfo): the lock, Finder information (16 bytes and the extended
@@ -539,9 +590,14 @@ final class FileManager68k {
 			try{File volume=namedVolume((short)memory.readWord(pb+IO_VREF_NUM));if(volume!=null&&blessedFolder!=null&&canonical(blessedFolder.getParentFile()).equals(canonical(volume)))attributes&=~(1<<20);}catch(IOException ignored){}
 			attributes=Integer.getInteger("hz68k.volattrs",attributes);/* bHasFileIDs, bHasCatSearch (PBCatSearch lives in FileSystem68k): without it installers may walk every folder of every volume with GetCatInfo.
 			   Never bNoSysDir (17) / bNoBootBlks (19): those mark a server volume that cannot hold a System Folder, and Aladdin InstallerMaker 1.x (After Dark 2.0 "Double-Click Me to Install") refuses such a disk (its explanation falls through to "is damaged"). */byte[] data=ByteBuffer.allocate(20).order(ByteOrder.BIG_ENDIAN).putShort((short)2).putInt(attributes).putInt(0).putInt(0).putInt(0).putShort((short)0).array();int actual=Math.min(requested,data.length);for(int i=0;i<actual;i++)memory.writeByte(buffer+i,data[i]);memory.writeLong(pb+IO_ACT_COUNT,actual);result=NO_ERR;}return finish(cpu,pb,result);}
-	private boolean moveCatalogEntry(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {int volume=(short)memory.readWord(pb+IO_VREF_NUM);File sourceDirectory=baseFor(memory.readLong(pb+48),volume,memory.readLong(pb+IO_NAME_PTR)),source=resolveFrom(sourceDirectory,memory.readLong(pb+IO_NAME_PTR));File destinationBase=baseFor(memory.readLong(pb+36),volume,memory.readLong(pb+28)),destinationDirectory=memory.readLong(pb+28)==0||memory.readByte(memory.readLong(pb+28))==0?destinationBase:resolveFrom(destinationBase,memory.readLong(pb+28)); /* an empty ioNewName is the folder ioNewDirID itself, as NIL is (FSpCatMove to an FSSpec of {vRefNum, dirID, ""} from FindFolder: A-Dock's installer moving the old A-Dock to the Trash) */if(source==null||!source.exists())result=FNF_ERR;else if(destinationDirectory==null||!destinationDirectory.isDirectory())result=BD_NAM_ERR;else result=moveObject(source,destinationDirectory);}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
+	private boolean moveCatalogEntry(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {int volume=(short)memory.readWord(pb+IO_VREF_NUM);File sourceDirectory=baseFor(memory.readLong(pb+48),volume,memory.readLong(pb+IO_NAME_PTR)),source=resolveFrom(sourceDirectory,memory.readLong(pb+IO_NAME_PTR));File volumeRoot=memory.readLong(pb+36)==1?volumeNamedByCatalogName(memory.readLong(pb+28)):null;/* ioNewDirID 1 (fsRtParID) with a volume's name is that volume's root (dfXFCNs fMove(file,"Home:")) */File destinationBase=volumeRoot!=null?volumeRoot:baseFor(memory.readLong(pb+36),volume,memory.readLong(pb+28)),destinationDirectory=volumeRoot!=null||memory.readLong(pb+28)==0||memory.readByte(memory.readLong(pb+28))==0?destinationBase:resolveFrom(destinationBase,memory.readLong(pb+28)); /* an empty ioNewName is the folder ioNewDirID itself, as NIL is (FSpCatMove to an FSSpec of {vRefNum, dirID, ""} from FindFolder: A-Dock's installer moving the old A-Dock to the Trash) */if(source==null||!source.exists())result=FNF_ERR;else if(destinationDirectory==null||!destinationDirectory.isDirectory())result=BD_NAM_ERR;else result=moveObject(source,destinationDirectory);}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Moves {@code source} into the folder {@code destinationDirectory} (same volume, same name); a result code. PBCatMove and FSMoveObject share it. */
 	int moveObject(File source,File destinationDirectory) throws IOException {if(onLockedVolume(source)||onLockedVolume(destinationDirectory))return WPR_ERR;if(metadataFor(destinationDirectory).locked)return F_LCKD_ERR;Sandbox.checkFile(source,Sandbox.Access.WRITE,requester);Sandbox.checkFile(destinationDirectory,Sandbox.Access.WRITE,requester);File destination=new File(destinationDirectory,source.getName()).getCanonicalFile(),canonicalSource=source.getCanonicalFile();String sourcePath=canonicalSource.getPath(),destinationDirectoryPath=destinationDirectory.getCanonicalPath();if(canonicalSource.equals(root.getCanonicalFile())||(source.isDirectory()&&(destinationDirectoryPath.equals(sourcePath)||destinationDirectoryPath.startsWith(sourcePath+File.separator))))return BAD_MOV_ERR;if(destination.equals(canonicalSource))return NO_ERR;if(destination.exists())return DUP_FN_ERR;boolean file=canonicalSource.isFile();if(canonicalSource.renameTo(destination)){if(file)ResourceFile68k.AppleDouble.moveWith(canonicalSource,destination);rebaseState(sourcePath,destination.getPath());if(moveListener!=null)moveListener.accept(canonicalSource,destination);return NO_ERR;}return IO_ERR;}
+	/** Whether {@code reference} is a resource file the Resource Manager holds open (the System file included). */
+	private boolean isResourceFileReference(int reference){
+		if(resourceFileLookup!=null&&resourceFileLookup.apply(reference)!=null)return true;
+		return systemResourceFile!=null&&systemFileReference!=null&&reference==systemFileReference.getAsInt();
+	}
 	private boolean getFileControlBlockInfo(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+IO_FCB_INDEX),result=NO_ERR,reference=(short)memory.readWord(pb+IO_REF_NUM);OpenFile open=null;
 		if(index>0){reference=indexedControlBlock(index,(short)memory.readWord(pb+IO_VREF_NUM));if(reference==0)return finish(cpu,pb,RF_NUM_ERR);open=files.get(reference);}else open=files.get(reference);
 		if(open==null){ // a resource file opened by the Resource Manager is an open resource fork too (programs locate themselves through CurResFile + PBGetFCBInfo)
@@ -676,7 +732,7 @@ final class FileManager68k {
 
 	private boolean create(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);result=createFile(path);traceOpen(pb,hierarchical,path,result);}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Creates the empty file {@code path} (PBHCreate, FSCreateFileUnicode); a result code. */
-	int createFile(File path) throws IOException {if(path==null)return root==null?NSV_ERR:BD_NAM_ERR;if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR/* a folder of the path is missing (Rinaldi's FullWrite: "Folder not found") */;Sandbox.checkFile(path,Sandbox.Access.CREATE,requester);if(path.createNewFile()){metadataFor(path);return NO_ERR;}return IO_ERR;}
+	int createFile(File path) throws IOException {if(path==null)return root==null?NSV_ERR:BD_NAM_ERR;if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR/* a folder of the path is missing (Rinaldi's FullWrite: "Folder not found") */;Sandbox.checkFile(path,Sandbox.Access.CREATE,requester);if(path.createNewFile()){metadataFor(path);if(persistent)createdFiles.add(canonical(path).getPath());return NO_ERR;}return path.getParentFile().canWrite()?IO_ERR:WPR_ERR;}
 	private boolean delete(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);result=path==null?(root==null?NSV_ERR:BD_NAM_ERR):deleteObject(path,true)/* PBDelete removes an empty folder too on HFS (Rinaldi's RemoveFolder: "Unknown #-54") */;}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Deletes a file or an empty folder (a folder only when {@code folders}); a result code. PBDelete, PBHDelete and FSDeleteObject share it. */
 	int deleteObject(File path,boolean folders) throws IOException {if(!path.exists())return FNF_ERR;if(onLockedVolume(path))return WPR_ERR;if(metadataFor(path).locked)return F_LCKD_ERR;if(folders)clearHostLeftovers(path);if(isBusy(path)||isStackStandIn(path))return F_BSY_ERR;if(path.isDirectory()&&!folders)return PERM_ERR;Sandbox.checkFile(path,Sandbox.Access.DELETE,requester);String key=path.getCanonicalPath();if(DeletedFiles.delete(path,requester)/* the user's own files go to HyperZebra HD's Deleted Files, not away for good */){ResourceFile68k.AppleDouble.deleteWith(path);removeState(key);return NO_ERR;}return IO_ERR;}
@@ -722,10 +778,12 @@ final class FileManager68k {
 	private boolean getPosition(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_REF_NUM),result=NO_ERR;OpenFile open=openFileFor(reference);if(open==null)result=RF_NUM_ERR;else try{memory.writeLong(pb+IO_POS_OFFSET,(int)open.file.getFilePointer());}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	private boolean setPosition(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_REF_NUM),result;OpenFile open=openFileFor(reference);if(open==null)result=RF_NUM_ERR;else try{int mode=memory.readWord(pb+IO_POS_MODE)&3,offset=memory.readLong(pb+IO_POS_OFFSET);long target=mode==0?open.file.getFilePointer():mode==1?offset:mode==2?open.file.length()+offset:open.file.getFilePointer()+offset;
 		if(target<0)result=POS_ERR;else if(target>open.file.length()){open.file.seek(open.file.length());result=EOF_ERR;}else {open.file.seek(target);result=NO_ERR;}memory.writeLong(pb+IO_POS_OFFSET,(int)open.file.getFilePointer());}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
-	private boolean flush(M68kCpu cpu,boolean fileOnly) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_REF_NUM),result=NO_ERR;if(fileOnly){OpenFile open=files.get(reference);if(open==null)result=RF_NUM_ERR;else try{open.file.getFD().sync();if(open.view!=null&&open.writable&&open.dirty)writeBack(open);}catch(IOException e){result=IO_ERR;}}else try{syncViews(true);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
+	/** FlushFile/FlushVol. A resource file the Resource Manager holds open is an open fork too: Onslaught 1.0.2 flushes its settings
+	 *  file by that refNum after UpdateResFile and reported "an internal error has occurred (Toolbox Code: -51)" at every start. */
+	private boolean flush(M68kCpu cpu,boolean fileOnly) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_REF_NUM),result=NO_ERR;if(fileOnly){OpenFile open=files.get(reference);if(open==null)result=isResourceFileReference(reference)?NO_ERR:RF_NUM_ERR;else try{open.file.getFD().sync();if(open.view!=null&&open.writable&&open.dirty)writeBack(open);}catch(IOException e){result=IO_ERR;}}else try{syncViews(true);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 
-	private boolean getVolume(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result=root==null?NSV_ERR:NO_ERR;if(result==NO_ERR)try{File d=volumeRootFor(defaultVolumeRef);WorkingDirectory working=workingDirectories.get(defaultVolumeRef);if(working!=null&&directories.get(working.directoryId)!=null)d=directories.get(working.directoryId);int output=memory.readLong(pb+IO_NAME_PTR);/* the volume's name even when the default is a working directory (only ioVRefNum names the folder): SoftWindows puts it in front of the partial path the installer saved (":SoftWindows:SoftWindows Hard Disk File C"), and with the folder's name drive C: was not found */if(output!=0)writePascal(output,volumeNameFor(d));memory.writeWord(pb+IO_VREF_NUM,working!=null?defaultVolumeRef:volumeRefNumFor(d));/* HGetVol also fills ioWDProcID/ioWDVRefNum/ioWDDirID */memory.writeLong(pb+28,0);memory.writeWord(pb+32,volumeRefNumFor(d));memory.writeLong(pb+48,directoryId(d));}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
-	private boolean getVolumeInfo(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+IO_VOL_INDEX),result=root==null||index>volumes.size()?NSV_ERR:NO_ERR;if(result==NO_ERR)try {File volume;if(index>0)volume=volumes.get(index-1);else{int namePtr=memory.readLong(pb+IO_NAME_PTR);int ref=(short)memory.readWord(pb+IO_VREF_NUM);volume=null;/* a negative ioVolIndex names the volume by the pathname in ioNamePtr first, whatever ioVRefNum holds (Netscape 2.02 saves its bookmarks, then asks for "HyperZebra HD:" with vRefNum -32768) */if((ref==0||index<0)&&namePtr!=0&&memory.readByte(namePtr)>0){String n=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr)));int colon=n.indexOf(':');if(colon>0)n=n.substring(0,colon);for(int i=0;i<volumeNames.size();i++)if(volumeNames.get(i).equalsIgnoreCase(n))volume=volumes.get(i);
+	private boolean getVolume(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result=root==null?NSV_ERR:NO_ERR;if(result==NO_ERR)try{File d=volumeRootFor(defaultVolumeRef);WorkingDirectory working=workingDirectories.get(defaultVolumeRef);if(working!=null&&directories.get(working.directoryId)!=null)d=directories.get(working.directoryId);int output=memory.readLong(pb+IO_NAME_PTR);/* the volume's name even when the default is a working directory (only ioVRefNum names the folder): SoftWindows puts it in front of the partial path the installer saved (":SoftWindows:SoftWindows Hard Disk File C"), and with the folder's name drive C: was not found */if(output!=0)writePascal(output,volumeNameFor(d));memory.writeWord(pb+IO_VREF_NUM,working!=null?defaultVolumeRef:volumeRefNumFor(d));/* HGetVol also fills ioWDProcID/ioWDVRefNum/ioWDDirID - PBGetVol ($A014) not: the 1984 Font Mover passes a 24-byte block on the stack, and its return address became ioWDProcID 0 */if(hierarchical){memory.writeLong(pb+28,0);memory.writeWord(pb+32,volumeRefNumFor(d));memory.writeLong(pb+48,directoryId(d));}}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
+	private boolean getVolumeInfo(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+IO_VOL_INDEX),result=root==null||index>volumes.size()?NSV_ERR:NO_ERR;if(result==NO_ERR)try {File volume;if(index>0)volume=volumes.get(index-1);else{int namePtr=memory.readLong(pb+IO_NAME_PTR);int ref=(short)memory.readWord(pb+IO_VREF_NUM);volume=null;/* a negative ioVolIndex names the volume by the pathname in ioNamePtr first, whatever ioVRefNum holds (Netscape 2.02 saves its bookmarks, then asks for "HyperZebra HD:" with vRefNum -32768) */if((ref==0||index<0)&&namePtr!=0&&memory.readByte(namePtr)>0){String n=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr)));int colon=n.indexOf(':');if(colon>0)n=n.substring(0,colon);int named=volumeIndexNamed(n);if(named>=0)volume=volumes.get(named);
 					/* a full pathname ("Disk:...") names its volume: one not mounted is nsvErr, not ioVRefNum's volume. Apple Installer 3 asks
 					   for its next floppy so ("Win Install 2:") and took the startup disk it was given for that disk ("the wrong disk") */
 					if(volume==null&&colon>0)return finish(cpu,pb,NSV_ERR);}if(volume==null)volume=namedVolume(ref);if(volume==null)return finish(cpu,pb,NSV_ERR);}int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0)writePascal(output,volumeNameFor(volume));memory.writeWord(pb+IO_VREF_NUM,volumeRefNumFor(volume));File root=volume;BasicFileAttributes attributes=Files.readAttributes(root.toPath(),BasicFileAttributes.class);int created=macDate(attributes.creationTime().toMillis()),modified=macDate(attributes.lastModifiedTime().toMillis());if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] volume list "+root);File[] entries=root.listFiles();if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] volume done "+root);int fileCount=0;if(entries!=null)for(File entry:entries)if(entry.isFile())fileCount++;
@@ -734,13 +792,19 @@ final class FileManager68k {
 			int dirCount=0;if(entries!=null)for(File entry:entries)if(entry.isDirectory())dirCount++;
 			memory.writeWord(pb+64,0x4244);memory.writeWord(pb+66,driveOf(volumeIndexFor(volume)));memory.writeWord(pb+68,driverRefOf(volumeIndexFor(volume)));/* ioVDrvInfo/ioVDRefNum: host volumes hang off one fixed-disk driver; image drivers may ask it for a DrvSts before mounting */memory.writeWord(pb+70,0);memory.writeLong(pb+72,0);memory.writeWord(pb+76,0);memory.writeLong(pb+78,0);memory.writeLong(pb+82,fileCount);memory.writeLong(pb+86,dirCount);for(int i=90;i<122;i+=2)memory.writeWord(pb+i,0);if(blessedFolder!=null&&blessedFolder.isDirectory()&&canonical(blessedFolder.getParentFile()).equals(canonical(volume)))memory.writeLong(pb+90,directoryId(blessedFolder));/* ioVFndrInfo[0]: the blessed System Folder, how pre-FindFolder programs locate it (After Dark's installer) */}}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	private boolean setVolume(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0];if(root==null)return finish(cpu,pb,NSV_ERR);try{int ref=(short)memory.readWord(pb+IO_VREF_NUM),dirId=hierarchical?memory.readLong(pb+48):0;int namePtr=memory.readLong(pb+IO_NAME_PTR);
-		if(namePtr!=0&&memory.readByte(namePtr)>0){String full=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr))),n=full;if(n.endsWith(":"))n=n.substring(0,n.length()-1);int index=-1;for(int i=0;i<volumeNames.size();i++)if(volumeNames.get(i).equalsIgnoreCase(n))index=i;if(index>=0){/* the bare volume name with a working directory on that volume is what GetVol handed out (the volume's name + the WD's
+		if(namePtr!=0&&memory.readByte(namePtr)>0){String full=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr))),n=full;if(n.endsWith(":"))n=n.substring(0,n.length()-1);int index=volumeIndexNamed(n);if(index>=0){/* the bare volume name with a working directory on that volume is what GetVol handed out (the volume's name + the WD's
 				   refNum): GetVol(name,ref) ... SetVol(name,ref) restores that folder, not the volume's root. ResEdit does so after reading its
 				   preferences, then opens its own file by name to check itself ("ResEdit appears to be damaged" when that fails) */
 				WorkingDirectory working=n.equals(full)&&dirId==0?workingDirectories.get(ref):null;File folder=working==null?null:directories.get(working.directoryId);if(folder!=null&&volumeIndexFor(folder)==index){defaultVolumeRef=ref;return finish(cpu,pb,NO_ERR);}
 				defaultVolumeRef=-(index+1);return finish(cpu,pb,NO_ERR);}if(n.indexOf(':')>=0){/* resolve the untrimmed name: "::" is the parent folder (Descent II does ":Players:" then "::"); trimmed, it would read ":" = here */File d;try{d=resolveName(n.startsWith(":")?directoryFor(dirId,ref):volumeRootFor(ref),n.startsWith(":")?full:n);}catch(SecurityException e){/* a volume or path that is not mounted: nsvErr, not a crash */if(Boolean.getBoolean("hz68k.trace"))System.err.println("[file] SetVol \""+full+"\": "+e.getMessage());return finish(cpu,pb,NSV_ERR);}if(d!=null&&d.isDirectory()){defaultVolumeRef=workingDirectoryRefFor(d);return finish(cpu,pb,NO_ERR);}return finish(cpu,pb,NSV_ERR);}
 			/* A name without colons that is not a mounted volume is a partial pathname: the File Manager then goes by ioVRefNum/ioDirID.
-			   Some resource editors restore their default directory with SetVol(name, wdRefNum) using exactly what GetVol returned. */}
+			   Some resource editors restore their default directory with SetVol(name, wdRefNum) using exactly what GetVol returned.
+			   HSetVol with a directory ID: the folder of that name in it - Alpha 6.0 restores its own folder from its FSSpec
+			   (HSetVol("alpha6.0", vRefNum, parID)); taking the parent, it could not find ":Tcl:SystemCode:AlphaBits.tcl".
+			   Without one, the folder of that name in the default directory: NASCAR Racing goes HSetVol(full path of its Data folder)
+			   then HSetVol("SOUND", 0, 0) and opens SOUND.DAT by name ("the sound effects could not be loaded" while it stayed in Data). */
+			if(hierarchical){File base=directoryFor(dirId,ref);File d=null;try{d=base==null?null:resolveName(base,":"+n);}catch(SecurityException e){d=null;}
+				if(d!=null&&d.isDirectory()){defaultVolumeRef=workingDirectoryRefFor(d);return finish(cpu,pb,NO_ERR);}}}
 		if(dirId!=0&&dirId!=2){File d=directoryById(dirId);if(d==null)return finish(cpu,pb,DIR_NF_ERR);defaultVolumeRef=workingDirectoryRefFor(d);return finish(cpu,pb,NO_ERR);}
 		if(ref==0)return finish(cpu,pb,NO_ERR);if(volumeRootFor(ref)==null)return finish(cpu,pb,NSV_ERR);defaultVolumeRef=ref;return finish(cpu,pb,NO_ERR);}catch(IOException e){return finish(cpu,pb,IO_ERR);}}
 	private void writeCatalogInfo(int pb,File path) throws IOException,M68kCpuException {Metadata value=metadataFor(path);int parentId=parentDirectoryId(path);if(path.isFile()){writeFileInfo(pb,path);memory.writeLong(pb+80,value.backupDate);for(int i=0;i<16;i++)memory.writeByte(pb+84+i,value.extendedFinderInfo[i]);memory.writeLong(pb+100,parentId);memory.writeLong(pb+104,0);return;}memory.writeByte(pb+IO_FL_ATTRIB,0x10|(value.locked||!path.canWrite()?1:0));memory.writeByte(pb+31,0);for(int i=0;i<16;i++)memory.writeByte(pb+32+i,value.finderInfo[i]);if((value.finderInfo[8]&0x04)!=0&&!new File(path,"Icon\r").exists())memory.writeByte(pb+40,value.finderInfo[8]&0xfb);/* kHasCustomIcon without the "Icon\r" file that holds the icon (host folders carry stray flag bits): the Finder opens that file for such a folder and gives up with fnfErr */memory.writeLong(pb+48,directoryId(path));File[] entries=catalogEntries(path);memory.writeWord(pb+52,entries==null?0:Math.min(0xffff,entries.length));/* ioDrNmFls counts what an indexed GetCatInfo will hand out (no .DS_Store, sidecars, packages): After Dark's installer walks the System Folder from that count downwards and gives up at the first -43 */memory.fill(pb+54,18,0);memory.writeLong(pb+72,value.creationDate);memory.writeLong(pb+76,value.modificationDate);memory.writeLong(pb+80,value.backupDate);for(int i=0;i<16;i++)memory.writeByte(pb+84+i,value.extendedFinderInfo[i]);memory.writeLong(pb+100,parentId);/* a DirInfo ends at ioDrParID (104 bytes): no ioFlClpSiz, SuperPaint 3.0's Save keeps one on its stack (smashed return address) */}
@@ -819,6 +883,8 @@ final class FileManager68k {
 		/** A table larger than this is rewritten with only the entries whose files are still as recorded. */
 		private static final long COMPACT_AT=512*1024;
 		private static final Map<String,Long> stamps=new HashMap<String,Long>();
+		/** The stamp that marks a file as no longer the program's own bytes (converted to the host form): no host file has it. */
+		static final long CONVERTED=Long.MIN_VALUE;
 		private static long readOffset;
 		private static File file(){return new File(AppPaths.stateDirectory(),"ProgramFiles.txt");}
 		/** Whether the program's last write left {@code key} (a canonical path) with this host stamp. */
@@ -935,6 +1001,11 @@ final class FileManager68k {
 		// the program's own folder first: the helpers a program launches by creator usually sit beside it (Adobe PageMill's
 		// QuickHelp viewer in its Help folder), and a real Desktop Database knows them however big the volume is
 		if(searchFirst!=null&&searchFirst.isDirectory()&&Sandbox.allowedWithoutAsking(searchFirst,requester)&&wanted.test(searchFirst))queue.add(new File[]{searchFirst,null,null,null,null,null,null});
+		// then the folder holding it (not a volume, walked anyway): a companion often sits one level up - Analog Helper 68k, in a
+		// folder of its own inside "Analog 3.2 ƒ", asks every volume for 'MAG^' (Analog, beside that folder), and the limited
+		// walk of the host disk never got that deep: "cannot find a copy of Analog 3 on any mounted disk"
+		File near=nearFolder();
+		if(near!=null&&Sandbox.allowedWithoutAsking(near,requester)&&wanted.test(near))queue.add(new File[]{near,null,null,null,null,null,null});
 		// only where the program may look without asking: BBEdit calls PBDTGetAPPL at start-up, and a permission dialog for
 		// listing the whole host disk came up before its first window (and blocked it until answered)
 		for(File v:volumes)if(Sandbox.allowedWithoutAsking(v,requester)&&wanted.test(v))queue.add(new File[]{v,null,null,null,null,null,null});
@@ -955,10 +1026,11 @@ final class FileManager68k {
 		java.util.concurrent.Future<Map<Integer,List<Object[]>>> done=CREATOR_WALKS.get(cacheKey);if(done!=null&&done.isDone())CREATOR_WALKS.remove(cacheKey,done); // its index is out of date
 		java.util.concurrent.Future<Map<Integer,List<Object[]>>> walk=CREATOR_WALKS.computeIfAbsent(cacheKey,k->WALKERS.submit(()->{
 			Map<Integer,List<Object[]>> result=walkCreators(queue);CREATOR_CACHE.put(k,new Object[]{result,System.currentTimeMillis()});return result;}));
-		// the program's own folder is walked on its own as well and a match there answers at once: the whole walk (every volume,
-		// the host root) often outlasts the wait, and Caliban's isAPPL("RSED") said false with ResEdit right beside the stack
-		File[] first=queue.peekFirst();
-		if(index<=1&&first!=null&&first[0].equals(searchFirst)&&!walk.isDone()){ // ioIndex 0 and 1 both ask for the newest (isAPPL passes 0)
+		// the program's own folder (then the folder holding it) is walked on its own as well and a match there answers at once:
+		// the whole walk (every volume, the host root) often outlasts the wait, and Caliban's isAPPL("RSED") said false with
+		// ResEdit right beside the stack
+		if(index<=1)for(File[] first:queue){ // ioIndex 0 and 1 both ask for the newest (isAPPL passes 0)
+			if(walk.isDone()||!first[0].equals(searchFirst)&&!first[0].equals(near))break;
 			java.util.ArrayDeque<File[]> own=new java.util.ArrayDeque<File[]>();own.add(first);
 			java.util.concurrent.Future<Map<Integer,List<Object[]>>> ownWalk=WALKERS.submit(()->walkCreators(own));
 			try{File result=pickWithCreator(ownWalk.get(Math.max(1,deadline-System.nanoTime()),java.util.concurrent.TimeUnit.NANOSECONDS),creator,1,kind);if(result!=null)return result;}
@@ -1115,7 +1187,7 @@ final class FileManager68k {
 	 *  FolderContents of "HyperZebra HD:" listed CatalogIDs.txt, launcher.properties, Open Stacks… */
 	private static final java.util.Set<String> STATE_ENTRIES=new java.util.HashSet<String>(Arrays.asList(
 		"CatalogIDs.txt","ProgramFiles.txt","launcher.properties","launcher-appearance.properties","resource_trash","resource_staging","resource_clipboard",
-		"Open Stacks","Stack Icons","Working Copies","Languages","Translations","Deleted Files"));
+		"Open Stacks","Stack Icons","Working Copies","Languages","Translations","Deleted Files","Desktop DB","Desktop DF"));
 	static boolean hiddenFromCatalog(File entry){
 		String n=entry.getName();
 		if(n.startsWith(".")||n.equals("__MACOSX"))return true;
@@ -1188,15 +1260,17 @@ final class FileManager68k {
 	private int hostTypeOf(File path) throws IOException {Metadata value=metadataFor(path);if(value.hostType!=0)return value.hostType;byte[] info=persistent?FinderInfo68k.guess(path):FinderInfo68k.read(path);return info==null?0:MacApp68k.u4(info,0);}
 	/** Finder information as the host keeps it: a program's 'PICT' on a file the host holds as a PNG stays the host's type. */
 	/**
-	 * A program never hides a host folder nor gives it a custom icon: those Finder flags (kIsInvisible $4000, kHasCustomIcon $0400)
-	 * keep the host's own values on the host side, while the program still sees what it set. The System 7.5 Finder marks the
-	 * "Desktop" file it keeps at every volume root invisible - on the Home volume that name is the user's own Desktop folder,
-	 * and macOS hid it.
+	 * A program never hides a host folder: that Finder flag (kIsInvisible $4000) keeps the host's own value on the host side, while
+	 * the program still sees what it set. The System 7.5 Finder marks the "Desktop" file it keeps at every volume root invisible -
+	 * on the Home volume that name is the user's own Desktop folder, and macOS hid it. kHasCustomIcon ($0400) is the program's
+	 * to set only where the folder holds the "Icon\r" file with the icon (StuffIt Expander restoring a folder from an archive, as
+	 * The Unarchiver does); without that file the host's value stays, a stray flag would show a blank icon.
 	 */
 	private static byte[] hostFolderSafe(File path,byte[] info){
 		if(!path.isDirectory())return info;
-		byte[] current=FinderInfo68k.read(path);int kept=current==null||current.length<9?0:current[8]&0x44;
-		byte[] out=info.clone();out[8]=(byte)((out[8]&~0x44)|kept);return out;
+		byte[] current=FinderInfo68k.read(path);int hostFlags=current==null||current.length<9?0:current[8]&0xff;
+		int hostOwned=new File(path,"Icon\r").isFile()?0x40:0x44;
+		byte[] out=info.clone();out[8]=(byte)((out[8]&~hostOwned)|(hostFlags&hostOwned));return out;
 	}
 	private byte[] hostFinderInfo(File path,byte[] info) throws IOException {int hostType=hostTypeOf(path);if(!pngPictureFiles||MacApp68k.u4(info,0)!=PictureFile68k.PICT||!PictureFile68k.isHostImageType(hostType))return info;byte[] out=info.clone();out[0]=(byte)(hostType>>>24);out[1]=(byte)(hostType>>>16);out[2]=(byte)(hostType>>>8);out[3]=(byte)hostType;return out;}
 	/** A file the program asks about by name (not a folder walk) gets its converted copy first, so the length it hears is the one it will read; host pictures grow into PICTs. */
@@ -1237,6 +1311,12 @@ final class FileManager68k {
 	 * SetEOF/Write and goes on) while the user expects the host file to be current after a Save.
 	 */
 	/** Closes every file the program left open (ExitToShell): what it wrote reaches the host, converted like at its own Close. */
+	/**
+	 * The programs this program created (StuffIt Expander restoring them from an archive) get the icon of their bundle as
+	 * their custom icon, for the host Finder, which reads no 'BNDL' (see {@link ProgramFileIcon68k}). Called when the program
+	 * ends, after {@link #closeAll}: every fork and Finder info it wrote is on the host by then.
+	 */
+	void giveNewProgramsIcons(){for(String path:createdFiles)ProgramFileIcon68k.give(new File(path));createdFiles.clear();}
 	void closeAll(){for(Integer reference:new ArrayList<Integer>(files.keySet())){OpenFile open=files.get(reference);if(open.attached){if(open.dirty)resourceFileClosed(reference);continue;}try{closeOpenFile(reference,open);}catch(IOException ignored){}}}
 	void syncViews(){try{syncViews(false);}catch(IOException e){if(Mac68kApi.TRACE)System.err.println("[file] text sync failed: "+e);}}
 	private void syncViews(boolean force) throws IOException {
@@ -1296,17 +1376,19 @@ final class FileManager68k {
 	 */
 	private void convertNewFile(File path) throws IOException {
 		String key=canonical(path).getPath();
-		if(path.isFile())ProgramFiles.record(key,hostStamp(path)); // a conversion below changes the stamp: the converted file reads back as the same bytes anyway
+		if(path.isFile())ProgramFiles.record(key,hostStamp(path)); // a conversion below takes this back (ProgramFiles.CONVERTED): CR->LF keeps the length and
+		// often the millisecond, so the stamp stayed and the program got the LF bytes back as its own (Drill Designer's Restore read for CRs at EOF forever)
 		if((!utf8TextFiles&&!pngPictureFiles)||!path.isFile()||path.length()>TextFile68k.LIMIT){untypedNewFiles.remove(key);return;}
 		int type=typeOf(path);
 		if(!(type==TEXT_TYPE&&utf8TextFiles)&&!(type==PictureFile68k.PICT&&pngPictureFiles)){untypedNewFiles.add(key);if(Mac68kApi.TRACE)System.err.println("[file] "+path+" closed as a new file of type "+AppleEvents68k.fourcc(type)+": conversion waits for its type");return;} // untyped, or typed as something else for now: some programs retype an exported PICT after closing it
 		untypedNewFiles.remove(key);
 		for(OpenFile other:files.values())if(!other.resourceFork&&canonical(other.path).getPath().equals(key))return; // still open elsewhere: its close converts
 		byte[] program=Files.readAllBytes(path.toPath());
-		if(type==PictureFile68k.PICT){if(PictureFile68k.pictureOf(program)!=null){writePicture(path,program);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();}return;}
+		if(type==PictureFile68k.PICT){if(PictureFile68k.pictureOf(program)!=null){writePicture(path,program);ProgramFiles.record(key,ProgramFiles.CONVERTED);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();}return;}
 		byte[] host=TextFile68k.toHostNew(program,encoding);
 		if(host==null||Arrays.equals(host,program))return;
 		Files.write(path.toPath(),host);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();
+		ProgramFiles.record(key,ProgramFiles.CONVERTED);
 		utf8NewFiles.put(key,new byte[][]{program,host});
 		if(Mac68kApi.TRACE)System.err.println("[file] "+path+" written as UTF-8 ("+program.length+" -> "+host.length+" bytes)");
 	}
@@ -1371,8 +1453,8 @@ final class FileManager68k {
 	/** A file with an open fork cannot be deleted (fBsyErr), as on the Mac - a program deleting its own running file (an
 	 *  installer's quit-time cleanup after a failed temp copy) is refused, not carried out on the host. */
 	private boolean isBusy(File path) throws IOException {File canonical=path.getCanonicalFile();for(OpenFile open:files.values())if(open.path.getCanonicalFile().equals(canonical))return true;if(!canonical.isDirectory()&&openElsewhere.test(canonical))return true;if(!canonical.isDirectory())return false;File[] children=canonical.listFiles();if(children==null||children.length>0)return true;for(WorkingDirectory working:workingDirectories.values()){File directory=directories.get(working.directoryId);if(directory!=null&&directory.getCanonicalFile().equals(canonical))return true;}return false;}
-	private void removeState(String path){metadata.remove(path);ResourceFork fork=resourceForks.remove(path);if(fork!=null)fork.storage.delete();HostView view=views.remove(path);if(view!=null&&view.storage!=null)view.storage.delete();untypedNewFiles.remove(path);utf8NewFiles.remove(path);macBinaries.remove(path);File data=dataForks.remove(path);if(data!=null)data.delete();directories.entrySet().removeIf(entry->entry.getValue().getPath().equals(path));directoryIds.keySet().removeIf(file->file.getPath().equals(path));/* both directions: a folder made again at that path (Pro Tools' installer after a cancelled install) was handed the deleted folder's ID, which no longer led anywhere (-43) */fileIdReferences.entrySet().removeIf(entry->entry.getValue().equals(path));rangeLocks.keySet().removeIf(key->key.startsWith(path+"\0"));}
-	private void rebaseState(String oldRoot,String newRoot) throws IOException {Map<String,Metadata> movedMetadata=new HashMap<String,Metadata>();for(Map.Entry<String,Metadata> entry:metadata.entrySet())movedMetadata.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());metadata.clear();metadata.putAll(movedMetadata);Map<String,ResourceFork> movedForks=new HashMap<String,ResourceFork>();for(Map.Entry<String,ResourceFork> entry:resourceForks.entrySet())movedForks.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());resourceForks.clear();resourceForks.putAll(movedForks);macBinaries.clear();for(File data:dataForks.values())data.delete();dataForks.clear();Map<String,HostView> movedViews=new HashMap<String,HostView>();for(Map.Entry<String,HostView> entry:views.entrySet())movedViews.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());views.clear();views.putAll(movedViews);java.util.Set<String> movedUntyped=new java.util.HashSet<String>();for(String untyped:untypedNewFiles)movedUntyped.add(rebasePath(untyped,oldRoot,newRoot));untypedNewFiles.clear();untypedNewFiles.addAll(movedUntyped);Map<String,byte[][]> movedUtf8=new HashMap<String,byte[][]>();for(Map.Entry<String,byte[][]> entry:utf8NewFiles.entrySet())movedUtf8.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());utf8NewFiles.clear();utf8NewFiles.putAll(movedUtf8);Map<String,List<RangeLock>> movedLocks=new HashMap<String,List<RangeLock>>();for(Map.Entry<String,List<RangeLock>> entry:rangeLocks.entrySet()){String key=entry.getKey(),suffix=key.substring(key.length()-2);movedLocks.put(rebasePath(key.substring(0,key.length()-2),oldRoot,newRoot)+suffix,entry.getValue());}rangeLocks.clear();rangeLocks.putAll(movedLocks);for(Map.Entry<Integer,String> entry:fileIdReferences.entrySet())entry.setValue(rebasePath(entry.getValue(),oldRoot,newRoot));for(Map.Entry<Integer,File> entry:directories.entrySet())entry.setValue(new File(rebasePath(entry.getValue().getCanonicalPath(),oldRoot,newRoot)));directoryIds.clear();for(Map.Entry<Integer,File> entry:directories.entrySet())directoryIds.put(entry.getValue(),entry.getKey());for(OpenFile open:files.values())open.path=new File(rebasePath(open.path.getCanonicalPath(),oldRoot,newRoot));}
+	private void removeState(String path){metadata.remove(path);ResourceFork fork=resourceForks.remove(path);if(fork!=null)fork.storage.delete();HostView view=views.remove(path);if(view!=null&&view.storage!=null)view.storage.delete();untypedNewFiles.remove(path);utf8NewFiles.remove(path);createdFiles.remove(path);macBinaries.remove(path);File data=dataForks.remove(path);if(data!=null)data.delete();directories.entrySet().removeIf(entry->entry.getValue().getPath().equals(path));directoryIds.keySet().removeIf(file->file.getPath().equals(path));/* both directions: a folder made again at that path (Pro Tools' installer after a cancelled install) was handed the deleted folder's ID, which no longer led anywhere (-43) */fileIdReferences.entrySet().removeIf(entry->entry.getValue().equals(path));rangeLocks.keySet().removeIf(key->key.startsWith(path+"\0"));}
+	private void rebaseState(String oldRoot,String newRoot) throws IOException {Map<String,Metadata> movedMetadata=new HashMap<String,Metadata>();for(Map.Entry<String,Metadata> entry:metadata.entrySet())movedMetadata.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());metadata.clear();metadata.putAll(movedMetadata);Map<String,ResourceFork> movedForks=new HashMap<String,ResourceFork>();for(Map.Entry<String,ResourceFork> entry:resourceForks.entrySet())movedForks.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());resourceForks.clear();resourceForks.putAll(movedForks);macBinaries.clear();for(File data:dataForks.values())data.delete();dataForks.clear();Map<String,HostView> movedViews=new HashMap<String,HostView>();for(Map.Entry<String,HostView> entry:views.entrySet())movedViews.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());views.clear();views.putAll(movedViews);java.util.Set<String> movedUntyped=new java.util.HashSet<String>();for(String untyped:untypedNewFiles)movedUntyped.add(rebasePath(untyped,oldRoot,newRoot));untypedNewFiles.clear();untypedNewFiles.addAll(movedUntyped);java.util.Set<String> movedCreated=new java.util.LinkedHashSet<String>();for(String created:createdFiles)movedCreated.add(rebasePath(created,oldRoot,newRoot));createdFiles.clear();createdFiles.addAll(movedCreated);Map<String,byte[][]> movedUtf8=new HashMap<String,byte[][]>();for(Map.Entry<String,byte[][]> entry:utf8NewFiles.entrySet())movedUtf8.put(rebasePath(entry.getKey(),oldRoot,newRoot),entry.getValue());utf8NewFiles.clear();utf8NewFiles.putAll(movedUtf8);Map<String,List<RangeLock>> movedLocks=new HashMap<String,List<RangeLock>>();for(Map.Entry<String,List<RangeLock>> entry:rangeLocks.entrySet()){String key=entry.getKey(),suffix=key.substring(key.length()-2);movedLocks.put(rebasePath(key.substring(0,key.length()-2),oldRoot,newRoot)+suffix,entry.getValue());}rangeLocks.clear();rangeLocks.putAll(movedLocks);for(Map.Entry<Integer,String> entry:fileIdReferences.entrySet())entry.setValue(rebasePath(entry.getValue(),oldRoot,newRoot));for(Map.Entry<Integer,File> entry:directories.entrySet())entry.setValue(new File(rebasePath(entry.getValue().getCanonicalPath(),oldRoot,newRoot)));directoryIds.clear();for(Map.Entry<Integer,File> entry:directories.entrySet())directoryIds.put(entry.getValue(),entry.getKey());for(OpenFile open:files.values())open.path=new File(rebasePath(open.path.getCanonicalPath(),oldRoot,newRoot));}
 	private static String rebasePath(String path,String oldRoot,String newRoot){return path.equals(oldRoot)?newRoot:path.startsWith(oldRoot+File.separator)?newRoot+path.substring(oldRoot.length()):path;}
 	// Mac file dates are local time on the VM clock (like ReadDateTime, shifted from 2040 on); host dates are UTC
 	static int macDate(long millis){return (int)Toolbox68k.macSeconds(Math.max(0,millis));}
@@ -1561,7 +1643,7 @@ final class FileManager68k {
 		// an external given a Mac or Linux host path ("answer file" puts "/Users/me/Stacks/x.txt" into it, and G-XCollection's
 		// installer hands that to MtCRX): the file there
 		if(stackShadows!=null&&hostSlashPath(name)){File hostFile=new File(name).getCanonicalFile();if(volumeIndexFor(hostFile)<0)throw new SecurityException("path outside mounted volumes");return stackShadow(hostFile);}
-		boolean relative=name.startsWith(":");String[] components=name.split(":",-1);int first=relative?1:0;File result=currentDirectory;if(!relative&&components.length>1){int index=-1;for(int i=0;i<volumeNames.size();i++)if(sameMacName(volumeNames.get(i),components[0]))index=i;if(index>=0)result=volumes.get(index);
+		boolean relative=name.startsWith(":");String[] components=name.split(":",-1);int first=relative?1:0;File result=currentDirectory;if(!relative&&components.length>1){int index=volumeIndexNamed(components[0]);if(index>=0)result=volumes.get(index);
 			else{ // a game that hard-codes its CD's name ("Dark Forces:Dark Forces Data:...") run from the folder it was copied to: that folder, or one above the current directory, stands in for the disc
 				File stand=null;for(File up=currentDirectory.getCanonicalFile();up!=null&&stand==null;up=up.getParentFile())if(sameMacName(macNameOf(up),components[0])&&volumeIndexFor(up)>=0)stand=up;
 				if(stand==null)throw new NoSuchVolume(components[0]);result=stand;}

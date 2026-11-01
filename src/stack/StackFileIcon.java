@@ -153,6 +153,20 @@ final class StackFileIcon {
 	}
 
 	/**
+	 * The 'icns' of a classic icon family ('ICN#', 'icl8', 'ics#'... by type, as a program's bundle has it): the classic
+	 * members, and every size macOS asks for made from its 16 and 32 pixel pictures. Null when no member draws.
+	 */
+	static byte[] familyOfClassic(Map<Integer, byte[]> classic){
+		TreeMap<Integer, BufferedImage> art = new TreeMap<Integer, BufferedImage>();
+		addArt(art, IconServices68k.picture(classic, 16), true);
+		addArt(art, IconServices68k.picture(classic, 32), true);
+		if(art.isEmpty()) return null;
+		Map<Integer, byte[]> family = new LinkedHashMap<Integer, byte[]>(classic);
+		family.putAll(modern(art));
+		return IconServices68k.buildFamily(family);
+	}
+
+	/**
 	 * A picture of the icon by its size. With {@code whole}, one larger than 32 pixels whose drawing fills less than 3/8
 	 * of it is left out: the 32x32 icon on an empty 128x128 'it32', as some icon tools of Mac OS 8.5 made it, would be a
 	 * small icon at large sizes in the Finder; the 32x32 one enlarged is the icon.

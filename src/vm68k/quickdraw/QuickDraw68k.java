@@ -192,6 +192,7 @@ final class QuickDraw68k {
 		}
 	}
 	boolean handle(M68kCpu cpu,int trap) throws M68kCpuException {
+		if(!replacedPixels.isEmpty())adoptReplacedPixels();
 		switch(trap) {
 			case 0x86d:case 0x86f:return initializePort(cpu);
 			case 0x86e:return initializeGlobals(cpu);
@@ -837,6 +838,10 @@ final class QuickDraw68k {
 		// (DrawSprocket/Display Manager contexts) is width*4, as the video driver gives it.
 		if(gworld&&buffer==0&&depth==32&&carbonPowerPcProgram())rowBytes+=16;
 		int table=depth<=8?validColorTable(requestedTable)?copyHandle(requestedTable):standardColorTable(depth):directColorTable(depth);
+		// a new Handle: the matching remembered for an earlier table at this address (a disposed GWorld's) is not this one's.
+		// Cythera's cutscene world gets a copy of its 'clut' 256 with seed 256, at the address where the title screen's world
+		// had kept its palette's colours under the same seed: the picture was matched to those and showed in false colours.
+		seededPalettes.remove(table);
 		// baseAddr carries the pixel pointer, as a real GWorld's does once its pixels are locked; many games read it
 		// straight from the record after LockPixels instead of calling GetPixBaseAddr; the Handle stays in the PixelMapState
 		// (for a caller's buffer a Handle of no block of its own whose master pointer is that buffer)
@@ -844,6 +849,9 @@ final class QuickDraw68k {
 		int pixels;if(buffer!=0){pixels=macApi.createEmptyHandle(rowBytes*height);memory.writeLong(pixels,buffer);}else pixels=macApi.createHandle(new byte[rowBytes*height+slack]);
 		byte[] pixMap=new byte[50];putLong(pixMap,0,memory.readLong(pixels));
 		putWord(pixMap,4,0x8000|rowBytes);putRect(pixMap,6,bounds);putLong(pixMap,22,0x00480000);putLong(pixMap,26,0x00480000);
+		// pmVersion 1: baseAddr points into the pixels' Handle, as 32-Bit QuickDraw's GWorlds say; QuickTime 5/6's QTNewGWorldFromPtr
+		// accepts only 1 or 2 there (it frees the world's own pixels and puts the caller's buffer in, see recoverGWorldPixels)
+		if(gworld&&buffer==0)putWord(pixMap,14,1);
 		putWord(pixMap,30,depth>=16?16:0);putWord(pixMap,32,depth);putWord(pixMap,34,depth>=16?3:1);
 		putWord(pixMap,36,depth==16?5:depth>=32?8:depth);putLong(pixMap,42,table);int pixMapHandle=macApi.createHandle(pixMap);
 		PixelMapState state=new PixelMapState(pixMapHandle,pixels,table,depth,rowBytes,bounds);if((flags&1)!=0)state.pixelState|=PIXELS_PURGEABLE;
@@ -999,6 +1007,12 @@ final class QuickDraw68k {
 		return bytes;
 	}
 
+	/** The pixels of the whole main screen device (a full-screen window's buffer is as big: see {@link Mac68kApi#hostReserve}). */
+	long screenBufferBytes() throws M68kCpuException {
+		int map=mainDevicePixMap==0?0:memory.readLong(mainDevicePixMap);if(map==0)return 0;
+		return (long)(memory.readWord(map+4)&0x3fff)*Math.max(0,(short)memory.readWord(map+10)-(short)memory.readWord(map+6));
+	}
+
 	/** Depth of new window buffers: that of the hosted main screen device (32 when there is none yet or the VM has a real screen). */
 	int windowDepth() throws M68kCpuException {
 		Toolbox68k tb=macApi.application();if(tb==null||!tb.hosted()||mainDevicePixMap==0)return 32;
@@ -1093,7 +1107,6 @@ final class QuickDraw68k {
 		writeRegionRect(region,visible?readRect(port+PORT_RECT):new Rect(0,0,0,0));
 	}
 
-	/** Fills a window's whole buffer with a colour at the buffer's own depth (an indexed buffer takes the nearest table entry). */
 	/** Fills a window's port with an 8x8 one-bit pattern in two colours (1 bits foreground), aligned to global coordinates. */
 	void fillWindowPattern(int port,byte[] pattern,int fore,int back) throws M68kCpuException {
 		int mapHandle=port==0?0:memory.readLong(port+PORT_BITS);if(mapHandle==0)return;int map=memory.readLong(mapHandle);if(map==0)return;
@@ -1102,22 +1115,31 @@ final class QuickDraw68k {
 		for(int y=0;y<height;y++){int row=pattern[(y+bits.bounds.top)&7]&0xff,o=bits.base+y*bits.rowBytes;
 			for(int x=0;x<width;x++,o+=4)memory.writeLong(o,0xff000000|((row&(0x80>>>((x+bits.bounds.left)&7)))!=0?fore:back));}
 	}
-	void fillWindowPort(int port,int rgb) throws M68kCpuException {
+	/** Fills a window's whole buffer with a colour at the buffer's own depth (an indexed buffer takes the nearest table entry). */
+	void fillWindowPort(int port,int rgb) throws M68kCpuException {fillWindowPort(port,rgb,0,0,Integer.MAX_VALUE,Integer.MAX_VALUE);}
+	/** The same in the rectangle {@code top,left,bottom,right} of the buffer's pixels (0,0 = its top left), cut to the buffer. */
+	void fillWindowPort(int port,int rgb,int top,int left,int bottom,int right) throws M68kCpuException {
 		int mapHandle=port==0?0:memory.readLong(port+PORT_BITS);if(mapHandle==0)return;int map=memory.readLong(mapHandle);if(map==0)return;
 		Bitmap bits=readBitmapRaw(map);int height=bits.bounds.bottom-bits.bounds.top,width=bits.bounds.right-bits.bounds.left;if(bits.base==0||height<=0||width<=0)return;
-		if(bits.direct&&bits.pixelSize==32){for(int y=0;y<height;y++){int o=bits.base+y*bits.rowBytes;for(int x=0;x<width;x++,o+=4)memory.writeLong(o,0xff000000|rgb);}return;}
-		if(bits.direct){int v=(rgb>>>19&31)<<10|(rgb>>>11&31)<<5|(rgb>>>3&31);for(int y=0;y<height;y++){int o=bits.base+y*bits.rowBytes;for(int x=0;x<width;x++,o+=2)memory.writeWord(o,v);}return;}
-		int index=bits.nearestColor(rgb),value=0;for(int i=0;i<8;i+=bits.pixelSize)value=value<<bits.pixelSize|index;
-		for(int y=0;y<height;y++)memory.fill(bits.base+y*bits.rowBytes,(width*bits.pixelSize+7)>>>3,value);
+		int y0=Math.max(0,top),y1=Math.min(height,bottom),x0=Math.max(0,left),x1=Math.min(width,right);if(y1<=y0||x1<=x0)return;
+		if(bits.direct&&bits.pixelSize==32){for(int y=y0;y<y1;y++){int o=bits.base+y*bits.rowBytes+x0*4;for(int x=x0;x<x1;x++,o+=4)memory.writeLong(o,0xff000000|rgb);}return;}
+		if(bits.direct){int v=(rgb>>>19&31)<<10|(rgb>>>11&31)<<5|(rgb>>>3&31);for(int y=y0;y<y1;y++){int o=bits.base+y*bits.rowBytes+x0*2;for(int x=x0;x<x1;x++,o+=2)memory.writeWord(o,v);}return;}
+		int size=bits.pixelSize,index=bits.nearestColor(rgb),value=0;for(int i=0;i<8;i+=size)value=value<<size|index;
+		if(x0==0&&x1==width||size==8){for(int y=y0;y<y1;y++)memory.fill(bits.base+y*bits.rowBytes+(x0*size>>>3),((x1-x0)*size+7)>>>3,value);return;}
+		for(int y=y0;y<y1;y++)for(int x=x0;x<x1;x++){int bit=x*size,a=bits.base+y*bits.rowBytes+(bit>>>3),shift=8-size-(bit&7),mask=((1<<size)-1)<<shift;
+			memory.writeByte(a,memory.readByte(a)&~mask|index<<shift&mask);}
 	}
 
 	/** Fills a 32-bit window port with a colour tile ({@code argb}, {@code pw} x {@code ph}, from the port's top left); false
 	 *  for other depths (the caller fills the colour). A Kaleidoscope scheme's dialog background (Aqua III's pin stripes). */
-	boolean fillWindowPortTile(int port,int[] argb,int pw,int ph) throws M68kCpuException {
+	boolean fillWindowPortTile(int port,int[] argb,int pw,int ph) throws M68kCpuException {return fillWindowPortTile(port,argb,pw,ph,0,0,Integer.MAX_VALUE,Integer.MAX_VALUE);}
+	/** The same in a rectangle of the buffer's pixels, the tile still aligned to its top left. */
+	boolean fillWindowPortTile(int port,int[] argb,int pw,int ph,int top,int left,int bottom,int right) throws M68kCpuException {
 		int mapHandle=port==0?0:memory.readLong(port+PORT_BITS);if(mapHandle==0||pw<=0||ph<=0)return false;int map=memory.readLong(mapHandle);if(map==0)return false;
 		Bitmap bits=readBitmapRaw(map);int height=bits.bounds.bottom-bits.bounds.top,width=bits.bounds.right-bits.bounds.left;
 		if(bits.base==0||height<=0||width<=0||!bits.direct||bits.pixelSize!=32)return false;
-		for(int y=0;y<height;y++){int o=bits.base+y*bits.rowBytes,row=(y%ph)*pw;for(int x=0;x<width;x++,o+=4)memory.writeLong(o,0xff000000|argb[row+x%pw]);}
+		int y0=Math.max(0,top),y1=Math.min(height,bottom),x0=Math.max(0,left),x1=Math.min(width,right);
+		for(int y=y0;y<y1;y++){int o=bits.base+y*bits.rowBytes+x0*4,row=(y%ph)*pw;for(int x=x0;x<x1;x++,o+=4)memory.writeLong(o,0xff000000|argb[row+x%pw]);}
 		return true;
 	}
 	/** A PixPat Handle made from the bytes of a 'ppat' resource (as GetPixPat makes one), or 0. */
@@ -1349,8 +1371,15 @@ final class QuickDraw68k {
 			macApi.disposeHandleAndFree(state.pixels);
 		}
 		for(int i=0;i<50;i+=2)memory.writeWord(data+i,memory.readWord(device+i)); // the device's PixMap record (its table Handle is shared)
-		Rect screen=readRect(device+6);
-		writeRect(data+6,screen.top-top,screen.left-left,screen.bottom-top,screen.right-left);
+		// the port's origin (SetOrigin moved portRect.topLeft and the bounds with it) stays: QuickDraw Utilities' `SetOrigin
+		// cardPort,-50,-50` then PaintRect drew at the window's corner once the card port was described again for the next call
+		Rect screen=readRect(device+6),portRect=readRect(port+PORT_RECT);int dv=portRect.top,dh=portRect.left;
+		writeRect(data+6,screen.top-top+dv,screen.left-left+dh,screen.bottom-top+dv,screen.right-left+dh);
+		// a classic-layout port's portBits.bounds at offset 8 too (the card window is no Window Manager window, so
+		// describeClassicWindowBounds never runs for it): Last Exit's Pollocks takes the card's global place from
+		// -thePort^.portBits.bounds.topLeft (MovePortTo) and drew everything up-left by the card window's place
+		PortState ps=ports.get(port);
+		if(ps!=null&&ps.classicWindow)writeRect(port+GRAF_VARS,screen.top-top+dv,screen.left-left+dh,screen.bottom-top+dv,screen.right-left+dh);
 		return true;
 	}
 	/** Puts RGB pixels into the main screen device at a global rectangle (what the screen shows there: the card under its window). */
@@ -1361,8 +1390,13 @@ final class QuickDraw68k {
 		Bitmap bitmap=readBitmapRaw(map);
 		for(int v=0;v<height;v++)for(int x=0;x<width;x++){if(keep!=null&&keep.contains(x,v))continue;bitmap.setInkRgb(left+x,top+v,~pixels[v*width+x]&0xffffff);}
 	}
-	/** Sets a port's visRgn (the Window Manager's job for a window: what of it is not covered by windows in front). */
-	void setVisRgn(int port,QdRegion region) throws M68kCpuException {int vis=memory.readLong(port+24);if(vis!=0)writeRegion(vis,region);}
+	/** Sets a port's visRgn (the Window Manager's job for a window: what of it is not covered by windows in front), {@code region}
+	 *  given with the window's top left at 0,0: it moves to the port's origin (SetOrigin on the card port, as {@link #describeScreenPort}). */
+	void setVisRgn(int port,QdRegion region) throws M68kCpuException {
+		int vis=memory.readLong(port+24);if(vis==0)return;
+		int dv=(short)memory.readWord(port+PORT_RECT),dh=(short)memory.readWord(port+PORT_RECT+2);
+		writeRegion(vis,dh==0&&dv==0?region:region.offset(dh,dv));
+	}
 	/** The main screen device's pixel size (0 without one). */
 	int screenDepth() throws M68kCpuException {int map=mainDevicePixMap==0?0:memory.readLong(mainDevicePixMap);return map==0?0:memory.readWord(map+32);}
 	/** The seed of the main screen device's colour table (changes with SetEntries/palettes; 0 without one). */
@@ -1618,6 +1652,42 @@ final class QuickDraw68k {
 
 	/** The smooth zoom forgets the plane of pixels about to be freed (new pixels in the same memory start afresh). */
 	private void forgetPlane(PixelMapState state) throws M68kCpuException {int base=state.pixels==0?0:memory.readLong(state.pixels);if(base!=0)smooth.forget(memory.physical(base));}
+	/**
+	 * RecoverHandle of a GWorld's own pixel pointer. QuickTime 5/6's QTNewGWorldFromPtr makes a GWorld (for an intermediate pixel
+	 * format such as Sorenson's 'syv9'), recovers the Handle of its pixels from baseAddr (pmVersion 1), disposes it and puts the
+	 * caller's buffer in baseAddr with pmVersion 0. The GWorld's pixels stay this QuickDraw's: a decoy Handle goes back to be
+	 * disposed, and at the next QuickDraw call the world adopts the buffer the record names ({@link #adoptReplacedPixels}).
+	 * 0 when the pointer is no GWorld's pixels.
+	 */
+	int recoverGWorldPixels(int pointer) throws M68kCpuException {
+		if(pointer==0)return 0;int target=memory.physical(pointer);
+		for(PixelMapState state:offscreenPixMaps.values()){
+			if(state.externalPixels||state.pixels==0||state.windowPort!=0)continue;
+			int data=memory.readLong(state.pixMap);
+			if(data==0||memory.readWord(data+14)!=1||memory.physical(memory.readLong(state.pixels))!=target)continue;
+			if(!replacedPixels.contains(state))replacedPixels.add(state);
+			return macApi.createHandle(new byte[4]);
+		}
+		return 0;
+	}
+	private final List<PixelMapState> replacedPixels=new ArrayList<PixelMapState>();
+	/** A world whose pixels were given away ({@link #recoverGWorldPixels}) takes the buffer and rowBytes its record names once the
+	 *  owner has written them (pmVersion 0): its pixels Handle points there from now on, and its own block is freed. */
+	private void adoptReplacedPixels() throws M68kCpuException {
+		for(java.util.Iterator<PixelMapState> it=replacedPixels.iterator();it.hasNext();){
+			PixelMapState state=it.next();
+			if(!offscreenPixMaps.containsValue(state)){it.remove();continue;}
+			int data=memory.readLong(state.pixMap);if(data==0||memory.readWord(data+14)==1)continue;
+			int buffer=memory.readLong(data),own=memory.readLong(state.pixels);it.remove();
+			if(buffer==0||memory.physical(buffer)==memory.physical(own))continue;
+			forgetPlane(state);
+			memory.writeLong(state.pixels,buffer);if(own!=0&&memory.isAllocated(own))memory.free(own);
+			int rowBytes=memory.readWord(data+4)&0x3fff;
+			for(PixelMapState each:new PixelMapState[]{state,gWorldOfPixMap(state.pixMap)})if(each!=null){each.externalPixels=true;if(rowBytes!=0)each.rowBytes=rowBytes;}
+		}
+	}
+	private GWorldState gWorldOfPixMap(int pixMap){for(GWorldState g:gWorlds.values())if(g.pixMap==pixMap)return g;return null;}
+
 	private void disposeOffscreenPixMap(PixelMapState state) throws M68kCpuException {
 		forgetPlane(state);
 		offscreenPixMaps.remove(state.pixMap);int data=memory.readLong(state.pixMap);offscreenPixMapData.remove(data);
@@ -1841,7 +1911,7 @@ final class QuickDraw68k {
 		writePoint(port+PN_LOC,0,0);writePoint(port+PN_SIZE,1,1);
 		memory.writeWord(port+PN_MODE,8);memory.fill(port+PN_PAT,8,0xff);
 		memory.writeWord(port+TX_MODE,1);memory.writeWord(port+TX_SIZE,12);memory.writeLong(port+FG_COLOR,33);
-		memory.writeLong(port+BK_COLOR,30);ports.put(port,new PortState());
+		memory.writeLong(port+BK_COLOR,30);PortState state=new PortState();state.classicPort=true;ports.put(port,state);
 	}
 
 	private void initializeColor(int port) throws M68kCpuException {
@@ -2061,7 +2131,7 @@ final class QuickDraw68k {
 	}
 	private boolean getColorPixel(M68kCpu cpu) throws M68kCpuException {int color=memory.readLong(cpu.a[7]);int v=(short)memory.readWord(cpu.a[7]+4),h=(short)memory.readWord(cpu.a[7]+6);cpu.a[7]+=8;
 		if(color!=0){int rgb=0xffffff;
-			if(currentPort!=0){Bitmap bitmap=readCurrentBitmap();
+			if(currentPort!=0){Bitmap bitmap=screenWithWindowsAbove(bitmapPointer(currentPort),readCurrentBitmap());
 				// the pixel value is looked up in theGDevice's table (a bitmap editor may read its icon under its own device, whose
 				// table lists black at 0, to decide between painting and erasing)
 				rgb=bitmap.throughDevice&&bitmap.contains(h,v)?bitmap.matchPalette[bitmap.getIndex(h,v)&bitmap.matchPalette.length-1]:~bitmap.getInkRgb(h,v)&0xffffff;}
@@ -2069,6 +2139,7 @@ final class QuickDraw68k {
 	private boolean getColorTable(M68kCpu cpu) throws M68kCpuException {int id=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;
 		int handle=standardColorTable(id);if(handle==0){handle=macApi.detachedResource(CLUT_TYPE,id);if(!validColorTable(handle)){if(handle!=0)macApi.disposeHandle(handle);handle=0;}
 			else memory.writeLong(memory.readLong(handle),id);}
+		if(handle!=0)seededPalettes.remove(handle); // a new Handle, whatever table had this address and seed before
 		memory.writeLong(cpu.a[7],handle);return true;}
 	private boolean disposeColorTable(M68kCpu cpu) throws M68kCpuException {int handle=memory.readLong(cpu.a[7]);cpu.a[7]+=4;
 		if(handle!=0){protectedEntries.remove(handle);reservedEntries.remove(handle);macApi.disposeHandle(handle);}return true;}
@@ -2147,9 +2218,9 @@ final class QuickDraw68k {
 		int start=(short)memory.readWord(cpu.a[7]+6);cpu.a[7]+=8;quickDrawError=0;int table=deviceColorTable();
 		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder();for(int i=0;i<=Math.min(count,255)&&source!=0;i++){if(i>=6&&i<count-1){if(i==6)sb.append(" ..");continue;}sb.append(' ').append(Integer.toHexString(memory.readWord(source+i*8+2)>>8<<16|memory.readWord(source+i*8+4)>>8<<8|memory.readWord(source+i*8+6)>>8));}
 			System.err.println("[68K] SetEntries start "+start+" count "+count+" table $"+Integer.toHexString(table)+" colours"+sb);}
-		if(table==0){quickDrawError=C_DEV_ERR;return true;}if(source==0||count<0||count>=256){quickDrawError=C_RANGE_ERR;return true;}int entries=count+1;
+		if(table==0){quickDrawError=C_DEV_ERR;return true;}if(source==0||count<0||count>=256){quickDrawError=C_RANGE_ERR;return true;}int entries=count+1;boolean positional=deviceTableIsDevice();
 		int[] destinations=new int[entries];for(int i=0;i<entries;i++){int index=start==-1?(short)memory.readWord(source+i*8):start+i;
-			destinations[i]=findColorEntry(table,index);if(destinations[i]==0){quickDrawError=C_RANGE_ERR;return true;}
+			destinations[i]=positional?deviceColorEntry(table,index):findColorEntry(table,index);if(destinations[i]==0){quickDrawError=C_RANGE_ERR;return true;}
 			BitSet protectedBits=protectedEntries.get(table);if(protectedBits!=null&&protectedBits.get(index&0xffff)){quickDrawError=C_PROTECT_ERR;return true;}}
 		for(int i=0;i<entries;i++)memory.copy(source+i*8+2,destinations[i]+2,6);changeColorTableSeed(table);
 		if(entries<=SMALL_SET_ENTRIES&&start>=0&&start+entries<=256){int[] counts=entryChanges.computeIfAbsent(table,t->new int[256]);
@@ -2227,18 +2298,29 @@ final class QuickDraw68k {
 	 * (black at 0, white at 255); loading it turned its black window background, index 255, white.
 	 * Nothing happens on a direct-colour screen. The seed changes as after SetEntries.
 	 */
-	boolean loadDeviceColors(int[] rgb,int[] usage) throws M68kCpuException {return loadDeviceColors(rgb,usage,null);}
-	boolean loadDeviceColors(int[] rgb,int[] usage,int[] tolerance) throws M68kCpuException {
+	boolean loadDeviceColors(int[] rgb,int[] usage) throws M68kCpuException {return loadDeviceColors(rgb,usage,null,false);}
+	boolean loadDeviceColors(int[] rgb,int[] usage,int[] tolerance) throws M68kCpuException {return loadDeviceColors(rgb,usage,tolerance,false);}
+	/**
+	 * AnimateEntry/AnimatePalette: the palette's new colours go to the screen like {@link #loadDeviceColors}, but the seed stays
+	 * when only animated entries (pmAnimated, usage bit 2) changed. The Palette Manager animates through the video driver, not
+	 * SetEntries: animated entries are reserved, no inverse table holds them, so nothing has to be matched again. Thinkin' Things
+	 * Collection 2 copies its scenes from GWorlds made with the screen's table (UpdateGWorld with the device's ctab: same seed)
+	 * and fades every scene in with AnimatePalette; with a new seed per fade step CopyBits matched the GWorld's pixels through
+	 * its pre-fade colours, and the background behind Toony's moving sprite came back yellow and green instead of white and orange.
+	 */
+	boolean animateDeviceColors(int[] rgb,int[] usage) throws M68kCpuException {return loadDeviceColors(rgb,usage,null,true);}
+	private boolean loadDeviceColors(int[] rgb,int[] usage,int[] tolerance,boolean animation) throws M68kCpuException {
 		if(mainDevicePixMap==0)return false;int map=memory.readLong(mainDevicePixMap);if(map==0)return false;int depth=memory.readWord(map+32);if(depth>8)return false;
 		int table=memory.readLong(map+42);if(table==0)return false;int size=1<<depth;boolean explicit=false;for(int u:usage)if((u&8)!=0)explicit=true;
 		if(!explicit&&depth<=4&&tolerantPalette(usage))return correlateTolerant(table,depth,rgb,usage,tolerance);
-		if(!explicit&&rgb.length<size)return false;boolean changed=false;
+		if(!explicit&&rgb.length<size)return false;boolean changed=false,matchable=false;
 		for(int i=0;i<Math.min(rgb.length,size);i++){
 			boolean own=(usage[i]&8)!=0;if(i==0||i==size-1||explicit&&!own)continue;
 			int entry=findColorEntry(table,i);if(entry==0)continue;
 			int red=(rgb[i]>>>16&255)*257,green=(rgb[i]>>>8&255)*257,blue=(rgb[i]&255)*257;
-			if(memory.readWord(entry+2)!=red||memory.readWord(entry+4)!=green||memory.readWord(entry+6)!=blue){memory.writeWord(entry+2,red);memory.writeWord(entry+4,green);memory.writeWord(entry+6,blue);changed=true;}}
-		if(changed){changeColorTableSeed(table);if(Mac68kApi.TRACE)System.err.println("[68K] palette activated: "+rgb.length+" entries loaded into the screen colour table");}
+			if(memory.readWord(entry+2)!=red||memory.readWord(entry+4)!=green||memory.readWord(entry+6)!=blue){memory.writeWord(entry+2,red);memory.writeWord(entry+4,green);memory.writeWord(entry+6,blue);changed=true;if((usage[i]&4)==0)matchable=true;}}
+		if(changed&&(matchable||!animation))changeColorTableSeed(table);
+		if(changed&&Mac68kApi.TRACE)System.err.println("[68K] palette "+(animation?"animated":"activated")+": "+rgb.length+" entries loaded into the screen colour table"+(animation&&!matchable?" (seed kept)":""));
 		return changed;
 	}
 	/** A palette of tolerant colours (pmTolerant, usage bit 1) and no animated ones (pmAnimated, bit 2). */
@@ -2268,6 +2350,31 @@ final class QuickDraw68k {
 		}
 		return device;
 	}
+	/**
+	 * ActivatePalette on an offscreen GWorld whose palette is tolerant: the Palette Manager gives the GWorld's pixels the
+	 * indexes the palette gets on the screen ({@link #allocateTolerant}), so pictures drawn into it by colour and copied to the
+	 * screen by index (equal seeds) come out right whichever window is in front. Color VETTE! makes its GWorlds while the garage's
+	 * palette is on the screen and SetPalette/ActivatePalettes them with the road scene's palette; the colour tables stayed
+	 * the garage's layout and the cockpit - drawn into them by colour - came out light blue where it is black. Only 16-colour
+	 * (or fewer) tables, like {@link #correlateTolerant}. The seed is the program's to keep.
+	 */
+	boolean layoutPaletteInto(int port,int[] rgb,int[] usage,int[] tolerance) throws M68kCpuException {
+		if(!isGWorld(port)||!isColorPort(port))return false;int map=bitmapPointer(port);if(map==0)return false;
+		int depth=memory.readWord(map+32);if(depth>4)return false;for(int u:usage)if((u&8)!=0)return false;if(!tolerantPalette(usage))return false;
+		int table=memory.readLong(map+42);if(table==0||!validColorTable(table))return false;
+		int size=1<<depth,standard=standardColorTable(depth);if(standard==0)return false;
+		int[] device=new int[size];int from=memory.readLong(standard);
+		for(int i=0;i<size;i++)device[i]=(memory.readWord(from+8+i*8+2)>>>8)<<16|(memory.readWord(from+8+i*8+4)>>>8)<<8|memory.readWord(from+8+i*8+6)>>>8;
+		macApi.disposeHandle(standard);
+		device=allocateTolerant(device,rgb,usage,tolerance);
+		int data=memory.readLong(table),count=Math.min(size,(short)memory.readWord(data+6)+1);boolean changed=false;
+		for(int i=0;i<count;i++){int entry=data+8+i*8;
+			int red=(device[i]>>>16&255)*257,green=(device[i]>>>8&255)*257,blue=(device[i]&255)*257;
+			if(memory.readWord(entry+2)!=red||memory.readWord(entry+4)!=green||memory.readWord(entry+6)!=blue){memory.writeWord(entry+2,red);memory.writeWord(entry+4,green);memory.writeWord(entry+6,blue);changed=true;}}
+		if(changed){seedsOf(table).remove(memory.readLong(data));
+			if(Mac68kApi.TRACE)System.err.println("[68K] palette laid out in GWorld $"+Integer.toHexString(port)+"'s colour table as on the "+size+"-colour screen");}
+		return changed;
+	}
 	private boolean correlateTolerant(int table,int depth,int[] rgb,int[] usage,int[] tolerance) throws M68kCpuException {
 		int size=1<<depth,standard=standardColorTable(depth);if(standard==0)return false;
 		int[] device=new int[size];int from=memory.readLong(standard);
@@ -2291,7 +2398,7 @@ final class QuickDraw68k {
 	private boolean validColorTable(int handle) throws M68kCpuException {if(handle==0||macApi.handleSize(handle)<8)return false;int data=memory.readLong(handle);
 		if(data==0)return false;int last=(short)memory.readWord(data+6);return last>=-1&&8L+(long)(last+1)*8L<=macApi.handleSize(handle);}
 	private int standardColorTable(int id) throws M68kCpuException {int depth=id;
-		if(id==34||id==36||id==40)depth=id-32;else if(id==65||id==66||id==68||id==72)depth=id-64;
+		if(id==33||id==34||id==36||id==40)depth=id-32;else if(id==65||id==66||id==68||id==72)depth=id-64;
 		else if(id!=1&&id!=2&&id!=4&&id!=8)return 0;
 		int count=1<<depth;int[] colors=new int[count];
 		if(id>=32&&id<64){for(int i=0;i<count;i++){int gray=count==1?255:255-i*255/(count-1);colors[i]=gray<<16|gray<<8|gray;}}
@@ -2315,6 +2422,16 @@ final class QuickDraw68k {
 			if(map!=0&&memory.readWord(map+32)<=8){int table=memory.readLong(map+42);if(table!=0)return table;}}
 		return currentColorTable();
 	}
+	/** Whether {@link #deviceColorTable} is the indexed device's own table (not the current port's). */
+	private boolean deviceTableIsDevice() throws M68kCpuException {
+		int device=currentGDevice!=0?currentGDevice:mainGDevice;
+		if(device==0)return false;int data=memory.readLong(device);int pixMap=data==0?0:memory.readLong(data+22);int map=pixMap==0?0:memory.readLong(pixMap);
+		return map!=0&&memory.readWord(map+32)<=8&&memory.readLong(map+42)!=0;
+	}
+	/** Entry {@code index} of a device's colour table by position: a device's entries are its indexes whatever their value fields hold
+	 *  (3D Demo clears its device table's 256 entries itself, values included, and then SetEntries them one by one). */
+	private int deviceColorEntry(int handle,int index) throws M68kCpuException {if(handle==0)return 0;int data=memory.readLong(handle);
+		if(data==0)return 0;int last=(short)memory.readWord(data+6);return index<0||index>last||index>255?0:data+8+index*8;}
 	/** The PixMap Color2Index/Index2Color/RealColor work through: theGDevice's (a program that SetGDevices a device of its own -
 	 *  QuickTime's GIF codec builds one around the picture's colour table - gets indexes into that table), else the port's. */
 	private int devicePixMapData() throws M68kCpuException {
@@ -2365,7 +2482,12 @@ final class QuickDraw68k {
 	private boolean setPortBits(M68kCpu cpu) throws M68kCpuException {
 		int bitmap=memory.readLong(cpu.a[7]);cpu.a[7]+=4;
 		if(currentPort==0||bitmap==0)return true;
-		if(!isColorPort(currentPort)){int target=bitmapPointer(currentPort);memory.copy(bitmap,target,14);
+		// An OpenPort/InitPort port stays a classic GrafPort whatever its portBits hold: after SetPortBits(&window->portBits) they are
+		// a hosted window's inner layout (buffer Handle + $C000) and the port draws into that window, but the program's next
+		// SetPortBits still replaces all 14 bytes (Shufflepuck Café points its port at the window, then at its offscreen BitMap
+		// and draws the café there; read as a colour port the second call was dropped and the café went over the window).
+		PortState state=ports.get(currentPort);
+		if(!isColorPort(currentPort)||state!=null&&state.classicPort){int target=currentPort+PORT_BITS;memory.copy(bitmap,target,14);
 			// A port opened with OpenPort draws on the screen until the program points it at its own buffer (HyperCard
 			// renders cards through such a port and SetPortBits); screenBits carries the screen's pixels (ScrnBase), 0 before a device exists.
 			int base=memory.readLong(target);if(base==0||base==memory.readLong(0x824))rememberScreenPort(currentPort);else screenBitmaps.remove(target);} // SetPortBits(screenBits): back on the screen
@@ -3211,6 +3333,14 @@ final class QuickDraw68k {
 		finally{SmoothCopy carry=pendingSmoothCopy;pendingSmoothCopy=null;if(carry!=null)carry.abandon();
 			MacAppHost host=screenBlitHost;if(host!=null){screenBlitHost=null;host.blitEnd();}}
 	}
+	/** CopyBits for native callers (the Image Compression Manager's StdPix / DecompressImage): the trap's 22 argument bytes are
+	 *  pushed below the caller's stack, so the blit is exactly the trap's (port clip, screen routing, modes, mask region). */
+	void copyBitsFrom(M68kCpu cpu,int sourceBits,int destinationBits,int sourceRect,int destinationRect,int mode,int maskRegion) throws M68kCpuException {
+		int sp=cpu.a[7],frame=sp-22;
+		memory.writeLong(frame,maskRegion);memory.writeWord(frame+4,mode);memory.writeLong(frame+6,destinationRect);memory.writeLong(frame+10,sourceRect);
+		memory.writeLong(frame+14,destinationBits);memory.writeLong(frame+18,sourceBits);
+		cpu.a[7]=frame;try{copyBits(cpu);}finally{cpu.a[7]=sp;}
+	}
 	/** The host a CopyBits under way draws onto the screen of (null: none, or into an offscreen buffer). */
 	private MacAppHost screenBlitHost;
 	private void screenBlitBegins(Bitmap destination){
@@ -3223,7 +3353,7 @@ final class QuickDraw68k {
 		int destinationRect=memory.readLong(sp+6),sourceRect=memory.readLong(sp+10);
 		int destinationBits=memory.readLong(sp+14),sourceBits=memory.readLong(sp+18);cpu.a[7]+=22;
 		if(sourceBits==0||destinationBits==0||sourceRect==0||destinationRect==0)return true;
-		Bitmap source=colorized(readBitmap(sourceBits)),destination=readBitmap(destinationBits);
+		Bitmap source=colorized(screenWithWindowsAbove(sourceBits,readBitmap(sourceBits))),destination=readBitmap(destinationBits);
 		Rect sourceArea=readRect(sourceRect),destinationArea=readRect(destinationRect);
 		matchThroughCurrentDevice(destination);screenBlitBegins(destination);
 		if(Mac68kApi.TRACE)System.err.println("[68K] CopyBits cur $"+Integer.toHexString(currentPort)+" bk "+Integer.toHexString(~portBackgroundInk()&0xffffff)+" src $"+Integer.toHexString(sourceBits)+" rowBytes="+source.rowBytes+" depth="+source.pixelSize+" bounds="+source.bounds.left+","+source.bounds.top+","+source.bounds.right+","+source.bounds.bottom+" base=$"+Integer.toHexString(source.base)+" rect="+sourceArea.left+","+sourceArea.top+","+sourceArea.right+","+sourceArea.bottom+" -> dst $"+Integer.toHexString(destinationBits)+" base=$"+Integer.toHexString(destination.base)+" bounds="+destination.bounds+" depth="+destination.pixelSize+" clip "+currentClip()+" rect="+destinationArea.left+","+destinationArea.top+","+destinationArea.right+","+destinationArea.bottom+" mode="+mode+" srcPalette="+(source.palette==null?"direct":describePalette(source.palette))+" dstPalette="+(destination.palette==null?"direct":describePalette(destination.palette))+" tables $"+Integer.toHexString(source.colorTable)+"/$"+Integer.toHexString(destination.colorTable)+" seeds "+tableSeed(source.colorTable)+"/"+tableSeed(destination.colorTable));
@@ -3245,7 +3375,11 @@ final class QuickDraw68k {
 		// programs rely on when they animate the table afterwards.
 		// A source table of palette entries (ctFlags bit 14) gives each pixel value its screen index, whatever the colours are now.
 		int[] paletteMap=colorize==null?paletteIndexMap(source,destination):null;
-		boolean byIndex=colorize==null&&(mode&~0x40)==0&&!source.direct&&!destination.direct&&(paletteMap!=null||source.pixelSize==destination.pixelSize&&source.pixelSize>1&&(sameColorTable(source,destination)||drawnThroughScreen(source,destination)));
+		// ditherCopy that shrinks a colour source averages the source pixels each destination pixel covers (Inside Macintosh:
+		// Imaging With QuickDraw, ditherCopy), where srcCopy drops all but one: ColorizeHC "Add" with "Copy with Dithering"
+		// shrinks its 16-bit picture so, and ColorHCテクニカル's mosaic (card モザイク, スクリプト2) showed no in-between colours
+		boolean average=mode==64&&colorize==null&&source.pixelSize>1&&(sourceWidth>destinationWidth||sourceHeight>destinationHeight);
+		boolean byIndex=!average&&colorize==null&&(mode&~0x40)==0&&!source.direct&&!destination.direct&&(paletteMap!=null||source.pixelSize==destination.pixelSize&&source.pixelSize>1&&(sameColorTable(source,destination)||drawnThroughScreen(source,destination)));
 		Rect mask=maskRegion==0?null:readRegionRect(maskRegion);
 		Rect drawingArea=intersection(destinationArea,destination.bounds);
 		if(mask!=null)drawingArea=intersection(drawingArea,mask);
@@ -3268,7 +3402,7 @@ final class QuickDraw68k {
 		pendingSmoothCopy=smoothCopyBegin(source,sourceArea,destination,destinationArea,drawingArea,mode,shaped,maskShape,null); // hi-res blocks the copy carries (SmoothZoom)
 		// Unscaled, unshaped srcCopy moves whole rows: raw bytes for the same depth and colour table (or direct to direct),
 		// through a 256-entry index map between indexed depths, or through the source colours into a direct PixMap.
-		boolean dither=mode==64&&!destination.direct&&destination.pixelSize<=8&&(source.direct||source.pixelSize>destination.pixelSize); // see ditherCopy below
+		boolean dither=mode==64&&!destination.direct&&destination.pixelSize<=8&&(source.direct||source.pixelSize>destination.pixelSize||average); // see ditherCopy below
 		boolean srcCopy=colorize==null&&(mode&~0x40)==0&&!dither,rows=!NO_ROW_COPY&&srcCopy&&(!source.direct&&(!destination.direct||destination.pixelSize>=16)||source.direct&&destination.direct&&source.pixelSize==destination.pixelSize);
 		if(rows&&!shaped&&maskShape==null&&source.base!=0&&destination.base!=0&&sourceWidth==destinationWidth&&sourceHeight==destinationHeight
 			&&sourceArea.left>=source.bounds.left&&sourceArea.right<=source.bounds.right&&sourceArea.top>=source.bounds.top&&sourceArea.bottom<=source.bounds.bottom
@@ -3296,7 +3430,8 @@ final class QuickDraw68k {
 		int[] snapshot=null;
 		if(!byIndex){snapshot=snapshotScratch=ints(snapshotScratch,(int)pixels);
 			for(int y=0;y<sourceHeight;y++)for(int x=0;x<sourceWidth;x++)
-				snapshot[y*sourceWidth+x]=source.getInkRgbUnclipped(sourceArea.left+x,sourceArea.top+y);}
+				snapshot[y*sourceWidth+x]=source.getInkRgbUnclipped(sourceArea.left+x,sourceArea.top+y);
+			if(average){snapshot=averagedSnapshot(snapshot,sourceWidth,sourceHeight,destinationWidth,destinationHeight);sourceWidth=destinationWidth;sourceHeight=destinationHeight;pixels=(long)sourceWidth*sourceHeight;}}
 		// srcOr/srcXor/srcBic (and the not- forms) between indexed PixMaps work on the pixel values, the source matched into the
 		// destination's table first: a dark grey ORed over a colour gives an entry near black, not a mix of the two colours.
 		// PUGO_GT ORs its road over the 8-bit "人工大陸のシルエット" picture; on a Mac the shapes show black on the road.
@@ -3368,6 +3503,17 @@ final class QuickDraw68k {
 		}
 	}
 	private static float clamp(float value){return value<0?0:value>255?255:value;}
+	/** A snapshot (inks: inverted RGB, {@code sw} x {@code sh}) shrunk to {@code dw} x {@code dh}: each pixel the mean of the source
+	 *  pixels it covers along a shrunk axis (one pixel along a stretched one), for ditherCopy's shrinking. */
+	private static int[] averagedSnapshot(int[] inks,int sw,int sh,int dw,int dh){
+		int[] result=new int[dw*dh];
+		for(int y=0;y<dh;y++){int y0=(int)((long)y*sh/dh),y1=Math.max(y0+1,(int)((long)(y+1)*sh/dh));
+			for(int x=0;x<dw;x++){int x0=(int)((long)x*sw/dw),x1=Math.max(x0+1,(int)((long)(x+1)*sw/dw));
+				long r=0,g=0,b=0;int n=(y1-y0)*(x1-x0);
+				for(int sy=y0;sy<y1;sy++)for(int sx=x0;sx<x1;sx++){int rgb=~inks[sy*sw+sx];r+=rgb>>>16&255;g+=rgb>>>8&255;b+=rgb&255;}
+				result[y*dw+x]=~((int)((r+n/2)/n)<<16|(int)((g+n/2)/n)<<8|(int)((b+n/2)/n))&0xffffff;}}
+		return result;
+	}
 
 	/**
 	 * The source index -> destination index map of a row copy between indexed PixMaps with different tables, or null when
@@ -3847,7 +3993,9 @@ final class QuickDraw68k {
 		PictureSpool in=new PictureSpool(cpu,proc,data);
 		try{
 			in.read(2);
-			if(in.word(10)==0x0011){in.read(2);if(in.word(12)!=0x02ff)in.readTo(size);else in.readVersion2(size);}
+			// NOP words may precede the version opcode: PixelPaint Pro (like Infini-D) reserves 40 bytes after the file header, not 10
+			int version=10;while(in.word(version)==0&&version<40){in.read(2);version+=2;}
+			if(in.word(version)==0x0011){in.read(2);if(in.word(version+2)!=0x02ff)in.readTo(size);else in.readVersion2(size);}
 			else in.readTo(size);
 		}finally{in.restore();}
 		int buffer=memory.allocate(Math.max(in.length,12),2);memory.load(buffer,java.util.Arrays.copyOf(in.bytes,in.length));
@@ -4006,6 +4154,44 @@ final class QuickDraw68k {
 	private boolean pictureLineProc(int h1,int v1,int h2,int v2) throws M68kCpuException {
 		int proc=pictureBottleneck(1);if(proc==0)return false;
 		writePoint(currentPort+PN_LOC,v1,h1);callBottleneck(proc,new int[0],new int[]{v2<<16|h2&0xffff});writePoint(currentPort+PN_LOC,v2,h2);return true;
+	}
+	/**
+	 * A text opcode of a picture played into a port whose textProc is the program's own: the procedure gets the count, a pointer
+	 * to the characters in the picture and 1:1 scaling (the size opcode has scaled txSize already), the pen at the text's place.
+	 * Avara reads its levels this way - every object is a line of script text in a PICT whose textProc collects it; drawn
+	 * instead, the arena came up empty and the player's walker had nowhere to appear ("no HECTOR available").
+	 */
+	private void pictureText(int at,int[] text) throws M68kCpuException {
+		int proc=pictureBottleneck(0);
+		if(proc==0){rasterText(text);return;}
+		callBottleneck(proc,new int[]{text.length},new int[]{at,0x00010001,0x00010001});
+		if(Mac68kApi.TRACE)System.err.println("[68K] PICT text ("+text.length+" bytes) through the port's textProc $"+Integer.toHexString(proc));
+	}
+	/**
+	 * A rectangle, rounded rectangle, oval or arc opcode played into a port whose rectProc/rRectProc/ovalProc/arcProc is the
+	 * program's own: StdRect(verb, r), StdRRect(verb, r, ovalWidth, ovalHeight), StdOval(verb, r), StdArc(verb, r, start, arc).
+	 * The GrafVerb goes in the high byte, as the trap path pushes it. Avara places its objects by the shapes of a level PICT.
+	 */
+	private boolean pictureShapeProc(int index,int verb,Rect rect,int[] extra) throws M68kCpuException {
+		int proc=pictureBottleneck(index);if(proc==0)return false;
+		int r=memory.allocate(8,2);
+		try{writeRect(r,rect);M68kCpu cpu=pictureCpu;int[] d=cpu.d.clone(),a=cpu.a.clone();int sr=cpu.sr;
+			try{cpu.pushWord(verb<<8);cpu.pushLong(r);if(extra!=null)for(int w:extra)cpu.pushWord(w);cpu.callPascal(proc,6+(extra==null?0:extra.length*2));}
+			catch(M68kCpuException e){throw e;}catch(M68kException e){throw new M68kCpuException(proc,"bottleneck procedure failed: "+e.getMessage());}
+			finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}}
+		finally{memory.free(r);}
+		return true;
+	}
+	/** A region opcode played into a port whose rgnProc is the program's own: StdRgn(verb, rgn) with a region Handle made for the call. */
+	private boolean pictureRegionProc(int verb,QdRegion shape) throws M68kCpuException {
+		int proc=pictureBottleneck(7);if(proc==0)return false;
+		int region=macApi.createHandle(new byte[10]);
+		try{writeRegion(region,shape);M68kCpu cpu=pictureCpu;int[] d=cpu.d.clone(),a=cpu.a.clone();int sr=cpu.sr;
+			try{cpu.pushWord(verb<<8);cpu.pushLong(region);cpu.callPascal(proc,6);}
+			catch(M68kCpuException e){throw e;}catch(M68kException e){throw new M68kCpuException(proc,"bottleneck procedure failed: "+e.getMessage());}
+			finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}}
+		finally{macApi.disposeHandleAndFree(region);}
+		return true;
 	}
 	/** Calls a bottleneck procedure with word arguments followed by long arguments (Pascal order), the program's registers kept. */
 	private void callBottleneck(int proc,int[] words,int[] longs) throws M68kCpuException {
@@ -4396,11 +4582,11 @@ final class QuickDraw68k {
 					case 0x1e:{int vars=isColorPort(currentPort)?grafVarsOf(currentPort):0;int varsData=vars==0?0:memory.readLong(vars);if(varsData!=0)memory.copy(HILITE_RGB,varsData+6,6);break;}
 					case 0x1c:memory.writeByte(HILITE_MODE,memory.readByte(HILITE_MODE)&0x7f);break;
 					case 0x29:{int dh=memory.readByte(cursor),count=memory.readByte(cursor+1);cursor+=2;int[] text=readTextBytes(cursor,count);cursor+=count;
-						textH+=dh;writePoint(currentPort+PN_LOC,mapV(textV,frame,destination),mapH(textH,frame,destination));rasterText(text);break;}
+						textH+=dh;writePoint(currentPort+PN_LOC,mapV(textV,frame,destination),mapH(textH,frame,destination));pictureText(cursor-count,text);break;}
 					case 0x2a:{int dv=memory.readByte(cursor),count=memory.readByte(cursor+1);cursor+=2;int[] text=readTextBytes(cursor,count);cursor+=count;
-						textV+=dv;writePoint(currentPort+PN_LOC,mapV(textV,frame,destination),mapH(textH,frame,destination));rasterText(text);break;}
+						textV+=dv;writePoint(currentPort+PN_LOC,mapV(textV,frame,destination),mapH(textH,frame,destination));pictureText(cursor-count,text);break;}
 					case 0x2b:{int dh=memory.readByte(cursor),dv=memory.readByte(cursor+1),count=memory.readByte(cursor+2);cursor+=3;int[] text=readTextBytes(cursor,count);cursor+=count;
-						textH+=dh;textV+=dv;writePoint(currentPort+PN_LOC,mapV(textV,frame,destination),mapH(textH,frame,destination));rasterText(text);break;}
+						textH+=dh;textV+=dv;writePoint(currentPort+PN_LOC,mapV(textV,frame,destination),mapH(textH,frame,destination));pictureText(cursor-count,text);break;}
 					case 0x2c:{int recordSize=readPictureWord(cursor);if(recordSize>=3){ // fontName: dataLength, oldFontID, name - the id the picture's TxFont opcodes use
 							int id=readPictureWord(cursor+2),length=Math.min(memory.readByte(cursor+4),recordSize-3);byte[] name=memory.readBytes(cursor+5,length);
 							int number=Fonts68k.numberOf(StackTextEncoding.ROMAN.decode(name));if(number!=0||id==0)pictureFonts.put(id,number);}
@@ -4421,24 +4607,25 @@ final class QuickDraw68k {
 					case 0x23:{int dh=(byte)memory.readByte(cursor),dv=(byte)memory.readByte(cursor+1);cursor+=2;
 						pictureLine(mapH(lastH,frame,destination),mapV(lastV,frame,destination),mapH(lastH+dh,frame,destination),mapV(lastV+dv,frame,destination));lastH+=dh;lastV+=dv;break;}
 					case 0x28:{int v=(short)readPictureWord(cursor),h=(short)readPictureWord(cursor+2),count=memory.readByte(cursor+4);cursor+=5;
-						int[] text=readTextBytes(cursor,count);cursor+=count;writePoint(currentPort+PN_LOC,mapV(v,frame,destination),mapH(h,frame,destination));rasterText(text);textH=h;textV=v;break;}
+						int[] text=readTextBytes(cursor,count);cursor+=count;writePoint(currentPort+PN_LOC,mapV(v,frame,destination),mapH(h,frame,destination));pictureText(cursor-count,text);textH=h;textV=v;break;}
 					default:
 						if(opcode==0x90||opcode==0x91||opcode==0x98||opcode==0x99||opcode==0x9a||opcode==0x9b){cursor=playPictureBits(cursor,opcode,frame,destination);break;}
-						if(opcode>=0x30&&opcode<=0x34){Rect rect=mapRect(readPictureRect(cursor),frame,destination);cursor+=8;lastRects[0]=rect;rasterRect(rect,opcode-0x30,fillSlot());break;}
-						if(opcode>=0x38&&opcode<=0x3c){if(lastRects[0]!=null)rasterRect(lastRects[0],opcode-0x38,fillSlot());break;}
-						if(opcode>=0x40&&opcode<=0x44){Rect rect=mapRect(readPictureRect(cursor),frame,destination);cursor+=8;lastRects[1]=rect;
-							rasterRoundRect(rect,scaleH(ovalWidth,frame,destination),scaleV(ovalHeight,frame,destination),opcode-0x40,fillSlot());break;}
-						if(opcode>=0x48&&opcode<=0x4c){if(lastRects[1]!=null)rasterRoundRect(lastRects[1],scaleH(ovalWidth,frame,destination),scaleV(ovalHeight,frame,destination),opcode-0x48,fillSlot());break;}
-						if(opcode>=0x50&&opcode<=0x54){Rect rect=mapRect(readPictureRect(cursor),frame,destination);cursor+=8;lastRects[2]=rect;rasterOval(rect,opcode-0x50,fillSlot());break;}
-						if(opcode>=0x58&&opcode<=0x5c){if(lastRects[2]!=null)rasterOval(lastRects[2],opcode-0x58,fillSlot());break;}
+						if(opcode>=0x30&&opcode<=0x34){Rect rect=mapRect(readPictureRect(cursor),frame,destination);cursor+=8;lastRects[0]=rect;if(!pictureShapeProc(2,opcode-0x30,rect,null))rasterRect(rect,opcode-0x30,fillSlot());break;}
+						if(opcode>=0x38&&opcode<=0x3c){if(lastRects[0]!=null&&!pictureShapeProc(2,opcode-0x38,lastRects[0],null))rasterRect(lastRects[0],opcode-0x38,fillSlot());break;}
+						if(opcode>=0x40&&opcode<=0x44){Rect rect=mapRect(readPictureRect(cursor),frame,destination);cursor+=8;lastRects[1]=rect;int ow=scaleH(ovalWidth,frame,destination),oh=scaleV(ovalHeight,frame,destination);
+							if(!pictureShapeProc(3,opcode-0x40,rect,new int[]{ow,oh}))rasterRoundRect(rect,ow,oh,opcode-0x40,fillSlot());break;}
+						if(opcode>=0x48&&opcode<=0x4c){int ow=scaleH(ovalWidth,frame,destination),oh=scaleV(ovalHeight,frame,destination);
+							if(lastRects[1]!=null&&!pictureShapeProc(3,opcode-0x48,lastRects[1],new int[]{ow,oh}))rasterRoundRect(lastRects[1],ow,oh,opcode-0x48,fillSlot());break;}
+						if(opcode>=0x50&&opcode<=0x54){Rect rect=mapRect(readPictureRect(cursor),frame,destination);cursor+=8;lastRects[2]=rect;if(!pictureShapeProc(4,opcode-0x50,rect,null))rasterOval(rect,opcode-0x50,fillSlot());break;}
+						if(opcode>=0x58&&opcode<=0x5c){if(lastRects[2]!=null&&!pictureShapeProc(4,opcode-0x58,lastRects[2],null))rasterOval(lastRects[2],opcode-0x58,fillSlot());break;}
 						if(opcode>=0x60&&opcode<=0x64){Rect rect=mapRect(readPictureRect(cursor),frame,destination);int start=(short)readPictureWord(cursor+8),arc=(short)readPictureWord(cursor+10);cursor+=12;
-							lastRects[3]=rect;rasterArc(rect,start,arc,opcode-0x60,fillSlot());break;}
+							lastRects[3]=rect;if(!pictureShapeProc(5,opcode-0x60,rect,new int[]{start,arc}))rasterArc(rect,start,arc,opcode-0x60,fillSlot());break;}
 						if(opcode>=0x68&&opcode<=0x6c){int start=(short)readPictureWord(cursor),arc=(short)readPictureWord(cursor+2);cursor+=4;
-							if(lastRects[3]!=null)rasterArc(lastRects[3],start,arc,opcode-0x68,fillSlot());break;}
+							if(lastRects[3]!=null&&!pictureShapeProc(5,opcode-0x68,lastRects[3],new int[]{start,arc}))rasterArc(lastRects[3],start,arc,opcode-0x68,fillSlot());break;}
 						if(opcode>=0x70&&opcode<=0x74){int recordSize=readPictureWord(cursor);List<QdPoint> points=readPicturePolygon(cursor,recordSize,frame,destination);cursor+=recordSize;
 							if(!picturePolygonProc(opcode-0x70,points))rasterPolygon(points,opcode-0x70,fillSlot());break;}
 						if(opcode>=0x80&&opcode<=0x84){int recordSize=readPictureWord(cursor);if(recordSize<10)throw pictureError(cursor,"invalid picture region");
-							QdRegion shape=mapRegion(QdRegion.decode(memory,cursor),frame,destination);cursor+=recordSize;rasterRegion(shape,opcode-0x80,fillSlot());break;}
+							QdRegion shape=mapRegion(QdRegion.decode(memory,cursor),frame,destination);cursor+=recordSize;if(!pictureRegionProc(opcode-0x80,shape))rasterRegion(shape,opcode-0x80,fillSlot());break;}
 						if(version2&&opcode>=0x0100&&opcode<=0x7fff){cursor+=(opcode>>>8)*2;break;}
 						if(version2&&opcode>=0x8000&&opcode<=0x80ff)break;
 						if(version2&&opcode>=0x8100){int length=readPictureLong(cursor);if(length<0)throw pictureError(cursor,"invalid PICT extended-opcode length");
@@ -5195,7 +5382,12 @@ final class QuickDraw68k {
 		case 38:return destination-source&255;
 		case 39:return Math.min(source,destination);
 		default:return source;}}
+	/** The OpColor component for an arithmetic mode, {@code fallback} where a basic GrafPort has its fixed one (Inside Macintosh:
+	 *  Imaging, Arithmetic Transfer Modes: blend 50% grey, addPin white, subPin black): also a NewWindow window, whose port is a
+	 *  classic GrafPort on a Mac even though it is a CGrafPort inside here. ColorizeHC's "Blend" copies with HyperCard's card window
+	 *  as the port and no OpColor: its rgbOpColor, black, left the destination as it was and the faded title never showed. */
 	private int operationColorComponent(int shift,int fallback) throws M68kCpuException {if(currentPort==0||!isColorPort(currentPort))return fallback;
+		PortState state=ports.get(currentPort);if(state!=null&&state.classicWindow)return fallback;
 		return grafVarsColorComponent(0,shift,fallback);}
 	private int grafVarsColor(int offset,int fallback) throws M68kCpuException {int red=grafVarsColorComponent(offset,16,fallback>>>16&255);
 		int green=grafVarsColorComponent(offset,8,fallback>>>8&255),blue=grafVarsColorComponent(offset,0,fallback&255);return red<<16|green<<8|blue;}
@@ -5263,7 +5455,13 @@ final class QuickDraw68k {
 			(direct&&(pixelSize==16||pixelSize==32))))throw new M68kCpuException(pointer,"unsupported PixMap pixel layout (pixelType "+pixelType+", pixelSize "+pixelSize+", rowBytes $"+Integer.toHexString(rowWord)+", cmpCount "+memory.readWord(pointer+34)+", cmpSize "+memory.readWord(pointer+36)+")");
 		int[] entries=direct?null:paletteEntries(memory.readLong(pointer+42),pixelSize);
 		int[] palette=direct?null:entries!=null?paletteEntryColors(entries):readColorTable(memory.readLong(pointer+42),pixelSize);
-		Bitmap bitmap=new Bitmap(base,rowWord&0x3fff,bounds,pixelSize,direct,palette);bitmap.colorTable=direct?0:memory.readLong(pointer+42);if(!direct)bitmap.matchPalette=seededPalette(bitmap.colorTable,pixelSize,palette);
+		Bitmap bitmap=new Bitmap(base,rowWord&0x3fff,bounds,pixelSize,direct,palette);bitmap.colorTable=direct?0:memory.readLong(pointer+42);
+		// Drawing INTO a palette-index PixMap matches against the colours its table lists (its device's inverse table is made from
+		// them), not against the screen's at the entry numbers: Cythera's cutscene world has its 'clut' 256 colours with bit 14 set
+		// and its pictures were matched to the Delver window's palette, on the screen then - false colours once the cutscene's
+		// own palette came up. A table without usable colours (all one value) keeps the palette's.
+		if(!direct){int[] match=palette;if(entries!=null){int[] listed=readColorTable(bitmap.colorTable,pixelSize);if(distinctColors(listed))match=listed;}
+			bitmap.matchPalette=seededPalette(bitmap.colorTable,pixelSize,match);}
 		bitmap.paletteEntries=entries;
 		if(world instanceof GWorldState)bitmap.sharedDevice=((GWorldState)world).sharedDevice;
 		return bitmap;
@@ -5337,6 +5535,7 @@ final class QuickDraw68k {
 		return colors;
 	}
 	private static boolean identity(int[] map){for(int i=0;i<map.length;i++)if(map[i]!=i)return false;return true;}
+	private static boolean distinctColors(int[] colors){for(int c:colors)if(c!=colors[0])return true;return false;}
 	/** Source pixel value -> destination pixel value for a palette-index source ({@link #paletteEntries}) drawn into indexed pixels
 	 *  (the entry's screen index, as {@link #paletteEntryColors} says), or null. */
 	private static int[] paletteIndexMap(Bitmap source,Bitmap destination){
@@ -5527,6 +5726,8 @@ final class QuickDraw68k {
 		QdRegion pictureClip;
 		/** A NewWindow (not NewCWindow) window: the record keeps the classic portBits.bounds at offset 8 (see {@link #newWindowPort}); its grafVars Handle lives here instead. */
 		boolean classicWindow;int grafVars;
+		/** Made by OpenPort/InitPort: a classic GrafPort to the program even while SetPortBits has it hold a window's inner layout. */
+		boolean classicPort;
 		/** SetPortBits on a classic window (see {@link #setWindowPortBits}): the Handle standing in for the program's BitMap while it is the port's target (0 otherwise), and the window's own 14 bytes to put back. */
 		int portBitsHandle;byte[] windowBits;
 		/** The record's own 6 bytes (buffer Handle, $C000) while the program sees the screen BitMap there (see {@link #leaveToolbox}). */
@@ -5546,7 +5747,7 @@ final class QuickDraw68k {
 	/** An ink carrying a colour-table index instead of an inverted RGB: bit 30 set, index in the low byte (see PortState.fgIndex). */
 	static final int INDEX_INK=0x40000000;
 	private static class PixelMapState {
-		int pixMap;final int pixels,depth,rowBytes;int colorTable,pixelState;
+		int pixMap;final int pixels,depth;int rowBytes,colorTable,pixelState;
 		/** Bounds of the pixel buffer in the port's local coordinates (a window's move with SetOrigin). */
 		Rect bounds;
 		/** A window buffer whose guest-visible PixMap record describes the screen instead (see {@link #describeWindowPixMap}). */
@@ -5640,6 +5841,27 @@ final class QuickDraw68k {
 	private boolean buildingScreenBitmap;
 
 	/**
+	 * HyperCard's own windows in front of its card window - the picture command's, which have a VM record and buffer of their
+	 * own but are no Window Manager windows - as {record, left, top, visible top, left, bottom, right} (global) per window,
+	 * front first; null when there are none. Reads of the screen see them as they see the external's windows (GetCPixel
+	 * through the card port, CopyBits from it): on a Mac the card port's PixMap is the screen, so CSEE's IDColor read the
+	 * colour of the picture the user clicked in, not the card under it. Only reads see them (drawing through the card port
+	 * still goes to the screen memory under them). Set by CardWindow68k.
+	 */
+	volatile java.util.function.Supplier<int[]> hyperCardWindowsInFront;
+	/**
+	 * A bitmap about to be READ (GetCPixel, a CopyBits source): the screen read raw - HyperCard's card port, whose PixMap
+	 * describes the screen - is read as the screen with {@link #hyperCardWindowsInFront} on it, while there are such windows.
+	 * Other bitmaps, and the card port drawn into, are left as they were.
+	 */
+	private Bitmap screenWithWindowsAbove(int pointer,Bitmap bitmap) throws M68kCpuException {
+		java.util.function.Supplier<int[]> hc=hyperCardWindowsInFront;
+		if(hc==null||bitmap instanceof ScreenBitmap||pointer==0)return bitmap;
+		if((memory.readWord(pointer+4)&0xc000)==0xc000){int h=memory.readLong(pointer);pointer=h==0?0:memory.readLong(h);if(pointer==0)return bitmap;}
+		if((memory.readWord(pointer+4)&0x8000)==0||memory.readLong(pointer)==0||!describesScreen(pointer)||hc.get()==null)return bitmap;
+		Bitmap screen=screenBitmap(pointer);return screen!=null?screen:bitmap;
+	}
+	/**
 	 * The screen port's bits for a hosted application: every pixel is routed to the frontmost window covering it,
 	 * and mirrored into the main device PixMap (the real screen memory, which programs may also write directly).
 	 * Coordinates are the port's local ones; {@code dh,dv} take them to global (0 for the screen port itself).
@@ -5657,6 +5879,18 @@ final class QuickDraw68k {
 				targets[i]=b;lefts[i]=windows[i*3+1];tops[i]=windows[i*3+2];}}
 			finally{buildingScreenBitmap=building;}
 			Bitmap d=null;try{int[] frame=mainDeviceFrame();int map=mainDevicePixMap==0?0:memory.readLong(mainDevicePixMap);if(map!=0&&frame!=null&&frame[0]!=0)d=readBitmap(map,frame[0]);}catch(M68kCpuException e){d=null;}device=d; // baseOverride bypasses the screen routing
+			java.util.function.Supplier<int[]> hc=hyperCardWindowsInFront;above=hc==null?null:hc.get();
+			if(above!=null){aboveMaps=new Bitmap[above.length/7];for(int i=0;i<aboveMaps.length;i++)try{aboveMaps[i]=readBitmapRaw(bitmapPointer(above[i*7]));}catch(M68kCpuException e){aboveMaps[i]=null;}}
+		}
+		/** {@link #hyperCardWindowsInFront} when this was made, and their buffers. */
+		private final int[] above;private Bitmap[] aboveMaps;
+		/** The pixel of a HyperCard window in front of the card at global (gh,gv) as ink, or -1 where none is. */
+		private int aboveInk(int gh,int gv) throws M68kCpuException {
+			if(above==null)return -1;
+			for(int i=0;i<aboveMaps.length;i++){int o=i*7;Bitmap b=aboveMaps[i];
+				if(b==null||gv<above[o+3]||gh<above[o+4]||gv>=above[o+5]||gh>=above[o+6])continue;
+				int x=gh-above[o+1],y=gv-above[o+2];if(b.contains(x,y))return b.getInkRgb(x,y);}
+			return -1;
 		}
 		/**
 		 * The rows of {@code drawingArea} from a direct source (unscaled): each row's pixels go to the windows covering them
@@ -5683,7 +5917,8 @@ final class QuickDraw68k {
 		/** Index of the frontmost visible window covering global (gh,gv). */
 		private int target(int gh,int gv){for(int i=0;i<targets.length;i++){Bitmap b=targets[i];if(b!=null&&b.contains(gh-lefts[i],gv-tops[i]))return i;}return -1;}
 		@Override boolean contains(int h,int v){return QuickDraw68k.this.contains(bounds,h,v);}
-		@Override int getInkRgb(int h,int v) throws M68kCpuException {int gh=h+dh,gv=v+dv,i=target(gh,gv);return i>=0?targets[i].getInkRgb(gh-lefts[i],gv-tops[i]):device!=null?device.getInkRgb(gh,gv):0;}
+		@Override int getInkRgb(int h,int v) throws M68kCpuException {int gh=h+dh,gv=v+dv,i=target(gh,gv);if(i>=0)return targets[i].getInkRgb(gh-lefts[i],gv-tops[i]);
+			int ink=aboveInk(gh,gv);return ink>=0?ink:device!=null?device.getInkRgb(gh,gv):0;}
 		@Override void setInkRgb(int h,int v,int ink) throws M68kCpuException {int gh=h+dh,gv=v+dv,i=target(gh,gv);if(i>=0)targets[i].setInkRgb(gh-lefts[i],gv-tops[i],ink);
 			if(device!=null){boolean was=memory.mirrorDevice(i>=0);try{device.setInkRgb(gh,gv,ink);}finally{memory.mirrorDevice(was);}}}
 		@Override void setArgb(int h,int v,int argb) throws M68kCpuException {int gh=h+dh,gv=v+dv,i=target(gh,gv);if(i>=0)targets[i].setArgb(gh-lefts[i],gv-tops[i],argb);

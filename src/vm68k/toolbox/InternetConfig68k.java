@@ -48,6 +48,11 @@ final class InternetConfig68k implements Components68k.Native {
 			case 1:return NO_ERR;                                       // ICCStop(inst)
 			case 2:case 3:case 14:case 30:case 33:case 34:return NO_ERR; // FindConfigFile, SpecifyConfigFile, FindUserConfigFile, GeneralFindConfigFile, ChooseConfig, ChooseNewConfig: the one set of preferences
 			case 47:return NO_ERR;                                      // ICCRefreshCaches
+			case 31:{int h=memory.readLong(p);if(h==0)return PARAM_ERR;  // ICCGetConfigReference(inst, ref Handle): this component's manufacturer, then the file name (Cyberdog 2.0 asks at start-up and says "requires Internet Config 1.2" on an error)
+				byte[] name="Internet Preferences".getBytes(StandardCharsets.ISO_8859_1);byte[] ref=new byte[5+name.length];
+				ref[0]=(byte)(JPQE>>>24);ref[1]=(byte)(JPQE>>>16);ref[2]=(byte)(JPQE>>>8);ref[3]=(byte)JPQE;ref[4]=(byte)name.length;System.arraycopy(name,0,ref,5,name.length);
+				tb.api.loadHandle(h,ref);return NO_ERR;}
+			case 32:return memory.readLong(p+4)==0?PARAM_ERR:NO_ERR;     // ICCSetConfigReference(inst, ref Handle, flags): the one set of preferences
 			case 4:out(memory.readLong(p),seed);return NO_ERR;          // ICCGetSeed(inst, *seed)
 			case 13:out(memory.readLong(p),perms.getOrDefault(ci,0));return NO_ERR; // ICCGetPerm(inst, *perm)
 			case 5:perms.put(ci,memory.readByte(p));return NO_ERR;      // ICCBegin(inst, perm)
@@ -91,7 +96,7 @@ final class InternetConfig68k implements Components68k.Native {
 	}
 
 	/** Argument bytes of each selector that has a fixed list (-1: not checked): ICCGetPref 16, ICCLaunchURL 20 ... */
-	private static final int[] PARAM_SIZES={4,0,6,4,4,2,16,16,4,8,0,4,4,4,4,4,24,20,8,16,12,-1,-1,-1,8,16,12,12,12,20,-1,-1,-1,-1,-1,6,12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,-1,8,8};
+	private static final int[] PARAM_SIZES={4,0,6,4,4,2,16,16,4,8,0,4,4,4,4,4,24,20,8,16,12,-1,-1,-1,8,16,12,12,12,20,-1,4,8,-1,-1,6,12,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,0,-1,8,8};
 	private String key(int p) throws M68kCpuException {byte[] b=tb.readPascalBytes(p);return b.length<1?"":StackTextEncoding.ROMAN.decode(java.util.Arrays.copyOfRange(b,1,b.length));}
 	private void out(int at,int value) throws M68kCpuException {if(at!=0)memory.writeLong(at,value);}
 	private void writePascal(int at,byte[] s) throws M68kCpuException {int n=Math.min(255,s.length);memory.writeByte(at,n);memory.load(at+1,java.util.Arrays.copyOf(s,n));}

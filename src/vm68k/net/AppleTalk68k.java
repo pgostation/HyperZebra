@@ -34,6 +34,8 @@ final class AppleTalk68k {
 	static final int MPP_REF=-10,ATP_REF=-11,XPP_REF=-41,DSP_REF=-59;
 	/** Low memory: PortBUse (bit 7 set = port B free, low nibble 1 = AppleTalk, bit 4 = ATP loaded, bit 5 = XPP loaded), SPConfig (port B: 1 = AppleTalk, 2 = serial), ABusVars, LAPMgrPtr. */
 	static final int PORT_B_USE=0x291,SP_CONFIG=0x1fb,ABUS_VARS=0x2d8,LAP_MGR_PTR=0xb18;
+	/** PortAUse: the modem port is free (bit 7) - AppleTalk is on port B. Master Tracks Pro 6 tests it at start-up and said "The modem port is currently in use, possibly by the Apple MIDI Driver or AppleTalk" while it read 0. */
+	static final int PORT_A_USE=0x290;
 	/** MPP variables as the glue reads them: sysLAPAddr at 0, the read-header area at 1 (LAP header, then the DDP header), sysABridge at $19, sysNetNum at $1A. */
 	private static final int VARS_SIZE=64,RHA=1,SYS_A_BRIDGE=0x19,SYS_NET_NUM=0x1a,LAP_HEADER=3,DDP_LONG=13,DDP_SHORT=5;
 	private static final int LAP_DDP_SHORT=1,LAP_DDP_LONG=2,LAP_ENQ=0x81,LAP_ACK=0x82;
@@ -96,6 +98,7 @@ final class AppleTalk68k {
 		}
 		memory.writeLong(LAP_MGR_PTR,lapMgr);
 		enabled=!mode.equals(OFF)&&!hyperCard();
+		memory.writeByte(PORT_A_USE,0x80);
 		if(!enabled){memory.writeByte(PORT_B_USE,0x80);memory.writeByte(SP_CONFIG,0x02);memory.writeLong(ABUS_VARS,0);return;}
 		memory.writeByte(SP_CONFIG,0x01);
 		if(node==0)node=Hub.get().assignNode(this);

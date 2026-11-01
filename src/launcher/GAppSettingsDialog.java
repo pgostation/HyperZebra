@@ -23,15 +23,19 @@ import javax.swing.SpinnerNumberModel;
 
 /**
  * One program's own settings (the launcher's dock: "Application Settings…"): the processor of a fat program (hidden: SHOW_PROCESSOR), the screen colours, screen size,
- * zoom, wide file dialogs, Control-key shortcuts (macOS), the CPU speed (unlimited, a machine of the time, or a MIPS rate in tenths), the game controller bindings
+ * zoom, wide file dialogs, Control-key shortcuts (macOS), the CPU speed (unlimited, a machine of the time, or a MIPS rate in tenths), PowerPC code through the JIT or the interpreter only, the game controller bindings
  * and the host keys for Command, Option and Control (ModifierKeys), each either the shared value - "Follow the Mac application
  * settings" (the VM settings), "Follow the settings" (zoom, in HyperZebra's Settings) or "Standard" (the processor and the
  * modifier keys, which have no shared setting), shown with its current value - or an override. Colours, size and 2x apply at the program's next launch,
- * wide dialogs from the next dialog it opens, the Control keys, the speed, the bindings and the modifier keys at once, also to a running instance. Stored in LauncherStore; the VM settings
+ * wide dialogs from the next dialog it opens, the Control keys, the speed, the JIT, the bindings and the modifier keys at once, also to a running instance. Stored in LauncherStore; the VM settings
  * (GPreferencesDialog VM) stay the defaults for every other program.
  * <p>The rows are many, so they are grouped in tabs (Screen and Zoom, Speed and System, Keyboard and Controller, Files and Access);
  * a row with this program's own value has a bold label and its tab a dot, and "Use Shared Settings for All" puts every
  * row back. Translation is not here: "Translation Settings…" opens GTranslationSettingsDialog (stacks have it too).
+ * <p>A program's Fonts tab keeps its font substitutions (Fonts68k.Substitution, what the Font Patchin' control panel did on a
+ * real Mac): its text in one font is drawn in another ("Automatic": a Japanese font like it), applied at once also to a running
+ * instance. The fonts a running program drew text in come first; most users rather click the garbled text after "Fix Garbled
+ * Text…" in the program's Apple menu (MacApp68k.fixGarbledText), which fills this list.
  * <p>A HyperZebra stack has the same dialog as "Individual Stack Settings…" ({@link #isStack}) with the rows that mean
  * something for a stack: its zoom, its speed limit (StackSpeed: HyperTalk, the card display and its XCMDs at the speed
  * HyperCard had on a machine of the time; standard: unlimited), Control-key shortcuts (standard: off), the game controller
@@ -48,6 +52,8 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 	private JComboBox<String> speedCombo;
 	/** The dialog is a HyperZebra stack's (Individual Stack Settings): zoom, speed, keyboard and controller, access only. */
 	private final boolean stack;
+	/** One of HyperZebra's own expanders (ExtractorApps.shippedExpander): its standard speed is unlimited, not the shared one. */
+	private final boolean unlimitedStandard;
 	/** Wide file dialogs (null while the row is hidden: SHOW_WIDE_DIALOGS). */
 	private JComboBox<String> wideCombo;
 	/** Control-key shortcuts to the program (macOS only; null elsewhere). */
@@ -55,10 +61,17 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 	/** The processor a fat program runs on (null for other programs). */
 	private JComboBox<String> cpuCombo;
 	private JComboBox<String> systemCombo, languageCombo;
+	/** PowerPC programs: their code through the JIT compiler or the interpreter only (null for other programs). */
+	private JComboBox<String> jitCombo;
 	/** Files outside HyperZebra HD: standard (its folder to read, other changes asked for) or read-only (Sandbox); null for a stack. */
 	private JComboBox<String> filesCombo;
 	/** The folders the program was allowed to use ("level\tpath", LauncherStore.AppSettings.grants); Remove takes one out. */
 	private final javax.swing.DefaultListModel<String> grantModel = new javax.swing.DefaultListModel<String>();
+	/** The font substitutions being edited ("original\treplacement", LauncherStore.AppSettings.fontSubstitutions); empty for a stack. */
+	private final javax.swing.DefaultListModel<String> fontModel = new javax.swing.DefaultListModel<String>();
+	/** The Fonts tab (-1: a stack has none) and its list's label, bold while the program has substitutions. */
+	private int fontTab = -1;
+	private JLabel fontLabel;
 	private JSpinner mipsSpinner;
 	private boolean syncingSpeed;
 
@@ -136,11 +149,11 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 		syncingSpeed = true;
 		try{
 			speedCombo.removeAllItems();
-			speedCombo.addItem(GPreferencesDialog.dialogText(FOLLOW_VM)+": "+vmSpeedName(ppc));
+			speedCombo.addItem(unlimitedStandard ? GPreferencesDialog.dialogText(STANDARD)+": "+GPreferencesDialog.dialogText("Unlimited") : GPreferencesDialog.dialogText(FOLLOW_VM)+": "+vmSpeedName(ppc));
 			for(String item : items) speedCombo.addItem(item);
 			probe.realSpeed = real ? Boolean.TRUE : probe.realSpeed;
 			speedCombo.setSelectedIndex(speedChoice(probe, ppc));
-			mipsSpinner.setValue(real ? realMips(ppc) : vmRate(ppc)>0 ? vmRate(ppc) : realMips(ppc));
+			mipsSpinner.setValue(real || unlimitedStandard ? realMips(ppc) : vmRate(ppc)>0 ? vmRate(ppc) : realMips(ppc));
 		}finally{ syncingSpeed = false; }
 	}
 
@@ -212,6 +225,11 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 				Object label = combo.getClientProperty(ROW_LABEL);
 				if(label instanceof JLabel){ JLabel l = (JLabel)label; l.setFont(l.getFont().deriveFont(set ? java.awt.Font.BOLD : java.awt.Font.PLAIN)); }
 			}
+			if(t==fontTab){
+				boolean set = !fontModel.isEmpty();
+				if(set) own++;
+				fontLabel.setFont(fontLabel.getFont().deriveFont(set ? java.awt.Font.BOLD : java.awt.Font.PLAIN));
+			}
 			tabs.setTitleAt(t, own>0 ? tabTitles.get(t)+" •" : tabTitles.get(t));
 		}
 	}
@@ -219,6 +237,7 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 	private GAppSettingsDialog(Frame owner, File app, LauncherStore.AppSettings current) {
 		super(owner, GPreferencesDialog.dialogText(isStack(app) ? "Individual Stack Settings" : "Application Settings")+" - "+LauncherStore.displayName(app), true);
 		stack = isStack(app);
+		unlimitedStandard = !stack && ExtractorApps.shippedExpander(app);
 		getContentPane().setLayout(new BorderLayout());
 		GridBagConstraints c = new GridBagConstraints();
 
@@ -278,6 +297,12 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 			grid = newTab("Speed and System", c);
 			//実行速度: 制限なし、当時の機種相当のプリセット、またはMIPS値を直接指定(0.1刻み)。PowerPCで動くアプリはPower Macintoshの機種と速さ
 			speedRow(grid, c, MacApp68k.runsAsPowerPc(app, current), current, "(at once, also while the program runs; 1 MIPS = a million instructions a second)");
+			//PowerPCで動くアプリは、そのコードをJITコンパイラで動かすか、インタプリタだけで動かすか(JITでおかしくなるとき)を選べる。実行中にもすぐ反映
+			if(MacApp68k.runsAsPowerPc(app, current)){
+				String[] jitNames = {GPreferencesDialog.dialogText("JIT compiler"), GPreferencesDialog.dialogText("Interpreter only")};
+				jitCombo = combo(grid, c, "PowerPC code:", jitNames, jitNames[PCARD.ppcJit ? 0 : 1],
+					current.ppcJit==null ? -1 : current.ppcJit ? 0 : 1, "(at once, also while the program runs; the interpreter is slower)");
+			}
 			//ファットアプリ(68KとPowerPCの両方のコードを持つ)はどちらのコードで動かすかを選べる。いまは隠している(SHOW_PROCESSORで戻せる)
 			if(SHOW_PROCESSOR && MacApp68k.isFatApplication(app)){
 				cpuCombo = combo(grid, c, "Processor:", STANDARD, new String[]{"68K", "PowerPC"}, MacApp68k.fatRunsPowerPc() ? "PowerPC" : "68K",
@@ -378,6 +403,67 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 			c.gridx = 2; grid.add(remove, c); c.anchor = GridBagConstraints.WEST; c.gridy++;
 		}
 
+		// ---- Fonts (a program)
+		//Font Patchin'のように、プログラムがあるフォントで描く文字を別のフォントで描く(英語版iTunesの自前のLucida GrandeをOsakaに:
+		//日本語の曲名がローマン文字の記号にならない)。元のフォントは実行中のプログラムが文字を描いたフォント、プログラム自身のフォントの順に
+		//先に並べる。置き換え先の標準は「自動」(元のフォントに合った日本語フォント)。実行中のアプリにもすぐ反映。
+		//普通は、アップルメニューの「文字化けを直す…」で文字化けの場所をクリックするほうが簡単(ここに設定が入る)
+		if(!stack){
+			grid = newTab("Fonts", c);
+			fontTab = tabs.getTabCount()-1;
+			for(String f: current.fontSubstitutions) fontModel.addElement(f);
+			final javax.swing.JList<String> fontList = new javax.swing.JList<String>(fontModel);
+			fontList.setVisibleRowCount(4);
+			fontList.setPrototypeCellValue("Lucida Grande\tOsaka\u2212\u7b49\u5e45");
+			fontList.setCellRenderer(new javax.swing.DefaultListCellRenderer(){
+				private static final long serialVersionUID = 1L;
+				@Override public java.awt.Component getListCellRendererComponent(javax.swing.JList<?> list, Object value, int index, boolean selected, boolean focus){
+					return super.getListCellRendererComponent(list, substitutionText(String.valueOf(value)), index, selected, focus);
+				}
+			});
+			final JButton removeFont = new JButton(GPreferencesDialog.dialogText("Remove"));
+			removeFont.setEnabled(false);
+			fontList.addListSelectionListener(e -> removeFont.setEnabled(fontList.getSelectedIndex()>=0));
+			removeFont.addActionListener(e -> { for(String f: fontList.getSelectedValuesList()) fontModel.removeElement(f); });
+			fontLabel = new JLabel(GPreferencesDialog.dialogText("Font substitution:"));
+			fontLabel.setLabelFor(fontList);
+			c.gridx = 0; c.anchor = GridBagConstraints.NORTHWEST; grid.add(fontLabel, c);
+			c.gridx = 1; c.fill = GridBagConstraints.HORIZONTAL; grid.add(new javax.swing.JScrollPane(fontList), c); c.fill = GridBagConstraints.NONE;
+			c.gridx = 2; grid.add(removeFont, c); c.anchor = GridBagConstraints.WEST; c.gridy++;
+			java.util.List<String> originals = new java.util.ArrayList<String>();
+			MacApp68k running = MacApp68k.runningFrom(app);
+			if(running!=null) for(Fonts68k.Substitution.Drawn d: running.fontSubstitution.drawnFonts()) if(!originals.contains(d.name)) originals.add(d.name);
+			for(String n: Fonts68k.familiesOf(app)) if(!originals.contains(n)) originals.add(n);
+			String firstGuess = originals.isEmpty() ? Fonts68k.nameOf(3) : originals.get(0);
+			for(String n: Fonts68k.allNames()) if(!originals.contains(n)) originals.add(n);
+			final JComboBox<String> original = new JComboBox<String>(originals.toArray(new String[0]));
+			original.setEditable(true); // a font of its documents, not listed here
+			original.setSelectedItem(firstGuess);
+			original.getAccessibleContext().setAccessibleName(GPreferencesDialog.dialogText("Replace:"));
+			java.util.List<String> replacements = new java.util.ArrayList<String>(Fonts68k.allNames());
+			replacements.add(0, GPreferencesDialog.dialogText("Automatic"));
+			final JComboBox<String> replacement = new JComboBox<String>(replacements.toArray(new String[0]));
+			replacement.setToolTipText(GPreferencesDialog.dialogText("Automatic picks a Japanese font like the original"));
+			JButton addFont = new JButton(GPreferencesDialog.dialogText("Add Substitution"));
+			addFont.addActionListener(e -> {
+				Object typed = original.getEditor().getItem();
+				String from = typed==null ? "" : typed.toString().trim(), to = replacement.getSelectedIndex()==0 ? Fonts68k.AUTOMATIC : String.valueOf(replacement.getSelectedItem());
+				if(from.isEmpty() || from.indexOf('\t')>=0 || from.equalsIgnoreCase(to)) return;
+				for(int k=fontModel.size()-1; k>=0; k--){ String f = fontModel.get(k); if(f.substring(0, f.indexOf('\t')).equalsIgnoreCase(from)) fontModel.remove(k); } // one replacement per font
+				fontModel.addElement(from+"\t"+to);
+			});
+			JPanel pair = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+			pair.add(original); pair.add(new JLabel("\u2192")); pair.add(replacement); pair.add(addFont);
+			// "Fix Garbled Text…" is in the program's Apple menu only on a Japanese System (MacAppHost.addHostAppleItems)
+			boolean japaneseSystem = running!=null ? running.japaneseSystem() : current.language!=null ? "Japanese".equals(current.language) : Toolbox68k.applicationEncoding()==StackTextEncoding.JAPANESE;
+			addRow(grid, c, "Replace:", pair, japaneseSystem ? "(at once; easier: choose Fix Garbled Text… in the program's Apple menu and click the garbled text)" : "(at once)");
+			fontModel.addListDataListener(new javax.swing.event.ListDataListener(){
+				public void intervalAdded(javax.swing.event.ListDataEvent e){ markOwnValues(); }
+				public void intervalRemoved(javax.swing.event.ListDataEvent e){ markOwnValues(); }
+				public void contentsChanged(javax.swing.event.ListDataEvent e){ markOwnValues(); }
+			});
+		}
+
 		markOwnValues();
 		tabs.setSelectedIndex(Math.max(0, Math.min(lastTab, tabs.getTabCount()-1)));
 		tabs.addChangeListener(e -> lastTab = tabs.getSelectedIndex());
@@ -388,7 +474,7 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 		JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
 		JButton reset = new JButton(GPreferencesDialog.dialogText("Use Shared Settings for All"));
 		reset.setToolTipText(GPreferencesDialog.dialogText("Every item follows the shared setting again (allowed places stay)."));
-		reset.addActionListener(e -> { for(java.util.List<JComboBox<?>> rows: tabRows) for(JComboBox<?> combo: rows) if(combo.isEnabled()) combo.setSelectedIndex(0); });
+		reset.addActionListener(e -> { for(java.util.List<JComboBox<?>> rows: tabRows) for(JComboBox<?> combo: rows) if(combo.isEnabled()) combo.setSelectedIndex(0); fontModel.clear(); });
 		left.add(reset);
 		JButton translation = new JButton(GPreferencesDialog.dialogText("Translation Settings…"));
 		translation.setToolTipText(GPreferencesDialog.dialogText(stack ? "The language this stack is translated into" : "The language this program is translated into, and its translated resources"));
@@ -426,8 +512,9 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 			items = java.util.Arrays.copyOfRange(items, 1, items.length);
 			speedCombo = combo(grid, c, "Speed:", STANDARD, items, GPreferencesDialog.dialogText("Unlimited"), shownIndex(speedChoice(current, false))-1, note);
 		}
+		else if(unlimitedStandard) speedCombo = combo(grid, c, "Speed:", STANDARD, items, GPreferencesDialog.dialogText("Unlimited"), speedChoice(current, speedPpc)-1, note);
 		else speedCombo = combo(grid, c, "Speed:", items, vmSpeedName(speedPpc), speedChoice(current, speedPpc)-1, note);
-		double vm = stack ? 0 : vmRate(speedPpc);
+		double vm = stack || unlimitedStandard ? 0 : vmRate(speedPpc);
 		double shown = current.mips!=null ? current.mips : Boolean.TRUE.equals(current.realSpeed) ? realMips(speedPpc) : vm>0 ? vm : realMips(speedPpc);
 		mipsSpinner = new JSpinner(new SpinnerNumberModel(Math.max(MIN_MIPS, Math.min(MAX_MIPS, shown)), MIN_MIPS, MAX_MIPS, 0.5));
 		mipsSpinner.setEditor(new JSpinner.NumberEditor(mipsSpinner, "0.0"));
@@ -438,7 +525,7 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 		speedCombo.addActionListener(e -> {
 			if(syncingSpeed) return;
 			int choice = speedChoiceShown();double[] mips = presets(speedPpc);
-			double rate = choice==SPEED_FOLLOW && !stack ? vmRate(speedPpc) : choice>=SPEED_PRESET && choice<SPEED_PRESET+mips.length ? mips[choice-SPEED_PRESET] : -1;
+			double rate = choice==SPEED_FOLLOW && !stack && !unlimitedStandard ? vmRate(speedPpc) : choice>=SPEED_PRESET && choice<SPEED_PRESET+mips.length ? mips[choice-SPEED_PRESET] : -1;
 			syncingSpeed = true;
 			try{ if(rate>0) mipsSpinner.setValue(rate); }finally{ syncingSpeed = false; }
 		});
@@ -509,6 +596,13 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 	/** The System language choices as LauncherStore.AppSettings.language keeps them, in the order of the row. */
 	static final java.util.List<String> LANGUAGES = java.util.List.of("English", "Japanese");
 	private static int indexOf(int[] values, int value) { for(int i=0; i<values.length; i++) if(values[i]==value) return i; return -1; }
+	/** A saved font substitution as shown: "Lucida Grande → Osaka", "Lucida Grande → Automatic". */
+	static String substitutionText(String saved){
+		int tab = saved.indexOf('\t');
+		if(tab<0) return saved;
+		String to = saved.substring(tab+1);
+		return saved.substring(0, tab)+" \u2192 "+(Fonts68k.AUTOMATIC.equals(to) ? GPreferencesDialog.dialogText("Automatic") : to);
+	}
 	/** A saved grant as shown: "Read: /path", "Change: /path", "Change and delete: /path". */
 	static String grantText(String saved){
 		int tab = saved.indexOf('\t');
@@ -544,6 +638,8 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 			else s.wideDialogs = current.wideDialogs;
 			if(dialog.cpuCombo!=null){ i = dialog.cpuCombo.getSelectedIndex(); s.powerPC = i==0 ? null : i==2; }
 			else s.powerPC = current.powerPC; // the row is hidden: an earlier choice is kept
+			if(dialog.jitCombo!=null){ i = dialog.jitCombo.getSelectedIndex(); s.ppcJit = i==0 ? null : i==1; }
+			else s.ppcJit = current.ppcJit; // not a PowerPC program now: an earlier choice is kept
 			if(dialog.systemCombo!=null){ i = dialog.systemCombo.getSelectedIndex(); s.systemVersion = i==0 ? null : Toolbox68k.SYSTEM_VERSION_CHOICES[i-1]; }
 			else s.systemVersion = current.systemVersion;
 			i = dialog.languageCombo.getSelectedIndex(); s.language = i==0 ? null : LANGUAGES.get(i-1);
@@ -559,11 +655,13 @@ class GAppSettingsDialog extends JDialog implements ActionListener {
 		s.modifierKeys = keys.isEmpty() ? null : keys.format();
 		if(dialog.filesCombo!=null) s.readOnly = dialog.filesCombo.getSelectedIndex()==1 ? Boolean.TRUE : null;
 		for(int k=0; k<dialog.grantModel.size(); k++) s.grants.add(dialog.grantModel.get(k));
+		if(!dialog.stack){ s.fontSubstitutions.clear(); for(int k=0; k<dialog.fontModel.size(); k++) s.fontSubstitutions.add(dialog.fontModel.get(k)); }
 		store.putSettings(app, s);
 		for(String g: current.grants) if(!s.grants.contains(g)) Sandbox.forgetGrant(app, g); //取り消した場所は今すぐ使えなくなる
 		if(dialog.stack){ StackSettings.changed(app); return; } //開いているスタックには拡大表示・キーもすぐ反映
 		//the speed, the dialog layout, the zoom and the smooth zoom reach a running instance; the screen size is fixed at launch
 		MacApp68k running = MacApp68k.runningFrom(app);
-		if(running!=null){ running.realSpeedOverride = s.realSpeed; running.mipsOverride = s.mips; running.wideDialogsOverride = s.wideDialogs; running.controlKeysOverride = s.controlKeys; running.modifierKeysOverride = MacApp68k.modifierKeys(s); running.zoomChanged(s.screenScale); running.screenPlaceChanged(s.screenTopLeft); running.smoothChanged(s.smoothZoom); running.translationChanged(); }
+		if(running!=null){ running.realSpeedOverride = s.realSpeed; running.mipsOverride = s.mips; running.ppcJitOverride = s.ppcJit; running.wideDialogsOverride = s.wideDialogs; running.controlKeysOverride = s.controlKeys; running.modifierKeysOverride = MacApp68k.modifierKeys(s); running.zoomChanged(s.screenScale); running.screenPlaceChanged(s.screenTopLeft); running.smoothChanged(s.smoothZoom); running.translationChanged();
+			if(!s.fontSubstitutions.equals(current.fontSubstitutions)) running.fontSubstitutionsChanged(s.fontSubstitutions); }
 	}
 }

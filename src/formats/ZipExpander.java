@@ -47,7 +47,10 @@ final class ZipExpander {
 	/** Whether a name looks like a ZIP archive. */
 	static boolean isZip(File file){return file.isFile()&&file.getName().toLowerCase().endsWith(".zip");}
 
-	/** Expands {@code zip} beside itself (into a folder named after it unless it holds a single item that does not exist yet). */
+	/**
+	 * Expands {@code zip} beside itself (into a folder named after it unless it holds a single item that does not exist yet);
+	 * an unchanged earlier expansion there is opened instead of making another copy.
+	 */
 	static Result expand(File zip) throws IOException {return expand(zip,zip.getAbsoluteFile().getParentFile());}
 
 	static Result expand(File zip,File destination) throws IOException {
@@ -62,9 +65,11 @@ final class ZipExpander {
 			if(topLevel.isEmpty())throw new IOException("The archive is empty.");
 			File base,opened;
 			String single=topLevel.size()==1?topLevel.iterator().next():null;
+			String stem=zip.getName();stem=stem.substring(0,stem.length()-4);if(stem.isEmpty())stem="Archive";
+			Result earlier=earlierExpansion(archive,destination,single,stem);
+			if(earlier!=null)return earlier;
 			if(single!=null&&!new File(destination,single).exists()){base=destination;opened=new File(destination,single);}
 			else{
-				String stem=zip.getName();stem=stem.substring(0,stem.length()-4);if(stem.isEmpty())stem="Archive";
 				base=new File(destination,stem);for(int i=2;base.exists();i++)base=new File(destination,stem+" "+i);
 				if(!base.mkdirs())throw new IOException("Can't create the folder "+base.getPath());
 				opened=single!=null?new File(base,single):base;
@@ -107,16 +112,53 @@ final class ZipExpander {
 				if(applySidecar(mac.getKey(),ResourceFile68k.AppleDouble.build(fork!=null?fork:new byte[0],info)))applied++;
 			}
 			for(Object[] sidecar:sidecars)if(applySidecar((File)sidecar[0],(byte[])sidecar[1]))applied++;
-			// Finder archives commonly contain one folder whose contents are the
-			// actual classic application. Return that application so a drop onto
-			// HyperZebra or a hosted 68K window launches it directly.
-			File document=opened;
-			if(opened.isDirectory()){
-				File nested=findApplication(opened,3);
-				if(nested!=null)document=nested;
-			}
-			return new Result(base,document,applied);
+			return new Result(base,documentIn(opened),applied);
 		}
+	}
+
+	/**
+	 * Finder archives commonly contain one folder whose contents are the actual classic application. Returns that
+	 * application so a drop onto HyperZebra or a hosted 68K window launches it directly.
+	 */
+	private static File documentIn(File opened){
+		if(!opened.isDirectory())return opened;
+		File nested=findApplication(opened,3);
+		return nested!=null?nested:opened;
+	}
+
+	/**
+	 * An earlier expansion of this archive at one of the places {@link #expand} puts it (the single item beside it, then the
+	 * "stem", "stem 2", … folders) that still holds every file of the archive with the same data: opening the archive again
+	 * opens that one. Each open of a zipped stack used to add another copy beside it (and its converted .hzb), one per open.
+	 * Null when there is none; a copy whose files were changed since is left alone and a new one is made as before.
+	 */
+	private static Result earlierExpansion(ZipFile archive,File destination,String single,String stem){
+		List<File> bases=new ArrayList<File>();
+		if(single!=null)bases.add(destination);
+		File folder=new File(destination,stem);
+		for(int i=2;folder.isDirectory();i++){bases.add(folder);folder=new File(destination,stem+" "+i);}
+		for(File base:bases){
+			File opened=single!=null?new File(base,single):base;
+			if(opened.exists()&&holdsArchive(archive,base))return new Result(base,documentIn(opened),0);
+		}
+		return null;
+	}
+
+	/** Every file entry of the archive is in {@code base} with the same length and CRC (resource forks are not compared). */
+	private static boolean holdsArchive(ZipFile archive,File base){
+		byte[] buffer=new byte[65536];
+		for(Enumeration<? extends ZipEntry> e=archive.entries();e.hasMoreElements();){
+			ZipEntry entry=e.nextElement();String name=normalize(entry.getName());
+			if(name==null||entry.isDirectory()||isJunk(name)||name.startsWith(MACOSX)||name.startsWith(XTRASTUF))continue;
+			File target=new File(base,name.replace('/',File.separatorChar));
+			if(!target.isFile()||entry.getSize()>=0&&target.length()!=entry.getSize())return false;
+			if(entry.getCrc()<0)continue;
+			java.util.zip.CRC32 crc=new java.util.zip.CRC32();
+			try(InputStream in=Files.newInputStream(target.toPath())){for(int n;(n=in.read(buffer))>0;)crc.update(buffer,0,n);}
+			catch(IOException ex){return false;}
+			if(crc.getValue()!=entry.getCrc())return false;
+		}
+		return true;
 	}
 	private static File findApplication(File directory,int depth){
 		if(depth<0)return null;

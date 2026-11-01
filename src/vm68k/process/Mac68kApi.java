@@ -17,17 +17,19 @@ final class Mac68kApi implements M68kTrapHandler {
 	private final M68kMemory memory;
 	private OStack stack;
 	private final Map<Integer,Integer> pointerSizes=new HashMap<Integer,Integer>();
-	/** Logical sizes of the live Handles; each entry made or changed also (re)writes the block header in M68kMemory.blockHeaders mode. */
+	/** Logical sizes of the live Handles; each entry made or changed also (re)writes the block header in M68kMemory.blockHeaders(24) mode. */
 	private final Map<Integer,Integer> handleSizes=new HashMap<Integer,Integer>(){
 		@Override public Integer put(Integer handle,Integer size){
 			Integer old=super.put(handle,size);
-			if(memory.blockHeaders)try{memory.noteHandleBlock(handle,memory.physical(memory.readLong(handle)),size);}catch(M68kCpuException ignored){}
+			if(memory.blockHeaders||memory.blockHeaders24)try{memory.noteHandleBlock(handle,memory.physical(memory.readLong(handle)),size);}catch(M68kCpuException ignored){}
 			return old;}
 	};
 	/** Live Memory Manager blocks (Handles and Ptrs): an external whose count grew over a call left state behind. */
 	int liveBlockCount(){return handleSizes.size()+pointerSizes.size();}
 	/** A system block made at start-up (ExpandMem) is a Ptr of {@code size} bytes for GetPtrSize/SetPtrSize/DisposePtr, as in the System heap. */
 	void adoptPointer(int pointer,int size){pointerSizes.put(pointer,size);}
+	/** Drops an adopted Ptr from the books (its owner frees the memory itself); whether it was one. */
+	boolean forgetPointer(int pointer){return pointerSizes.remove(pointer)!=null;}
 	/**
 	 * Ptrs made while a private zone (InitZone) is the current zone are carved out of that zone's own memory, as on a real
 	 * Mac: Flash 4's Windows layer keeps its atom tables in 2 KB zones and makes an atom of (Ptr - zone) / 2 | $C000, so a
@@ -287,6 +289,10 @@ final class Mac68kApi implements M68kTrapHandler {
 		if(opcode==0xaafe){ // _MixedModeMagic: 68K code called a routine descriptor (PowerPC code of a PowerPC program)
 			MacApp68k owner=app==null?null:app.app;
 			if(owner!=null&&owner.ppc!=null)return owner.ppc.mixedModeTrap(cpu,instructionPc);
+			// an external with PowerPC code (fat, or its 68K routine only answers that it needs a Power Macintosh): the PowerPC
+			// code runs, unless the fragment of a fat one cannot be prepared - then its 68K routine below
+			PpcRuntime external=owner==null&&app!=null?app.powerPcExternalAt(cpu,instructionPc):null;
+			if(external!=null&&(!app.externalHas68kRoutine(instructionPc)||external.preparesExternal(instructionPc)))return external.mixedModeTrap(cpu,instructionPc);
 			// a 68K process (or an external): a 'fat' code resource or a descriptor built for 68K code - its 68K routine runs
 			// in place of the descriptor, as Mixed Mode on a 68K Mac with the Mixed Mode stub did
 			int target=routineDescriptor68k(cpu,instructionPc);
@@ -365,7 +371,11 @@ final class Mac68kApi implements M68kTrapHandler {
 			case 0x4d:setMemoryResult(cpu,NO_ERR);return true;
 			case 0x50:return toolUtils.relString(cpu,opcode);
 			case 0x55:if(!app.isApplication()||memory.addressing24)cpu.d[0]&=0x00ffffff;return true; // externals and 24-bit programs (MacApp68k.addressing24) run 24-bit, other applications 32-bit clean
-			case 0x65:cpu.d[0]=Math.max(0,cpu.a[7]-memory.heapStart());return true;
+			// StackSpace: the room between SP and the top of the application heap (HeapEnd), not the whole memory below SP. Apple
+			// Dylan's 68K runtime sets its stack limit to ApplLimit (lowered by its 'mem!' stack size) + StackSpace at start-up;
+			// SP - heapStart put that limit far above the stack and every program signalled "Dylan error type 12" (stack overflow).
+			case 0x65:{int heapEnd=memory.readLong(0x114),floor=heapEnd>memory.heapStart()&&Integer.compareUnsigned(heapEnd,cpu.a[7])<0?heapEnd:memory.heapStart();
+				cpu.d[0]=Math.max(0,cpu.a[7]-floor);return true;}
 			default:return false;
 		}
 	}
@@ -421,7 +431,10 @@ final class Mac68kApi implements M68kTrapHandler {
 	private static final int HOST_RESERVE=8*1024*1024;
 	int hostReserve(){
 		if(app==null||app.app==null||app.app.service)return 0;
-		long reserve=Math.min(HOST_RESERVE,(memory.heapEnd()-memory.heapStart())/8);
+		long room=(memory.heapEnd()-memory.heapStart())/8,reserve=Math.min(HOST_RESERVE,room);
+		// a full-screen window's buffer comes out of the reserve too: Powershift (FileMaker takes all the rest) on a 2560x1378
+		// 16-bit screen needed 7 MB in one block for its first window, with 9 MB left in all
+		try{if(quickDraw!=null)reserve+=Math.min(quickDraw.screenBufferBytes(),room);}catch(M68kCpuException e){}
 		return (int)Math.max(0,reserve-(quickDraw==null?0:quickDraw.windowBufferBytes()));
 	}
 	/** Free bytes as the program sees them (without {@link #hostReserve}). */
@@ -603,7 +616,9 @@ final class Mac68kApi implements M68kTrapHandler {
 			if(contents==null)contents=new byte[0];
 			if(offset<=size) {
 				int found=offset,replacedLength=targetLength;
-				if(target==0) {if(targetLength<0)replacedLength=size-offset;}
+				// ptr1 NIL: len1 bytes from offset, clipped at the end of the Handle (List XFCN's replaceListLine replaces past the end
+				// of a list it has just grown and expects the new line there: Munger used to refuse and drop it)
+				if(target==0) {if(targetLength<0||targetLength>size-offset)replacedLength=size-offset;}
 				else if(targetLength==0)replacedLength=0;
 				else if(targetLength>0)found=findMungerTarget(contents,offset,target,targetLength);
 				else found=-1;
@@ -733,10 +748,15 @@ final class Mac68kApi implements M68kTrapHandler {
 		if((opcode&0x0fff)==0x975)return "TickCount";
 		if((opcode&0x0fff)==0x976)return "GetKeys";
 		if((opcode&0x0fff)==0x9c8)return "SysBeep";
+		if((opcode&0x0fff)==0x830)return "Pack14"; // the Help Manager
+		// the Memory Manager and Event Manager OS traps below: a Toolbox trap with the same low byte ($A830 Pack14) is not one of them
+		if((opcode&0x0800)!=0)return String.format("A-line trap $%04X",opcode);
 		switch(opcode&0xff){
 			case 0x1e:return "NewPtr";case 0x1f:return "DisposePtr";case 0x20:return "SetPtrSize";case 0x66:return "NewEmptyHandle";
 			case 0x21:return "GetPtrSize";case 0x22:return "NewHandle";case 0x23:return "DisposeHandle";
 			case 0x24:return "SetHandleSize";case 0x25:return "GetHandleSize";case 0x27:return "ReallocHandle";
+			case 0x29:return "HLock";case 0x2a:return "HUnlock";case 0x2b:return "EmptyHandle";case 0x36:return "MoreMasters";
+			case 0x49:return "HPurge";case 0x4a:return "HNoPurge";case 0x4c:return "CompactMem";case 0x4d:return "PurgeMem";
 			case 0x2e:return "BlockMove";case 0x30:return "OSEventAvail";case 0x31:return "GetOSEvent";
 			case 0x50:return "RelString";case 0x55:return "StripAddress";
 			default:return String.format("A-line trap $%04X",opcode);

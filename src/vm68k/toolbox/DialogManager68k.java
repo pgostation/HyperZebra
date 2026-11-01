@@ -204,7 +204,7 @@ final class DialogManager68k {
 		int window=create(storage,bounds,title,visible&&!forceInvisible,procId,behind,goAway,refCon,items,false,dctb==null?null:tb.resources.data(dctb),dctb!=null);
 		if(window!=0){applyFontTable(window,ditlId,0);applyItemStyles(window,ditlId);
 			ResourceFile68k.Resource dlgx=tb.resources.find(0x646c6778,id);byte[] x=dlgx==null?null:tb.resources.data(dlgx); // 'dlgx': version.w, flags.l
-			if(x!=null&&x.length>=6&&(MacApp68k.u4(x,2)&2)!=0)dialogs.get(window).embedding=true;}
+			if(x!=null&&x.length>=6&&(MacApp68k.u4(x,2)&2)!=0){dialogs.get(window).embedding=true;tb.appearance.ensureRootControl(window);}}
 		return window;
 	}
 	/**
@@ -266,8 +266,10 @@ final class DialogManager68k {
 		return create(0,position(bounds,1),"",false,procId,-1,false,0,tb.api.createHandle(ditl),false);
 	}
 
-	/** Centers dialogs that would appear off-screen or on top of the menu bar. */
-	private int[] position(int[] bounds,int positioning){
+	/** Centers dialogs that would appear off-screen or on top of the menu bar; a positioning on the parent window ($A80A, $B00A,
+	 *  $B80A) places it on the frontmost window as GetNewWindow does. */
+	private int[] position(int[] bounds,int positioning) throws M68kCpuException {
+		if((positioning&0x80ff)==0x800a&&tb.windows.frontWindow()!=0){int[] p=tb.windows.positionTemplate(bounds,positioning);if(p!=bounds)return p;}
 		int[] screen=tb.api.quickDraw().screenBounds();int w=bounds[3]-bounds[1],h=bounds[2]-bounds[0]; // the screen programs see
 		boolean center=positioning!=0||bounds[0]<screen[0]+MacAppHost.MENU_BAR_HEIGHT+22||bounds[2]>screen[2]||bounds[3]>screen[3]||bounds[1]<screen[1];
 		if(!center)return bounds;
@@ -850,7 +852,7 @@ final class DialogManager68k {
 		int front=tb.windows.frontWindow();
 		if(e.what==EventManager68k.ACTIVATE_EVT||e.what==EventManager68k.UPDATE_EVT)return hasDialogKind(e.message);
 		if(!hasDialogKind(front))return false;
-		if(e.what==EventManager68k.MOUSE_DOWN){int[] l=tb.windows.globalToLocal(front,e.whereH,e.whereV);WindowManager68k.Window w=tb.windows.window(front);return l[0]>=0&&l[1]>=0&&l[0]<w.width&&l[1]<w.height;}
+		if(e.what==EventManager68k.MOUSE_DOWN){int[] l=tb.windows.globalToContent(front,e.whereH,e.whereV);WindowManager68k.Window w=tb.windows.window(front);return l[0]>=0&&l[1]>=0&&l[0]<w.width&&l[1]<w.height;}
 		return true;
 	}
 
@@ -871,8 +873,11 @@ final class DialogManager68k {
 		if(Boolean.getBoolean("hz68k.bbdebug")&&(e.what==1||e.what==3))System.err.println("[bbdebug] dialog event "+e.what+" msg="+e.message+" edit="+dialog.editItem+" te="+memory.readLong(window+TEXT_H));
 		switch(e.what){
 			case EventManager68k.UPDATE_EVT:if(e.message==window){draw(window);tb.windows.clearUpdate(window);}return 0; // BeginUpdate/DrawDialog/EndUpdate, as the real Dialog Manager does
-			case EventManager68k.ACTIVATE_EVT:{Item edit=item(window,dialog.editItem);if(edit!=null&&edit.teHandle!=0)tb.textEdit.activate(edit.teHandle,(e.modifiers&1)!=0);return 0;}
-			case EventManager68k.NULL_EVENT:{if(focusedControlItem(dialog)>0){tb.controls.idleControls(window);return 0;}Item edit=item(window,dialog.editItem);if(edit!=null&&edit.teHandle!=0)tb.textEdit.idleFromDialog(edit.teHandle);return 0;}
+			// the open edit field blinks only while it is an edit text: an item the program made a static text (Myth II's installer
+			// sizes its alert message in an edit text, then SetDialogItems it static) is drawn as one here, so its caret would stand
+			// alone (on a Mac it stays at the end of the text, outside the record's old view rectangle)
+			case EventManager68k.ACTIVATE_EVT:{Item edit=item(window,dialog.editItem);if(edit!=null&&edit.teHandle!=0&&(edit.type&0x7f)==EDIT_TEXT)tb.textEdit.activate(edit.teHandle,(e.modifiers&1)!=0);return 0;}
+			case EventManager68k.NULL_EVENT:{if(focusedControlItem(dialog)>0){tb.controls.idleControls(window);return 0;}Item edit=item(window,dialog.editItem);if(edit!=null&&edit.teHandle!=0&&(edit.type&0x7f)==EDIT_TEXT)tb.textEdit.idleFromDialog(edit.teHandle);return 0;}
 			case EventManager68k.MOUSE_DOWN:{
 				if(e.menuId!=0)return 0; // a made-up menu-bar or close-box click
 				if(tb.windows.frontWindow()!=window&&modeless)return 0;
@@ -939,6 +944,7 @@ final class DialogManager68k {
 	/** Tab order over the text items: classic edit text items and edit text controls (kControlSupportsFocus), in item order. */
 	private int nextTextItem(Dialog dialog,int from,boolean reverse) throws M68kException {
 		int n=dialog.list.size();
+		if(from<1||from>n)from=reverse?n+1:0; // no edit text (editItem -1, ShowModal's alerts): Tab starts at the first/last item instead of indexing item -1
 		for(int k=1;k<=n;k++){int i=reverse?((from-1-k)%n+n)%n+1:((from-1+k)%n)+1;Item item=dialog.list.get(i-1);int kind=item.type&0x7f;if(item.hidden)continue;
 			if(kind==EDIT_TEXT)return i;
 			if(kind>=CTRL_ITEM&&kind<=RES_CTRL&&item.handle!=0&&tb.controls.nativeDefinition(item.handle) instanceof AppearanceControls68k.Def&&((AppearanceControls68k.Def)tb.controls.nativeDefinition(item.handle)).takesText())return i;}
@@ -1151,7 +1157,7 @@ final class DialogManager68k {
 			case 0x110c:{int sp=cpu.a[7];int items=memory.readLong(sp+4),refCon=memory.readLong(sp+8);boolean goAway=memory.readByte(sp+12)!=0;int behind=memory.readLong(sp+14),procId=(short)memory.readWord(sp+18);
 				boolean visible=memory.readByte(sp+20)!=0;int title=memory.readLong(sp+22),bounds=memory.readLong(sp+26),storage=memory.readLong(sp+30);cpu.a[7]+=34;
 				int window=create(storage,readRect(bounds),tb.readPascal(title),visible,procId,behind,goAway,refCon,items,true,null,true);
-				if(window!=0&&(memory.readLong(sp)&2)!=0)dialogs.get(window).embedding=true; // kDialogFlagsUseControlHierarchy
+				if(window!=0&&(memory.readLong(sp)&2)!=0){dialogs.get(window).embedding=true;tb.appearance.ensureRootControl(window);} // kDialogFlagsUseControlHierarchy
 				memory.writeLong(cpu.a[7],window);return true;} // NewFeaturesDialog (otherwise the flags only choose the Appearance look)
 			default:cpu.a[7]+=(selector>>>8)*2;memory.writeWord(cpu.a[7],-4);return true;
 		}

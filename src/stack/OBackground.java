@@ -430,7 +430,7 @@ public class OBackground extends OCardBase {
 	public boolean readBackgroundBlock(DataInputStream dis, int blockSize){
 		//System.out.println("====readBackgroundBlock====");
 
-		if(blockSize>2000000 || blockSize<50){
+		if(blockSize>OCard.MAX_BLOCK_SIZE || blockSize<50){
 			return false;
 		}
 		

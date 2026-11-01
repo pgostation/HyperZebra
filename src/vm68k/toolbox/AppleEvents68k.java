@@ -35,6 +35,8 @@ final class AppleEvents68k {
 		final List<Portable> list=new ArrayList<Portable>();final LinkedHashMap<Integer,Portable> items=new LinkedHashMap<Integer,Portable>(),attributes=new LinkedHashMap<Integer,Portable>();
 		/** Set by the receiver once its handler returned: the reply (AESend with kAEWaitReply waits for it). */
 		volatile Portable reply;volatile boolean answered;
+		/** The sender of an event sent with kAEQueueReply: the receiver posts the reply back to it as an 'aevt'/'ansr' event. */
+		volatile MacApp68k queueReplyTo;
 	}
 	Portable export(int[] d) throws M68kCpuException {
 		Portable p=new Portable();p.type=d[0];Record r=recordFor(d[0],d[1]);
@@ -58,15 +60,20 @@ final class AppleEvents68k {
 	private final M68kMemory memory;
 	private final Map<Integer,Record> records=new HashMap<Integer,Record>();
 	private final Map<Long,int[]> handlers=new HashMap<Long,int[]>(); // (class<<32|id) -> {proc, refcon}
+	/** The handler table of the code running now: a program this process runs on a task of its own has its own, as in a process of its
+	 *  own (Ray Dream Studio's extensions each install a 'quit' handler; the program's own was replaced and its Quit did nothing). */
+	private Map<Long,int[]> handlers(){Map<Long,int[]> own=tb.threads.programHandlers();return own!=null?own:handlers;}
 	private final Map<Long,int[]> coercions=new HashMap<Long,int[]>(); // (fromType<<32|toType) -> {proc, refcon, fromTypeIsDesc}
 	private EventManager68k.Event current;
 	private int returnId=1;
+	/** A new return ID (AEReturnID is a short; never 0 or -1, kAnyTransactionID / kAutoGenerateReturnID). */
+	private int nextReturnId(){int id=returnId++;if((short)returnId==-1||(short)returnId==0)returnId=1;return (short)id;}
 
 	AppleEvents68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;objects=new AEObjects68k(tb,this);}
 	/** Selectors this Pack8 implements itself (anything else may belong to a program's keySelectProc). */
 	private static boolean knownSelector(int selector){
 		switch(selector){
-			case 0x091f:case 0x0720:case 0x0921:case 0x021b:case 0x0812:case 0x0826:case 0x0e11:case 0x0e15:case 0x0407:case 0x100a:case 0x0a0b:case 0x0204:case 0x092e:case 0x0632:case 0x0833:case 0x0831:case 0x0830:case 0x0405:case 0x0825:case 0x0706:case 0x0b14:
+			case 0x091f:case 0x0720:case 0x0921:case 0x021b:case 0x0812:case 0x0826:case 0x0e11:case 0x0e15:case 0x0407:case 0x100a:case 0x0a0b:case 0x0204:case 0x092e:case 0x0632:case 0x0833:case 0x0831:case 0x0830:case 0x0405:case 0x0825:case 0x0706:case 0x0906:case 0x0b14:
 			case 0x0a0f:case 0x0a16:case 0x0610:case 0x0627:case 0x0a08:case 0x0609:case 0x0413:case 0x040e:case 0x0829:case 0x0828:case 0x082a:case 0x0d17:case 0x061c:case 0x011e:case 0x021d:case 0x0219:case 0x022c:case 0x022b:case 0x0818:case 0x021a:
 			case 0x0603:case 0x0a02:case 0x0a22:case 0x0723:case 0x0b24:case 0x0500:case 0x0501:case 0x0d0c:case 0x0b0d:case 0x0441:case 0x052d:return true;
 			default:return false;
@@ -228,9 +235,9 @@ final class AppleEvents68k {
 			cpu.a[1]=dispatcherGate();cpu.pushLong(cpu.pc);cpu.pc=selectProc;return true;}
 		if(osl){Integer r=objects.pack8(cpu,selector,sp);if(r!=null){flushDirty();cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],r);return true;}}
 		switch(selector){
-			case 0x091f:{int isSys=memory.readWord(sp),refcon=memory.readLong(sp+2),handler=memory.readLong(sp+6),id=memory.readLong(sp+10),cls=memory.readLong(sp+14);handlers.put(key(cls,id),new int[]{handler,refcon});result=0;break;}
-			case 0x0720:{int id=memory.readLong(sp+6),cls=memory.readLong(sp+10);result=handlers.remove(key(cls,id))==null?ERR_HANDLER_NOT_FOUND:0;break;}
-			case 0x0921:{int refconPtr=memory.readLong(sp+2),handlerPtr=memory.readLong(sp+6),id=memory.readLong(sp+10),cls=memory.readLong(sp+14);int[] h=handlers.get(key(cls,id));if(h==null)result=ERR_HANDLER_NOT_FOUND;else{if(handlerPtr!=0)memory.writeLong(handlerPtr,h[0]);if(refconPtr!=0)memory.writeLong(refconPtr,h[1]);result=0;}break;}
+			case 0x091f:{int isSys=memory.readWord(sp),refcon=memory.readLong(sp+2),handler=memory.readLong(sp+6),id=memory.readLong(sp+10),cls=memory.readLong(sp+14);handlers().put(key(cls,id),new int[]{handler,refcon});result=0;break;}
+			case 0x0720:{int id=memory.readLong(sp+6),cls=memory.readLong(sp+10);result=handlers().remove(key(cls,id))==null?ERR_HANDLER_NOT_FOUND:0;break;}
+			case 0x0921:{int refconPtr=memory.readLong(sp+2),handlerPtr=memory.readLong(sp+6),id=memory.readLong(sp+10),cls=memory.readLong(sp+14);int[] h=handlers().get(key(cls,id));if(h==null)result=ERR_HANDLER_NOT_FOUND;else{if(handlerPtr!=0)memory.writeLong(handlerPtr,h[0]);if(refconPtr!=0)memory.writeLong(refconPtr,h[1]);result=0;}break;}
 			case 0x021b:{int eventPtr=memory.readLong(sp);cpu.a[7]+=argBytes;result=processAppleEvent(eventPtr);flushDirty();memory.writeWord(cpu.a[7],result);return true;}
 			case 0x0812:case 0x0826:{int resultDesc=memory.readLong(sp),desired=memory.readLong(sp+4),keyword=memory.readLong(sp+8),event=memory.readLong(sp+12);result=getDesc(event,keyword,desired,resultDesc,selector==0x0826);break;}
 			case 0x0e11:case 0x0e15:{int actualPtr=memory.readLong(sp),max=memory.readLong(sp+4),dataPtr=memory.readLong(sp+8),typePtr=memory.readLong(sp+12),desired=memory.readLong(sp+16),keyword=memory.readLong(sp+20),event=memory.readLong(sp+24);
@@ -251,12 +258,23 @@ final class AppleEvents68k {
 			case 0x0405:{int resultDesc=memory.readLong(sp),source=memory.readLong(sp+4);result=duplicate(source,resultDesc);break;}
 			case 0x0825:{int resultDesc=memory.readLong(sp),size=memory.readLong(sp+4),dataPtr=memory.readLong(sp+8),type=memory.readLong(sp+12);createDesc(resultDesc,type,size>0?memory.readBytes(dataPtr,size):new byte[0]);result=0;break;}
 			case 0x0706:{int resultDesc=memory.readLong(sp);boolean isRecord=memory.readByte(sp+4)!=0;/* Boolean: high-order byte */Record r=new Record();r.isList=!isRecord;r.isRecord=isRecord;int h=register(r);writeDesc(resultDesc,isRecord?TYPE_RECO:TYPE_LIST,h);result=0;break;}
+			// AECreateList with the new descriptor's type as one more (last-pushed) argument: Apple's Apple Event XCMDs make their
+			// records ('reco') and object specifiers ('obj ') with it (AECreateRecord, AEObjectSpec... all answered -1708)
+			case 0x0906:{int type=memory.readLong(sp),resultDesc=memory.readLong(sp+4);boolean isRecord=memory.readByte(sp+8)!=0;Record r=new Record();r.isList=!isRecord;r.isRecord=isRecord;int h=register(r);writeDesc(resultDesc,type!=0?type:isRecord?TYPE_RECO:TYPE_LIST,h);result=0;break;}
 			case 0x0b14:{int resultDesc=memory.readLong(sp),transaction=memory.readLong(sp+4),retId=(short)memory.readWord(sp+8),target=memory.readLong(sp+10),id=memory.readLong(sp+14),cls=memory.readLong(sp+18);
 				Record r=new Record();r.isRecord=true;r.eventClass=cls;r.eventId=id;int h=register(r);writeDesc(resultDesc,TYPE_AEVT,h);
 				r.attributes.put(KEY_EVENT_CLASS,new int[]{TYPE_TYPE,tb.api.createHandle(longBytes(cls))});r.attributes.put(KEY_EVENT_ID,new int[]{TYPE_TYPE,tb.api.createHandle(longBytes(id))});
+				// the return ID is the event's from its creation (kAutoGenerateReturnID -1: a new one), as the sender reads it to match the
+				// queued reply: Apple Dylan's IDE registers its reply handler by the ID it reads here - AESend used to number the event
+				// itself, and the nub's 'ansr' came back "No queued reply handler for id: 2"
+				int rid=retId==-1?nextReturnId():retId;
+				r.attributes.put(KEY_RETURN_ID,new int[]{TYPE_SHOR,tb.api.createHandle(new byte[]{(byte)(rid>>8),(byte)rid})});
+				r.attributes.put(KEY_TRANSACTION,new int[]{TYPE_LONG,tb.api.createHandle(longBytes(transaction))});
 				// The target: a process serial number or a signature names the receiver, which AESend then looks up (before, every event
 				// was dispatched to the sender itself: QuarkXPress 3.31's installer sends 'quit' to the Finder 'MACS' and quit itself)
-				if(target!=0){int[] t=copyDesc(target);if(t!=null&&(t[0]==TYPE_PSN||t[0]==TYPE_SIGN))r.attributes.put(KEY_ADDRESS,t);}
+				// (a TargetID too: send() finds its program by session, signature or name - left out, an event to a program named in
+				// "zone:machine:program" went to the sender itself)
+				if(target!=0){int[] t=copyDesc(target);if(t!=null&&(t[0]==TYPE_PSN||t[0]==TYPE_SIGN||t[0]==TYPE_TARGET_ID))r.attributes.put(KEY_ADDRESS,t);}
 				result=0;break;}
 			case 0x0a0f:case 0x0a16:{int size=memory.readLong(sp),dataPtr=memory.readLong(sp+4),type=memory.readLong(sp+8),keyword=memory.readLong(sp+12),event=memory.readLong(sp+16);Record r=record(event);if(r==null)result=ERR_DESC_NOT_FOUND;else{int h=tb.api.createHandle(size>0?memory.readBytes(dataPtr,size):new byte[0]);(selector==0x0a16?r.attributes:r.items).put(keyword,new int[]{type,h});result=0;}break;}
 			case 0x0610:case 0x0627:{int desc=memory.readLong(sp),keyword=memory.readLong(sp+4),event=memory.readLong(sp+8);Record r=record(event);if(r==null)result=ERR_DESC_NOT_FOUND;else{int[] copy=copyDesc(desc);(selector==0x0627?r.attributes:r.items).put(keyword,copy);result=0;}break;}
@@ -271,7 +289,8 @@ final class AppleEvents68k {
 			case 0x011e:result=0;break;
 			case 0x021d:{int levelPtr=memory.readLong(sp);if(levelPtr!=0)memory.writeByte(levelPtr,2);result=0;break;}
 			case 0x022b:{int event=memory.readLong(sp);if(event!=0)suspended.add(memory.readLong(event+4));result=0;break;} // AESuspendTheCurrentEvent: the program keeps the event, the AE Manager no longer disposes of it
-			case 0x0219:case 0x022c:case 0x0818:result=0;break;
+			case 0x0219:case 0x022c:result=0;break;
+			case 0x0818:{int refcon=memory.readLong(sp),dispatcher=memory.readLong(sp+4),reply=memory.readLong(sp+8),event=memory.readLong(sp+12);result=resumeEvent(event,reply,dispatcher,refcon);break;} // AEResumeTheCurrentEvent
 			case 0x021a:{int descPtr=memory.readLong(sp);int[] cur=handling.isEmpty()?null:handling.peek();if(descPtr!=0){if(cur==null)writeDesc(descPtr,TYPE_NULL,0);else writeDesc(descPtr,cur[0],cur[1]);}result=0;break;} // AEGetTheCurrentEvent: the event whose handler is running (HyperCard's `request appleEvent data` reads it), a null descriptor outside a handler
 			case 0x0603:{int resultDesc=memory.readLong(sp),toType=memory.readLong(sp+4),desc=memory.readLong(sp+8);result=coerceInto(readDesc(desc),toType,resultDesc);break;}
 			case 0x0a02:{int resultDesc=memory.readLong(sp),toType=memory.readLong(sp+4),size=memory.readLong(sp+8),dataPtr=memory.readLong(sp+12),type=memory.readLong(sp+16);int[] temp={type,tb.api.createHandle(size>0?memory.readBytes(dataPtr,size):new byte[0])};result=coerceInto(temp,toType,resultDesc);tb.api.disposeHandleAndFree(temp[1]);break;}
@@ -514,7 +533,10 @@ final class AppleEvents68k {
 	int[] copyDescriptor(int[] d) throws M68kCpuException {
 		if(d[1]==0)return new int[]{d[0],0};
 		Record r=recordFor(d[0],d[1]);
-		if(r!=null){Record copy=new Record();copy.isList=r.isList;copy.isRecord=r.isRecord;copy.bareBody=r.bareBody;copy.eventClass=r.eventClass;copy.eventId=r.eventId;
+		if(r!=null){Record copy=new Record();copy.isList=r.isList;copy.isRecord=r.isRecord;copy.eventClass=r.eventClass;copy.eventId=r.eventId;
+			// a record-shaped descriptor under another type ('obj ', 'rang'...) holds the bare body [count, 0, items...] when the real Apple Event Manager hands it over:
+			// FaceSpan's AEGetKeyDesc/IsRecord reads that layout straight from the Handle (a 'reco' header there made odoc fail with -1703, Oct 28 2026)
+			copy.bareBody=r.bareBody||!isEvent(r)&&d[0]!=TYPE_LIST&&d[0]!=TYPE_RECO&&d[0]!=TYPE_AEVT;
 			for(Map.Entry<Integer,int[]> e:r.items.entrySet())copy.items.put(e.getKey(),copyDescriptor(e.getValue()));
 			for(int[] item:r.list)copy.list.add(copyDescriptor(item));
 			for(Map.Entry<Integer,int[]> e:r.attributes.entrySet())copy.attributes.put(e.getKey(),copyDescriptor(e.getValue()));
@@ -594,7 +616,11 @@ final class AppleEvents68k {
 		// sender of 'inst'/'iist' up by it)
 		if(desired==0x74617267&&d[0]==TYPE_PSN&&data.length>=8){
 			int buf=memory.allocate(TARGET_ID_SIZE,2);
-			try{memory.fill(buf,TARGET_ID_SIZE,0);int low=MacApp68k.u4(data,4);memory.writeLong(buf,low);tb.writePortFor(low,buf+4);
+			// {0, kCurrentProcess} names the program doing the coercion (Apple Event XCMDs coerce it before AESend, which now routes a
+			// TargetID by its session: serial 2 itself is no process and answered -600)
+			try{memory.fill(buf,TARGET_ID_SIZE,0);int low=MacApp68k.u4(data,4);
+				if(MacApp68k.u4(data,0)==0&&low==2)low=inHyperCard()?Toolbox68k.HYPERCARD_SERIAL:tb.app!=null?tb.app.serialNumber:low;
+				memory.writeLong(buf,low);tb.writePortFor(low,buf+4);
 				return new int[]{desired,tb.api.createHandle(memory.readBytes(buf,TARGET_ID_SIZE))};}
 			finally{memory.free(buf);}}
 		if(desired==TYPE_LONG&&d[0]==TYPE_SHOR&&data.length>=2){return new int[]{TYPE_LONG,tb.api.createHandle(longBytes((short)MacApp68k.u2(data,0)))};}
@@ -627,9 +653,57 @@ final class AppleEvents68k {
 		// resolves the specifier itself when that fails) only a coercion handler of the program's can help.
 		{Record r=recordFor(d[0],d[1]);if(r!=null&&r.isRecord&&(d[0]==TYPE_RECO||d[0]==TYPE_AEVT||desired==TYPE_RECO||desired==TYPE_AEVT)){int[] copy=copyDescriptor(d);return new int[]{desired,copy[1]};}}
 		if(desired==TYPE_RECO||desired==TYPE_AEVT){Record body=parseRecordBody(data);if(body!=null)return new int[]{desired,register(body)};} // a record's item data (AEGizmos hands those around as descriptors of their own)
-		int[] viaHandler=coerceWithHandler(d,desired,data);
+		// the program's handler for the very pair, then HyperCard's own (an external runs in HyperCard's process, whose table holds
+		// them), then the program's wildcard handlers - an exact pair is found before '****' in the same table. The Apple Event
+		// XCMDs' "*" handler sends WILD/COER to HyperCard, whose request appleEvent data coerces 'type' to 'TEXT': through the
+		// wildcard handler again, that recursed until the VM crashed
+		int[] viaHandler=coerceWithHandler(d,desired,data,true);
+		if(viaHandler==null&&inHyperCard())viaHandler=hyperCardCoercion(d[0],desired,data);
+		if(viaHandler==HYPERCARD_REFUSED)return null; // HyperCard's handler for the pair failed (another machine): not the wildcard's turn
+		if(viaHandler==null)viaHandler=coerceWithHandler(d,desired,data,false);
 		if(viaHandler==null&&Mac68kApi.TRACE){StringBuilder b=new StringBuilder();for(int i=0;i<Math.min(48,data.length);i++)b.append(String.format("%02x",data[i]));System.err.println("[ae] no coercion from "+fourcc(d[0])+" to "+fourcc(desired)+" ("+data.length+" bytes: "+b+")");}
 		return viaHandler;
+	}
+	/**
+	 * The coercions HyperCard installs for its own process at start-up (AEInstallCoercionHandler in its initialisation, as an
+	 * application's handlers, after the program's own): a program's name - "program", "machine:program" or "zone:machine:program" -
+	 * to a TargetID ('targ') or a process serial number ('psn '), and those back to the name. An external runs in HyperCard's
+	 * process, so Apple's Apple Event XCMDs address events by name this way (AESend "miscdosc","HyperCard",... failed -1716 here).
+	 * A program of this machine by that name gets its session (its serial number) and default port; a name that is running nowhere
+	 * still makes a TargetID, which AESend answers with procNotFound; another machine or zone is not reachable: no coercion.
+	 */
+	private int[] hyperCardCoercion(int from,int desired,byte[] data) throws M68kException {
+		if(from==TYPE_TEXT&&(desired==TYPE_TARGET_ID||desired==TYPE_PSN)){
+			String[] parts=tb.decode(data).split(":",-1);String name=parts[parts.length-1].trim();
+			String machine=parts.length>=2?parts[parts.length-2].trim():"",zone=parts.length>=3?parts[parts.length-3].trim():"";
+			if(name.isEmpty()||!machine.isEmpty()&&!machine.equalsIgnoreCase(Toolbox68k.COMPUTER_NAME)||!zone.isEmpty()&&!zone.equals("*"))return HYPERCARD_REFUSED;
+			int serial=serialNamed(name);
+			if(desired==TYPE_PSN){if(serial==0)return HYPERCARD_REFUSED;byte[] psn=new byte[8];putLong(psn,0,Toolbox68k.PSN_HIGH);putLong(psn,4,serial);return new int[]{TYPE_PSN,tb.api.createHandle(psn)};}
+			int buf=memory.allocate(TARGET_ID_SIZE,2);
+			try{memory.fill(buf,TARGET_ID_SIZE,0);
+				if(serial!=0&&tb.writePortFor(serial,buf+4)==0)memory.writeLong(buf,serial);
+				else{tb.writePascal(buf+6,name,32);memory.writeWord(buf+0x28,1);memory.writeLong(buf+0x2a,0x3f3f3f3f);memory.writeLong(buf+0x2e,0x65703031);} // by creator '????' and type 'ep01': no program has it
+				return new int[]{TYPE_TARGET_ID,tb.api.createHandle(memory.readBytes(buf,TARGET_ID_SIZE))};}
+			finally{memory.free(buf);}}
+		// and the HyperCard ones `request appleEvent data` needs for the usual parameter types: a type code as its four characters, a
+		// Boolean as true or false, null as empty, an alias or FSSpec as the file's full path
+		if(desired==TYPE_TEXT&&from==TYPE_TYPE&&data.length>=4)return new int[]{TYPE_TEXT,tb.api.createHandle(java.util.Arrays.copyOf(data,4))};
+		if(desired==TYPE_TEXT&&(from==TYPE_TRUE||from==TYPE_FALSE||from==TYPE_BOOL&&data.length>=1))return new int[]{TYPE_TEXT,tb.api.createHandle(tb.encoding.encodeReplacing(from==TYPE_TRUE||from==TYPE_BOOL&&data[data.length-1]!=0?"true":"false"))};
+		if(desired==TYPE_TEXT&&from==TYPE_NULL)return new int[]{TYPE_TEXT,tb.api.createHandle(new byte[0])};
+		if(desired==TYPE_TEXT&&(from==TYPE_ALIS||from==TYPE_FSS)){File f=fileOf(from,data);String path=f==null?null:FileSystem68k.macPathOf(f);return path==null?HYPERCARD_REFUSED:new int[]{TYPE_TEXT,tb.api.createHandle(tb.encoding.encodeReplacing(path))};}
+		if(desired==TYPE_TEXT&&from==TYPE_TARGET_ID&&data.length>=7)return new int[]{TYPE_TEXT,tb.api.createHandle(java.util.Arrays.copyOfRange(data,7,7+Math.min(Math.min(32,data[6]&255),data.length-7)))};
+		if(desired==TYPE_TEXT&&from==TYPE_PSN&&data.length>=8){int port=memory.allocate(0x48,2);
+			try{if(tb.writePortFor(MacApp68k.u4(data,4),port)!=0)return HYPERCARD_REFUSED;return new int[]{TYPE_TEXT,tb.api.createHandle(memory.readBytes(port+3,memory.readByte(port+2)))};}finally{memory.free(port);}}
+		return null;
+	}
+	/** {@link #hyperCardCoercion}'s answer for a pair HyperCard coerces that failed. */
+	private static final int[] HYPERCARD_REFUSED=new int[0];
+	/** The serial number of the program of this machine with that name (HyperCard itself, a running program, the Finder), 0 for none. */
+	private int serialNamed(String name){
+		if(name.equalsIgnoreCase("HyperCard")&&inHyperCard())return Toolbox68k.HYPERCARD_SERIAL;
+		if(tb.app!=null&&name.equalsIgnoreCase(tb.app.name))return tb.app.serialNumber;
+		for(MacApp68k a:MacApp68k.runningApplications())if(a.toolbox!=null&&!a.finished&&!(a.hosted instanceof ControlPanelHost68k)&&name.equalsIgnoreCase(a.name))return a.serialNumber;
+		return name.equalsIgnoreCase("Finder")&&Toolbox68k.finderStandInPresent()?Toolbox68k.FINDER_SERIAL:0;
 	}
 	static final int TYPE_TRUE=0x74727565,TYPE_FALSE=0x66616c73;
 	static final int TYPE_SING=0x73696e67,TYPE_DOUB=0x646f7562,TYPE_EXTE=0x65787465,TYPE_COMP=0x636f6d70,TYPE_MAGN=0x6d61676e;
@@ -693,8 +767,10 @@ final class AppleEvents68k {
 
 	/** The program's coercion handler for (fromType, toType), or the wildcard ones: pascal OSErr handler(fromDesc, toType, refcon,
 	 *  VAR result) for descriptor handlers, handler(typeCode, dataPtr, dataSize, toType, refcon, VAR result) for pointer ones. */
-	private int[] coerceWithHandler(int[] d,int desired,byte[] data) throws M68kException {
-		int[] h=coercions.get(key(d[0],desired));if(h==null)h=coercions.get(key(d[0],TYPE_WILD));if(h==null)h=coercions.get(key(TYPE_WILD,desired));if(h==null)return null;
+	private int[] coerceWithHandler(int[] d,int desired,byte[] data,boolean exact) throws M68kException {
+		// the wildcard pairs, '****' -> '****' last: Apple Event XCMDs' AEInstallHandler "*" installs one handler for every coercion
+		int[] h;if(exact)h=coercions.get(key(d[0],desired));else{h=coercions.get(key(d[0],TYPE_WILD));if(h==null)h=coercions.get(key(TYPE_WILD,desired));if(h==null)h=coercions.get(key(TYPE_WILD,TYPE_WILD));}
+		if(h==null)return null;
 		if(Mac68kApi.TRACE)System.err.println("[ae] coercion handler "+fourcc(d[0])+" -> "+fourcc(desired)+" at $"+Integer.toHexString(h[0]));
 		M68kCpu cpu=tb.cpu;int saved=cpu.a[7];
 		cpu.a[7]-=16;int from=cpu.a[7],result=from+8;writeDesc(from,d[0],d[1]);writeDesc(result,TYPE_NULL,0);
@@ -726,7 +802,10 @@ final class AppleEvents68k {
 		int event=memory.allocate(8,2),reply=memory.allocate(8,2);writeDesc(event,TYPE_AEVT,eh);
 		Record replyRecord=new Record();replyRecord.isRecord=true;int rh=register(replyRecord);writeDesc(reply,TYPE_AEVT,rh);
 		int result=dispatch(cls,id,event,reply);
-		disposeDesc(event);disposeDesc(reply);memory.free(event);memory.free(reply);
+		// a suspended event (and its reply) stays until AEResumeTheCurrentEvent: NewsWatcher 2.0 suspends 'oapp', reads its
+		// class later and put up "An unexpected error occurred: -1701" at every start
+		if(suspended.remove(eh)){deferred.add(eh);deferred.add(rh);}else{disposeDesc(event);disposeDesc(reply);}
+		memory.free(event);memory.free(reply);
 		if(id==0x71756974&&result==ERR_NOT_HANDLED)throw new Toolbox68k.ExitToShell();
 		if(id==0x71756974&&result==USER_CANCELED)tb.events.quitCancelledByProgram(); // "Save changes?" answered Cancel: HyperZebra's quit stops
 		return result;
@@ -735,7 +814,7 @@ final class AppleEvents68k {
 	static final int USER_CANCELED=-128;
 
 	/** Whether the program installed a handler that would take (class, id). */
-	boolean hasHandler(int cls,int id){return handlers.containsKey(key(cls,id))||handlers.containsKey(key(cls,TYPE_WILD))||handlers.containsKey(key(TYPE_WILD,id))||handlers.containsKey(key(TYPE_WILD,TYPE_WILD));}
+	boolean hasHandler(int cls,int id){Map<Long,int[]> handlers=handlers();return handlers.containsKey(key(cls,id))||handlers.containsKey(key(cls,TYPE_WILD))||handlers.containsKey(key(TYPE_WILD,id))||handlers.containsKey(key(TYPE_WILD,TYPE_WILD));}
 	/**
 	 * An event the Toolbox makes itself (the Text Services Manager passing an input method's events) goes straight to the
 	 * program's handler, as if the program had sent it to itself: {@code params} are keyword -> {type, data bytes}. The
@@ -766,9 +845,11 @@ final class AppleEvents68k {
 		finally{if(temp!=0){disposeDesc(temp);memory.free(temp);}}
 	}
 
-	private int dispatch(int cls,int id,int event,int reply) throws M68kException {
-		Integer pre=specialHandlers.get(KEY_PRE_DISPATCH);
+	private int dispatch(int cls,int id,int event,int reply) throws M68kException {return dispatch(cls,id,event,reply,false);}
+	private int dispatch(int cls,int id,int event,int reply,boolean skipPreDispatch) throws M68kException {
+		Integer pre=skipPreDispatch?null:specialHandlers.get(KEY_PRE_DISPATCH);
 		if(pre!=null&&pre!=0){int r=callHandler(new int[]{pre,0},event,reply);if(Mac68kApi.TRACE)System.err.println("[ae] pre-dispatch handler for "+fourcc(cls)+"/"+fourcc(id)+" returned "+r);if(r!=ERR_NOT_HANDLED)return r;} // keyPreDispatch: errAEEventNotHandled lets the event through to its handler; anything else (noErr included) is the event's result (AppleScript's kOSAUseStandardDispatch pre-dispatch runs the script's handlers first and answers -1708 for events the script does not handle)
+		Map<Long,int[]> handlers=handlers();
 		int[] h=handlers.get(key(cls,id));
 		if(h==null)h=handlers.get(key(cls,TYPE_WILD));
 		if(h==null)h=handlers.get(key(TYPE_WILD,id));
@@ -779,6 +860,26 @@ final class AppleEvents68k {
 	}
 	/** Data handles of events a handler suspended (AESuspendTheCurrentEvent): the program disposes of those itself. */
 	private final java.util.Set<Integer> suspended=new java.util.HashSet<Integer>();
+	/** Data handles of suspended events (and replies) left alive when their handler returned: AEResumeTheCurrentEvent disposes of them. */
+	private final java.util.Set<Integer> deferred=new java.util.HashSet<Integer>();
+	/**
+	 * AEResumeTheCurrentEvent: the suspended event is handled now - by its installed handler (kAEUseStandardDispatch, -1), by
+	 * {@code dispatcher} with {@code refcon}, or not at all (kAENoDispatch, 0: the program has handled it) - and then the
+	 * Apple Event Manager disposes of the event and its reply, as it would have when the handler returned. Only what was
+	 * deferred is disposed of (a descriptor the program disposed of itself is not touched again).
+	 */
+	private int resumeEvent(int event,int reply,int dispatcher,int refcon) throws M68kException {
+		if(event==0)return 0;
+		int eh=memory.readLong(event+4),rh=reply==0?0:memory.readLong(reply+4);
+		// kOSADontUsePhac (refCon bit 0, which AppleScript's `continue` sets): the standard dispatch skips the pre-dispatch ('phac') handler -
+		// the one that ran the script, so that calling it again would run the script again (FaceSpan 2.1 recursed 13 deep: Script Error -11015)
+		if(dispatcher==-1){Record r=record(event);if(r!=null)dispatch(r.eventClass,r.eventId,event,reply,(refcon&1)!=0);}
+		else if(dispatcher!=0)callHandler(new int[]{dispatcher,refcon},event,reply);
+		if(suspended.remove(eh))return 0; // the handler suspended it again
+		if(deferred.remove(eh)&&records.containsKey(eh))disposeDesc(event);
+		if(rh!=0&&deferred.remove(rh)&&records.containsKey(rh))disposeDesc(reply);
+		return 0;
+	}
 	/** The events whose handlers are running, innermost last: {type, handle} of each event descriptor (AEGetTheCurrentEvent). */
 	private final java.util.ArrayDeque<int[]> handling=new java.util.ArrayDeque<int[]>();
 	int callHandler(int[] h,int event,int reply) throws M68kException {
@@ -873,6 +974,12 @@ final class AppleEvents68k {
 		if((sendMode&0x2000)!=0){if(replyDesc!=0)writeDesc(replyDesc,TYPE_NULL,0);return 0;}
 		int[] address=r.attributes.get(KEY_ADDRESS);
 		boolean self=address==null;MacApp68k target=null;boolean finderStandIn=false;
+		// a program this process runs on a task of its own (LaunchApplication of a PowerPC program's helper): its own queue
+		if(address!=null&&address[0]==TYPE_PSN){byte[] psn=tb.api.handleContents(address[1]);int low=psn!=null&&psn.length>=8&&MacApp68k.u4(psn,0)==Toolbox68k.PSN_HIGH?MacApp68k.u4(psn,4):0;
+			if(low!=0&&tb.threads.isProgram(low)){
+				if(!tb.events.postAppleEventToProgram(low,export(new int[]{TYPE_AEVT,memory.readLong(event+4)}),tb.app==null?0:tb.app.serialNumber))return -600;
+				if(Mac68kApi.TRACE)System.err.println("[68K] AESend "+fourcc(r.eventClass)+"/"+fourcc(r.eventId)+" -> the program of serial "+low+" in this process");
+				if(replyDesc!=0)writeDesc(replyDesc,TYPE_NULL,0);return 0;}}
 		// a PSN {0,2} is kCurrentProcess, {1,2} the program with serial 2
 		if(address!=null&&address[0]==TYPE_PSN){byte[] psn=tb.api.handleContents(address[1]);if(psn!=null&&psn.length>=8){int low=MacApp68k.u4(psn,4);self=MacApp68k.u4(psn,0)==0&&low==2||tb.app!=null&&low==tb.app.serialNumber||inHyperCard()&&low==Toolbox68k.HYPERCARD_SERIAL;if(!self){target=MacApp68k.bySerial(low);finderStandIn=target==null&&low==Toolbox68k.FINDER_SERIAL;if(target==null&&low==Toolbox68k.ASR_SERIAL){ // the Apple Software Restore stand-in: it ends when it is told to quit
 					if(!Toolbox68k.asrBusy)return -600;
@@ -936,15 +1043,19 @@ final class AppleEvents68k {
 			return 0;}
 		if(!self){
 			Portable p=export(new int[]{TYPE_AEVT,memory.readLong(event+4)});
-			if(!p.attributes.containsKey(KEY_RETURN_ID)){Portable id=new Portable();id.type=TYPE_LONG;id.data=longBytes(returnId++);p.attributes.put(KEY_RETURN_ID,id);}
+			if(!p.attributes.containsKey(KEY_RETURN_ID)){int rid=nextReturnId();Portable id=new Portable();id.type=TYPE_SHOR;id.data=new byte[]{(byte)(rid>>8),(byte)rid};p.attributes.put(KEY_RETURN_ID,id);}
 			Portable sender=new Portable();sender.type=TYPE_PSN;sender.data=new byte[8];putLong(sender.data,4,tb.app==null?0:tb.app.serialNumber);p.attributes.put(0x66726f6d,sender); // keyOriginalAddressAttr 'from'
+			if((sendMode&3)==2&&tb.app!=null)p.queueReplyTo=tb.app; // kAEQueueReply: the answer comes back as an Apple event (processDelivered)
 			target.toolbox.events.postAppleEvent(p,tb.app==null?0:tb.app.serialNumber);
 			if(Mac68kApi.TRACE)System.err.println("[68K] AESend "+fourcc(p.eventClass)+"/"+fourcc(p.eventId)+" -> "+target.name+" mode "+Integer.toHexString(sendMode));
 			if(replyDesc!=0)writeDesc(replyDesc,TYPE_NULL,0);
-			if((sendMode&3)!=3)return 0; // kAENoReply / kAEQueueReply (queued replies are not delivered)
+			if((sendMode&3)!=3)return 0; // kAENoReply / kAEQueueReply (the reply comes as an 'ansr' event)
 			long deadline=System.currentTimeMillis()+(timeout==-2?600_000L:timeout<=0?60_000L:Math.max(1000L,timeout*1000L/60));
 			while(!p.answered&&System.currentTimeMillis()<deadline&&!target.finished)try{Thread.sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			if(!p.answered)return ERR_TIMEOUT;
+			if(Mac68kApi.TRACE&&p.reply!=null){StringBuilder sb=new StringBuilder("[68K] AE reply "+fourcc(p.eventClass)+"/"+fourcc(p.eventId)+" from "+target.name);
+				for(Map.Entry<Integer,Portable> e:p.reply.items.entrySet())sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue().type)).append("=").append(e.getValue().data==null?"(record)":MidiHost68k.hex(java.util.Arrays.copyOf(e.getValue().data,Math.min(e.getValue().data.length,256))));
+				System.err.println(sb);}
 			if(replyDesc!=0&&p.reply!=null){int[] reply=materialize(p.reply);writeDesc(replyDesc,reply[0],reply[1]);}
 			int[] error=p.reply==null?null:lookupPortable(p.reply,KEY_ERROR_NUMBER);
 			return 0;
@@ -960,10 +1071,15 @@ final class AppleEvents68k {
 			// an external runs in HyperCard's process: what its own handlers leave is HyperCard's to handle (SendAEData sends
 			// "Demo"/"NewC" to HyperCard by its process serial number and got procNotFound)
 			if(result==ERR_NOT_HANDLED&&inHyperCard())result=toHyperCard(export(new int[]{memory.readLong(copy),memory.readLong(copy+4)}),record(reply));}
-		finally{if(!suspended.remove(copied[1]))disposeDesc(copy);memory.free(copy);}
+		finally{if(suspended.remove(copied[1]))deferred.add(copied[1]);else disposeDesc(copy);memory.free(copy);}
+		boolean quitNotHandled=result==ERR_NOT_HANDLED&&r.eventId==0x71756974&&r.eventClass==TYPE_AEVT;
+		// An external's event that HyperCard (or a handler) failed: as the cross-process path does (processDelivered), the error goes
+		// into the reply as keyErrorNumber - with the error text the handler put there as keyErrorString - and AESend itself succeeds.
+		// SendAEData reported "Unable to send AppleEvent: -1708" instead of its own "Event not handled." and "Got reply error string".
+		if(result!=0&&!quitNotHandled&&inHyperCard()){Record answer=record(reply);if(answer!=null&&!answer.items.containsKey(KEY_ERROR_NUMBER))answer.items.put(KEY_ERROR_NUMBER,new int[]{TYPE_LONG,tb.api.createHandle(longBytes(result))});flushDirty();result=0;}
 		if(replyDesc!=0){memory.copy(reply,replyDesc,8);}else disposeDesc(reply);
 		memory.free(reply);
-		if(result==ERR_NOT_HANDLED&&r.eventId==0x71756974&&r.eventClass==TYPE_AEVT)throw new Toolbox68k.ExitToShell();
+		if(quitNotHandled)throw new Toolbox68k.ExitToShell();
 		return result;
 	}
 
@@ -981,6 +1097,8 @@ final class AppleEvents68k {
 		final LinkedHashMap<Integer,String> parameters=new LinkedHashMap<Integer,String>();
 		/** Set by HyperTalk when the appleEvent message got to HyperCard itself (no handler took it, or one passed it): HyperCard's own handling follows. */
 		volatile boolean reachedHyperCard;
+		/** The English text of the script error HyperCard itself replies with (keyErrorString), for a System of another script than Japanese. */
+		volatile String englishError;
 		/** What `reply` set: text by keyword ('errs' for reply error). */
 		final LinkedHashMap<Integer,String> reply=new LinkedHashMap<Integer,String>();
 		HyperCardEvent(String eventClass,String eventId,String sender){this.eventClass=eventClass;this.eventId=eventId;this.sender=sender;}
@@ -1009,6 +1127,9 @@ final class AppleEvents68k {
 		try{result=hyperCardReceiver.receive(e);}finally{HYPERCARD_EVENTS.removeLastOccurrence(e);}
 		if(event.eventClass==TYPE_AEVT&&event.eventId==0x6f646f63&&result==ERR_NOT_HANDLED){List<File> files=new ArrayList<File>();filesIn(event.items.get(KEY_DIRECT),files,0);
 			if(!files.isEmpty()){if(tb.hosted()&&!java.awt.GraphicsEnvironment.isHeadless())PCARD.openFromFinder(Sandbox.scriptRequester(),files);result=0;}} // open documents: as HyperCard opens a stack the Finder hands it
+		// the error text of a failed script in the System's script: HyperZebra's message is in the user's language, and a Japanese one
+		// came out "baz???????" on a Roman System - there HyperCard's English text
+		if(e.englishError!=null&&tb.encoding!=StackTextEncoding.JAPANESE&&e.reply.containsKey(KEY_ERROR_STRING))e.reply.put(KEY_ERROR_STRING,e.englishError);
 		if(reply!=null)for(Map.Entry<Integer,String> r:e.reply.entrySet())reply.items.put(r.getKey(),new int[]{TYPE_TEXT,tb.api.createHandle(tb.encoding.encodeReplacing(r.getValue()))});
 		return result;
 	}
@@ -1038,7 +1159,8 @@ final class AppleEvents68k {
 		if(cls==0x6d697363&&(id==0x646f7363||id==0x6576616c)){ // misc/dosc, misc/eval
 			String text=e.parameters.get(KEY_DIRECT);if(text==null)return ERR_DESC_NOT_FOUND;
 			try{String value=id==0x646f7363?TTalk.runExternalStatement(text,card):TTalk.evaluateExternalExpression(text,card,card);if(!e.reply.containsKey(KEY_DIRECT))e.reply(value==null?"":value,null,false);return 0;} // the reply's direct object even when empty: SendAEData's getReply read -1701 without one
-			catch(xTalkException|RuntimeException x){e.reply(x.getMessage()==null?"":x.getMessage(),null,true);return -10000;} // errAEEventFailed with the script's error
+			catch(xTalkException|RuntimeException x){e.reply(x.getMessage()==null?"":x.getMessage(),null,true); // errAEEventFailed with the script's error
+				if(x instanceof xTalkException&&((xTalkException)x).sourceMessage()!=null)e.englishError=((xTalkException)x).sourceMessage();return -10000;}
 		}
 		return ERR_NOT_HANDLED;
 	}
@@ -1049,15 +1171,37 @@ final class AppleEvents68k {
 	/** An Apple event another program sent: materialized here, dispatched, and its reply handed back to the sender. */
 	private int processDelivered(Portable p) throws M68kException {
 		int[] desc=materialize(p);int event=memory.allocate(8,2),reply=memory.allocate(8,2);writeDesc(event,TYPE_AEVT,desc[1]);
-		Record replyRecord=new Record();replyRecord.isRecord=true;replyRecord.eventClass=TYPE_AEVT;replyRecord.eventId=0x616e7377;int rh=register(replyRecord);writeDesc(reply,TYPE_AEVT,rh);
+		Record replyRecord=new Record();replyRecord.isRecord=true;replyRecord.eventClass=TYPE_AEVT;replyRecord.eventId=EVENT_ANSWER;int rh=register(replyRecord);writeDesc(reply,TYPE_AEVT,rh);
 		int result;
 		try{result=dispatch(p.eventClass,p.eventId,event,reply);
 			if(result!=0&&!replyRecord.items.containsKey(KEY_ERROR_NUMBER))replyRecord.items.put(KEY_ERROR_NUMBER,new int[]{TYPE_LONG,tb.api.createHandle(longBytes(result))});
-			p.reply=export(new int[]{TYPE_AEVT,rh});}
-		finally{p.answered=true;if(!suspended.remove(desc[1]))disposeDesc(event);disposeDesc(reply);memory.free(event);memory.free(reply);}
+			p.reply=export(new int[]{TYPE_AEVT,rh});
+			queueReply(p);}
+		finally{p.answered=true;if(suspended.remove(desc[1]))deferred.add(desc[1]);else disposeDesc(event);disposeDesc(reply);memory.free(event);memory.free(reply);}
 		if(result==ERR_NOT_HANDLED&&p.eventId==0x71756974&&p.eventClass==TYPE_AEVT)throw new Toolbox68k.ExitToShell();
 		return result;
 	}
 
-	boolean hasHandlers(){return !handlers.isEmpty();}
+	/** 'ansr': the reply event. */
+	static final int EVENT_ANSWER=0x616e7372;
+	/**
+	 * kAEQueueReply: the reply goes back to the sender as an 'aevt'/'ansr' event with the event's return ID, addressed to the
+	 * sender and from this program, which its AEProcessAppleEvent dispatches to its 'ansr' handler. Apple Dylan's 68K IDE
+	 * talks to its Application Nub with 'dynm'/'rpcn' events sent this way and waited at "Starting application nub" forever.
+	 */
+	private void queueReply(Portable p){
+		MacApp68k sender=p.queueReplyTo;Portable answer=p.reply;
+		if(sender==null||answer==null||sender.finished||sender.toolbox==null)return;
+		answer.type=TYPE_AEVT;answer.isRecord=true;answer.eventClass=TYPE_AEVT;answer.eventId=EVENT_ANSWER;
+		Portable id=p.attributes.get(KEY_RETURN_ID);if(id!=null)answer.attributes.put(KEY_RETURN_ID,id);
+		Portable to=new Portable();to.type=TYPE_PSN;to.data=new byte[8];putLong(to.data,4,sender.serialNumber);answer.attributes.put(KEY_ADDRESS,to);
+		int self=tb.app==null?0:tb.app.serialNumber;
+		Portable from=new Portable();from.type=TYPE_PSN;from.data=new byte[8];putLong(from.data,4,self);answer.attributes.put(KEY_ORIGINAL_ADDRESS,from);
+		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder("[68K] AE reply "+fourcc(p.eventClass)+"/"+fourcc(p.eventId)+" queued to "+sender.name);
+			for(Map.Entry<Integer,Portable> e:answer.items.entrySet())sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue().type)).append("=").append(e.getValue().data==null?"(record)":MidiHost68k.hex(java.util.Arrays.copyOf(e.getValue().data,Math.min(e.getValue().data.length,256))));
+			System.err.println(sb);}
+		sender.toolbox.events.postAppleEvent(answer,self);
+	}
+
+	boolean hasHandlers(){return !handlers().isEmpty();}
 }

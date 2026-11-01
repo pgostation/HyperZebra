@@ -1208,7 +1208,7 @@ msgctxt "menu"
 msgid "Export Card Image…"
 msgstr "匯出卡片影像…"
 
-#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java LauncherStore.java LlmTranslation.java MacAppHost.java ResourceTranslation.java StackTranslation.java VMTranslation.java
+#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Resource Translation…"
 msgstr "資源翻譯…"
@@ -1651,6 +1651,14 @@ msgid "Runs at the speed of a 68040 Mac / an iMac G3. Off: some games run too fa
 msgstr "以68040 Mac / iMac G3的速度執行。關閉：一些遊戲執行太快。"
 
 #: GPreferencesDialog.java
+msgid "PowerPC JIT compiler"
+msgstr "PowerPC JIT 編譯器"
+
+#: GPreferencesDialog.java
+msgid "Runs PowerPC programs faster. Off: the interpreter only."
+msgstr "更快地執行 PowerPC 程式。關閉：僅使用直譯器。"
+
+#: GPreferencesDialog.java
 msgid "Control-arrow and Control-number go to the program, not to macOS (for games)."
 msgstr "Control-方向鍵和 Control-數字鍵會傳給程式，而不是 macOS（用於遊戲）。"
 
@@ -1964,7 +1972,7 @@ msgstr "翻譯需要 macOS 26 或更新版本。"
 msgid "The translation helper (hz-translate) is missing: build it with build.sh on a Mac with Xcode or the Command Line Tools."
 msgstr "缺少翻譯輔助程式（hz-translate）：請在安裝了 Xcode 或 Command Line Tools 的 Mac 上用 build.sh 建置。"
 
-#: GTranslationForm.java
+#: GTranslationForm.java GTranslationSettingsDialog.java
 msgid "Checking…"
 msgstr "檢查中…"
 
@@ -2262,7 +2270,7 @@ msgstr "僅限這台電腦"
 msgid "Built-in synthesizer"
 msgstr "內建合成器"
 
-#: GPreferencesDialog.java
+#: GAppSettingsDialog.java GPreferencesDialog.java
 msgid "Automatic"
 msgstr "自動"
 
@@ -2562,7 +2570,7 @@ msgstr "SIZE 資源"
 msgid "preferred"
 msgstr "偏好"
 
-#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
+#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
 msgid "none"
 msgstr "無"
 
@@ -2733,7 +2741,7 @@ msgstr "開啟HyperZebra HD"
 msgid "Home stack not found"
 msgstr "找不到首頁堆疊"
 
-#: FileChooserPlaces.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
+#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
 msgid "HyperZebra HD"
 msgstr "HyperZebra HD"
 
@@ -2896,6 +2904,22 @@ msgstr "（立即生效；指令碼、卡片顯示和 XCMD/XFCN 的執行速度�
 #: GAppSettingsDialog.java
 msgid "Processor:"
 msgstr "處理器："
+
+#: GAppSettingsDialog.java
+msgid "PowerPC code:"
+msgstr "PowerPC 程式碼："
+
+#: GAppSettingsDialog.java
+msgid "JIT compiler"
+msgstr "JIT 編譯器"
+
+#: GAppSettingsDialog.java
+msgid "Interpreter only"
+msgstr "僅直譯器"
+
+#: GAppSettingsDialog.java
+msgid "(at once, also while the program runs; the interpreter is slower)"
+msgstr "（立即生效，程式執行中也適用；直譯器較慢）"
 
 #: GAppSettingsDialog.java
 msgid "System version:"
@@ -9655,6 +9679,18 @@ msgid "Invalid rectangle for the within operator: {0}"
 msgstr "within 運算子的無效矩形：{0}"
 
 #: TTalk.java
+msgid "Expected a point instead of {0}"
+msgstr "這裡需要點，而不是 {0}"
+
+#: TTalk.java
+msgid "Expected a rectangle instead of {0}"
+msgstr "這裡需要矩形，而不是 {0}"
+
+#: TTalk.java
+msgid "An integer is required here"
+msgstr "這裡需要整數"
+
+#: TTalk.java
 msgid "A card cannot be used as a container"
 msgstr "卡不能用作容器"
 
@@ -10812,7 +10848,7 @@ msgstr "開啟堆疊"
 msgid "Open stack in new window"
 msgstr "在新視窗中開啟堆疊"
 
-#: GPaintDialog.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
+#: GPaintDialog.java MacAppHost.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
 msgid "OK"
 msgstr "確定"
 
@@ -11000,6 +11036,30 @@ msgstr "鍵盤與控制器"
 #: GAppSettingsDialog.java
 msgid "Files and Access"
 msgstr "檔案與存取"
+
+#: FileSystem68k.java GAppSettingsDialog.java InstalledFonts68k.java SystemResources68k.java
+msgid "Fonts"
+msgstr "字體"
+
+#: GAppSettingsDialog.java
+msgid "Font substitution:"
+msgstr "字體替換："
+
+#: GAppSettingsDialog.java
+msgid "Replace:"
+msgstr "替換："
+
+#: GAppSettingsDialog.java
+msgid "Add Substitution"
+msgstr "加入替換"
+
+#: GAppSettingsDialog.java
+msgid "(at once; easier: choose Fix Garbled Text… in the program's Apple menu and click the garbled text)"
+msgstr "（立即生效；更簡單的方法：在程式的蘋果選單中選擇「修正亂碼…」，然後按一下亂碼文字）"
+
+#: GAppSettingsDialog.java
+msgid "Automatic picks a Japanese font like the original"
+msgstr "自動會選擇與原字體相配的日文字體"
 
 #: GAppSettingsDialog.java
 msgid "Each item follows the shared setting, or has a value for this program only. Items set for this program are in bold; their tabs have a dot."
@@ -11454,6 +11514,34 @@ msgstr "用 AI 聊天進行資源翻譯"
 msgid "Copy a request into ChatGPT or another AI chat and paste its answer back."
 msgstr "將請求拷貝到 ChatGPT 或其他 AI 聊天中，再把它的回答貼回來。"
 
+#: MacAppHost.java
+msgid "Fix Garbled Text…"
+msgstr "修正亂碼…"
+
+#: MacAppHost.java
+msgid "Click garbled text to show it in a Japanese font"
+msgstr "按一下亂碼文字，以日文字體顯示"
+
+#: MacAppHost.java
+msgid "Click the garbled text. (Esc cancels)"
+msgstr "請按一下亂碼文字。（按 Esc 取消）"
+
+#: MacAppHost.java
+msgid "Undo the Change"
+msgstr "還原變更"
+
+#: MacAppHost.java
+msgid "Text in {0} is now shown in {1}."
+msgstr "{0} 的文字現在以 {1} 顯示。"
+
+#: MacAppHost.java
+msgid "Fix Garbled Text"
+msgstr "修正亂碼"
+
+#: MacAppHost.java
+msgid "No text a font change fixes was found there. Click right on the garbled characters."
+msgstr "在那裡找不到換字體即可修正的文字。請直接按一下亂碼字元。"
+
 #: GTranslationForm.java GTranslationSettingsDialog.java
 msgid "Resource Translation with AI Chat… works without it."
 msgstr "「用 AI 聊天進行資源翻譯…」不需要它也能使用。"
@@ -11653,4 +11741,40 @@ msgstr "無法理解 reply"
 #: TUtil.java
 msgid "localizedText requires a text and optional values for {1}, {2}…"
 msgstr "localizedText 需要一段文字，以及可選的 {1}、{2}… 的值"
+
+#: GLlmTranslationDialog.java
+msgid "Reading the text in the pictures…"
+msgstr "正在讀取圖片中的文字…"
+
+#: GTranslationForm.java
+msgid "Text in pictures:"
+msgstr "圖片中的文字："
+
+#: GTranslationForm.java
+msgid "Check Again"
+msgstr "重新檢查"
+
+#: GTranslationSettingsDialog.java
+msgid "Translate (read with Tesseract)"
+msgstr "翻譯（用 Tesseract 讀取）"
+
+#: GTranslationSettingsDialog.java
+msgid "Don't translate"
+msgstr "不翻譯"
+
+#: GTranslationSettingsDialog.java
+msgid "(the pictures stay as they are: a translated copy is shown)"
+msgstr "（圖片本身不變：顯示翻譯後的副本）"
+
+#: PictureTranslation.java
+msgid "Tesseract is not installed, so the text in pictures is not translated. Install it - macOS: brew install tesseract tesseract-lang; Windows: the Tesseract installer of UB Mannheim; Linux: the tesseract-ocr packages - and check again."
+msgstr "未安裝 Tesseract，因此圖片中的文字不會被翻譯。請先安裝（macOS：brew install tesseract tesseract-lang；Windows：UB Mannheim 提供的 Tesseract 安裝程式；Linux：tesseract-ocr 套件），然後重新檢查。"
+
+#: PictureTranslation.java
+msgid "Tesseract {0} reads the text in pictures: {1} languages ({2}…)."
+msgstr "Tesseract {0} 讀取圖片中的文字：{1} 種語言（{2}…）。"
+
+#: GTranslationSettingsDialog.java
+msgid "(its PICT resources, by Resource Translation…; the program file is never changed)"
+msgstr "（透過「資源翻譯…」翻譯其 PICT 資源；程式檔案不會被更改）"
 

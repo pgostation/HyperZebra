@@ -20,6 +20,8 @@ final class SoundDriver68k {
 	private final M68kMemory memory;
 	/** Parameter blocks written to the driver and not yet completed, in order; the head is playing. */
 	private final Deque<Integer> queue=new ArrayDeque<Integer>();
+	/** Requests made with an asynchronous call: only those run their ioCompletion routine (a synchronous call leaves the field unused, and programs leave garbage in it). */
+	private final java.util.Set<Integer> asyncRequests=new java.util.HashSet<Integer>();
 	private SoundMixer68k.Voice playing;
 	private int playingBlock;
 
@@ -47,7 +49,7 @@ final class SoundDriver68k {
 		if(Mac68kApi.TRACE)System.err.println("[68K] .Sound Write mode "+(buffer==0||count<2?"?":Integer.toString((short)memory.readWord(buffer)))+" bytes "+count+(async?" async":"")+" pb $"+Integer.toHexString(pb)+" buffer $"+Integer.toHexString(buffer));
 		if(buffer==0||count<2){tb.files.finish(cpu,pb,CONTROL_ERR,async);return true;}
 		memory.writeWord(pb+16,1);cpu.d[0]=cpu.d[0]&0xffff0000; // ioResult 1: in progress
-		queue.add(pb);
+		queue.add(pb);if(async)asyncRequests.add(pb);
 		if(playing==null)startNext(cpu);
 		if(!async){while(queue.contains(pb)&&playing!=null){try{Thread.sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}tb.runDeferred();}
 			cpu.d[0]=(cpu.d[0]&0xffff0000)|(memory.readWord(pb+16)&0xffff);}
@@ -77,7 +79,7 @@ final class SoundDriver68k {
 	}
 	private void complete(M68kCpu cpu,int pb,int result) throws M68kException {
 		memory.writeWord(pb+16,result);
-		tb.files.completion(cpu,pb);
+		if(asyncRequests.remove(pb))tb.files.completion(cpu,pb);
 	}
 	/** KillIO (StopSound): the playing sound stops and every queued request completes with abortErr. */
 	private void killIo(M68kCpu cpu) throws M68kException {
@@ -90,7 +92,7 @@ final class SoundDriver68k {
 	/** Application exit: the sound playing stops and the queued requests are dropped (no completion routines run any more). */
 	void shutDown(){shutDown(false);}
 	/** With release the sound playing gets the closed stack's grace (SoundMixer68k.release). */
-	void shutDown(boolean release){SoundMixer68k.Voice voice=playing;playing=null;playingBlock=0;queue.clear();if(voice!=null){if(release&&voice.source==null)SoundMixer68k.get().release(voice);else SoundMixer68k.get().stop(voice);}}
+	void shutDown(boolean release){SoundMixer68k.Voice voice=playing;playing=null;playingBlock=0;queue.clear();asyncRequests.clear();if(voice!=null){if(release&&voice.source==null)SoundMixer68k.get().release(voice);else SoundMixer68k.get().stop(voice);}}
 
 	// ------------------------------------------------------------------ synthesizers
 

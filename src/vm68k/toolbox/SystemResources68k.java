@@ -54,6 +54,7 @@ final class SystemResources68k {
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("PAT#"),0,null,0,patterns()));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("PAT "),16,"gray",0,new byte[]{(byte)0xaa,0x55,(byte)0xaa,0x55,(byte)0xaa,0x55,(byte)0xaa,0x55}));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("ppat"),16,null,0,deskPixPat()));
+		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("ppt#"),0,null,0,pixPatList()));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("PAT "),17,"ltGray",0,new byte[]{(byte)0x88,0x22,(byte)0x88,0x22,(byte)0x88,0x22,(byte)0x88,0x22}));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("PAT "),18,"dkGray",0,new byte[]{(byte)0x77,(byte)0xdd,(byte)0x77,(byte)0xdd,(byte)0x77,(byte)0xdd,(byte)0x77,(byte)0xdd}));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("ICON"),0,"stop",0,icon(0)));
@@ -78,11 +79,16 @@ final class SystemResources68k {
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl1"),0,"U.S.",0,itl1(false)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl0"),JAPANESE_ITL,"Japanese",0,itl0(true)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl1"),JAPANESE_ITL,"Japanese",0,itl1(true)));
+		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl2"),0,"U.S.",0,itl2()));
+		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl2"),JAPANESE_ITL,"Japanese",0,itl2()));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl4"),0,"U.S.",0,itl4(false)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl4"),JAPANESE_ITL,"Japanese",0,itl4(true)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itlb"),0,"Roman",0,itlb(false)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itlb"),1,"Japanese",0,itlb(true)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itlc"),0,null,0,itlc(japanese)));
+		// 'scrn' 0, the Monitors control panel's screen configuration: one main screen. Timer 1.11 / MS Timer's doTimer read its
+		// slot for SlotVInstall and refused to run without it ("No scrn resource. Use Monitors Control Panel & reboot.")
+		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("scrn"),0,null,0,scrn()));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("KCHR"),0,"U.S.",0,kchr()));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("KCHR"),JAPANESE_ITL+1,"Japanese",0,kchr())); // itlbKeys of the Japanese bundle (the US layout: no JIS keyboard on the host)
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("KCAP"),KeyboardLayout68k.KEYBOARD_TYPE,null,0,KeyboardLayout68k.kcap())); // the keyboard Key Caps draws
@@ -115,6 +121,7 @@ final class SystemResources68k {
 		for(int i=0;i<LABEL_NAMES.length;i++)f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("lstr"),LABEL_STRING_ID+i,null,0x20,str31(LABEL_NAMES[i])));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("MENU"),-16490,null,0,new byte[]{(byte)0xbf,(byte)0x96,0,0,0,0,0,0,0,0,(byte)0xff,(byte)0xff,(byte)0xff,(byte)0xff,4,'H','e','l','p',0}));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("vers"),1,null,0,versionResource(version)));
+		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("PREC"),0,null,ResourceFile68k.RES_PURGEABLE,PrintManager68k.defaultPrintRecord())); // the printer driver's default print record
 		StandardFile68k.addSystemResources(f);
 		// The Folder Manager's names of the System Folder's special folders, as FileSystem68k.specialFolder makes them. Apple's
 		// Installer reads the target System's 'fld#' 0 to place "special-extn:" files; without it they landed in the System Folder.
@@ -226,6 +233,51 @@ final class SystemResources68k {
 		put2(b,table+6,1);                                                  // ctSize: 2 entries
 		int[] rgb={WindowManager68k.DESK_BACK,WindowManager68k.DESK_FORE};
 		for(int i=0;i<2;i++){int e=table+8+i*8;put2(b,e,i);for(int c=0;c<3;c++){int v=rgb[i]>>>(16-c*8)&0xff;put2(b,e+2+c*2,v<<8|v);}}
+		return b;
+	}
+	/**
+	 * 'ppt#' 0, the System's colour pattern list: a count, an offset per pattern from the start of the resource, then each
+	 * pattern as a whole 'ppat' resource image (System 7's has 12: 8x8, 4 bits per pixel). QuickDraw Utilities' NrPixPats /
+	 * GetIndPixPat read it ("Patterned Ovals" drew half of its ovals solid black without one). The designs are HyperZebra's own:
+	 * each row is 8 palette letters, the palette the colours ('.' = white) of the 4-bit colour table.
+	 */
+	static byte[] pixPatList(){
+		String[][] art={
+			{"rrrr....",".rrrr...","..rrrr..","...rrrr.","....rrrr","r....rrr","rr....rr","rrr....r"},          // red diagonal stripes
+			{"bbBBbbBB","bbBBbbBB","BBbbBBbb","BBbbBBbb","bbBBbbBB","bbBBbbBB","BBbbBBbb","BBbbBBbb"},          // blue checks
+			{"oooooooo","ooo.oooo","ooo.oooo","........","o.oooooo","o.oooooo","o.oooooo","........"},          // orange bricks
+			{"gggggggg","gGggggGg","gggggggg","ggGggggG","gggggggg","gGggggGg","gggggggg","ggGggggG"},          // green speckles
+			{"...p....","..ppp...",".ppppp..","ppp.ppp.",".ppppp..","..ppp...","...p....","........"},          // purple diamonds
+			{"cc......","..cc....","....cc..","......cc","......cc","....cc..","..cc....","cc......"},          // teal zig-zag
+			{"yyyyyyyy","yyyyyyyy","oooooooo","rrrrrrrr","pppppppp","bbbbbbbb","cccccccc","gggggggg"},          // rainbow bands
+			{"nNnnnnnN","nnNnnnnN","nnnNnnNn","nnnnNNnn","nnnnNNnn","nnnNnnNn","nnNnnnnN","nNnnnnnN"},          // brown grain
+			{"b.b.y.y.",".b.b.y.y","b.b.y.y.",".b.b.y.y","y.y.b.b.",".y.y.b.b","y.y.b.b.",".y.y.b.b"},          // blue/yellow quilt
+			{"r.......","....g...","......b.","..y.....",".....p..",".c......","...o....",".......r"},          // confetti
+			{"BBBBBBBB","B..BB..B","B..BB..B","BBBBBBBB","BBBBBBBB","B..BB..B","B..BB..B","BBBBBBBB"},          // sky windows
+			{"kkkk....","kkkk....","kkkk....","kkkk....","....kkkk","....kkkk","....kkkk","....kkkk"}};         // grey squares
+		String letters=".rbBogGpcyNnk";
+		int[] rgb={0xffffff,0xdd2020,0x2040c0,0x90b8f0,0xf08820,0x208830,0x90d890,0x9030b0,0x10a0a0,0xf0d020,0x603810,0xa07040,0x808080};
+		byte[][] pats=new byte[art.length][];for(int i=0;i<art.length;i++)pats[i]=pixPat(art[i],letters,rgb);
+		int offset=2+4*pats.length,size=offset;for(byte[] p:pats)size+=p.length;
+		byte[] b=new byte[size];put2(b,0,pats.length);
+		for(int i=0;i<pats.length;i++){put4(b,2+i*4,offset);System.arraycopy(pats[i],0,b,offset,pats[i].length);offset+=pats[i].length;}
+		return b;
+	}
+	/** One 8x8 'ppat' image at 4 bits per pixel with the colours its rows use; pat1Data (the 1-bit fallback) marks the dark pixels. */
+	private static byte[] pixPat(String[] rows,String letters,int[] rgb){
+		java.util.List<Integer> used=new java.util.ArrayList<Integer>();
+		for(String r:rows)for(char c:r.toCharArray()){int k=letters.indexOf(c);if(!used.contains(k))used.add(k);}
+		final int map=28,pixels=map+50,table=pixels+32;
+		byte[] b=new byte[table+8+used.size()*8];
+		put2(b,0,1);put4(b,2,map);put4(b,6,pixels);put2(b,14,-1);          // patType 1 (full PixPat), patMap, patData, patXValid -1
+		put2(b,map+4,0x8004);put2(b,map+10,8);put2(b,map+12,8);             // rowBytes 4 (PixMap flag), bounds 0,0,8,8
+		put4(b,map+22,0x480000);put4(b,map+26,0x480000);                    // hRes, vRes 72 dpi
+		put2(b,map+32,4);put2(b,map+34,1);put2(b,map+36,4);put4(b,map+42,table); // pixelSize 4, cmpCount 1, cmpSize 4, pmTable
+		for(int y=0;y<8;y++)for(int x=0;x<8;x++){int k=letters.indexOf(rows[y].charAt(x)),c=rgb[k],index=used.indexOf(k);
+			b[pixels+y*4+x/2]|=(byte)(x%2==0?index<<4:index);
+			int luma=((c>>16&0xff)*30+(c>>8&0xff)*59+(c&0xff)*11)/100;if(luma<128)b[20+y]|=(byte)(0x80>>x);}
+		put2(b,table+6,used.size()-1);                                      // ctSize
+		for(int i=0;i<used.size();i++){int e=table+8+i*8,c=rgb[used.get(i)];put2(b,e,i);for(int k=0;k<3;k++){int v=c>>>(16-k*8)&0xff;put2(b,e+2+k*2,v<<8|v);}}
 		return b;
 	}
 	private static void put2(byte[] b,int i,int v){b[i]=(byte)(v>>8);b[i+1]=(byte)v;}
@@ -489,6 +541,13 @@ final class SystemResources68k {
 		return 0;
 	}
 	/**
+	 * itl2 (string comparison, IM Text) in the old format: the init, fetch, vernier and project hook offsets all lead to an RTS and
+	 * formatFlag 0 says there are no extended tables - comparing, case and sorting are done natively (IUMagString, UppercaseText).
+	 * The script bundle names it (itlbSort): the PowerPC Apple Dylan (MCL) loads the system script's itl2 by that ID at start-up
+	 * and stopped with "Can't find :|itl2| 16384 resource".
+	 */
+	private static byte[] itl2(){return new byte[]{0,10,0,10,0,10,0,10,0,0,0x4e,0x75};}
+	/**
 	 * NItl4Rec (tokens resource, IM Text): the byte-to-token mapping table, an empty untoken table, the default NumberParts
 	 * table and the white-space list. The str/fetch routines are absent (offsets 0): IntlTokenize is answered natively
 	 * (Toolbox68k.intlTokenize, with {@link #tokenType}), and AppleScript asks IUGetItlTable for the number parts table (decimal
@@ -519,6 +578,14 @@ final class SystemResources68k {
 		return out.toByteArray();
 	}
 	private static void wideCharArr(java.io.ByteArrayOutputStream out,int size,String chars){word(out,size);for(int i=0;i<10;i++){int v=i<chars.length()?chars.charAt(i):0;word(out,v);}}
+	/** 'scrn' (Inside Macintosh V, Graphics Devices): count, then per screen spDrvrHw, slot, dCtlDevBase, mode, flagMask, flags
+	 *  (screenActive + mainScreen), colorTable, gammaTable (-1: the defaults), the global rect and no control calls. */
+	private static byte[] scrn(){
+		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+		word(out,1);word(out,0);word(out,0);word(out,0);word(out,0);word(out,0x80);word(out,0x8800);word(out,0x8800);word(out,-1);word(out,-1);
+		word(out,0);word(out,0);word(out,480);word(out,640);word(out,0);
+		return out.toByteArray();
+	}
 	private static void word(java.io.ByteArrayOutputStream out,int v){out.write((v>>8)&0xff);out.write(v&0xff);}
 	private static void long_(java.io.ByteArrayOutputStream out,int v){word(out,v>>>16);word(out,v&0xffff);}
 	private static void fixedPascal(java.io.ByteArrayOutputStream out,StackTextEncoding e,String s,int size){

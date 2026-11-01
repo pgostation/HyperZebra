@@ -92,7 +92,10 @@ final class ControlPanelHost68k implements MacApp68k.HostedCode {
 		byte[] items=ditl==null?new byte[]{(byte)0xff,(byte)0xff}:tb.resources.data(ditl);
 		if(union==null)union=itemBounds(items);
 		int width=Math.max(64,union[3]-union[1]),height=Math.max(32,union[2]-union[0]);
-		int itemsHandle=tb.api.createHandle(offsetItems(items,-union[1],-union[0]));
+		// The items keep the Control Panel desk accessory's coordinates (the cdev area began at 87,-1 right of its icon list): the
+		// window's origin is moved there instead, as the System 7 Finder does. Church Windows 1.1 creates its controls from
+		// 'CNTL' resources in those coordinates; with the items moved to the origin they lay 87 pixels right of them, cut off.
+		int itemsHandle=tb.api.createHandle(items);
 		// the window: a document window with a close box, placed like the Finder's (upper third of the screen, centred)
 		java.awt.Rectangle screen=MacAppHost.screenBounds();
 		int left=Math.max(4,(screen.width-width)/2),top=Math.max(MacAppHost.MENU_BAR_HEIGHT+24,MacAppHost.MENU_BAR_HEIGHT+(screen.height-MacAppHost.MENU_BAR_HEIGHT-height)/3);
@@ -103,12 +106,14 @@ final class ControlPanelHost68k implements MacApp68k.HostedCode {
 		dialog=cpu.popLong();
 		if(dialog==0)throw new M68kCpuException(cpu.pc,"the control panel window could not be created");
 		setPort();
+		cpu.pushWord(union[1]);cpu.pushWord(union[0]);trap(0xa878,4); // SetOrigin(union.left, union.top)
 		// the panel window's font is the application font at 9 points, as in the Control Panel desk accessory before: cdevs lay out
 		// their items for it (QuicKeys' "QuicKeys:" label is 51 pixels wide, its copyright two lines in 26) and give their
 		// controls useWFont, so with the system font their titles were cut off
 		cpu.pushWord(1);trap(0xa887,2);cpu.pushWord(9);trap(0xa88a,2); // TextFont(applFont), TextSize(9)
 		int result=call(INIT_DEV,0);
-		if(result==CDEV_GEN_ERR||result==CDEV_MEM_ERR||result==CDEV_RES_ERR||result==CDEV_UNSET){
+		// cdevUnset back is no error: the value initDev was given, handed back by a panel that keeps no storage (SoftwareFPU 3.07)
+		if(result==CDEV_GEN_ERR||result==CDEV_MEM_ERR||result==CDEV_RES_ERR){
 			cdevValue=result;
 			String why=result==CDEV_MEM_ERR?"not enough memory":result==CDEV_RES_ERR?"a resource is missing":"a general error";
 			failure="\""+title()+"\" could not be opened: "+why+" (cdev result "+result+")";
@@ -134,16 +139,6 @@ final class ControlPanelHost68k implements MacApp68k.HostedCode {
 			int len=d[o+13]&0xff;o+=14+len+(len&1);
 		}
 		return u==null?new int[]{0,0,64,64}:u;
-	}
-
-	/** A copy of a DITL with every item rectangle moved by (dh, dv). */
-	private static byte[] offsetItems(byte[] d,int dh,int dv){
-		byte[] c=d.clone();int count=(short)MacApp68k.u2(c,0)+1,o=2;
-		for(int i=0;i<count&&o+14<=c.length;i++){
-			for(int k=0;k<4;k++){int at=o+4+k*2,v=(short)MacApp68k.u2(c,at)+((k&1)==0?dv:dh);c[at]=(byte)(v>>8);c[at+1]=(byte)v;}
-			int len=c[o+13]&0xff;o+=14+len+(len&1);
-		}
-		return c;
 	}
 
 	// ------------------------------------------------------------------ events

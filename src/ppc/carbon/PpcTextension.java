@@ -26,7 +26,7 @@ final class PpcTextension {
 
 	private static final int NO_ERR=0,PARAM_ERR=-50,EOF_ERR=-39,USER_CANCELED=-22004,RUN_INDEX_OUT_OF_BOUNDS=-22007,NO_MATCH=-22008,TAG_INVALID_FOR_RUN=-22009,
 		DATA_TYPE_NOT_ALLOWED=-22015,DRAG_NOT_ACCEPTED=-1857;
-	private static final int TEXT='T'<<24|'E'<<16|'X'<<8|'T',UTXT='u'<<24|'t'<<16|'x'<<8|'t',RTF='R'<<24|'T'<<16|'F'<<8|' ';
+	private static final int TEXT='T'<<24|'E'<<16|'X'<<8|'T',UTXT='u'<<24|'t'<<16|'x'<<8|'t',RTF='R'<<24|'T'<<16|'F'<<8|' ',TXTN='t'<<24|'x'<<16|'t'<<8|'n'; // TXTN: kTXNTextensionFile, the text as TXNSave wrote it
 	private static final int USE_CURRENT_SELECTION=0xffffffff,END_OFFSET=0x7fffffff;
 	/** TERec fields: destRect, viewRect, selStart, selEnd, teLength, hText, txFont, txFace, txSize. */
 	private static final int TE_DEST=0,TE_VIEW=8,TE_SEL_START=32,TE_SEL_END=34,TE_LENGTH=60,TE_TEXT=62,TE_FONT=74,TE_FACE=76,TE_SIZE=80;
@@ -207,18 +207,25 @@ final class PpcTextension {
 			if(at<0){ret(NO_MATCH);return;}
 			if(arg(8)!=0)memory.writeLong(arg(8),at);if(arg(9)!=0)memory.writeLong(arg(9),at+needle.length());ret(NO_ERR);});
 		// files: TXNSetDataFromFile(object, refNum, fileType, length, start, end) reads from the file's mark; TXNSave(object,
-		// type, resType, encoding, FSSpec*, dataRefNum, resRefNum) writes the text from the start of the data fork
-		l.register(null,"TXNSetDataFromFile",(r,c)->{Txn t=txn(arg(0));if(t==null){ret(PARAM_ERR);return;}int type=arg(2);if(type!=TEXT&&type!=UTXT&&type!=RTF){ret(DATA_TYPE_NOT_ALLOWED);return;}
+		// type, resType, encoding, FSSpec*, dataRefNum, resRefNum) writes the text from the start of the data fork (at the mark when the file is already past it)
+		l.register(null,"TXNSetDataFromFile",(r,c)->{Txn t=txn(arg(0));if(t==null){ret(PARAM_ERR);return;}int type=arg(2);if(type!=TEXT&&type!=UTXT&&type!=RTF&&type!=TXTN){ret(DATA_TYPE_NOT_ALLOWED);return;}
 			int[] mark=fileIo(0xa018,arg(1),0,0,0,0),eof=fileIo(0xa011,arg(1),0,0,0,0);if(mark[0]!=0||eof[0]!=0){ret(mark[0]!=0?mark[0]:eof[0]);return;} // _GetFPos, _GetEOF
 			int n=Math.max(0,eof[2]-mark[3]);if(arg(3)!=END_OFFSET)n=Math.min(n,arg(3));
+			if(type==TXTN){ // TXNSave's own format delimits the text itself (mMemo passes length 0 and reads on from the mark)
+				int hb=rt.allocate(10,2);int[] hr=fileIo(0xa002,arg(1),hb,8,0,0);byte[] h=memory.readBytes(hb,Math.max(0,Math.min(8,hr[1])));memory.free(hb);
+				if(h.length==8&&h[0]=='t'&&h[1]=='x'&&h[2]=='t'&&h[3]=='n')n=Math.min(Math.max(0,eof[2]-mark[3]-8),((h[4]&255)<<24)|((h[5]&255)<<16)|((h[6]&255)<<8)|(h[7]&255));
+				else fileIo(0xa044,arg(1),0,0,1,mark[3]); // _SetFPos: a plain text file, back to where it began
+			}
 			int buf=rt.allocate(n+2,2);int[] read=fileIo(0xa002,arg(1),buf,n,0,0);byte[] b=memory.readBytes(buf,read[1]);memory.free(buf); // _Read from the mark
 			if(read[0]!=0&&read[0]!=EOF_ERR){ret(read[0]);return;}
 			String s;if(type==UTXT){int from=b.length>=2&&(b[0]&255)==0xfe&&(b[1]&255)==0xff?2:0;s=new String(b,from,(b.length-from)&~1,StandardCharsets.UTF_16BE);}else s=type==RTF?rtfText(b):rt.toolbox.decode(b);
 			setData(t,s,arg(4),arg(5));t.saved=text(t);t.changes=0;ret(NO_ERR);});
 		l.register(null,"TXNSave",(r,c)->{Txn t=txn(arg(0));if(t==null){ret(PARAM_ERR);return;}int ref=(short)arg(5);
 			String s=text(t);byte[] b=arg(1)==UTXT||arg(3)==2?s.getBytes(StandardCharsets.UTF_16BE):rt.toolbox.encoding.encodeReplacing(s); // 'utxt' or kTXNUnicodeEncoding
-			int buf=rt.allocate(b.length+2,2);memory.load(buf,b);int[] w=fileIo(0xa003,ref,buf,b.length,1,0);memory.free(buf); // _Write from the start (fsFromStart)
-			if(w[0]!=0){ret(w[0]);return;}int[] e=fileIo(0xa012,ref,0,0,0,0,b.length);if(e[0]!=0){ret(e[0]);return;} // _SetEOF
+			if(arg(1)==TXTN){byte[] f=new byte[b.length+8];f[0]='t';f[1]='x';f[2]='t';f[3]='n';f[4]=(byte)(b.length>>24);f[5]=(byte)(b.length>>16);f[6]=(byte)(b.length>>8);f[7]=(byte)b.length;System.arraycopy(b,0,f,8,b.length);b=f;} // the Textension format: a header with the length, so a reader can go on after it
+			int[] at=fileIo(0xa018,ref,0,0,0,0);boolean whole=at[0]!=0||at[3]==0; // _GetFPos: a program that wrote its own data first (mMemo's preferences) gets the text at the mark
+			int buf=rt.allocate(b.length+2,2);memory.load(buf,b);int[] w=fileIo(0xa003,ref,buf,b.length,whole?1:0,0);memory.free(buf); // _Write from the start (fsFromStart) or at the mark
+			if(w[0]!=0){ret(w[0]);return;}if(whole){int[] e=fileIo(0xa012,ref,0,0,0,0,b.length);if(e[0]!=0){ret(e[0]);return;}} // _SetEOF
 			t.saved=text(t);t.changes=0;ret(NO_ERR);});
 		l.register(null,"TXNRevert",(r,c)->{Txn t=txn(arg(0));if(t==null){ret(PARAM_ERR);return;}setData(t,t.saved,0,END_OFFSET);t.changes=0;ret(NO_ERR);});
 		// printing through the Printing Manager: the text wrapped to the page, in the object's font
@@ -316,7 +323,7 @@ final class PpcTextension {
 		l.register(null,"InvokeTXNIncomingDataFilterUPP",(r,c)->{for(int n=0;n<8;n++)if(dataFilterUpps.contains(arg(n))){int[] a=new int[n];for(int i=0;i<n;i++)a[i]=arg(i);ret(rt.cpu.call(arg(n),a));return;}ret(PARAM_ERR);});
 		// TXNActionKeyMapperUPP: CFStringRef (TXNActionKey, UInt32 commandID), uppTXNActionKeyMapperProcInfo $3F0
 		l.register(null,"NewTXNActionKeyMapperUPP",(r,c)->ret(r.newRoutineDescriptor(arg(0),ACTION_KEY_MAPPER_PROC_INFO,PpcRuntime.ISA_PPC)));
-		l.register(null,"DisposeTXNActionKeyMapperUPP",(r,c)->{int rd=arg(0);if(rd!=0&&r.isRoutineDescriptor(rd)&&memory.isAllocated(rd))memory.free(rd);});
+		l.register(null,"DisposeTXNActionKeyMapperUPP",(r,c)->r.disposeRoutineDescriptor(arg(0)));
 		l.register(null,"InvokeTXNActionKeyMapperUPP",(r,c)->ret(arg(2)==0?0:r.isRoutineDescriptor(arg(2))?r.callUniversal(arg(2),ACTION_KEY_MAPPER_PROC_INFO,new int[]{arg(0),arg(1)}):r.cpu.call(arg(2),arg(0),arg(1))));
 		// TXNPsuedoUnicodeKeyDown: CarbonLib-private, taken as (object, EventRecord*) like TXNKeyDown; an argument that is no key event is ignored
 		l.register(null,"TXNPsuedoUnicodeKeyDown",(r,c)->{Txn t=txn(arg(0));int e=arg(1);if(t==null||e==0||t.readOnly)return;int what=memory.readWord(e);if(what!=3&&what!=5)return;

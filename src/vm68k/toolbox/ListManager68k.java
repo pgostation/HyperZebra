@@ -84,7 +84,13 @@ final class ListManager68k {
 			case 0x10:{int h=memory.readLong(sp);cpu.a[7]+=4;ListState s=lists.get(h);if(s!=null&&!s.selected.isEmpty()){int row=(int)(s.selected.get(0)>>>32);if(row<s.scrollRow||row>=s.scrollRow+visibleRows(s)){s.scrollRow=Math.max(0,Math.min(row,Math.max(0,s.rows-visibleRows(s))));syncScroll(s);draw(s);}}return true;}
 			// LUpdate redraws the scroll bar as well as the cells (an update handler may use BeginUpdate / LUpdate / DrawGrowIcon /
 			// EndUpdate with no DrawControls; the bar was drawn only at LNew, inside the clip narrowed to the cells)
-			case 0x64:{int h=memory.readLong(sp);cpu.a[7]+=8;ListState s=lists.get(h);if(s!=null){draw(s);drawScrollBar(s);}return true;}
+			// LUpdate(theRgn, lHandle) draws only the cells whose rectangles meet theRgn: none when it is empty, as the visRgn of a
+			// window not shown yet is. Cythera fills its To-Do window's list before its game model has emptied the entries (zeros
+			// then, not its "empty" marker) and calls LUpdate on the hidden window: drawn anyway, its LDEF met an object it does
+			// not know and the game quit right after its opening cutscene.
+			case 0x64:{int h=memory.readLong(sp),rgn=memory.readLong(sp+4);cpu.a[7]+=8;ListState s=lists.get(h);if(s!=null){
+				int data=rgn==0?0:memory.readLong(rgn);updateArea=data==0?null:QdRegion.decode(memory,data);
+				try{if(updateArea==null||!updateArea.isEmpty()){draw(s);drawScrollBar(s);}}finally{updateArea=null;}}return true;}
 			case 0x00:{int h=memory.readLong(sp);boolean act=memory.readByte(sp+4)!=0;cpu.a[7]+=6;ListState s=lists.get(h);if(s!=null){s.active=act;memory.writeByte(memory.readLong(h)+37,act?1:0);draw(s);
 				if(scrollBar(s)!=0){int d=tb.controls.data(s.vScroll);if(d!=0)memory.writeByte(d+17,act?0:255);drawScrollBar(s);}}return true;} // LActivate: an inactive list's scroll bar is dimmed
 			case 0x14:{int h=memory.readLong(sp),cSize=memory.readLong(sp+4);cpu.a[7]+=8;ListState s=lists.get(h);if(s!=null){s.cellHeight=Math.max(1,(short)(cSize>>16));s.cellWidth=Math.max(1,(short)cSize);sync(s);draw(s);}return true;}
@@ -165,7 +171,10 @@ final class ListManager68k {
 		s.cellHeight=ch>0?ch:16;s.cellWidth=cw>0?cw:Math.max(1,(s.view[3]-s.view[1])/Math.max(1,s.columns));
 		memory.copy(rView,r,8);memory.writeLong(r+8,window);memory.writeWord(r+16,s.cellHeight);memory.writeWord(r+18,s.cellWidth);memory.writeByte(r+37,1);memory.writeLong(r+60,0);
 		if(scrollVert){s.hasVScroll=true;s.vScroll=tb.controls.create(window,s.view[0],s.view[3],s.view[2],s.view[3]+16,new byte[]{0},true,0,0,0,16,0);memory.writeLong(r+28,s.vScroll);s.recordVScroll=s.vScroll;s.vScrollControl=tb.controls.controls.get(s.vScroll);}
-		if(proc!=0&&proc!=CTB_LDEF){ // custom list definition: one registered for the ID (RegisterListDefinition), else the program's 'LDEF' resource, kept locked and stored in listDefProc
+		// procID 0 is GetResource('LDEF',0) on a Mac too: an LDEF 0 in a file above the System's is the program's own (the Yennie
+		// eXternals' showListPatch renumbers its stack's LDEF 300 "cicnText" to 0 around ShowList's LNew(0) to get colour icon cells)
+		ResourceFile68k.Resource own0=proc==0?tb.resources.find(0x4c444546,0):null;
+		if(proc!=0&&proc!=CTB_LDEF||own0!=null&&!tb.resources.isSystem(own0)){ // custom list definition: one registered for the ID (RegisterListDefinition), else the program's 'LDEF' resource, kept locked and stored in listDefProc
 			Integer registered=registeredDefinitions.get(proc);
 			ResourceFile68k.Resource res=registered!=null?null:tb.resources.find(0x4c444546,proc);int h=registered!=null?registered:res==null?0:tb.resources.handleFor(res);
 			if(h!=0&&memory.readLong(h)!=0){tb.api.setHandleState(h,tb.api.handleState(h)|0x80);s.ldef=h;memory.writeLong(memory.readLong(handle)+64,h);}
@@ -314,11 +323,18 @@ final class ListManager68k {
 
 	/** Redraws every visible cell through the LDEF (lDrawMsg carries the selection state, so no separate hilite pass is needed)
 	 *  and clears the part of rView beyond the last row and column. */
+	/** The region an LUpdate in progress draws in (null: the whole list). */
+	private QdRegion updateArea;
+	private boolean inUpdateArea(int[] r){
+		if(updateArea==null)return true;
+		for(int[] a:updateArea.rects())if(a[0]<r[2]&&r[0]<a[2]&&a[1]<r[3]&&r[1]<a[3])return true;
+		return false;
+	}
 	private void drawGuest(ListState s) throws M68kCpuException {
 		try{
 			int bottom=s.view[0],right=s.view[1];
 			for(int row=s.scrollRow;row<s.rows&&(row-s.scrollRow)*s.cellHeight<s.view[2]-s.view[0];row++)for(int col=s.scrollColumn;col<s.columns&&(col-s.scrollColumn)*s.cellWidth<s.view[3]-s.view[1];col++){
-				int[] r=cellRect(s,row,col);callDefProc(s,L_DRAW,s.selected.contains(key(row,col)),r,row,col);bottom=Math.max(bottom,r[2]);right=Math.max(right,r[3]);}
+				int[] r=cellRect(s,row,col);if(inUpdateArea(r))callDefProc(s,L_DRAW,s.selected.contains(key(row,col)),r,row,col);bottom=Math.max(bottom,r[2]);right=Math.max(right,r[3]);}
 			Graphics2D g=tb.quickDraw.windowSurface(s.window);if(g==null)return;
 			try{g.setClip(s.view[1],s.view[0],s.view[3]-s.view[1],s.view[2]-s.view[0]);g.setColor(Color.WHITE);
 				if(bottom<s.view[2])g.fillRect(s.view[1],bottom,s.view[3]-s.view[1],s.view[2]-bottom);

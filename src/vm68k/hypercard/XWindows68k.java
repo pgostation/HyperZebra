@@ -47,6 +47,10 @@ final class XWindows68k {
 	private final Map<Integer,XWindow> windows=new LinkedHashMap<Integer,XWindow>();
 	private int depth;
 	private boolean pumping;
+	/** The host menu bar was clicked: windows that registered menus (RegisterXWMenu) get xMBarClickedEvt at the next pump. */
+	private volatile boolean menuBarClicked;
+	/** Choices {menuId, item} from menus a window registered, for its xMenuEvt at the next pump. */
+	private final java.util.concurrent.ConcurrentLinkedQueue<int[]> menuChoices=new java.util.concurrent.ConcurrentLinkedQueue<int[]>();
 
 	XWindows68k(Xcmd68k.Session session){this.session=session;memory=session.memory;macApi=session.macApi;trackDrags();}
 	/** The external tracks drags of its windows itself (FindWindow inDrag, DragWindow): a native move of one reaches it as that click. */
@@ -76,7 +80,8 @@ final class XWindows68k {
 			case 101:{XWindow w=windows.get(in(block,0));if(w!=null){sendClose(w);if(windows.containsKey(w.record))close(w);}result(block,w==null?XRES_FAIL:XRES_SUCC);return true;}
 			case 102:{XWindow w=windows.get(in(block,0));if(w!=null)w.idleTicks=Math.max(0,in(block,1));if(TRACE)System.err.println("[xwindow] SetXWIdleTime $"+Integer.toHexString(in(block,0))+" "+in(block,1));result(block,w==null?XRES_FAIL:XRES_SUCC);return true;} // SetXWIdleTime
 			case 103:{XWindow w=windows.get(in(block,0));if(w!=null)w.interruptCode=in(block,1)!=0;result(block,w==null?XRES_FAIL:XRES_SUCC);return true;} // XWHasInterruptCode
-			case 104:{XWindow w=windows.get(in(block,0));int menu=in(block,1);if(w!=null){if(in(block,2)!=0){if(!w.menus.contains(menu))w.menus.add(menu);}else w.menus.remove(Integer.valueOf(menu));}result(block,w==null?XRES_FAIL:XRES_SUCC);return true;} // RegisterXWMenu
+			case 104:{XWindow w=windows.get(in(block,0));int menu=in(block,1);if(w!=null){ // RegisterXWMenu(window, MenuHandle, registering)
+				if(in(block,2)!=0){if(!w.menus.contains(menu))w.menus.add(menu);}else w.menus.remove(Integer.valueOf(menu));}result(block,w==null?XRES_FAIL:XRES_SUCC);return true;} // RegisterXWMenu
 			case 105:{XWindow w=windows.get(in(block,0));if(w!=null)w.editing=in(block,1)!=0;result(block,XRES_SUCC);return true;} // BeginXWEdit / EndXWEdit: HyperCard's Edit menu is not shared here
 			case 106:result(block,XRES_NOT_IMP);return true; // SaveXWScript (script editor windoids)
 			case 107:case 108:result(block,XRES_NOT_IMP);return true; // Get/SetCheckPoints (debugger windoids)
@@ -229,7 +234,11 @@ final class XWindows68k {
 		try{
 			if(session.running==1){cpu.a[7]=0x00fff000;if(tb.hosted())tb.host().externalEntered();}
 			tb.attach(cpu);
-			tb.api.quickDraw().setPortTo(cpu,w.record);
+			// the port is HyperCard's card window, not the event's window (HC J-2.3 measured, Oct 25 2026: thePort was the card window
+			// in xOpenEvt, update, activate, xSetPropEvt, xGetPropEvt, xSendEvt, a mouseDown and xCloseEvt). MegaWindow's
+			// xSetPropEvt "rect" saves that port and offsets the rect by its origin: with its own window current, `set the rect of
+			// window "Example"` added the window's place every time and the window walked off the screen
+			if(tb.cardWindow!=null)tb.api.quickDraw().setPortTo(cpu,tb.cardWindow.record);
 			cpu.a[4]=session.strayA4; // HyperCard's A4, not 0 (see Xcmd68k.Session.strayA4)
 			cpu.callExternal(w.entry,block);
 		}
@@ -323,6 +332,26 @@ final class XWindows68k {
 		return 0;
 	}
 
+	/** The window that registered menu {@code menuId} with RegisterXWMenu (null: none). */
+	private XWindow ownerOfMenu(int menuId){
+		// RegisterXWMenu hands the MenuHandle; its menuID is the record's first word
+		try{for(XWindow w:windows.values())for(int h:w.menus){int p=h==0?0:memory.readLong(h);if(p!=0&&(short)memory.readWord(p)==menuId)return w;}}
+		catch(java.util.ConcurrentModificationException|M68kCpuException e){} // asked from the host's thread too
+		return null;
+	}
+	/** Whether a window registered a menu (it wants xMBarClickedEvt). */
+	boolean hasRegisteredMenus(){try{for(XWindow w:windows.values())if(!w.menus.isEmpty())return true;}catch(java.util.ConcurrentModificationException e){}return false;}
+	/**
+	 * The user clicked the menu bar (called from the host's thread): HyperCard sends xMBarClickedEvt to every window that
+	 * registered a menu before the menu opens, so the external can fill or update it - WindowsMenu lists the open windows in
+	 * its "Windows" menu then, which stayed empty forever.
+	 */
+	void noteMenuBarClicked(){if(hasRegisteredMenus())menuBarClicked=true;}
+	/** An item of menu {@code menuId} was chosen (host thread): true when a window registered that menu - it gets xMenuEvt, and
+	 *  HyperCard does not handle the choice itself. */
+	boolean noteMenuChoice(int menuId,int item){if(ownerOfMenu(menuId)==null)return false;menuChoices.add(new int[]{menuId,item});return true;}
+	boolean hasPendingMenuWork(){return menuBarClicked||!menuChoices.isEmpty();}
+
 	/** The frontmost visible external window (null when none). */
 	private XWindow front(){
 		for(int record:tb().windows.visibleWindows()){XWindow w=windows.get(record);if(w!=null)return w;}
@@ -354,6 +383,8 @@ final class XWindows68k {
 			afterCall();
 			if(!handlerRunning)tb.windows.postPendingDragClick(); // a window the user dragged: its click in the title bar
 			else tb.windows.settlePendingDrag();
+			if(menuBarClicked){menuBarClicked=false;for(XWindow w:windows())if(windows.containsKey(w.record)&&!w.menus.isEmpty()){dispatch(w,X_MBAR_CLICKED_EVT,0,new int[0]);afterCall();}}
+			for(int[] c;(c=menuChoices.poll())!=null;){XWindow w=ownerOfMenu(c[0]);if(w!=null){dispatch(w,X_MENU_EVT,(c[0]<<16)|(c[1]&0xffff),new int[]{c[0],c[1]});afterCall();}}
 			for(int n=0;n<64&&!windows.isEmpty();n++){
 				EventManager68k.Event e=tb.events.take(handlerRunning?0xffff&~(EventManager68k.MOUSE_DOWN_MASK|EventManager68k.MOUSE_UP_MASK):0xffff,true);if(e==null)break;
 				route(e);afterCall();
@@ -368,6 +399,7 @@ final class XWindows68k {
 				java.awt.Point p=tb.host().mouseLocation();idle.whereH=p.x;idle.whereV=p.y;idle.modifiers=tb.host().modifiers()|(tb.host().isMouseDown()?0:0x80);
 				dispatch(w,idle,null);
 			}
+			tb.menus.flushIfDirty(); // what the window events did to the menus (WindowsMenu fills its menu at xMBarClickedEvt)
 			if(tb.cardWindow!=null)tb.cardWindow.flush();
 		}
 		finally{pumping=false;}
@@ -393,7 +425,7 @@ final class XWindows68k {
 					sendClose(w);
 					if(windows.containsKey(w.record))close(w);
 					return;}
-				if(e.menuId!=0||e.menuItem!=0){XWindow w=front();if(w!=null)dispatch(w,X_MENU_EVT,(e.menuId<<16)|(e.menuItem&0xffff),new int[]{e.menuId,e.menuItem});return;}
+				if(e.menuId!=0||e.menuItem!=0){XWindow w=ownerOfMenu(e.menuId);if(w==null)w=front();if(w!=null)dispatch(w,X_MENU_EVT,(e.menuId<<16)|(e.menuItem&0xffff),new int[]{e.menuId,e.menuItem});return;}
 				XWindow w=windows.get(tb.windows.windowAt(e.whereH,e.whereV));if(w==null)w=front();
 				if(w!=null)dispatch(w,e,null);return;}
 			case EventManager68k.MOUSE_UP:{XWindow w=windows.get(tb.windows.windowAt(e.whereH,e.whereV));if(w==null)w=front();if(w!=null)dispatch(w,e,null);return;}
@@ -401,6 +433,29 @@ final class XWindows68k {
 			case EventManager68k.UPDATE_EVT:case EventManager68k.ACTIVATE_EVT:{XWindow w=windows.get(e.message);if(w!=null)dispatch(w,e,null);return;}
 			default:return; // high-level and OS events are HyperCard's
 		}
+	}
+
+	/**
+	 * SendHCEvent: an event an external took from the queue itself, handed to HyperCard, which gives an external window's
+	 * update, activate, click and key to that window's external as its own loop would (HC J-2.3 measured: an updateEvt and a
+	 * mouseDown of an XWindoid reached its external, a keyDown while the window was not the front one did not). MegaWindow's
+	 * MegaModalize runs its dialog this way. False when no external window takes it.
+	 */
+	boolean fromSendHCEvent(EventManager68k.Event e) throws M68kException {
+		if(windows.isEmpty())return false;
+		Toolbox68k tb=tb();XWindow w=null;
+		switch(e.what){
+			case EventManager68k.UPDATE_EVT:case EventManager68k.ACTIVATE_EVT:w=windows.get(e.message);break;
+			case EventManager68k.MOUSE_DOWN:case EventManager68k.MOUSE_UP:w=windows.get(tb.windows.windowAt(e.whereH,e.whereV));break;
+			case EventManager68k.KEY_DOWN:case EventManager68k.AUTO_KEY:case EventManager68k.KEY_UP:{
+				List<Integer> visible=tb.windows.visibleWindows();w=visible.isEmpty()?null:windows.get(visible.get(0));
+				if(w!=null&&w.floating)w=null;break;}
+			default:break;
+		}
+		if(TRACE&&e.what!=EventManager68k.NULL_EVENT)System.err.println("[xwindow] SendHCEvent "+e.what+" message=$"+Integer.toHexString(e.message)+" -> "+(w==null?"HyperCard (visible "+tb.windows.visibleWindows()+")":"$"+Integer.toHexString(w.record)));
+		if(w==null)return false;
+		dispatch(w,e,null);
+		return true;
 	}
 
 	private int in(int block,int index) throws M68kCpuException {return memory.readLong(block+IN_ARGS_OFFSET+index*4);}

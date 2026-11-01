@@ -21,6 +21,7 @@ final class GTranslationForm extends JPanel {
 	private final JLabel status = new JLabel(" ");
 	/** When to choose the selected engine. */
 	private final JLabel engineHelp = new JLabel(" ");
+	private final JLabel pictureStatus = new JLabel(" ");
 	private final JButton download = new JButton(GPreferencesDialog.dialogText("Download Languages…"));
 	private final String[] targets = VMTranslation.TARGETS;
 
@@ -82,6 +83,21 @@ final class GTranslationForm extends JPanel {
 		statusRow.add(download);
 		add(statusRow);
 
+		//絵の中の文字(PictureTranslation): Tesseractで読み、同じ翻訳で訳した写しを表示する。入っているかどうかと入れ方
+		JPanel pictureRow = GPreferencesDialog.row();
+		pictureRow.setBorder(BorderFactory.createEmptyBorder(4, 16, 0, 16));
+		pictureRow.add(new JLabel(International.t("Text in pictures:")));
+		JButton checkAgain = new JButton(International.t("Check Again"));
+		pictureRow.add(checkAgain);
+		add(pictureRow);
+		JPanel pictureStatusRow = GPreferencesDialog.row();
+		pictureStatusRow.setBorder(BorderFactory.createEmptyBorder(0, 16, 8, 16));
+		pictureStatus.setFont(pictureStatus.getFont().deriveFont(pictureStatus.getFont().getSize2D()-1f));
+		pictureStatusRow.add(pictureStatus);
+		add(pictureStatusRow);
+		checkAgain.addActionListener(e -> refreshPictureStatus(true));
+		refreshPictureStatus(false);
+
 		if(reason!=null){
 			engineCombo.setEnabled(false); // the language still counts for Resource Translation with AI Chat…
 			showStatus(GPreferencesDialog.wrap(GPreferencesDialog.dialogText("Not available:")+" "+GPreferencesDialog.dialogText(reason)+" "+International.t("Resource Translation with AI Chat… works without it.")), true);
@@ -99,6 +115,21 @@ final class GTranslationForm extends JPanel {
 		boolean on = PCARD.translate68k; // not shown: a program uses its translated resources when its own setting turns them on
 		String to = targets[targetCombo.getSelectedIndex()], engine = VMTranslation.unavailableReason()!=null ? PCARD.translateEngine68k : VMTranslation.ENGINES[engineCombo.getSelectedIndex()];
 		if(on!=PCARD.translate68k || !to.equals(PCARD.translateTo68k) || !engine.equals(PCARD.translateEngine68k)) PCARD.setTranslation68k(on, to, engine);
+	}
+
+	/** Whether tesseract is here to read the text in pictures (PictureTranslation), found on another thread. */
+	private void refreshPictureStatus(boolean again) {
+		pictureStatus.setText(GPreferencesDialog.dialogText("Checking…"));
+		pictureStatus.setForeground(Color.GRAY);
+		Thread t = new Thread(() -> {
+			String[] s = PictureTranslation.status(again);
+			SwingUtilities.invokeLater(() -> {
+				pictureStatus.setText(GPreferencesDialog.wrap(s[0]!=null ? s[0] : s[1]));
+				pictureStatus.setForeground(s[0]!=null ? new Color(0xb0, 0x40, 0x00) : Color.GRAY);
+				if(again) StackTranslation.settingsChanged(); // a stack shown draws its pictures with what was found
+			});
+		}, "Tesseract status");
+		t.setDaemon(true); t.start();
 	}
 
 	private void showEngineHelp() {

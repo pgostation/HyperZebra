@@ -45,7 +45,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 				boolean isTrue=text.equalsIgnoreCase("true");out(0,isTrue?1:0);
 				if(!isTrue&&!text.equalsIgnoreCase("false")){memory.writeWord(block+RESULT_OFFSET,1);return true;}
 				break;}
-			case 12:Sane68k.writeExtended(memory,in(1),parseDouble(readPascalAscii(in(0))));break;
+			case 12:Sane68k.writeExtended(memory,in(1),strToExt(readPascalAscii(in(0))));break;
 			case 13:writePascalAscii(in(1),Integer.toUnsignedString(in(0)));break; // LongToStr: unsigned 32 bits (MtGetFInfo's dates, 2.8e9 seconds)
 			case 14:writePascalAscii(in(1),Integer.toString(in(0)));break;
 			case 15:numToHex();break;
@@ -69,15 +69,25 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 			// HyperCard 2.x additions (numbering from HyperXCmd.h: 29/30 Get/ChangedMaskAndData, 33 PrintTEHandle, 34 SendHCEvent, 35 HCWordBreakProc,
 			// 36/37 Begin/EndXSound, 38 RunHandler, 40 GetXResInfo, 42 FrontDocWindow, 43-46 Point/Rect <-> Str,
 			// 47/48 Get/SetFieldTE, 52 StackNameToNum, 53 Notify, 100+ XWindows)
-			case 34:{ // SendHCEvent(EventRecord*): an event the external did not want (AMPlay's stopping click); the card already had that click.
+			case 34:{ // SendHCEvent(event): an event the external took from the queue itself and hands to HyperCard (AMPlay's stopping click).
+				// The glue copies the 16-byte EventRecord BY VALUE into inArgs[0..3] (HyperXLib.o's SENDHCEVENT and HTLock's own glue:
+				// BlockMove(@event,@inArgs,16)); it was read as a pointer, so no event was ever recognised.
 				// An update of the card window is HyperCard's to draw: HTLock forceFalse invalidates the card and asks for it,
 				// and HyperTint's bitsProc on the card window's port paints its picture during HyperCard's CopyBits
-				int event=in(0);Toolbox68k tb=macApi.application();
-				if(Boolean.getBoolean("hz68k.cardwin"))System.err.println("[cardwin] SendHCEvent what="+(event==0?-1:memory.readWord(event))+" message=$"+(event==0?"":Integer.toHexString(memory.readLong(event+2)))+" card=$"+(tb.cardWindow==null?"none":Integer.toHexString(tb.cardWindow.record)+" hooked="+tb.cardWindow.drawingHooked()));
+				int event=block+IN_ARGS_OFFSET,what=memory.readWord(event),message=memory.readLong(event+2);Toolbox68k tb=macApi.application();
+				if(Boolean.getBoolean("hz68k.cardwin"))System.err.println("[cardwin] SendHCEvent what="+what+" message=$"+Integer.toHexString(message)+" card=$"+(tb.cardWindow==null?"none":Integer.toHexString(tb.cardWindow.record)+" hooked="+tb.cardWindow.drawingHooked()));
 				// what is invalid there is HyperCard's to copy anew (CardWindow68k.updateInvalidated); a hooked card gets the whole card
-				if(event!=0&&memory.readWord(event)==6&&tb.cardWindow!=null&&memory.readLong(event+2)==tb.cardWindow.record
-					&&!tb.cardWindow.updateInvalidated(tb.cpu)&&tb.cardWindow.drawingHooked()){
-					tb.cardWindow.redrawCard(tb.cpu,0,0,32767,32767);
+				if(what==EventManager68k.UPDATE_EVT&&tb.cardWindow!=null&&message==tb.cardWindow.record){
+					if(!tb.cardWindow.updateInvalidated(tb.cpu)&&tb.cardWindow.drawingHooked())tb.cardWindow.redrawCard(tb.cpu,0,0,32767,32767);
+					break;
+				}
+				// an external window's update, activate, click or key goes on to its external as HyperCard's own event loop would hand it
+				// (HC J-2.3 measured: an updateEvt and a mouseDown of an XWindoid sent this way reached its external). MegaWindow 3.1's
+				// MegaModalize loops GetNextEvent + SendHCEvent: its "ObjectList"/"Index" dialogs stayed blank and their OK never came
+				if(xwindows!=null){
+					EventManager68k.Event e=new EventManager68k.Event(what);e.message=message;e.when=memory.readLong(event+6);
+					e.whereV=(short)memory.readWord(event+10);e.whereH=(short)memory.readWord(event+12);e.modifiers=memory.readWord(event+14);
+					xwindows.fromSendHCEvent(e);
 				}
 				break;}
 			case 36:case 37:break; // BeginXSound/EndXSound: the sound channel is not shared with scripts here
@@ -88,6 +98,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 				if(Boolean.getBoolean("hz68k.runhandler"))System.out.println("[runhandler] "+text.replace('\r','\n'));
 				try{TTalk.runExternalHandler(text,target);}
 				catch(xTalkException e){System.out.println("XCMD RunHandler: "+e.getMessage());memory.writeWord(block+RESULT_OFFSET,1);return true;}
+				catch(RuntimeException e){System.out.println("XCMD RunHandler: "+e);memory.writeWord(block+RESULT_OFFSET,1);return true;}
 				break;
 			}
 			case 39:scan(true);break;
@@ -124,7 +135,11 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 				// always a styled record with the field's runs (bold words, another font or size; one run for a plain field), as
 				// HyperCard 2.x fields are: a monostyled record for a field without runs dropped the styles Rinaldi's FullText
 				// TEStylInserts into it ("FullText Set" of a styled text into an unstyled field came out all plain)
-				out(0,tb.textEdit.createForStyledField(field.top,field.left,field.top+field.height,field.left+field.width,styleRuns(field,chars,enc),text));
+				int te=tb.textEdit.createForStyledField(field.top,field.left,field.top+field.height,field.left+field.width,styleRuns(field,chars,enc),text);
+				// and the field's alignment as the record's just (HC J-2.3 measured: center 1, right -1, left 0): QuickDraw Utilities'
+				// DrawField drew a centred title at the left
+				memory.writeWord(memory.readLong(te)+58,field.textAlign==1?1:field.textAlign==2?-1:0);
+				out(0,te);
 				break;
 			}
 			case 48:{ // SetFieldTE(cardFieldFlag, fieldID, fieldNum, fieldName, hTE): the record's text becomes the field's
@@ -170,29 +185,42 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 			// HyperCard 2.x debugger callbacks (names and argument order from MPW HyperXLib.o: 200 GoScript, 201 StepScript,
 			// 202 AbortScript, 203 CountHandlers, 204 GetHandlerInfo, 205 GetVarInfo, 206 SetVarValue, 207 GetStackCrawl,
 			// 208 TraceScript). Handler 0 is the global variables: HyperBib's SaveCurrentGlobals asks GetHandlerInfo(0) for their
-			// count and GetVarInfo(0, i) for each name. Handlers of the running script are not listed (no variables).
+			// count and GetVarInfo(0, i) for each name. Handler 1 is the handler that called the external, 2 its caller and so on
+			// (HyperCard 2.0 XCMD notes; HC J-2.3 measured: its variables in the order they came to be, its declared globals among
+			// them, and variable -1 of SetVarValue is its `it` - Apple Event XCMDs' AESend puts the reply into `it` that way)
 			case 204:{ // GetHandlerInfo(handlerNum, handlerName, objectName, VAR varCount)
-				int count=0;
-				if((short)in(0)==0){MemoryData globals=globals();synchronized(globals){count=globals.nameList.size();}}
-				if(in(1)!=0)writePascal(in(1),new byte[0]);
-				if(in(2)!=0)writePascal(in(2),new byte[0]);
+				int count=0,h=(short)in(0);String handler="",object="";
+				if(h==0){MemoryData globals=globals();synchronized(globals){count=globals.nameList.size();}}
+				else{ScriptDebugger.Frame f=handlerFrame(h);MemoryData m=handlerVariables(h);
+					if(m==null){memory.writeWord(block+RESULT_OFFSET,1);return true;}
+					count=handlerVariableNames(m).size();
+					handler=f!=null?f.message:m.message!=null?m.message:"";object=f!=null&&f.object!=null?f.object.getShortName():"";}
+				if(in(1)!=0)writePascal(in(1),encode(handler==null?"":handler));
+				if(in(2)!=0)writePascal(in(2),encode(object));
 				if(in(3)!=0)memory.writeWord(in(3),count);
 				break;
 			}
 			case 205:{ // GetVarInfo(handlerNum, varNum, varName, VAR isGlobal, varValue, varHandle): the value's first 255 bytes, all of it in varHandle
-				String name=null,value="";
+				String name=null,value="";boolean global=true;
 				if((short)in(0)==0){MemoryData globals=globals();synchronized(globals){int v=(short)in(1);if(v>=1&&v<=globals.nameList.size()){name=globals.nameList.get(v-1);value=globals.valueList.get(v-1);}}}
+				else{MemoryData m=handlerVariables((short)in(0));int v=(short)in(1);
+					if(m!=null){java.util.List<String> names=handlerVariableNames(m);
+						if(v==-1)name="it";else if(v>=1&&v<=names.size())name=names.get(v-1);
+						if(name!=null){int local=m.indexOfName(name);global=local<0&&m.globals!=null&&m.globals.contains(name);
+							if(local>=0)value=m.valueList.get(local);
+							else if(global){MemoryData globals=globals();synchronized(globals){int g=globals.nameList.indexOf(name);if(g>=0)value=globals.valueList.get(g);}}}}}
 				if(name==null){memory.writeWord(block+RESULT_OFFSET,1);return true;}
 				if(in(2)!=0)writePascal(in(2),encode(name));
-				if(in(3)!=0)memory.writeByte(in(3),1);
+				if(in(3)!=0)memory.writeByte(in(3),global?1:0);
 				byte[] encoded=encode(classicLineEndings(value==null?"":value));
 				if(in(4)!=0)writePascal(in(4),encoded);
 				if(in(5)!=0){macApi.resizeHandle(in(5),encoded.length+1);int p=memory.readLong(in(5));for(int i=0;i<encoded.length;i++)memory.writeByte(p+i,encoded[i]);memory.writeByte(p+encoded.length,0);}
 				break;
 			}
 			case 206:{ // SetVarValue(handlerNum, varNum, varHandle)
-				if((short)in(0)!=0){memory.writeWord(block+RESULT_OFFSET,1);return true;}
-				String value=readZeroHandle(in(2));MemoryData globals=globals();
+				String value=readZeroHandle(in(2));
+				if((short)in(0)!=0){if(!setHandlerVariable((short)in(0),(short)in(1),value)){memory.writeWord(block+RESULT_OFFSET,1);return true;}break;}
+				MemoryData globals=globals();
 				synchronized(globals){int v=(short)in(1);if(v<1||v>globals.nameList.size()){memory.writeWord(block+RESULT_OFFSET,1);return true;}globals.valueList.set(v-1,value);}
 				break;
 			}
@@ -546,6 +574,9 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 		OObject messageTarget=TXcmd.callTarget.get(); // "the target" in the statement: the target of the message that called the external
 		try{TTalk.runExternalStatement(text,target,messageTarget!=null?messageTarget:target);memory.writeWord(block+RESULT_OFFSET,0);}
 		catch(xTalkException e){System.out.println("XCMD "+(cardMessage?"SendCardMessage":"SendHCMessage")+" \""+text+"\": "+e.getMessage());memory.writeWord(block+RESULT_OFFSET,1);}
+		// a statement that breaks inside HyperZebra fails like a script error (xresFail), as EvalExpr's do: MacZine's parse XFCN sends
+		// `set the itemDelimiter to &<7F>"`, and the Java exception unwound the external and its calling handler without a word
+		catch(RuntimeException e){System.out.println("XCMD "+(cardMessage?"SendCardMessage":"SendHCMessage")+" \""+text+"\": "+e);if(Mac68kApi.TRACE)e.printStackTrace(System.out);memory.writeWord(block+RESULT_OFFSET,1);}
 		return true;
 	}
 
@@ -569,6 +600,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 		MemoryData m=TXcmd.callVariables.get();if(m==null){m=new MemoryData();m.treeset=new TreeSet<String>();m.nameList=new ArrayList<String>();m.valueList=new ArrayList<String>();}
 		try{talk.keyboardCommand(message,param,m);memory.writeWord(block+RESULT_OFFSET,0);}
 		catch(xTalkException e){System.out.println("XCMD SendHCMessage \""+text+"\": "+e.getMessage());memory.writeWord(block+RESULT_OFFSET,1);}
+		catch(RuntimeException e){System.out.println("XCMD SendHCMessage \""+text+"\": "+e);memory.writeWord(block+RESULT_OFFSET,1);}
 		return true;
 	}
 
@@ -583,12 +615,21 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 	private boolean evalExpr() throws M68kException {
 		String expression=readPascalText(in(0)).trim(),value=null;
 		if(expression.equalsIgnoreCase("the version"))value="2.4";
+		// a return inside the text ends HyperTalk's line, so HyperCard cannot compile it (HC J-2.3 measured): the text itself comes
+		// back as for any expression it cannot compile (`"a<CR>b"` with its quotes, `line 2 of "a<CR>b"`), and a function call in
+		// it fails. MacZine's searchCriteria passes its CGI lines quoted into postdataitem(…) that way: no dates on a Mac either
+		else if(expression.indexOf('\r')>=0||expression.indexOf('\n')>=0)value=expression.indexOf('(')>=0?null:classicLineEndings(expression); // its bytes as they came (the answer's line ends are swapped back)
 		// one quoted literal only: NewXWind asks `"3,284" is within "1,1,17,300"`, which starts and ends with a quote too (its
 		// scroll bar never tracked: the text between the outer quotes is no "true")
 		else if(expression.length()>=2&&expression.charAt(0)=='"'&&expression.indexOf('"',1)==expression.length()-1)value=expression.substring(1,expression.length()-1);
 		else if(expression.matches("[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)")||expression.equalsIgnoreCase("true")||expression.equalsIgnoreCase("false"))value=expression;
 		else {
-			OStack stack=currentStack();OObject target=stack==null?null:stack.curCard;
+			// HyperCard evaluates it in the handler that called the external (HC J-2.3 measured from a button's handler: `me` is the
+			// button, a function of the button's script is found, its locals and `it` are seen): AutoCheck reads the field being typed
+			// in with EvalExpr "me", SndFilePlaySync's idle expression "ClickAbort()" lives in the calling button. With no handler
+			// behind the call (an external window's event at idle) it is the current card, as before
+			OStack stack=currentStack();OObject caller=TXcmd.callVariables.get()!=null?ScriptDebugger.currentObject():null;
+			OObject target=stack==null?null:caller!=null?caller:stack.curCard;
 			OObject messageTarget=TXcmd.callTarget.get(); // "the target" is the target of the message whose handler called the external
 			if(target!=null){
 				TUtil.ExternalFrame outer=TUtil.externalFrame.get(),frame=externalFrame(expression);if(frame!=null)TUtil.externalFrame.set(frame);
@@ -635,6 +676,42 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 	private MemoryData globals() {
 		MemoryData globals=TTalk.globalData;if(globals.treeset==null)globals.treeset=new TreeSet<String>();
 		if(globals.nameList==null)globals.nameList=new ArrayList<String>();if(globals.valueList==null)globals.valueList=new ArrayList<String>();return globals;
+	}
+
+	/** Running handler number {@code n} of the debugger callbacks: 1 the newest (the one that called the external), 2 its caller… */
+	private static ScriptDebugger.Frame handlerFrame(int n){
+		if(n<1)return null;
+		ScriptDebugger.Frame[] frames=ScriptDebugger.snapshot();
+		return frames.length-n>=0?frames[frames.length-n]:null;
+	}
+	/** The variables of running handler {@code n} (1: those of the handler that called the external), or null. */
+	private static MemoryData handlerVariables(int n){
+		MemoryData m=n==1?TXcmd.callVariables.get():null;
+		if(m==null){ScriptDebugger.Frame f=handlerFrame(n);m=f==null?null:f.memData;}
+		return m==null||m.nameList==null||m.valueList==null?null:m;
+	}
+	/** A handler's variables as the debugger callbacks count them: its locals, then the globals it declared. */
+	private static java.util.List<String> handlerVariableNames(MemoryData m){
+		java.util.List<String> names=new ArrayList<String>(m.nameList);
+		if(m.globals!=null)for(String g:m.globals)if(!g.equals(TTalk.GLOBAL_ME)&&!names.contains(g))names.add(g);
+		return names;
+	}
+	/** SetVarValue of handler {@code n} ≥ 1: variable -1 is its `it` (made when it has none yet), 1… its variables. */
+	private boolean setHandlerVariable(int n,int v,String value){
+		MemoryData m=handlerVariables(n);if(m==null)return false;
+		String name;
+		if(v==-1)name="it";
+		else{java.util.List<String> names=handlerVariableNames(m);if(v<1||v>names.size())return false;name=names.get(v-1);}
+		int local=m.indexOfName(name);
+		if(local<0&&m.globals!=null&&m.globals.contains(name)){
+			MemoryData globals=globals();
+			synchronized(globals){int g=globals.nameList.indexOf(name);if(g<0){globals.nameList.add(name);globals.valueList.add(value);globals.treeset.add(name);}else globals.valueList.set(g,value);if(globals.rawNumbers!=null)globals.rawNumbers.remove(name);}
+			return true;
+		}
+		if(local<0){m.nameList.add(name);m.valueList.add(value);if(m.treeset!=null)m.treeset.add(name);m.variableVersion++;}
+		else m.valueList.set(local,value);
+		if(m.rawNumbers!=null)m.rawNumbers.remove(name);
+		return true;
 	}
 
 	private String readName(int pointer) throws M68kException {return readPascalText(pointer).toLowerCase(Locale.ROOT);}
@@ -707,5 +784,19 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 		for(int i=0;i<value.length();i++){char c=value.charAt(i);if(c=='.')break;if(c>='0'&&c<='9')n=(n*10+(c-'0'))&0xffffffffL;else if(c=='-'&&signed)minus=true;}
 		return (int)(minus?-n:n);
 	}
-	private static double parseDouble(String value){try{return Double.parseDouble(value.trim());}catch(NumberFormatException e){return 0.0;}}
+	/**
+	 * StrToExt as HyperCard J-2.3 reads a number (measured with an assembled XFCN, Oct 25 2026): leading blanks, tabs and returns
+	 * skipped, then the run of number characters (digits . e E + -) up to the first other character must be one number -
+	 * "12.5abc" 12.5, "1e3x" 1000, "12 34" 12, "10<CR>9" 10, "7." 7 - and is 0 otherwise: "1-", "1.2.", "1e", "1e3e4", "abc", "".
+	 * Rinaldi's FullSort hands a 20-byte window starting at its key ("10<CR>9<CR>100…"): parsed whole, every key was 0 and the
+	 * numeric sort left the list as it was.
+	 */
+	static double strToExt(String value){
+		int i=0,n=value.length();
+		while(i<n&&(value.charAt(i)==' '||value.charAt(i)=='\t'||value.charAt(i)=='\r'||value.charAt(i)=='\n'))i++;
+		int end=i;while(end<n&&"0123456789.eE+-".indexOf(value.charAt(end))>=0)end++;
+		String number=value.substring(i,end);
+		if(!number.matches("[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?"))return 0.0;
+		try{return Double.parseDouble(number);}catch(NumberFormatException e){return 0.0;}
+	}
 }

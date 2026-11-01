@@ -317,6 +317,7 @@ final class PpcQuickDraw3D implements Q3.Owner {
 			v.attribute(type,val);a.ok(true);});
 		def("Q3XElementClass_Register",a->a.ret(registerElement(a.i(0),cstr(a.i(1)),a.i(2),a.i(3),false)));
 		def("Q3XAttributeClass_Register",a->a.ret(registerElement(a.i(0),cstr(a.i(1)),a.i(2),a.i(3),true)));
+		def("Q3AttributeClass_Register",a->a.ret(registerElementAs(a.i(0),cstr(a.i(1)),a.i(2),a.i(3),true))); // QuickDraw 3D 1.0's form (3D World 2.0 imports it): the type is passed by value, no out pointer
 		def("Q3XElementType_GetElementSize",a->{int n=elementSize(a.i(0));if(a.i(1)!=0)wl(a.i(1),Math.max(0,n));a.ok(n>=0);});
 		def("Q3XAttributeSet_GetPointer",a->{Q3.AttrSet s=get(a.i(0),Q3.AttrSet.class);int type=a.i(1);if(s==null||!s.has(type)){a.ret(0);return;}
 			// a copy the program may read (QuickDraw 3D gave its internal element): kept per set and type
@@ -344,6 +345,13 @@ final class PpcQuickDraw3D implements Q3.Owner {
 		Q3.ElementClass c=new Q3.ElementClass(type,name,size,metaHandler,attribute);
 		elementClasses.put(type,c);Q3.registerClass(attribute?Q3.ATTRIBUTE_ELEMENT:Q3.ELEMENT,type,name);
 		wl(typeOut,type);return classHandle(c);
+	}
+	/** An element/attribute class of a type the program chose itself (QuickDraw 3D 1.0's Q3AttributeClass_Register(type, name, size, metaHandler)). */
+	private int registerElementAs(int type,String name,int size,int metaHandler,boolean attribute) throws M68kCpuException {
+		if(type==0||name==null)return 0;
+		Q3.ElementClass c=elementClasses.get(type);
+		if(c==null){c=new Q3.ElementClass(type,name,size,metaHandler,attribute);elementClasses.put(type,c);Q3.registerClass(attribute?Q3.ATTRIBUTE_ELEMENT:Q3.ELEMENT,type,name);}
+		return classHandle(c);
 	}
 	private final Map<Object,Integer> classHandles=new java.util.IdentityHashMap<Object,Integer>();
 	int classHandle(Object c) throws M68kCpuException {Integer h=classHandles.get(c);if(h!=null)return h;int n=handleOf(c,0);classHandles.put(c,n);return n;}
@@ -957,6 +965,8 @@ final class PpcQuickDraw3D implements Q3.Owner {
 		def("Q3Renderer_ModalConfigure",a->{if(a.i(2)!=0)wl(a.i(2),1);a.ok(false);});
 		def("Q3RendererClass_GetNickNameString",a->{int t=a.i(0),out=a.i(1);String n=t==Q3.INTERACTIVE?"Interactive":t==Q3.WIREFRAME?"WireFrame":t==Q3.GENERIC?"Generic":null;
 			if(out!=0&&n!=null){memory.load(out,n.getBytes(MAC_ROMAN));memory.writeByte(out+n.length(),0);}a.ok(n!=null);});
+		def("Q3Renderer_Sync",a->a.ok(true)); // QuickDraw 3D 1.0: waits for the renderer to finish; drawing is synchronous here
+		def("Q3ObjectClass_Unregister",a->a.ok(true)); // 1.0 name of Q3XObjectClass_Unregister; nothing is kept per class that needs releasing
 		def("Q3Renderer_GetConfigurationData",a->{if(a.i(3)!=0)wl(a.i(3),0);a.ok(true);});
 		def("Q3Renderer_SetConfigurationData",a->a.ok(true));
 		def("Q3InteractiveRenderer_SetCSGEquation",a->{Q3.Renderer r=get(a.i(0),Q3.Renderer.class);if(r==null){a.ok(false);return;}r.csgEquation=a.i(1);a.ok(true);});

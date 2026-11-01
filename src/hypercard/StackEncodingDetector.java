@@ -164,6 +164,8 @@ final class StackEncodingDetector {
 			int j = i+1;
 			if(d[i]=='\r' || d[i]=='\n') tableLine = false;
 			if(d[i]<0) while(j<to && d[j]==d[i]) j++;
+			//three Shift-JIS lead bytes before a trail byte are two characters: キャラ is 83 4C 83 83 83 89 (ColorDemo)
+			if(j-i==3 && shiftJisLead(d[i]&0xFF) && j<to && shiftJisTrail(d[j]&0xFF)){ out.write(d, i, 3); i = j; continue; }
 			if(j-i<3 && d[i]<0 && tableLine && (i==from || d[i-1]>=0)){
 				//the rest of a line with a character table: the table's other half ("äÄöÖ…","‰ƒˆ÷…")
 				int k = i+1;
@@ -190,6 +192,14 @@ final class StackEncodingDetector {
 			i = j;
 		}
 		return out.toByteArray();
+	}
+
+	private static boolean shiftJisLead(int c) {
+		return c>=0x81 && c<=0x9F || c>=0xE0 && c<=0xFC;
+	}
+
+	private static boolean shiftJisTrail(int c) {
+		return c>=0x40 && c<=0x7E || c>=0x80 && c<=0xFC;
 	}
 
 	/**
@@ -298,7 +308,18 @@ final class StackEncodingDetector {
 			double average = s.total/s.chars;
 			if(average>bestAverage){ bestAverage = average; best = encoding; }
 		}
+		if(best==StackTextEncoding.ROMAN && readsAsJapanese(samples)) return null;
 		return bestAverage>=MIN_AVERAGE ? best : null;
+	}
+
+	/**
+	 * Too little text for Japanese, but all of it reads as Shift-JIS with nothing against it: BlackPictDemo's only non-ASCII
+	 * text is "GO NEXT→" (81 A8), "GO NEXTÅ®" in Mac OS Roman. The font table and the other signs decide then.
+	 */
+	private static boolean readsAsJapanese(List<byte[]> samples) {
+		Score s = new Score();
+		for(byte[] sample : samples) shiftJis(sample, s);
+		return s.chars>0 && s.against==0;
 	}
 
 	/**
@@ -346,7 +367,10 @@ final class StackEncodingDetector {
 		double total;
 		int chars;
 		/** {@code code}: the byte or byte pair of the character. Only signs for the encoding are capped, not the ones against it. */
+		/** How many signs against the encoding there were. */
+		int against;
 		void add(int code, double weight){
+			if(weight<0) against++;
 			if(weight>0 && uses.merge(code, 1, Integer::sum)>REPEAT_CAP) return;
 			total += weight;
 			chars++;
@@ -674,7 +698,8 @@ final class StackEncodingDetector {
 	 * The HyperCard that last changed the stack (the STAK header's version at 0x6C): 2.2.1 was a Japanese release (995 of the
 	 * sample stacks made with it are Japanese, 14 Roman); HyperCard 1.x stacks are nearly all English (about 300 Roman to 10
 	 * Japanese among those whose text tells) - AOL's SysTask, TrapReturn, reg_exp.XFCNs have plain ASCII text and no font table.
-	 * Null for the others.
+	 * A 1.x file (format 8) with no version at all counts as 1.x too: 26 Roman to no Japanese whose text tells, and the 19
+	 * plain-ASCII ones (Inigo Takes a Bath, Macsody in Blue, K'Kai Adventure) are English. Null for the others.
 	 */
 	static StackTextEncoding fromHyperCardVersion(byte[] data) {
 		if(data==null) return null;
@@ -683,6 +708,8 @@ final class StackEncodingDetector {
 		int version = int32(data, skip+0x6C);
 		if((version>>>16)==0x0221) return StackTextEncoding.JAPANESE;
 		if((version>>>24)==0x01) return StackTextEncoding.ROMAN;
+		int format = int32(data, skip+0x10);
+		if(version==0 && format>=1 && format<=8) return StackTextEncoding.ROMAN;
 		return null;
 	}
 

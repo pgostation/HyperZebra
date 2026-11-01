@@ -44,8 +44,10 @@ final class DeskAccessoryHost68k implements MacApp68k.HostedCode {
 		trap(0xa9b4,0); // SystemTask: accRun, accCursor
 		cpu.pushWord(0);cpu.pushWord(0xffff);cpu.pushLong(eventRecord);
 		trap(0xa970,6); // GetNextEvent(everyEvent, &event)
-		cpu.popWord();
-		switch(memory.readWord(eventRecord)){
+		// FALSE: nothing for the host, or GetNextEvent's own SystemEvent has already handed the event (a key, an update) to the
+		// accessory - the record still holds it, and passing it on again typed every key twice into Acta's outline
+		boolean got=(cpu.popWord()&0xff00)!=0;
+		if(got)switch(memory.readWord(eventRecord)){
 			case NULL_EVENT:break;
 			case MOUSE_DOWN:mouseDown();break;
 			case KEY_DOWN:case AUTO_KEY:

@@ -20,19 +20,28 @@ import java.util.Set;
 final class ExtractorApps {
 	private ExtractorApps(){}
 
-	/** The expanders HyperZebra ships: the archive file types each one opens, and words of its distributed file's name. */
+	/** The expanders HyperZebra ships: the archive file types each one opens, the program signatures that are this expander
+	 *  (the first one the shipped program's), and words of its distributed file's name. */
 	enum Kit {
-		STUFFIT("StuffIt Expander",new String[]{"SIT!","SITD","SIT5","SIT2"},"aladdin","stuffit"),
-		COMPACT_PRO("Compact Pro",new String[]{"PACT"},"compact"),
-		MACLHA("MacLHA",new String[]{"LHA ","LHa "},"lha");
-		final String title;final int[] types;private final String[] fileWords;
-		Kit(String title,String[] types,String... fileWords){
-			this.title=title;this.types=new int[types.length];
+		STUFFIT("StuffIt Expander",new String[]{"SIT!","SITD","SIT5","SIT2"},new String[]{"SITx","SIT!"},"aladdin","stuffit"),
+		COMPACT_PRO("Compact Pro",new String[]{"PACT"},new String[]{"CPCT"},"compact"),
+		MACLHA("MacLHA",new String[]{"LHA ","LHa "},new String[]{"LARC"},"lha");
+		final String title;final int[] types;private final int[] signatures;private final String[] fileWords;
+		Kit(String title,String[] types,String[] signatures,String... fileWords){
+			this.title=title;this.types=new int[types.length];this.signatures=new int[signatures.length];
 			for(int i=0;i<types.length;i++)this.types[i]=ResourceFile68k.fourcc(types[i]);
+			for(int i=0;i<signatures.length;i++)this.signatures[i]=ResourceFile68k.fourcc(signatures[i]);
 			this.fileWords=fileWords;
 		}
-		/** Whether the program's bundle claims one of this expander's archive types. */
-		boolean openedBy(File app){FinderIcons68k.Bundle b=FinderIcons68k.bundleOf(app);for(int t:types)if(b.claims(t))return true;return false;}
+		/** Whether the program is this expander: its signature, or its bundle claims one of this expander's archive types and
+		 *  it is not another kit's program (Compact Pro claims SIT! too, but expands no StuffIt archive of today). */
+		boolean openedBy(File app){
+			FinderIcons68k.Bundle b=FinderIcons68k.bundleOf(app);
+			for(int s:signatures)if(b.signature==s)return true;
+			for(Kit k:values())if(k!=this)for(int s:k.signatures)if(b.signature==s)return false;
+			for(int t:types)if(b.claims(t))return true;
+			return false;
+		}
 		/** This expander's file in the distribution folder, or null. */
 		File distributedFile(File folder){
 			if(folder==null)return null;
@@ -106,6 +115,24 @@ final class ExtractorApps {
 		return null;
 	}
 
+	/** The archive's own expander among the known programs - StuffIt Expander for a .sit.hqx even when Compact Pro (which
+	 *  claims SIT! too) is known - or null when its format cannot be told, none is known, or several are (the user chooses). */
+	static File ownExpander(File archive){
+		Set<Kit> kits=kitsFor(archive);
+		if(kits.size()!=1)return null;
+		Kit kit=kits.iterator().next();File found=null;
+		for(File app:DocumentOpeners.knownPrograms(LauncherStore.get()))if(kit.openedBy(app)){if(found!=null)return null;found=app;}
+		return found;
+	}
+	/** Whether the archive's format is told and no known program is its own expander (installing or registering it comes first). */
+	static boolean ownExpanderMissing(File archive){
+		Set<Kit> kits=kitsFor(archive);
+		if(kits.size()!=1)return false;
+		Kit kit=kits.iterator().next();
+		for(File app:DocumentOpeners.knownPrograms(LauncherStore.get()))if(kit.openedBy(app))return false;
+		return true;
+	}
+
 	// ------------------------------------------------------------------ installed expanders
 
 	/** Whether any known program opens archives (bundle claims an archive type). */
@@ -122,16 +149,19 @@ final class ExtractorApps {
 	/**
 	 * The expander programs installed so far for these kits: applications under the install folder (the self-extracting
 	 * archives leave theirs there) and in the folders at the top of HyperZebra HD (StuffIt's installer puts its own folder there).
+	 * Canonical files, like the launcher's lists (/var/... on the Mac is /private/var/...).
 	 */
 	static List<File> installedExpanders(Set<Kit> kits){
 		List<File> r=new ArrayList<File>();
-		collect(installFolder(),0,3,kits,r);
-		File disk=FileSystem68k.bootVolumeDirectory();
+		File install=canonical(installFolder());
+		collect(install,0,3,kits,r);
+		File disk=canonical(FileSystem68k.bootVolumeDirectory());
 		File[] top=disk.listFiles();
 		if(top!=null){java.util.Arrays.sort(top);
-			for(File f:top)if(f.isDirectory()&&!f.getName().startsWith(".")&&!f.equals(installFolder())&&!f.getName().equals("System Folder")&&!f.getName().equals("Trash"))collect(f,0,1,kits,r);}
+			for(File f:top)if(f.isDirectory()&&!f.getName().startsWith(".")&&!f.equals(install)&&!f.getName().equals("System Folder")&&!f.getName().equals("Trash"))collect(f,0,1,kits,r);}
 		return r;
 	}
+	private static File canonical(File f){try{return f.getCanonicalFile();}catch(IOException e){return f.getAbsoluteFile();}}
 	private static void collect(File folder,int depth,int maxDepth,Set<Kit> kits,List<File> r){
 		File[] files=folder.listFiles();
 		if(files==null||depth>maxDepth)return;
@@ -141,6 +171,17 @@ final class ExtractorApps {
 			if(f.isDirectory())collect(f,depth+1,maxDepth,kits,r);
 			else if(!isSelfExtracting(f)&&MacApp68k.isApplication(f))for(Kit k:kits)if(k.openedBy(f)){r.add(f);break;}
 		}
+	}
+	/** Whether the program is one of the expanders HyperZebra ships (StuffIt Expander, Compact Pro, MacLHA: told by its
+	 *  creator, else its bundle's signature, wherever it sits). They run at host speed unless the user set a speed for them
+	 *  (MacApp68k.mips): a slow CPU only makes the user wait for the files. The creator first: StuffIt Expander 5.5 is 'SITx'
+	 *  but its BNDL says 'SIT!', as StuffIt Deluxe's does. */
+	static boolean shippedExpander(File app){
+		int s=FinderInfo68k.creator(app);
+		if(s==0||s==0x3F3F3F3F)s=FinderIcons68k.bundleOf(app).signature;
+		if(s==0)return false;
+		for(Kit k:Kit.values())if(k.signatures[0]==s)return true;
+		return false;
 	}
 	/** Self-extracting archives and installers are programs too, but not expanders to keep. */
 	private static boolean isSelfExtracting(File f){
