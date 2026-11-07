@@ -7,6 +7,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 
@@ -22,6 +23,8 @@ final class GTranslationForm extends JPanel {
 	/** When to choose the selected engine. */
 	private final JLabel engineHelp = new JLabel(" ");
 	private final JLabel pictureStatus = new JLabel(" ");
+	private final JButton downloadTesseract = new JButton(International.t("Download Tesseract…")), tesseractLanguages = new JButton(International.t("Languages…"));
+	private volatile boolean installing;
 	private final JButton download = new JButton(GPreferencesDialog.dialogText("Download Languages…"));
 	private final String[] targets = VMTranslation.TARGETS;
 
@@ -29,10 +32,13 @@ final class GTranslationForm extends JPanel {
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		setAlignmentX(LEFT_ALIGNMENT);
 		String reason = VMTranslation.unavailableReason();
+		boolean mac = VMTranslation.osHasTranslators(); // elsewhere the engine and macOS's status are not shown at all
 
 		//翻訳はMacアプリだけのものではない(スタックも翻訳表示できる)ので、Macアプリ設定とは別のページ。
 		//プログラムはリソース翻訳(「リソース翻訳…」)、スタックはボタン名とフィールドの表示。ここは両方の既定値(個別設定で上書きできる)
-		JLabel intro = new JLabel(GPreferencesDialog.wrap(GPreferencesDialog.dialogText("Programs are translated by Resource Translation… (their menus, dialogs and strings); stacks show their button names and fields translated (File > Translation Settings…). These are the defaults; a program or stack can have its own.")));
+		JLabel intro = new JLabel(GPreferencesDialog.wrap(GPreferencesDialog.dialogText(mac
+			? "Programs are translated by Resource Translation… (their menus, dialogs and strings); stacks show their button names and fields translated (File > Translation Settings…). These are the defaults; a program or stack can have its own."
+			: "Programs are translated by Resource Translation with AI Chat… (their menus, dialogs and strings); stacks show their button names and fields translated (File > Translation Settings…). These are the defaults; a program or stack can have its own.")));
 		intro.setBorder(BorderFactory.createEmptyBorder(16, 16, 4, 16));
 		intro.setAlignmentX(LEFT_ALIGNMENT);
 		add(intro);
@@ -58,12 +64,12 @@ final class GTranslationForm extends JPanel {
 		engineCombo = new JComboBox<String>(engines);
 		engineCombo.setSelectedIndex(engine);
 		row.add(engineCombo);
-		add(row);
+		if(mac) add(row);
 		JPanel helpRow = GPreferencesDialog.row();
 		helpRow.setBorder(BorderFactory.createEmptyBorder(0, 16, 0, 16));
 		engineHelp.setFont(engineHelp.getFont().deriveFont(engineHelp.getFont().getSize2D()-1f));
 		helpRow.add(engineHelp);
-		add(helpRow);
+		if(mac) add(helpRow);
 		showEngineHelp();
 		engineCombo.addActionListener(e -> showEngineHelp());
 
@@ -81,7 +87,7 @@ final class GTranslationForm extends JPanel {
 			VMTranslation.prepare(to.startsWith("en") ? "ja" : "en", to);
 		});
 		statusRow.add(download);
-		add(statusRow);
+		if(mac) add(statusRow);
 
 		//絵の中の文字(PictureTranslation): Tesseractで読み、同じ翻訳で訳した写しを表示する。入っているかどうかと入れ方
 		JPanel pictureRow = GPreferencesDialog.row();
@@ -89,7 +95,14 @@ final class GTranslationForm extends JPanel {
 		pictureRow.add(new JLabel(International.t("Text in pictures:")));
 		JButton checkAgain = new JButton(International.t("Check Again"));
 		pictureRow.add(checkAgain);
+		//Tesseractは同梱しない: 後からダウンロードする(TesseractInstall)。言語データ(traineddata)も足せる
+		downloadTesseract.setVisible(false);
+		tesseractLanguages.setVisible(false);
+		pictureRow.add(downloadTesseract);
+		pictureRow.add(tesseractLanguages);
 		add(pictureRow);
+		downloadTesseract.addActionListener(e -> installTesseract());
+		tesseractLanguages.addActionListener(e -> new GTesseractLanguagesDialog(SwingUtilities.getWindowAncestor(this), () -> refreshPictureStatus(true)).setVisible(true));
 		JPanel pictureStatusRow = GPreferencesDialog.row();
 		pictureStatusRow.setBorder(BorderFactory.createEmptyBorder(0, 16, 8, 16));
 		pictureStatus.setFont(pictureStatus.getFont().deriveFont(pictureStatus.getFont().getSize2D()-1f));
@@ -123,12 +136,43 @@ final class GTranslationForm extends JPanel {
 		pictureStatus.setForeground(Color.GRAY);
 		Thread t = new Thread(() -> {
 			String[] s = PictureTranslation.status(again);
+			boolean found = PictureOcr.executable()!=null, modern = found && PictureOcr.modern();
 			SwingUtilities.invokeLater(() -> {
+				if(installing) return;
 				pictureStatus.setText(GPreferencesDialog.wrap(s[0]!=null ? s[0] : s[1]));
 				pictureStatus.setForeground(s[0]!=null ? new Color(0xb0, 0x40, 0x00) : Color.GRAY);
+				downloadTesseract.setVisible(!found && TesseractInstall.canDownload());
+				tesseractLanguages.setVisible(modern);
+				revalidate();
 				if(again) StackTranslation.settingsChanged(); // a stack shown draws its pictures with what was found
 			});
 		}, "Tesseract status");
+		t.setDaemon(true); t.start();
+	}
+
+	/** Downloads Tesseract (TesseractInstall), after saying what and from where. */
+	private void installTesseract() {
+		String what = TesseractInstall.windows()
+			? International.t("The Tesseract OCR installer of UB Mannheim (Apache License 2.0, {0}) is downloaded from GitHub and opened. Then English and Japanese language data are downloaded.", TesseractInstall.programSize())
+			: International.t("Tesseract OCR {0} (Apache License 2.0; built by HyperZebra from the unmodified sources, {1}) is downloaded from GitHub into HyperZebra's state folder, with English and Japanese language data.", TesseractInstall.MAC_VERSION, TesseractInstall.programSize());
+		if(JOptionPane.showConfirmDialog(this, GPreferencesDialog.wrap(what), International.t("Download Tesseract…"), JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE)!=JOptionPane.OK_OPTION) return;
+		installing = true;
+		downloadTesseract.setEnabled(false);
+		pictureStatus.setForeground(Color.GRAY);
+		Thread t = new Thread(() -> {
+			String problem = TesseractInstall.installProgram(new TesseractInstall.Progress() {
+				@Override public void report(String text, double fraction) {
+					SwingUtilities.invokeLater(() -> pictureStatus.setText(fraction>=0 ? text+" "+(int)Math.round(fraction*100)+"%" : text));
+				}
+				@Override public boolean cancelled() { return !isDisplayable(); }
+			});
+			SwingUtilities.invokeLater(() -> {
+				installing = false;
+				downloadTesseract.setEnabled(true);
+				if(problem!=null) JOptionPane.showMessageDialog(this, GPreferencesDialog.wrap(problem), International.t("Download Tesseract…"), JOptionPane.WARNING_MESSAGE);
+				refreshPictureStatus(true);
+			});
+		}, "Tesseract download");
 		t.setDaemon(true); t.start();
 	}
 

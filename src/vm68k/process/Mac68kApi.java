@@ -161,7 +161,10 @@ final class Mac68kApi implements M68kTrapHandler {
 		memErr(NO_ERR);return NO_ERR;
 	}
 	int setPtrSize(int pointer,int newSize) throws M68kCpuException {
+		adoptProgramPointer(pointer);
 		if(!pointerSizes.containsKey(pointer)||newSize<0){memErr(PARAM_ERR);return PARAM_ERR;}
+		Integer room=programPointers.get(pointer);
+		if(room!=null){if(newSize>room&&!growProgramPointer(pointer,newSize)){memErr(MEM_FULL_ERR);return MEM_FULL_ERR;}pointerSizes.put(pointer,newSize);memErr(NO_ERR);return NO_ERR;}
 		if(zonePointers.containsKey(pointer))return zoneResize(pointer,newSize);
 		int block=memory.blockSize(pointer);
 		if(block>=0&&newSize<=block){pointerSizes.put(pointer,newSize);memErr(NO_ERR);return NO_ERR;}
@@ -178,6 +181,7 @@ final class Mac68kApi implements M68kTrapHandler {
 		if(app!=null){try{app.zoneRelease(handle);}catch(M68kCpuException ignored){}}
 		if(app!=null&&app.menus!=null)app.menus.handleDisposed(handle); // a menu Handle the program disposes must not be remembered as a menu
 		if(app!=null&&app.resources!=null)app.resources.handleDisposed(handle); // a resource map Handle the program replaced with a copy
+		try{quickDraw.handleDisposed(handle);}catch(M68kCpuException ignored){} // a screen port's PixMap the program disposed (see QuickDraw68k.handleDisposed)
 		try{int data=memory.readLong(handle);if(data!=0&&memory.isAllocated(data))memory.free(data);}catch(M68kCpuException ignored){}
 		releaseMasterPointer(handle);
 	}
@@ -347,11 +351,12 @@ final class Mac68kApi implements M68kTrapHandler {
 		// OS trap option bits (SYS/CLEAR/IMMED) do not change the routine number.
 		switch(trap) {
 			case 0x1e:return newPtr(cpu,(opcode&0x400)!=0);
-			case 0x1f:if(app!=null)app.zoneRelease(cpu.a[0]);if(pointerSizes.remove(cpu.a[0])!=null&&!zoneFree(cpu.a[0])){reservedForGrowth-=memory.reservedAfter(cpu.a[0]);memory.free(cpu.a[0]);if(zoneHeaps.containsKey(cpu.a[0]))resetZoneHeap(cpu.a[0]);}setMemoryResult(cpu,NO_ERR);return true;
+			case 0x1f:if(programPointers.remove(cpu.a[0])!=null){pointerSizes.remove(cpu.a[0]);setMemoryResult(cpu,NO_ERR);return true;}
+				if(app!=null)app.zoneRelease(cpu.a[0]);if(pointerSizes.remove(cpu.a[0])!=null&&!zoneFree(cpu.a[0])){reservedForGrowth-=memory.reservedAfter(cpu.a[0]);memory.free(cpu.a[0]);if(zoneHeaps.containsKey(cpu.a[0]))resetZoneHeap(cpu.a[0]);}setMemoryResult(cpu,NO_ERR);return true;
 			case 0x66:cpu.a[0]=newEmptyHandle();setMemoryResult(cpu,NO_ERR);return true; // NewEmptyHandle ($A166)
 			// GetPtrSize/GetHandleSize(NIL): D0 = nilHandleErr, as the trap answers (a size of 0 kept NullSet's NoNulls looping on
 			// Munger(h, offset, params[4]^, GetHandleSize(params[4])-1, ...) with its missing 4th parameter)
-			case 0x21:if(cpu.a[0]==0){setMemoryResult(cpu,NIL_HANDLE_ERR);return true;}cpu.d[0]=sizeOf(pointerSizes,cpu.a[0]);return true;
+			case 0x21:if(cpu.a[0]==0){setMemoryResult(cpu,NIL_HANDLE_ERR);return true;}adoptProgramPointer(cpu.a[0]);cpu.d[0]=sizeOf(pointerSizes,cpu.a[0]);return true;
 			case 0x22:return newHandle(cpu,(opcode&0x400)!=0);
 			case 0x23:disposeHandleAndFree(cpu.a[0]);setMemoryResult(cpu,NO_ERR);return true;
 			case 0x24:return setHandleSize(cpu);
@@ -449,7 +454,7 @@ final class Mac68kApi implements M68kTrapHandler {
 		if(size<0){negativeSize(cpu,size);return true;}
 		try {
 			int zone=system||app==null?0:app.currentPrivateZone(),pointer=zone==0?0:zoneAllocate(zone,size);
-			if(pointer==0){checkGuestRoom(size);pointer=memory.allocateReserving(Math.max(1,size),2,ptrGrowthReserve(size));}
+			if(pointer==0){checkGuestRoom(size);pointer=memory.allocateReserving(Math.max(1,size),2,ptrGrowthReserve(size));memory.notePointerBlock(pointer);}
 			pointerSizes.put(pointer,Math.max(0,size));if(app!=null)app.zoneCharge(pointer,size,false);
 			cpu.a[0]=pointer; setMemoryResult(cpu,NO_ERR);
 		} catch(M68kCpuException e) { cpu.a[0]=0;setMemoryResult(cpu,MEM_FULL_ERR); }
@@ -532,6 +537,47 @@ final class Mac68kApi implements M68kTrapHandler {
 			int ownerHeader=memory.readLong(owner-8);if((ownerHeader>>>28)==8)memory.writeLong(owner-8,ownerHeader&0xff000000);
 			if(TRACE)System.err.println(String.format("[68K] Handle $%X carved out of $%X's block: %d bytes (that one keeps %d)",handle,ownerHandle,logical,pointer-8-owner));
 		}catch(M68kCpuException ignored){}
+	}
+	/** Ptrs to blocks the program made itself in the application zone ({@link #adoptProgramPointer}) -> the room their header gave. */
+	private final Map<Integer,Integer> programPointers=new HashMap<Integer,Integer>();
+	/**
+	 * A Ptr to a nonrelocatable block the program built by hand, unknown to the books: taken over from the 24-bit header it
+	 * wrote (tag %01, physical size, the application zone as parent) when the address lies in no block of ours. The Mac
+	 * p-System's loader (A View to a Kill) grows the zone itself in the 64K-ROM way: a block written at SP-64K, HeapEnd and
+	 * bkLim moved past it - then GetPtrSize/SetPtrSize on it; with 0/paramErr it stopped at "Heap expansion error".
+	 * The block keeps its place: it shrinks and grows within the room its header gave, and DisposePtr only forgets it.
+	 */
+	private void adoptProgramPointer(int pointer){
+		if(pointer<8||(pointer&1)!=0||pointerSizes.containsKey(pointer))return;
+		try{
+			int header=memory.readLong(pointer-8),physical=header&0xffffff,zone=memory.readLong(pointer-4);
+			if((header>>>30)!=1||physical<8||zone==0||zone!=memory.readLong(0x2aa)&&zone!=memory.readLong(0x118))return;
+			int logical=physical-8-((header>>>24)&0xf);if(logical<0||memory.isAllocated(pointer)||memory.blockContaining(pointer)>=0)return;
+			pointerSizes.put(pointer,logical);programPointers.put(pointer,logical);
+			if(TRACE)System.err.println(String.format("[68K] Ptr $%X: a block the program built (%d bytes)",pointer,logical));
+		}catch(M68kCpuException ignored){}
+	}
+	/**
+	 * Grows a program-built block as the Memory Manager grows a Ptr into the zone space after it: up to bkLim, where the
+	 * program has moved the zone's end itself (the p-System raises bkLim and HeapEnd, then SetPtrSizes its heap block into the
+	 * new room - "Heap expansion error" when that failed), or past it as the zone's last block grows: bkLim, its 12-byte
+	 * trailer and HeapEnd move up behind it, as far as a real ApplLimit would allow - the stack base less the 24K DefltStack.
+	 */
+	private boolean growProgramPointer(int pointer,int newSize){
+		try{
+			int zone=memory.readLong(0x2aa),header=memory.readLong(pointer-8),end=pointer-8+(header&0xffffff);if(zone==0)return false;
+			int physical=(8+newSize+3)&~3,newEnd=pointer-8+physical,bkLim=memory.readLong(zone);
+			if(bkLim<end||newEnd>bkLim&&newEnd+12>Math.max(bkLim,memory.readLong(0x908)-0x6000))return false;
+			if(pointer-8<memory.heapEnd())return false; // only above the heap ours allocates from (the p-System's lies below its SP): no block of ours in the way
+			int next=memory.readLong(end),nextEnd=end+(next&0xffffff);
+			if(TRACE)System.err.println(String.format("[68K] program Ptr $%X grows to %d: next block $%08X at $%X, bkLim $%X",pointer,newSize,next,end,bkLim));
+			if(end<bkLim){ // into the free block after it, whose rest stays a free block (or joins the Ptr when too small for one)
+				if((next>>>30)!=0||nextEnd<newEnd&&nextEnd<bkLim)return false;
+				if(nextEnd>=newEnd&&nextEnd<=bkLim){int rest=nextEnd-newEnd;if(rest<12)physical+=rest;else memory.writeLong(newEnd,rest);}}
+			memory.writeLong(pointer-8,(header&0xf0000000)|(physical-8-newSize)<<24|physical);newEnd=pointer-8+physical;
+			if(newEnd+12>bkLim){memory.writeLong(zone,newEnd);memory.writeLong(newEnd,12);if(memory.readLong(0x114)==bkLim)memory.writeLong(0x114,newEnd);}
+			programPointers.put(pointer,physical-8);return true;
+		}catch(M68kCpuException e){return false;}
 	}
 	/** Whether {@code handle} is a live Handle (allocated and not yet disposed). */
 	boolean isHandle(int handle){return handle!=0&&handleSizes.containsKey(handle);}

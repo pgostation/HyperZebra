@@ -21,6 +21,8 @@ final class SoundMixer68k {
 	/** Output rate; sounds at other rates are resampled (linear interpolation) while mixing. */
 	static final int RATE=44100;
 	private static final int CHUNK_FRAMES=512; // ~12 ms per write: effects start within a frame of the game
+	/** Output frames left of a decoded voice when it counts as nearly over ({@link Voice#onNearEnd}): two chunks, ~23 ms. */
+	static final int NEAR_END_FRAMES=CHUNK_FRAMES*2;
 	private static final SoundMixer68k INSTANCE=new SoundMixer68k();
 	static SoundMixer68k get(){return INSTANCE;}
 
@@ -46,6 +48,8 @@ final class SoundMixer68k {
 		private double position;
 		/** The voice that takes over, in the same output frame, once this one's last frame is mixed (see {@link SoundMixer68k#link}). Guarded by the mixer's lock. */
 		private Voice next;
+		/** The mixer has run out of this voice and looked for its successor: too late to link one (guarded by the mixer's lock). */
+		private boolean ranOut;
 		volatile float gainLeft=1f,gainRight=1f;
 		/** Output frames of a fade-out asked for by {@link SoundMixer68k#fadeOut}; the mixer takes it over at its next chunk (tests set it directly). */
 		volatile int fadeRequest;
@@ -68,7 +72,17 @@ final class SoundMixer68k {
 		boolean running(){return started&&!ended&&!paused;}
 		/** Runs when the voice ends (last frame mixed, or stopped) - at once when it already has. Called on the mixer thread or the stopper's. */
 		void onEnd(Runnable r){synchronized(onEnd){if(!ended){onEnd.add(r);return;}}r.run();}
-		private void finish(){List<Runnable> run;synchronized(onEnd){if(ended)return;ended=true;run=new ArrayList<Runnable>(onEnd);onEnd.clear();}for(Runnable r:run)try{r.run();}catch(RuntimeException ignored){}}
+		private void finish(){List<Runnable> run;synchronized(onEnd){if(ended)return;ended=true;run=new ArrayList<Runnable>(onEnd);onEnd.clear();nearEnd.addAll(0,run);run=new ArrayList<Runnable>(nearEnd);nearEnd.clear();}for(Runnable r:run)try{r.run();}catch(RuntimeException ignored){}}
+		/** nearlyEnded: at most {@link SoundMixer68k#NEAR_END_FRAMES} output frames of a decoded voice are left to mix (or it has ended). */
+		volatile boolean nearlyEnded;
+		private final List<Runnable> nearEnd=new ArrayList<Runnable>();
+		/**
+		 * Runs when the voice is nearly over (see {@link #nearlyEnded}) - at once when it already is; a voice that ends
+		 * (or is stopped) before that runs it then. The Sound Manager's callBackCmd behind a bufferCmd: a Mac calls back
+		 * once its mixer has taken the buffer, before the last samples are heard, so the next bufferCmd still follows on.
+		 */
+		void onNearEnd(Runnable r){synchronized(onEnd){if(!ended&&!nearlyEnded){nearEnd.add(r);return;}}r.run();}
+		private void nearlyFinished(){List<Runnable> run;synchronized(onEnd){if(nearlyEnded||ended)return;nearlyEnded=true;run=new ArrayList<Runnable>(nearEnd);nearEnd.clear();}for(Runnable r:run)try{r.run();}catch(RuntimeException ignored){}}
 	}
 
 	// ------------------------------------------------------------------ the output volume
@@ -156,11 +170,11 @@ final class SoundMixer68k {
 	 * 5-12 ms hole. False when v has already ended or has a successor; next must then be started the ordinary way.
 	 */
 	boolean link(Voice v,Voice next){
-		synchronized(lock){if(v.ended||v.stopped||v.next!=null||next.started||next.stopped||failed)return false;v.next=next;return true;}
+		synchronized(lock){if(v.ended||v.ranOut||v.stopped||v.next!=null||next.started||next.stopped||failed)return false;v.next=next;return true;}
 	}
 	/** Starts the voice linked behind {@code v} (on the mixer thread, v having just run out); null when there is none to start. */
 	private Voice startSuccessor(Voice v){
-		synchronized(lock){Voice n=v.next;v.next=null;if(n==null||n.started||n.stopped)return null;n.started=true;voices.add(n);return n;}
+		synchronized(lock){v.ranOut=true;Voice n=v.next;v.next=null;if(n==null||n.started||n.stopped)return null;n.started=true;voices.add(n);return n;}
 	}
 	/** Stops the voice for good: it leaves the mix at the next chunk and reports itself ended. */
 	void stop(Voice v){v.stopped=true;v.paused=false;synchronized(lock){voices.remove(v);}v.finish();}
@@ -234,7 +248,9 @@ final class SoundMixer68k {
 		Voice cur=v;int from=0;
 		while(true){
 			int end=mixRange(cur,mix,from,chunkFrames);
-			if(end<0)return;
+			if(end<0){
+				if(cur.source==null&&!cur.nearlyEnded){double step=cur.sourceRate*cur.rateMultiplier/RATE;if(step>0&&(cur.available-cur.position)/step<=NEAR_END_FRAMES)cur.nearlyFinished();}
+				return;}
 			done.add(cur);cur=startSuccessor(cur);from=end;
 			if(cur==null||cur.paused||from>=chunkFrames)return; // (a successor starting at the chunk's end goes on in the next one)
 		}

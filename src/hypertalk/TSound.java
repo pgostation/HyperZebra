@@ -296,27 +296,22 @@ public class TSound {
 		//参照)。再生・編集のためにAudioInputStreamが必要になったこのタイミングで
 		//初めてAIFF相当のバイト列へデコードする。
 		if(file.getName().toLowerCase().endsWith(".data")){
+			//68K の Sound Manager と同じ読み方(MediaDocument.sndStream): 標準・拡張(16bit、ステレオ)・圧縮ヘッダ、MACE は自前で。
+			//AIFF への変換(HCResource.decodeSndToAiffBytes)は拡張ヘッダを8bitモノラル扱いして2フレームにしていたので、最後の手段だけ
 			byte[] raw = java.nio.file.Files.readAllBytes(file.toPath());
-			AudioInputStream mace = MaceDecoder.streamFromSnd(raw); // MACE 3:1 / 6:1 expanded natively
-			if(mace!=null) return mace;
-			byte[] aiff = HCResource.decodeSndToAiffBytes(raw);
-			if(aiff!=null){
-				try {
-					return AudioSystem.getAudioInputStream(new java.io.ByteArrayInputStream(aiff));
-				} catch (UnsupportedAudioFileException error) {
-					//MACE圧縮(AIFC)の場合、標準のAudioSystemでは読めないため
-					//ffmpeg経由(MaceConverter)で変換する
-					AudioInputStream decoded = MaceConverter.open(aiff);
-					if(decoded!=null) return decoded;
-					throw error;
-				}
+			try {
+				return MediaDocument.sndStream(raw);
+			} catch (IOException unsupported) {
+				throw new UnsupportedAudioFileException(unsupported.getMessage());
 			}
 		}
 		if(Mp3Decoder.looksLikeMp3(file)) return Mp3Decoder.scan(file).pcm(0); //Java Soundには MP3 のデコーダが無い
 		try {
 			return AudioSystem.getAudioInputStream(file);
 		} catch (UnsupportedAudioFileException error) {
-			AudioInputStream decoded = MaceConverter.open(file);
+			byte[] aifc = java.nio.file.Files.readAllBytes(file.toPath());
+			AudioInputStream decoded = MaceConverter.open(aifc);
+			if(decoded==null) decoded = MaceConverter.openIma4(aifc); // Apple's IMA 4:1 AIFF-C (Otto Matic's songs)
 			if(decoded!=null) return decoded;
 			throw error;
 		}

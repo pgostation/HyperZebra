@@ -94,6 +94,7 @@ final class LauncherAppearance {
     }
     JPanel canvas() {
         return new JPanel(new BorderLayout(0, 14)) {
+            @Override public void paint(Graphics graphics) { super.paint(graphics); StartupTrace.painted(getComponentCount()>0); }
             @Override protected void paintComponent(Graphics graphics) {
                 Graphics2D g = smooth(graphics);
                 int w = getWidth(), h = getHeight();

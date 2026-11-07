@@ -504,7 +504,7 @@ final class GHelpWindow extends JFrame {
 			"\n"+
 			"Drawing and text tools\n"+
 			"  Pencil — draws one-pixel lines; clicking a foreground-coloured pixel draws with the background colour.\n"+
-			"  Brush — paints soft or hard strokes with adjustable size, opacity, spacing and stabilisation.\n"+
+			"  Brush — paints soft or hard strokes with adjustable size, opacity, spacing and stabilisation; with a pen tablet, pressure can change its size and opacity, and the pen's eraser end erases.\n"+
 			"  Eraser — erases to transparency or reveals the background picture.\n"+
 			"  Line — draws a straight line; Shift constrains its angle.\n"+
 			"  Spray — sprays foreground or background colour with an adjustable radius.\n"+

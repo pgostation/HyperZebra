@@ -121,7 +121,11 @@ final class DialogManager68k {
 				Item item=item(d,number);if(item!=null){if(typeOut!=0)memory.writeWord(typeOut,item.type);if(itemOut!=0)memory.writeLong(itemOut,item.handle);if(box!=0)writeRect(box,item.rect);}return true;}
 			case 0x98e:{int box=memory.readLong(cpu.a[7]),handle=memory.readLong(cpu.a[7]+4),type=(short)memory.readWord(cpu.a[7]+8),number=(short)memory.readWord(cpu.a[7]+10),d=memory.readLong(cpu.a[7]+12);cpu.a[7]+=16;
 				Item item=item(d,number);if(item!=null){if(handle!=item.handle){int size=handle==0?0:tb.api.handleSize(handle);item.colorIcon=size!=128&&size>=82;} // an 'ICON' is 128 bytes; a CIcon record is otherwise
-					item.handle=handle;item.type=type&0xff;memory.writeLong(item.address,handle);memory.writeByte(item.address+12,type);if(box!=0){item.rect=readRect(box);memory.copy(box,item.address+4,8);if(item.teHandle!=0)tb.textEdit.setRects(item.teHandle,item.rect);
+					item.handle=handle;item.type=type&0xff;memory.writeLong(item.address,handle);memory.writeByte(item.address+12,type);if(box!=0){item.rect=readRect(box);memory.copy(box,item.address+4,8);
+					// the item being edited keeps its TE where it is: SetDItem only writes the item list, textH takes an item's rect when that
+					// item becomes current. HyperCard offsets textH's destRect and viewRect itself after it (ask with a long prompt: moved
+					// twice, the default text below its box). The others have a TE of their own here, standing in for the drawn text
+					if(item.teHandle!=0&&!beingEdited(d,number))tb.textEdit.setRects(item.teHandle,item.rect);
 					item.hidden=item.rect[1]>HIDDEN_LEFT;}}return true;} // hidden is where the rect is, as for the Dialog Manager (see ShowDialogItem)
 			case 0x990:{int text=memory.readLong(cpu.a[7]),handle=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;if(text!=0){byte[] data=handle==0?null:tb.api.handleContents(handle);if(data==null)data=new byte[0];int n=Math.min(255,data.length);memory.writeByte(text,n);memory.load(text+1,java.util.Arrays.copyOf(data,n));}return true;}
 			case 0x98f:{int text=memory.readLong(cpu.a[7]),handle=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;setItemText(handle,text);return true;}
@@ -290,13 +294,7 @@ final class DialogManager68k {
 		int window=tb.windows.create(storage,DIALOG_SIZE,bounds,title,false,procId,behind,goAway,refCon,color);
 		if(window==0)return 0;
 		if(colorTable!=null)tb.windows.applyWindowColors(window,colorTable);
-		else{ // a Kaleidoscope scheme colours the dialogs and alerts that bring no colours of their own
-			KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);int back=scheme==null?-1:scheme.dialogBackground();
-			if(back>=0){byte[] table=new byte[16];table[7]=0; // ctSeed, ctFlags, ctSize 0 (one entry): part 0 (wContentColor)
-				table[10]=(byte)(back>>16);table[11]=(byte)(back>>16);table[12]=(byte)(back>>8);table[13]=(byte)(back>>8);table[14]=(byte)back;table[15]=(byte)back;
-				tb.windows.applyWindowColors(window,table);
-				byte[] pattern=scheme.dialogBackgroundPattern();if(pattern!=null)tb.windows.setContentPattern(window,pattern);}
-		}
+		else schemeBackground(window,false);
 		memory.writeWord(window+108,2); // dialogKind
 		memory.fill(window+ITEMS,DIALOG_SIZE-ITEMS,0);memory.writeLong(window+ITEMS,items);
 		Dialog dialog=new Dialog(window);dialog.items=items;dialogs.put(window,dialog);
@@ -307,6 +305,14 @@ final class DialogManager68k {
 		return window;
 	}
 
+	/** A Kaleidoscope scheme colours the dialogs and alerts that bring no colours of their own. */
+	private void schemeBackground(int window,boolean alert) throws M68kException {
+		KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);int back=scheme==null?-1:scheme.dialogBackground(alert);
+		if(back>=0){byte[] table=new byte[16];table[7]=0; // ctSeed, ctFlags, ctSize 0 (one entry): part 0 (wContentColor)
+			table[10]=(byte)(back>>16);table[11]=(byte)(back>>16);table[12]=(byte)(back>>8);table[13]=(byte)(back>>8);table[14]=(byte)back;table[15]=(byte)back;
+			tb.windows.applyWindowColors(window,table);
+			byte[] pattern=scheme.dialogBackgroundPattern(alert);if(pattern!=null)tb.windows.setContentPattern(window,pattern);}
+	}
 	private void parseItems(Dialog dialog) throws M68kException {parseItems(dialog,0);}
 	/** Parses the items from number {@code skip}+1 on (AppendDITL adds to a list whose first items already exist). */
 	private void parseItems(Dialog dialog,int skip) throws M68kException {
@@ -524,6 +530,11 @@ final class DialogManager68k {
 
 	// ------------------------------------------------------------------ drawing
 
+	/** An update of the dialog: the update region emptied as BeginUpdate does, then the items drawn. What the program invalidates
+	 *  while they draw stays for the next update, as it does past EndUpdate: 3D Hearts Deluxe's installer hides its picture item
+	 *  from that item's draw procedure, widens the description item over it and InvalRects it - cleared after the drawing, the
+	 *  description was never drawn again. */
+	void drawUpdate(int window) throws M68kCpuException {tb.windows.clearUpdate(window);draw(window);}
 	void draw(int window) throws M68kCpuException {
 		Dialog dialog=dialogs.get(window);if(dialog==null)return;
 		WindowManager68k.Window w=tb.windows.window(window);if(w==null)return;
@@ -809,9 +820,11 @@ final class DialogManager68k {
 		tb.textEdit.setSelection(item.teHandle,start,end,true);
 	}
 
+	private boolean beingEdited(int window,int number){Dialog dialog=dialogs.get(window);return dialog!=null&&dialog.editItem==number;}
+
 	private void switchEditField(Dialog dialog,int number) throws M68kCpuException {
 		if(dialog.editItem==number)return;
-		Item old=item(dialog.window,dialog.editItem);if(old!=null&&old.teHandle!=0)tb.textEdit.activate(old.teHandle,false);
+		Item old=item(dialog.window,dialog.editItem);if(old!=null&&old.teHandle!=0){tb.textEdit.activate(old.teHandle,false);tb.textEdit.setRects(old.teHandle,old.rect);} // a SetDItem while it was being edited
 		dialog.editItem=number;Item item=item(dialog.window,number);
 		memory.writeWord(dialog.window+EDIT_FIELD,number-1);
 		if(item!=null&&item.teHandle!=0){tb.textEdit.shareDialogStyle(memory.readLong(dialog.window+TEXT_H),item.teHandle);memory.writeLong(dialog.window+TEXT_H,item.teHandle);tb.textEdit.activate(item.teHandle,true);}
@@ -872,7 +885,7 @@ final class DialogManager68k {
 		int window=dialog.window;
 		if(Boolean.getBoolean("hz68k.bbdebug")&&(e.what==1||e.what==3))System.err.println("[bbdebug] dialog event "+e.what+" msg="+e.message+" edit="+dialog.editItem+" te="+memory.readLong(window+TEXT_H));
 		switch(e.what){
-			case EventManager68k.UPDATE_EVT:if(e.message==window){draw(window);tb.windows.clearUpdate(window);}return 0; // BeginUpdate/DrawDialog/EndUpdate, as the real Dialog Manager does
+			case EventManager68k.UPDATE_EVT:if(e.message==window)drawUpdate(window);return 0; // BeginUpdate/DrawDialog/EndUpdate, as the real Dialog Manager does
 			// the open edit field blinks only while it is an edit text: an item the program made a static text (Myth II's installer
 			// sizes its alert message in an edit text, then SetDialogItems it static) is drawn as one here, so its caret would stand
 			// alone (on a Mac it stays at the end of the text, outside the record's old view rectangle)
@@ -1010,7 +1023,7 @@ final class DialogManager68k {
 		if(filter!=0){if(tb.windows.updatePending(window))tb.events.postUpdate(window);}
 		// The update region decides, not a queued event: Factory 1.1 draws its calendar's day cells after DrawDialog and empties the
 		// region with BeginUpdate/EndUpdate; redrawing for the stale event painted the calendar picture over the cells.
-		else{tb.events.takeUpdate(window);if(tb.windows.updatePending(window)){draw(window);tb.windows.clearUpdate(window);}}
+		else{tb.events.takeUpdate(window);if(tb.windows.updatePending(window))drawUpdate(window);}
 		// Updates for the application's own windows stay pending until ModalDialog returns (a real ModalDialog ignores them and
 		// the update region simply stays dirty); re-posting them at once would spin without ever idling.
 		java.util.Set<Integer> deferredUpdates=new java.util.LinkedHashSet<Integer>();
@@ -1034,7 +1047,7 @@ final class DialogManager68k {
 			}
 			if(dialog.tracksCursor)trackCursor(dialog);
 			if(e.what==EventManager68k.UPDATE_EVT&&e.message!=window){if(dialogs.containsKey(e.message))draw(e.message);else deferredUpdates.add(e.message);continue;}
-			if(e.what==EventManager68k.MOUSE_DOWN&&e.menuId!=0){tb.events.clickTracked();if(e.menuId==-1&&e.window==window&&dialog.cancelItem>0)return dialog.cancelItem;java.awt.Toolkit.getDefaultToolkit().beep();tb.events.pendingMenuEvent=null;continue;}
+			if(e.what==EventManager68k.MOUSE_DOWN&&e.menuId!=0){tb.events.clickTracked();if(e.menuId==-1&&e.window==window&&dialog.cancelItem>0)return dialog.cancelItem;java.awt.Toolkit.getDefaultToolkit().beep();tb.events.pendingMenuEvent=null;if(e.menuId==-1)tb.events.goAwayRefused();continue;}
 			if(filter!=0){
 				tb.events.writeEventRecord(scratchEvent,e);if(itemHitPtr==0)memory.writeWord(scratchItem,0);
 				M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();
@@ -1111,6 +1124,8 @@ final class DialogManager68k {
 		ResourceFile68k.Resource actb=tb.resources.find(0x61637462,id); // an 'actb' colours the alert as a 'dctb' does a dialog
 		int window=create(0,position(bounds,positioning==0?0x300a:positioning),"",false,1,-1,false,0,items,false,actb==null?null:tb.resources.data(actb),actb!=null);
 		if(window==0)return -1;
+		tb.windows.themeAsAlert(window); // the scheme's alert frame and colours
+		if(actb==null)schemeBackground(window,true);
 		applyItemStyles(window,ditlId);
 		Dialog dialog=dialogs.get(window);dialog.alertKind=kind;dialog.ringDefault=true;
 		if((stage&8)!=0){dialog.defaultItem=2;memory.writeWord(window+DEFAULT_ITEM,2);}

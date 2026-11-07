@@ -7,11 +7,19 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>HyperZebra's own speed is no measure of how long something took in HyperCard - a statement is cheap here, a card
  * change comparatively dear - so the limit is a model of HyperCard's costs, not a slowed-down HyperZebra: every statement,
  * loop pass and card-window redraw is charged what it cost real HyperCard in 68K instructions, and the script thread waits
- * until the machine's rate ({@link #mips}, million instructions a second, the 68K VM's scale) has paid for it. The
- * constants are calibrated against real HyperCard 2.2 running in the 68K VM at the same rates (the four tests of the
- * "HC速度計" stack: script, card moves, icons, field text; see tests/StackSpeedTest), which at 2 MIPS gives the scores a real
- * Performa 6210 printed with HyperCard 2.2 (24/25/23/23 - card moves aside, which its native PowerPC QuickDraw sped up).
+ * until the machine's rate ({@link #mips}, million instructions a second, the 68K VM's preset scale) has paid for it. The
+ * constants are fitted to real machines with the four tests of the "HC速度計" stack (script, card moves, icons, field text;
+ * see tests/StackSpeedTest): HyperCard J-2.2 on a 68LC040 at 33 MHz (about 30 MIPS, {@link #REFERENCE_MIPS}) printed
+ * 44/27/37/28. A real Mac ran HyperCard far slower than its MIPS suggest (SANE arithmetic, the ROM's Toolbox, memory
+ * traffic); the 68K VM charges the same (Toolbox68k.trapCost, Toolbox68k.WEIGHT), and HyperCard 2.2 there gives these scores
+ * at the same rate too, so a stack's XCMDs keep their pace against its scripts.
+ * <p>Drawing does not keep up with the processor on faster machines (the video bus): the display costs are paid at
+ * {@link #displayRate}, which grows as the rate to the power {@link #DISPLAY_EXPONENT} from the reference machine. A Power
+ * Macintosh G3 at 333 MHz printed 900/228/480/220 with HyperCard J-2.3 PowerPC, which this gives at about 600 MIPS; a
+ * Performa 6210 (603 at 80 MHz) 80/35/39/37, about 55 MIPS here (its display slower still: a fast processor on a slow bus).
  * XCMDs/XFCNs run in the 68K VM, which Toolbox68k paces to {@link #externalMips} itself.
+ * <p>Games that move their buttons in "on idle" go as fast as idle comes: HyperCard sends it at most 40 times a second
+ * ({@link #IDLE_INTERVAL_NANOS}, Pidle keeps to it under a limit) and its event loop costs {@link #IDLE} each time.
  * <p>The pace is a token bucket like the 68K VM's: the costs add up to a deadline, the script thread parks when it is ahead
  * of the wall clock, and time spent waiting (wait, answer, a visual effect) counts as elapsed - no burst afterwards.
  */
@@ -27,17 +35,29 @@ final class StackSpeed {
 		try{ return v==null ? -1 : Math.max(0, Double.parseDouble(v)); }catch(NumberFormatException e){ return -1; }
 	}
 
-	// The costs in 68K instructions (HyperCard 2.2 in the 68K VM, whose traps cost 150 and blits a byte each).
+	/** The rate of the machine the costs are fitted to: a 68LC040 at 33 MHz. */
+	static final double REFERENCE_MIPS = 30;
+	/** How the display's speed grows with the rate: drawing at 20 times the reference rate is about 8 times as fast. */
+	static final double DISPLAY_EXPONENT = 0.7;
+	// The costs in instructions at the reference machine's rate. Their proportions came from HyperCard 2.2 in the 68K VM.
 	/** A statement (or a control line: if, repeat, exit, ...): the dispatch, plus each of its words evaluated. */
-	static final int STATEMENT = 1250, WORD = 300;
+	static final int STATEMENT = 9100, WORD = 2200;
 	/** A pass through a block: one repeat loop iteration, an if branch, a handler body. */
-	static final int BLOCK = 600;
+	static final int BLOCK = 4400;
 	/** A redraw of part of the card window (a part changed): HyperCard's compositing of the layers there... */
-	static final int REDRAW = 4000;
+	static final int REDRAW = 110000;
 	/** ...and the copy to the screen, per card pixel. Not paid under lock screen (HyperCard draws its offscreen card only). */
-	static final double PIXEL = 4.0;
+	static final double PIXEL = 11.7;
 	/** Field text set by a script (put into a field): TextEdit's layout, plus each character laid out. */
-	static final int FIELD_TEXT = 6000, CHARACTER = 40;
+	static final int FIELD_TEXT = 287000, CHARACTER = 80;
+	/** A message that reaches a handler: HyperCard looks it up and sets up the handler's parameters and locals. */
+	static final int HANDLER = 7300;
+	/** send: the message is compiled from its text first. */
+	static final int SEND = 13900;
+	/** A pass of HyperCard's event loop that sends idle: WaitNextEvent, the cursor, the message along the message path. */
+	static final int IDLE = 117000;
+	/** HyperCard sends idle at most once in 1.5 ticks (its WaitNextEvent sleeps a tick): 40 a second in VM HyperCard 2.2 at any rate. */
+	static final long IDLE_INTERVAL_NANOS = 25_000_000L;
 
 	/** -Dhz.stack.speedtrace=true prints each redraw charged. */
 	static final boolean TRACE = Boolean.getBoolean("hz.stack.speedtrace");
@@ -53,6 +73,10 @@ final class StackSpeed {
 
 	/** The rate in force: the stack's own, or -Dhz.stack.mips. */
 	static double rate(){ return FORCED>=0 ? FORCED : mips; }
+	/** The display's rate at the stack's rate (see {@link #DISPLAY_EXPONENT}). */
+	static double displayRate(){ double r = rate(); return r<=0 ? 0 : REFERENCE_MIPS*Math.pow(r/REFERENCE_MIPS, DISPLAY_EXPONENT); }
+	/** What a display cost weighs at the stack's rate: the processor's instructions that take as long as it. */
+	static double displayScale(){ double r = rate(); return r<=0 ? 1 : Math.pow(r/REFERENCE_MIPS, 1-DISPLAY_EXPONENT); }
 	/** Whether the open stack runs at a limited speed. */
 	static boolean limited(){ return rate()>0; }
 
@@ -78,8 +102,24 @@ final class StackSpeed {
 	static void statement(int words){ pay(STATEMENT+(long)WORD*words); }
 	/** A block is entered: a loop iteration, an if branch, a handler. */
 	static void block(){ pay(BLOCK); }
+	/** A control line's test of {@code words} words is evaluated again: a repeat while/until before each pass, an else if. */
+	static void test(int words){ pay((long)WORD*words); }
+	/** A message reaches a handler. */
+	static void handler(){ pay(HANDLER); }
+	/** A send statement compiles its message. */
+	static void send(){ pay(SEND); }
+	/** HyperCard's event loop sends an idle message. */
+	static void idle(){ pay(IDLE); }
+	/**
+	 * The statement running changes nothing on the screen (set icon to the icon it has, set loc to where it is): HyperCard
+	 * draws nothing for it, so the redraws HyperZebra asks for meanwhile are free.
+	 */
+	static void unchanged(){
+		if(!limited() || javax.swing.SwingUtilities.isEventDispatchThread()) return;
+		synchronized(LOCK){ drawnFree = true; }
+	}
 	/** A script set the text of a field to {@code length} characters. */
-	static void fieldText(int length){ if(limited()) pending.addAndGet(FIELD_TEXT+(long)CHARACTER*length); }
+	static void fieldText(int length){ if(limited()) pending.addAndGet((long)(displayScale()*(FIELD_TEXT+(long)CHARACTER*length))); }
 
 	/**
 	 * The card window redraws {@code r} (card window pixels, {@code scale} = the zoom; CardRepaintManager, any thread). Charged
@@ -94,6 +134,7 @@ final class StackSpeed {
 		long cost;
 		synchronized(LOCK){
 			java.util.ArrayList<java.awt.Rectangle> list = waiting ? previous : drawn;
+			if(waiting ? previousFree : drawnFree) return;
 			java.awt.Rectangle merged = null;
 			long overlap = 0;
 			for(java.awt.Rectangle d : list){
@@ -101,7 +142,7 @@ final class StackSpeed {
 				if(!i.isEmpty() && (long)i.width*i.height>overlap){ overlap = (long)i.width*i.height; merged = d; }
 			}
 			double fresh = ((double)r.width*r.height-overlap)/(scale*scale);
-			cost = (merged==null ? REDRAW : 0)+(locked ? 0 : (long)(PIXEL*fresh));
+			cost = (long)(displayScale()*((merged==null ? REDRAW : 0)+(locked ? 0 : PIXEL*fresh)));
 			if(merged!=null) merged.add(r);
 			else if(list.size()<64) list.add(new java.awt.Rectangle(r));
 		}
@@ -110,6 +151,8 @@ final class StackSpeed {
 	}
 	/** The regions charged for the statement running (card window pixels), and for the one before it. */
 	private static java.util.ArrayList<java.awt.Rectangle> drawn = new java.util.ArrayList<java.awt.Rectangle>(), previous = new java.util.ArrayList<java.awt.Rectangle>();
+	/** The statement running, and the one before it, changed nothing on the screen ({@link #unchanged}). */
+	private static boolean drawnFree, previousFree;
 	private static final Object LOCK = new Object();
 	/** The script thread is waiting for the machine before its next statement. */
 	private static volatile boolean waiting;
@@ -123,6 +166,7 @@ final class StackSpeed {
 		if(javax.swing.SwingUtilities.isEventDispatchThread()){ pending.addAndGet(cost); return; } // paid by the script thread
 		synchronized(LOCK){ // the statement before is done: what it draws from now on is late, the next statement's is its own
 			java.util.ArrayList<java.awt.Rectangle> t = previous; previous = drawn; drawn = t; drawn.clear();
+			previousFree = drawnFree; drawnFree = false;
 			waiting = true;
 		}
 		try{

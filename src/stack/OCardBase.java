@@ -12,6 +12,8 @@ public class OCardBase extends OObject {
 	MyLabel label;
 	OPicture picture;
 	String bitmapName;
+	//pict differs from its file: a paint tool changed it (PaintTool.toCdPict) and it has not been saved
+	boolean pictChanged;
 	
 	boolean changed;
 

@@ -28,7 +28,9 @@ import javax.sound.sampled.FloatControl;
  * few calls the first version needed.
  */
 final class QuickTime68k {
-	static final int VERSION=0x02500000;
+	/** Gestalt 'qtim' for programs: QuickTime 2.5, release stage final ($80) - stage $00 is a development build, and Avid
+	 *  VideoShop 3.0J warned at start-up that the QuickTime in use was a pre-release version. */
+	static final int VERSION=0x02508000;
 	static final boolean QT_TRACE=Boolean.getBoolean("hz68k.qttrace"); // logs every Movie Toolbox call with its top stack longs
 	static final int DEFAULT_TIME_SCALE=600,CONTROLLER_HEIGHT=16,CONTROLLER_MIN_WIDTH=160;
 	/** NewMovieFrom... flag: the movie is active from the start (Movies.h newMovieActive). */
@@ -68,7 +70,14 @@ final class QuickTime68k {
 		 *  playCount; it stayed on frame 0 and a count of 2 never ended). */
 		int endRate;
 		Clip clip;StreamingSound stream;Sequencer sequencer;Synthesizer synthesizer;int controller; // stream: an MP3, decoded while it plays
-		int selectionTime,selectionDuration,userData; // UserData Handle (empty), created by GetMovieUserData
+		int selectionTime,selectionDuration,userData; // UserData list (QTUserData68k), created by GetMovieUserData
+		/** The active segment (SetMovieActiveSegment, or a controller playing its selection), in movie units; start -1 = the whole
+		 *  movie. Playback starts within it and stops at its end (A Hard Day's Night's Movie XCMD plays a clip by setting the
+		 *  controller's selection and mcActionSetPlaySelection; the whole movie used to run past it). */
+		long segmentStart=-1,segmentDuration;
+		boolean hasSegment(){return segmentStart>=0&&segmentDuration>0;}
+		int segmentStartMillis(){return hasSegment()?(int)Math.min(durationMillis(),segmentStart*1000/timeScale):0;}
+		int segmentEndMillis(){return hasSegment()?(int)Math.min(durationMillis(),(segmentStart+segmentDuration)*1000/timeScale):(int)durationMillis();}
 		final java.util.List<Track> tracks=new ArrayList<Track>(); // one per kind of content, created on demand
 		/** A movie the program builds (CreateMovieFile, NewMovie): its tracks, media and samples, written by AddMovieResource or FlattenMovieData. */
 		MovieWriter68k.MovieData edit;
@@ -130,8 +139,9 @@ final class QuickTime68k {
 	private int lastError;
 	private void fail(int err){lastError=err;if(stickyError==0)stickyError=err;}
 	final QTAtoms68k atoms; // atom containers and QuickTime preferences
+	final QTUserData68k userData; // user data lists
 
-	QuickTime68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;atoms=new QTAtoms68k(tb);}
+	QuickTime68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;atoms=new QTAtoms68k(tb);userData=new QTUserData68k(tb);}
 
 	/**
 	 * The QuickTime an external (XCMD/XFCN) sees: HyperCard's Mac has the QuickTime 4.0.3 HyperZebra installs (the last for
@@ -150,6 +160,7 @@ final class QuickTime68k {
 		int selector=cpu.d[0]&0xffff;int sp=cpu.a[7];
 		if(QT_TRACE)System.err.println(String.format("[qt] $%04X args %08X %08X %08X %08X %08X %08X %08X",selector,memory.readLong(sp),memory.readLong(sp+4),memory.readLong(sp+8),memory.readLong(sp+12),memory.readLong(sp+16),memory.readLong(sp+20),memory.readLong(sp+24)));
 		if(atoms.dispatch(cpu,selector))return true;
+		if(userData.dispatch(cpu,selector))return true;
 		if(selector!=0x0003&&selector!=0x0004&&selector!=0x00de)lastError=0;
 		switch(selector){
 			case 0x0001:entered=true;memory.writeWord(sp,0);return true; // EnterMovies
@@ -174,7 +185,7 @@ final class QuickTime68k {
 			case 0x0016:{int gdh=memory.readLong(sp),port=memory.readLong(sp+4),movie=memory.readLong(sp+8);cpu.a[7]+=12;Movie m=movies.get(movie);if(m!=null)m.port=port;return true;} // SetMovieGWorld
 			case 0x001d:{int time=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie);memory.writeLong(cpu.a[7],m==null?0:pictAt(m,time));return true;} // GetMoviePict
 			case 0x001f:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);if(m!=null)draw(m);memory.writeWord(cpu.a[7],0);return true;} // UpdateMovie
-			case 0x0023:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.remove(movie);if(m!=null){closeAudio(m);disposeTracks(m);if(m.userData!=0)tb.api.disposeHandleAndFree(m.userData);if(m.timeBase!=0){forgetCallBacks(m.timeBase);tb.api.disposeHandleAndFree(m.timeBase);}tb.api.disposeHandleAndFree(movie);}return true;} // DisposeMovie
+			case 0x0023:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.remove(movie);if(m!=null){closeAudio(m);disposeTracks(m);if(m.userData!=0)userData.dispose(m.userData);if(m.timeBase!=0){forgetCallBacks(m.timeBase);tb.api.disposeHandleAndFree(m.timeBase);}tb.api.disposeHandleAndFree(movie);}return true;} // DisposeMovie
 			case 0x0029:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);memory.writeLong(cpu.a[7],m==null?DEFAULT_TIME_SCALE:m.timeScale);return true;} // GetMovieTimeScale
 			case 0x002a:{int scale=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie); // SetMovieTimeScale(movie, scale) (UxPlayMIDI's .mov save: the tune's own scale)
 				if(m!=null&&scale>0){boolean edited=false;if(m.edit!=null)for(MovieWriter68k.TrackData t:m.edit.tracks)edited|=!t.edits.isEmpty();
@@ -198,12 +209,15 @@ final class QuickTime68k {
 			case 0x0037:{int durationPtr=memory.readLong(sp),timePtr=memory.readLong(sp+4),movie=memory.readLong(sp+8);cpu.a[7]+=12;Movie m=movies.get(movie); // GetMovieSelection(movie, time*, duration*)
 				if(timePtr!=0)memory.writeLong(timePtr,m==null?0:m.selectionTime);if(durationPtr!=0)memory.writeLong(durationPtr,m==null?0:m.selectionDuration);return true;}
 			case 0x0038:{int duration=memory.readLong(sp),time=memory.readLong(sp+4),movie=memory.readLong(sp+8);cpu.a[7]+=12;Movie m=movies.get(movie);if(m!=null){m.selectionTime=time;m.selectionDuration=duration;}return true;} // SetMovieSelection
+			case 0x015c:{int duration=memory.readLong(sp),time=memory.readLong(sp+4),movie=memory.readLong(sp+8);cpu.a[7]+=12;Movie m=movies.get(movie);if(m!=null){m.segmentStart=time<0?-1:time;m.segmentDuration=duration;}return true;} // SetMovieActiveSegment (start -1: the whole movie)
+			case 0x015d:{int durationPtr=memory.readLong(sp),timePtr=memory.readLong(sp+4),movie=memory.readLong(sp+8);cpu.a[7]+=12;Movie m=movies.get(movie); // GetMovieActiveSegment
+				boolean whole=m==null||!m.hasSegment();if(timePtr!=0)memory.writeLong(timePtr,whole?-1:(int)m.segmentStart);if(durationPtr!=0)memory.writeLong(durationPtr,whole?0:(int)m.segmentDuration);return true;}
 			case 0x003c:{int record=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie); // SetMovieTime(movie, TimeRecord*): the record's 64-bit value in its own time scale (0: the movie's)
 				if(m!=null&&record!=0){long value=(long)memory.readLong(record)<<32|Integer.toUnsignedLong(memory.readLong(record+4));int scale=memory.readLong(record+8);
 					long units=scale>0&&scale!=m.timeScale?value*m.timeScale/scale:value;seekUnits(m,(int)Math.max(0,Math.min(m.duration(),units)));draw(m);}
 				return true;}
 			case 0x003d:{int time=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie);if(m!=null){seekUnits(m,Math.max(0,Math.min(m.duration(),time)));draw(m);}return true;} // SetMovieTimeValue
-			case 0x003e:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);if(m!=null&&m.userData==0)m.userData=tb.api.createHandle(new byte[4]);memory.writeLong(cpu.a[7],m==null?0:m.userData);return true;} // GetMovieUserData
+			case 0x003e:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);if(m!=null&&m.userData==0)m.userData=userData.create();memory.writeLong(cpu.a[7],m==null?0:m.userData);return true;} // GetMovieUserData
 			case 0x003f:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);memory.writeLong(cpu.a[7],m==null?0:tracks(m).size());return true;} // GetMovieTrackCount
 			case 0x004b:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeLong(cpu.a[7],t==null?0:t.data!=null?(int)t.data.duration():(int)t.movie.duration());return true;} // GetTrackDuration
 			case 0x0054:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeWord(cpu.a[7],t==null?0:0x0100);return true;} // GetTrackVolume
@@ -225,7 +239,7 @@ final class QuickTime68k {
 			case 0x005e:{cpu.a[7]+=12;return true;} // SetTrackDimensions
 			case 0x00d0:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeLong(cpu.a[7],t==null?0:t.movie.handle);return true;} // GetTrackMovie
 			case 0x0052:{int track=memory.readLong(sp);cpu.a[7]+=4;memory.writeLong(cpu.a[7],track);return true;} // GetTrackAlternate: a track is its own only alternate
-			case 0x005f:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeLong(cpu.a[7],t==null?0:t.movie.userData!=0?t.movie.userData:(t.movie.userData=tb.api.createHandle(new byte[4])));return true;} // GetTrackUserData: empty, as the movie's
+			case 0x005f:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeLong(cpu.a[7],t==null?0:t.movie.userData!=0?t.movie.userData:(t.movie.userData=userData.create()));return true;} // GetTrackUserData: empty, as the movie's
 			case 0x006b:{cpu.a[7]+=4;memory.writeWord(cpu.a[7],0);return true;} // GetMediaLanguage: English
 			case 0x0071:{int media=memory.readLong(sp);cpu.a[7]+=4;memory.writeLong(cpu.a[7],medias.containsKey(media)?media:0);return true;} // GetMediaHandler: the media itself stands for its handler instance (Sparkle 2.45 asks before it reads the sample descriptions)
 			case 0x0077:{int media=memory.readLong(sp);cpu.a[7]+=4;memory.writeLong(cpu.a[7],medias.containsKey(media)?1:0);return true;} // GetMediaSampleDescriptionCount
@@ -233,8 +247,6 @@ final class QuickTime68k {
 			case 0x009c:{cpu.a[7]+=8;return true;} // SetMovieLanguage
 			case 0x00fb:case 0x00fe:{int movie=memory.readLong(sp);cpu.a[7]+=4;Movie m=movies.get(movie);int[] b=m==null?new int[4]:m.box; // GetMovieDisplayBoundsRgn, GetMovieBoundsRgn: the movie box (a new region)
 				memory.writeLong(cpu.a[7],tb.api.createHandle(HostQuickDraw68k.regionBytes(b[0],b[1],b[2],b[3])));return true;}
-			case 0x0126:{cpu.a[7]+=20;memory.writeWord(cpu.a[7],USER_DATA_ITEM_NOT_FOUND);return true;} // GetUserDataItem: movies carry no user data
-			case 0x014d:{cpu.a[7]+=18;memory.writeWord(cpu.a[7],USER_DATA_ITEM_NOT_FOUND);return true;} // GetUserDataText
 			case 0x0127:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeLong(cpu.a[7],t==null?0:tracks(t.movie).indexOf(t)+1);return true;} // GetTrackID: the tracks are numbered in order
 			case 0x0062:{int track=memory.readLong(sp);cpu.a[7]+=4;Track t=tracks.get(track);memory.writeLong(cpu.a[7],t==null?0:t.media);return true;} // GetTrackMedia
 			case 0x0068:{int media=memory.readLong(sp);cpu.a[7]+=4;Track t=medias.get(media);memory.writeLong(cpu.a[7],t==null?0:t.data!=null&&t.data.media!=null?t.data.media.timeScale:t.movie.timeScale);return true;} // GetMediaTimeScale
@@ -260,8 +272,6 @@ final class QuickTime68k {
 			case 0x0099:{cpu.a[7]+=12;memory.writeLong(cpu.a[7],0);return true;} // GetMediaDataSize: no Media objects
 			case 0x009a:{int pt=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie); // PtInMovie(movie, pt)
 				int v=(short)(pt>>16),h=(short)pt;tb.writeBoolean(cpu.a[7],m!=null&&v>=m.box[0]&&v<m.box[2]&&h>=m.box[1]&&h<m.box[3]);return true;}
-			case 0x009e:{cpu.a[7]+=16;memory.writeWord(cpu.a[7],USER_DATA_ITEM_NOT_FOUND);return true;} // GetUserData: movies carry no user data
-			case 0x009f:{cpu.a[7]+=12;memory.writeWord(cpu.a[7],0);return true;} // AddUserData
 			case 0x00d7:{int resName=memory.readLong(sp),resIdPtr=memory.readLong(sp+4),ref=(short)memory.readWord(sp+8),movie=memory.readLong(sp+10);cpu.a[7]+=14; // AddMovieResource(movie, resRefNum, resId*, resName)
 				int id=resIdPtr==0?0:(short)memory.readWord(resIdPtr);int[] used={0};int err=putMovieResource(movie,ref,id,resName,used);if(err==0&&resIdPtr!=0)memory.writeWord(resIdPtr,used[0]);if(err!=0)fail(err);memory.writeWord(cpu.a[7],err);return true;}
 			case 0x00d8:{int resName=memory.readLong(sp),id=(short)memory.readWord(sp+4),ref=(short)memory.readWord(sp+6),movie=memory.readLong(sp+8);cpu.a[7]+=12; // UpdateMovieResource(movie, resRefNum, resId, resName)
@@ -297,8 +307,6 @@ final class QuickTime68k {
 			case 0x010e:{int durationPtr=memory.readLong(sp),timePtr=memory.readLong(sp+4),rate=memory.readLong(sp+8),time=memory.readLong(sp+12),flags=(short)memory.readWord(sp+22),movie=memory.readLong(sp+24);cpu.a[7]+=28; // GetMovieNextInterestingTime(movie, flags, numMediaTypes, whichMediaTypes*, time, rate, interestingTime*, interestingDuration*)
 				long[] next=nextInterestingTime(movies.get(movie),flags,time,rate);if(timePtr!=0)memory.writeLong(timePtr,(int)next[0]);if(durationPtr!=0)memory.writeLong(durationPtr,(int)next[1]);return true;}
 			case 0x0117:{int index=memory.readLong(sp),movie=memory.readLong(sp+4);cpu.a[7]+=8;Movie m=movies.get(movie);java.util.List<Track> list=m==null?null:tracks(m);memory.writeLong(cpu.a[7],list==null||index<1||index>list.size()?0:list.get(index-1).handle);return true;} // GetMovieIndTrack(movie, index)
-			case 0x012e:{cpu.a[7]+=20;memory.writeWord(cpu.a[7],0);return true;} // SetUserDataItem
-			case 0x014b:{cpu.a[7]+=8;memory.writeWord(cpu.a[7],0);return true;} // CountUserDataType
 			case 0x0154:{int dst=memory.readLong(sp),src=memory.readLong(sp+4);cpu.a[7]+=8;Movie from=movies.get(src),to=movies.get(dst); // CopyMovieSettings(src, dst)
 				if(from!=null&&to!=null){to.box=from.box.clone();to.preferredRate=from.preferredRate;to.preferredVolume=from.preferredVolume;setVolume(to,from.volume);}memory.writeWord(cpu.a[7],from==null||to==null?INVALID_MOVIE:0);return true;}
 			case 0x0183:{int rate=memory.readLong(sp),duration=memory.readLong(sp+4),mediaTime=memory.readLong(sp+8),start=memory.readLong(sp+12),track=memory.readLong(sp+16);cpu.a[7]+=20; // InsertMediaIntoTrack(track, trackStart, mediaTime, mediaDuration, mediaRate)
@@ -862,6 +870,8 @@ final class QuickTime68k {
 		m.endUnreported=false;m.endRate=0;m.pausedUnits=-1; // the program set the rate itself
 		if(rate==0){m.pausedAt=m.currentMillis();m.rate=0;stopAudio(m);return;}
 		if(m.rate==0&&m.currentMillis()>=m.durationMillis()&&rate>0)m.pausedAt=0; // playing again from the end restarts
+		if(m.rate==0&&m.hasSegment()){int now=m.currentMillis(); // play starts within the active segment: outside it, or at its end, from its start
+			if(rate>0?now<m.segmentStartMillis()||now>=m.segmentEndMillis():now<=m.segmentStartMillis()||now>m.segmentEndMillis())m.pausedAt=rate>0?m.segmentStartMillis():m.segmentEndMillis();}
 		m.pausedAt=m.currentMillis();m.startMillis=System.currentTimeMillis();m.rate=rate;
 		if(rate>0)startAudio(m);else stopAudio(m); // reverse play is silent
 	}
@@ -900,6 +910,10 @@ final class QuickTime68k {
 			else seekMillis(m,m.rate>0?0:(int)m.durationMillis());
 			return;
 		}
+		if(m.hasSegment()){int end=m.segmentEndMillis(),start=m.segmentStartMillis();
+			if(m.rate>0&&now>=end){m.endRate=m.rate;m.rate=0;m.pausedAt=end;m.pausedUnits=Math.min(m.duration(),m.segmentStart+m.segmentDuration);m.pausedUnitsAt=end;stopAudio(m);m.endUnreported=true;}
+			else if(m.rate<0&&now<=start){m.rate=0;m.pausedAt=start;m.pausedUnits=m.segmentStart;m.pausedUnitsAt=start;stopAudio(m);m.endUnreported=true;}
+			return;}
 		if(m.rate>0&&now>=m.durationMillis()){m.endRate=m.rate;m.rate=0;m.pausedAt=(int)m.durationMillis();stopAudio(m);m.endUnreported=true;}
 		else if(m.rate<0&&now<=0){m.rate=0;m.pausedAt=0;stopAudio(m);m.endUnreported=true;}
 	}
@@ -1122,6 +1136,7 @@ final class QuickTime68k {
 	}
 
 	private int doAction(Controller c,Movie m,int action,int param) throws M68kException {
+		if(QT_TRACE&&action!=MC_IDLE)System.err.println("[qt] MCDoAction "+action+" param $"+Integer.toHexString(param)+(param!=0&&(action==MC_GO_TO_TIME||action==MC_SET_SELECTION_BEGIN||action==MC_SET_SELECTION_DURATION)?" time "+memory.readLong(param)+":"+memory.readLong(param+4)+" scale "+memory.readLong(param+8):""));
 		if(filter(c,action,param))return 0;
 		switch(action){
 			case MC_IDLE:idle(c,m);break;
@@ -1140,7 +1155,9 @@ final class QuickTime68k {
 			case MC_GET_PALINDROME:if(param!=0)memory.writeByte(param,c.palindrome?1:0);break;
 			case MC_SET_KEYS_ENABLED:c.keysEnabled=param!=0;break;
 			case MC_GET_KEYS_ENABLED:if(param!=0)memory.writeByte(param,c.keysEnabled?1:0);break;
-			case MC_SET_PLAY_SELECTION:c.playSelection=param!=0;break;
+			case MC_SET_PLAY_SELECTION:c.playSelection=param!=0;playSelection(c,m);break;
+			case MC_SET_SELECTION_BEGIN:if(param!=0){m.selectionTime=(int)recordTime(m,param);playSelection(c,m);}break; // params = TimeRecord*: the movie's selection
+			case MC_SET_SELECTION_DURATION:if(param!=0){m.selectionDuration=(int)recordTime(m,param);playSelection(c,m);}break;
 			case MC_GET_PLAY_SELECTION:if(param!=0)memory.writeByte(param,c.playSelection?1:0);break;
 			case MC_SET_USE_BADGE:c.useBadge=param!=0;break;
 			case MC_GET_USE_BADGE:if(param!=0)memory.writeByte(param,c.useBadge?1:0);break;
@@ -1154,13 +1171,19 @@ final class QuickTime68k {
 		return 0;
 	}
 
+	/** A controller set to play its selection plays only that part of the movie: the selection is the movie's active segment. */
+	private void playSelection(Controller c,Movie m){
+		if(c.playSelection&&m.selectionDuration>0){m.segmentStart=m.selectionTime;m.segmentDuration=m.selectionDuration;}
+		else m.segmentStart=-1;
+	}
+
 	private void idle(Controller c,Movie m) throws M68kException {
 		if(filter(c,MC_IDLE,0))return;
 		boolean wasPlaying=m.playing();
 		task(m);
 		if(wasPlaying&&!m.playing()||m.endUnreported&&!m.playing()){
 			m.endUnreported=false;
-			if(c.looping){seekMillis(m,0);setRate(m,0x00010000);}
+			if(c.looping){seekMillis(m,m.segmentStartMillis());setRate(m,0x00010000);}
 			else filter(c,MC_PLAY,0); // the controller stopped the movie at its end: the program hears of it as QuickTime tells it
 		}
 		drawBar(c,m,false);

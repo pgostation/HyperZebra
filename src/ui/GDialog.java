@@ -43,7 +43,7 @@ public class GDialog extends JDialog implements ActionListener {
 		super((Frame)null,true);//オーナー無し(理由はGPictWindow.prepareForModalDialog参照)
 		translation = tr;
 		prompt = text;
-		if(input!=null){ buildAsk(owner, text, input, b1, b2); return; }
+		if(input!=null){ buildAsk(owner, new JTextField(input), b1, b2); return; }
 		getContentPane().setLayout(new BorderLayout());
 
 		//パネルを追加する
@@ -102,6 +102,27 @@ public class GDialog extends JDialog implements ActionListener {
 		GPictWindow.restorePictureWindows();
 		GDialog.returnToCard(this, closedActive);
 		
+	}
+
+	/** ask, or ask password with {@code hidden}: HyperCard J-2.3 in the VM shows the same dialog for both, no icon or title,
+	 *  only the entry hidden. */
+	GDialog(Frame owner, StackTranslation.Dialog tr, String text, String input, String cancel, String ok, boolean hidden) {
+		super((Frame)null,true);//オーナー無し(理由はGPictWindow.prepareForModalDialog参照)
+		translation = tr;
+		prompt = text;
+		buildAsk(owner, hidden ? new JPasswordField(input) : new JTextField(input), cancel, ok);
+	}
+
+	/** Command-period typed in {@code w}: a stack's answer or ask (not HyperZebra's own dialogs, translation null) closes
+	 *  with no button clicked, and its command ends the handler (TTalk.stop). */
+	static void closeForAbort(Component w){
+		if(w instanceof GDialog && ((GDialog)w).translation!=null) ((GDialog)w).closeUnanswered();
+		else if(w instanceof GUxAnswer && ((GUxAnswer)w).translation!=null) ((GUxAnswer)w).closeUnanswered();
+	}
+	private void closeUnanswered(){
+		inputArea = null;
+		closedActive = isActive();
+		dispose();
 	}
 
 	private String shownPrompt(){ return translation==null ? prompt : translation.prompt(prompt); }
@@ -185,7 +206,7 @@ public class GDialog extends JDialog implements ActionListener {
 	/** askの配置はHyperCard J-2.3の実機(68K VM)で測った値: 335x103、入力欄(13,34)-(317,55)、OK(136,66)/Cancel(238,66)の各80x20、
 	 *  プロンプトが1行増えるごとに全体+15。部品の見た目はanswerダイアログ(GDialog)と同じ標準のSwing部品。
 	 *  ボタンはHyperZebraのもの(訳さない)。訳すのはプロンプトだけで、入力欄(打ち込む文字)は訳さない */
-	private void buildAsk(Frame owner, String text, String input, String cancel, String ok){
+	private void buildAsk(Frame owner, JTextField field, String cancel, String ok){
 		JPanel root = new JPanel(null);
 		askRoot = root;
 		JTextArea area = new JTextArea(shownPrompt().replace("\r","\n"));
@@ -193,7 +214,6 @@ public class GDialog extends JDialog implements ActionListener {
 		area.setLineWrap(true); area.setOpaque(false); area.setEditable(false); area.setFocusable(false);
 		area.setMargin(new Insets(0,0,0,0));
 		root.add(area);
-		JTextField field = new JTextField(input);
 		askField = field;
 		root.add(field);
 		inputArea = field;
@@ -381,7 +401,7 @@ class GUxAnswer extends JDialog implements ActionListener {
 	}
 
 	/** The translation of what the stack's script shows (null: as it is); the buttons answer with their own names. */
-	private final StackTranslation.Dialog translation;
+	final StackTranslation.Dialog translation;
 	private javax.swing.Timer following;
 	private final String prompt;
 	private final java.util.List<JButton> named = new java.util.ArrayList<JButton>();
@@ -471,6 +491,12 @@ class GUxAnswer extends JDialog implements ActionListener {
 		GPictWindow.restorePictureWindows();
 		GDialog.returnToCard(this, closedActive);
 		
+	}
+
+	void closeUnanswered(){
+		inputArea = null;
+		closedActive = isActive();
+		dispose();
 	}
 
 	private String shownPrompt(){ return translation==null ? prompt : translation.prompt(prompt); }

@@ -110,7 +110,14 @@ public class OObject {
 	 *  object has no handlers here (TTalk.ensureHandlerList) and scriptList holds only its stored source text, if any */
 	OsaScript osaScript;
 	TreeSet<String> handlerList;
+	/** See TTalk.handlerEntry */
+	HandlerTable handlerTable;
 	ArrayList<String>[] stringList;
+	/** The compiled blocks of this script (TalkJit); dropped with the script. */
+	TalkJit.ScriptCode jit;
+	/** {@link hypertalk.TTalk}'s first declaring line of the words of each handler, by script line; for the lines of scopeOf */
+	java.util.HashMap<String,Integer>[] scopeLines;
+	Object scopeOf;
 	ArrayList<TTalk.wordType>[] typeList;
 	ArrayList<Integer> handlerLineList;
 	/** a handler name with diacritical marks by the name without them, lower case (TTalk.ensureHandlerList); null when none */
@@ -145,6 +152,8 @@ public class OObject {
 		handlerLineList = null;
 		handlerList = null;
 		controlCache = null;
+		jit = null;
+		TalkJit.scriptEpoch++;
 	}
 	
 	public int getLeft(){
@@ -238,6 +247,7 @@ public class OObject {
 	/** the owner: カードならバックグラウンド、バックグラウンドならスタック、部品なら親。無ければnull */
 	public OObject ownerObject(){
 		if(objectType.equals("stack")) return null;
+		if(!(this instanceof OCardBase) && (objectType.equals("card") || objectType.equals("background"))) return parent;
 		if(objectType.equals("card")){
 			OBackground bg = ((OCardBase)this).getBg();
 			return bg!=null ? bg : ((OCardBase)this).stack;
@@ -349,6 +359,8 @@ public class OObject {
 		handlerList = null;
 		handlerLineList = null;
 		controlCache = null;
+		jit = null;
+		TalkJit.scriptEpoch++;
 		if(getClass()==OStack.class){
 			((OStack)this).changed = true;
 		}

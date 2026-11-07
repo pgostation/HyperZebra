@@ -14,13 +14,15 @@ final class IndexedScreenText {
 	private IndexedScreenText(){}
 
 	static final int CONTEXT=90;
-	/** Words (lower case, Mac OS Roman / ASCII) saying the text is about the screen or a requirement. */
-	private static final String[] SCREEN_WORDS={"monitor","mode","screen","display","require","need","must","switch","set your","set the","works","run","play"};
-	/** The same in Shift-JIS: モニタ, モード, 表示, 環境, 必要, 切り替え, 起動, 動作. */
+	/** Words (lower case, Mac OS Roman / ASCII) saying the text is about the screen or a requirement ("can only": Storybook
+	 *  Reader's "This file can only be opened in 256 colors." names neither the monitor nor a mode). */
+	private static final String[] SCREEN_WORDS={"monitor","mode","screen","display","require","need","must","switch","set your","set the","works","run","play","can only"};
+	/** The same in Shift-JIS: モニタ, モード, 表示, 環境, 必要, 切り替え, 起動, 動作, お楽しみ. */
 	private static final byte[][] SCREEN_WORDS_SJIS={
 		{(byte)0x83,(byte)0x82,(byte)0x83,(byte)0x6a,(byte)0x83,(byte)0x5e},{(byte)0x83,(byte)0x82,(byte)0x81,(byte)0x5b,(byte)0x83,(byte)0x68},
 		{(byte)0x95,(byte)0x5c,(byte)0x8e,(byte)0xa6},{(byte)0x8a,(byte)0xc2,(byte)0x8b,(byte)0xab},{(byte)0x95,(byte)0x4b,(byte)0x97,(byte)0x76},
-		{(byte)0x90,(byte)0xd8,(byte)0x82,(byte)0xe8},{(byte)0x8b,(byte)0x4e,(byte)0x93,(byte)0xae},{(byte)0x93,(byte)0xae,(byte)0x8d,(byte)0xec}};
+		{(byte)0x90,(byte)0xd8,(byte)0x82,(byte)0xe8},{(byte)0x8b,(byte)0x4e,(byte)0x93,(byte)0xae},{(byte)0x93,(byte)0xae,(byte)0x8d,(byte)0xec},
+		{(byte)0x82,(byte)0xa8,(byte)0x8a,(byte)0x79,(byte)0x82,(byte)0xb5,(byte)0x82,(byte)0xdd}};
 	/** Wording that makes it something else: a benchmark, a palette or file-format choice, a document's colours, a list of depths the program handles (thousands/millions), a limit of a mode. */
 	private static final String[] OTHER_WORDS={"test","palette","standard","export","save","gif","bmp","jpeg","windows","vga","document","thousand","million","applicable","up to"};
 	/**
@@ -32,8 +34,9 @@ final class IndexedScreenText {
 	/** The requests among {@link #SCREEN_WORDS_SJIS}: 必要, 切り替え. */
 	private static final byte[][] REQUEST_WORDS_SJIS={SCREEN_WORDS_SJIS[4],SCREEN_WORDS_SJIS[5]};
 	/** Wording that rules a match out only within its own string: a conversion to 8 bits (NIH Image), a mode's colour maximum (CFG's help), a request denied (Ingemar's skiing game: "8-bit color not required"),
-	 *  an option that draws in that many colours whatever the screen shows (Infini-D 2.0.1's balloon help: "render to 16 colors regardless of the number of colors"). */
-	private static final String[] SAME_STRING_WORDS={"conver","maximum","not requir","not need","no need","not necessary","regardless"};
+	 *  an option that draws in that many colours whatever the screen shows (Infini-D 2.0.1's balloon help: "render to 16 colors regardless of the number of colors"),
+	 *  a depth above it ("displays more than 256 colors"; a complaint about one is {@link #tooManyEnd}'s). */
+	private static final String[] SAME_STRING_WORDS={"conver","maximum","not requir","not need","no need","not necessary","regardless","more than"};
 
 	/**
 	 * Warnings that name no depth but mean "not this one" to a program that only animates fast at 1, 4 or 8 bits: Ingemar's
@@ -84,6 +87,7 @@ final class IndexedScreenText {
 	static String find(byte[] data){
 		for(int i=0;i+5<data.length;i++){
 			for(String w:DEPTH_WARNINGS)if(startsWith(data,i,w))return text(data,i,Math.min(data.length,i+w.length()+40));
+			{int tooMany=tooManyEnd(data,i);if(tooMany>0)return text(data,Math.max(0,i-30),Math.min(data.length,tooMany+40));}
 			int end=-1;boolean eightBit=false;
 			if(data[i]=='2'&&data[i+1]=='5'&&data[i+2]=='6'){
 				if(i>0&&data[i-1]>='0'&&data[i-1]<='9')continue; // 1256, 2560...
@@ -91,9 +95,12 @@ final class IndexedScreenText {
 				end=colourWordEnd(data,j);
 			}else if(data[i]=='8'&&(i==0||data[i-1]<'0'||data[i-1]>'9')){ // "8-bit mode", "8 bit color" (Bert: "set the monitor to 1-, 4- or 8-bit mode")
 				int j=i+1;if(j<data.length&&(data[j]==' '||data[j]=='-'))j++;
-				if(startsWith(data,j,"bit")){j+=3;if(j<data.length&&data[j]==' ')j++;if(startsWith(data,j,"mode"))end=j+4;else end=colourWordEnd(data,j);}
+				if(startsWith(data,j,"bit")){j+=3;if(j<data.length&&data[j]==' ')j++;
+					if(j<data.length&&data[j]=='('){int close=j+1;while(close<Math.min(data.length,j+16)&&data[close]!=')'&&!boundary(data[close]))close++;if(close<data.length&&data[close]==')'){j=close+1;if(j<data.length&&data[j]==' ')j++;}} // "8 bit (256) color/gray" (SpaceInvader!)
+					if(startsWith(data,j,"mode"))end=j+4;else end=colourWordEnd(data,j);}
 				eightBit=true;
 			}
+			else if(matchAt6(data,i,FULL_WIDTH_256))end=colourWordEnd(data,i+6); // ALICE CATCHER: "２５６色カラーでお楽しみくださいませ。", and it quits on OK
 			if(end<0)continue;
 			int from=Math.max(0,i-CONTEXT),to=Math.min(data.length,end+CONTEXT);
 			if(!(eightBit?mentions(data,from,to,REQUEST_WORDS,REQUEST_WORDS_SJIS):mentions(data,from,to,SCREEN_WORDS,SCREEN_WORDS_SJIS)))continue;
@@ -103,6 +110,23 @@ final class IndexedScreenText {
 			return text(data,Math.max(0,i-40),Math.min(data.length,end+30));
 		}
 		return null;
+	}
+
+	/** Wording beside "more than 256 colours" that makes it a complaint about the screen, not a feature ("displays more than 256 colors"). */
+	private static final String[] TOO_MANY_WORDS={"can't","cannot","can not","please set","or lower","or less","or fewer","reduce","too many","won't","will not"};
+	/**
+	 * End of a complaint that the screen shows MORE than 256 colours at {@code i} - "More than 256 colors.\rPlease set 256 or lower,
+	 * then run." and "You can't set colors more than 256." (GNU Shogi) - or -1. The complaint counts within its own string
+	 * (CRs included: a dialog's text runs on over lines), so a neighbouring "Save this game?" does not rule it out as it does a
+	 * plain "256 colors".
+	 */
+	private static int tooManyEnd(byte[] data,int i){
+		int end=-1;
+		if(startsWith(data,i,"more than 256 ")||startsWith(data,i,"over 256 ")){int j=i+(data[i]=='o'||data[i]=='O'?9:14);end=colourWordEnd(data,j);}
+		else if(startsWith(data,i,"colo")){int j=i+4;if(startsWith(data,j,"u"))j++;if(startsWith(data,j,"rs "))j+=3;else return -1;if(startsWith(data,j,"more than 256"))end=j+13;}
+		if(end<0)return -1;
+		int from=i,to=end;while(from>0&&(data[from-1]&0xff)>=0x09)from--;while(to<data.length&&(data[to]&0xff)>=0x09)to++;
+		return mentions(data,from,to,TOO_MANY_WORDS,null)?end:-1;
 	}
 
 	/** Where one string ends and the next begins in resource data: NUL, CR, or the control codes of a length byte or item record. */
@@ -125,6 +149,8 @@ final class IndexedScreenText {
 		}
 		return false;
 	}
+	private static final byte[] FULL_WIDTH_256={(byte)0x82,(byte)0x51,(byte)0x82,(byte)0x54,(byte)0x82,(byte)0x55};
+	private static boolean matchAt6(byte[] d,int at,byte[] w){return at+w.length<=d.length&&matchAt(d,at,w);}
 	private static boolean matchAt(byte[] d,int at,byte[] w){for(int k=0;k<w.length;k++)if(d[at+k]!=w[k])return false;return true;}
 	/** Printable ASCII of the snippet (for the log). */
 	private static String text(byte[] d,int from,int to){

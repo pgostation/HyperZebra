@@ -33,6 +33,8 @@ final class EventManager68k implements MacAppHost.Listener {
 		CardKey cardKey;
 		/** The Open Application/Documents event of the launch: not seen by the program's first GetNextEvent/WaitNextEvent (see {@link #take}). */
 		boolean launch;
+		/** A suspend or resume event whose clipboard state was taken (once, though EventAvail may show it first). */
+		boolean clipboardNoted;
 		Event(int what){this.what=what;}
 	}
 
@@ -47,7 +49,9 @@ final class EventManager68k implements MacAppHost.Listener {
 	private volatile boolean quitRequested;
 	private int lastActivatedWindow;
 	/** Window whose close-box mouseDown the program has just taken, and the windows visible at that moment (see {@link #closeIgnoredGoAway}). */
-	private int goAwayDelivered;private List<Integer> visibleAtGoAway;private int goAwayTracksBefore,windowsCreatedBefore;
+	private int goAwayDelivered;private List<Integer> visibleAtGoAway;private int goAwayTracksBefore,windowsCreatedBefore;private boolean goAwayBehindDialog;
+	/** The Dialog Manager refused a host close-box click while a modal dialog was up (it beeped): nothing for closeIgnoredGoAway to do. */
+	void goAwayRefused(){goAwayDelivered=0;visibleAtGoAway=null;}
 
 	EventManager68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;}
 
@@ -64,7 +68,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		// The Menu Manager's offscreen MDEF probes stand for MenuSelect's tracking, where the button is down: HyperCard's Patterns
 		// palette MDEF takes an mChooseMsg over a cell with the button up for the release and sets that pattern (the layout
 		// probes chose pattern 1, white, when a paint tool put the palette in the menu bar).
-		if(tb.offscreenMdef>0&&(trap==0x973||trap==0x974||trap==0x977)){tb.writeBoolean(cpu.a[7],true);return true;}
+		if(tb.offscreenMdef>0&&(trap==0x973||trap==0x974||trap==0x977)){tb.writeBoolean(cpu.a[7],!tb.offscreenMdefLeft);return true;}
 		switch(trap){
 			case 0x860:if(tb.hosted()){tb.host().eventCall();tb.menus.showMenuBarHatching();}return waitNextEvent(cpu); // no blit spans an event call, and the frame is done: shown now
 			case 0x970:if(tb.hosted()){tb.host().eventCall();tb.menus.showMenuBarHatching();}return getNextEvent(cpu,true);
@@ -84,9 +88,24 @@ final class EventManager68k implements MacAppHost.Listener {
 	private boolean post(Event e){
 		if(!enabled(e.what))return false;
 		e.when=tb.tickCount();
-		synchronized(lock){queue.addLast(e);lock.notifyAll();}
+		synchronized(lock){
+			if(e.what==MOUSE_UP&&System.nanoTime()<swallowMouseUpUntil){swallowMouseUpUntil=0;return true;} // the release TrackControl already ended on (mouseUpTracked)
+			queue.addLast(e);lock.notifyAll();}
 		return true;
 	}
+	/**
+	 * TrackControl ended on the button's release: the mouse-up is taken out of the queue, as the ROM's tracking loop does
+	 * with WaitMouseUp. Storybook Weaver's Help window handles a mouse-up in a button like a mouse-down, so its Help button
+	 * showed the topic and went straight back to the list. The host may post the mouse-up just after the button state
+	 * changed, so one arriving within a short time is dropped too.
+	 */
+	void mouseUpTracked(){
+		synchronized(lock){
+			for(java.util.Iterator<Event> it=queue.iterator();it.hasNext();)if(it.next().what==MOUSE_UP){it.remove();swallowMouseUpUntil=0;return;}
+			swallowMouseUpUntil=System.nanoTime()+250_000_000L;
+		}
+	}
+	private long swallowMouseUpUntil;
 	/**
 	 * SysEvtMask ($144): the mouse, keyboard and disk events PostEvent queues. It starts as every event but key-up (IM I-254),
 	 * so key-ups reach only a program that asked for them with SetEventMask. Dartmouth's Password XFCN filters ModalDialog's
@@ -340,7 +359,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		List<Integer> dialogs=new ArrayList<Integer>();
 		synchronized(lock){for(java.util.Iterator<Event> it=queue.iterator();it.hasNext();){Event q=it.next();
 			if(q.what==UPDATE_EVT&&tb.dialogs!=null&&tb.dialogs.isDialog(q.message)&&!own.test(q.message)&&!dialogs.contains(q.message)){dialogs.add(q.message);it.remove();}}}
-		for(int w:dialogs)if(tb.windows.window(w)!=null){tb.dialogs.draw(w);tb.windows.clearUpdate(w);}
+		for(int w:dialogs)if(tb.windows.window(w)!=null)tb.dialogs.drawUpdate(w);
 	}
 	void drawWindowPictures(){
 		synchronized(lock){for(java.util.Iterator<Event> it=queue.iterator();it.hasNext();){Event q=it.next();
@@ -387,8 +406,14 @@ final class EventManager68k implements MacAppHost.Listener {
 		Event e=new Event(HIGH_LEVEL_EVT);e.files=new ArrayList<File>(files);e.message=0x61657674;e.launch=launch;post(e); // 'aevt'
 		if(Mac68kApi.TRACE)System.err.println("[68K] high-level event queued: "+(files.isEmpty()?"oapp":"odoc "+files));
 	}
+	/** Whether the program installed its own handler for the launch's 'oapp'/'odoc' (not a wildcard class an extension put in). */
+	private boolean launchHandlerInstalled(Event e){
+		int id=e.files==null||e.files.isEmpty()?0x6f617070:0x6f646f63;
+		return tb.appleEvents!=null&&tb.appleEvents.hasCoreHandler(id);
+	}
 	/** Whether the program has made its first GetNextEvent/WaitNextEvent call. */
-	private boolean firstEventCallMade;
+	private volatile boolean firstEventCallMade;
+	boolean firstEventCallMade(){return firstEventCallMade;}
 	/** Whether a quit was asked for and not cancelled by the program (the program is closing down). */
 	public boolean quitInProgress(){return quitRequested;}
 	@Override public void postQuit(){
@@ -407,6 +432,15 @@ final class EventManager68k implements MacAppHost.Listener {
 		// A program that has been taking events for a while without a Quit item gets the Apple event now.
 		long now=System.nanoTime();
 		synchronized(lock){if(tb.app!=null&&(eventLoopSince==0||now-eventLoopSince<QUIT_MENU_WAIT_NANOS)){if(quitPendingSince==0)quitPendingSince=now;return;}}
+		postQuitAppleEvent();
+	}
+	/**
+	 * The 'quit' Apple event for a program without a Quit item - only one that is high-level-event aware: the Process Manager
+	 * gives the others no high-level events. Launcher 3.5 (a dialog with no menus) indexed its event table with what = 23 and
+	 * ran into data; such a program stays, and HyperZebra's quit offers to force it.
+	 */
+	private void postQuitAppleEvent(){
+		if(tb.app!=null&&(tb.app.sizeFlags()&0x0040)==0){if(Mac68kApi.TRACE)System.err.println("[68K] quit: no Quit item and not high-level-event aware - nothing sent");return;}
 		Event e=new Event(HIGH_LEVEL_EVT);e.message=0x61657674;e.menuId=-2;e.quitRequest=true;post(e);
 	}
 	/** The Quit item chosen for the program, marked so that its taking it is seen ({@link #quitProgress}). */
@@ -430,7 +464,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		synchronized(lock){quitPendingSince=0;}
 		if(Mac68kApi.TRACE)System.err.println("[68K] pending quit delivered "+(quit!=null?"as its Quit menu item":"as a 'quit' Apple event (no Quit item)"));
 		if(quit!=null){postQuitMenuSelection(quit[0],quit[1]);return;}
-		Event e=new Event(HIGH_LEVEL_EVT);e.message=0x61657674;e.menuId=-2;e.quitRequest=true;post(e);
+		postQuitAppleEvent();
 	}
 
 	// ------------------------------------------------------------------ HyperZebra's own Quit (QuitSequence)
@@ -492,7 +526,21 @@ final class EventManager68k implements MacAppHost.Listener {
 	boolean postAppleEventToProgram(int serial,AppleEvents68k.Portable event,int senderSerial){Event e=new Event(HIGH_LEVEL_EVT);e.message=event.eventClass;e.appleEvent=event;e.senderSerial=senderSerial;return tb.threads.postToProgram(serial,e);}
 	/** A raw high-level event from PostHighLevelEvent in another program: AcceptHighLevelEvent hands the buffer over. */
 	void postHighLevel(int eventClass,int eventId,byte[] buffer,int refcon,int senderSerial){Event e=new Event(HIGH_LEVEL_EVT);e.message=eventClass;e.menuItem=eventId;e.buffer=buffer;e.refcon=refcon;e.senderSerial=senderSerial;post(e);}
-	@Override public void postSuspendResume(boolean resume){Event e=new Event(OS_EVT);e.message=(1<<24)|(resume?1:0);post(e);}
+	/**
+	 * The Process Manager's suspend and resume events, when the program's windows lose and get back the host focus - only for a
+	 * program whose SIZE resource sets acceptSuspendResumeEvents. ClarisWorks keeps its own clipboard and hands it to the desk
+	 * scrap only on suspend: without the event, what was copied there never reached SimpleText. A suspend still queued when the
+	 * resume comes (a host Open dialog of the program's own) is dropped along with it.
+	 */
+	@Override public void postSuspendResume(boolean resume){
+		if(tb.app==null||(tb.app.sizeFlags()&0x4000)==0)return;
+		synchronized(lock){for(java.util.Iterator<Event> it=queue.iterator();it.hasNext();){Event q=it.next();
+			if(q.what==OS_EVT&&(q.message>>>24)==SUSPEND_RESUME_MESSAGE&&(q.message&1)!=(resume?1:0)){it.remove();return;}}}
+		Event e=new Event(OS_EVT);e.message=SUSPEND_RESUME_MESSAGE<<24|(resume?1:0);post(e);
+	}
+	private static final int SUSPEND_RESUME_MESSAGE=1;
+	/** An operating-system event with this message (the ".Wacom" driver's proximity notice, WacomTablet68k). */
+	void postOsEvent(int message){Event e=new Event(OS_EVT);e.message=message;Point p=tb.host().mouseLocation();e.whereH=p.x;e.whereV=p.y;post(e);}
 
 	private void discardNextMouseUp(){synchronized(lock){for(Event q:queue)if(q.what==MOUSE_UP){queue.remove(q);return;}}}
 
@@ -558,7 +606,10 @@ final class EventManager68k implements MacAppHost.Listener {
 				// A launched program comes to the front during its first event call, which answers no Apple event yet: The Writing
 				// Center calls GetNextEvent(everyEvent) once right after InitDialogs, ignores what it gets, installs its handlers and
 				// then waits for 'oapp'; given to that first call, the event was lost and no window or menu ever appeared.
-				if(e.launch&&!firstEventCallMade)continue;
+				// A program that installed its handler first is asking for it: ClarisWorks 2.1 calls GetNextEvent(highLevelEventMask)
+				// right after AEInstallEventHandler and, with nothing there, put up its New Document dialog itself - then the
+				// 'oapp' handler put it up a second time.
+				if(e.launch&&!firstEventCallMade&&!launchHandlerInstalled(e))continue;
 				if(e.what==OS_EVT||e.what==HIGH_LEVEL_EVT){if(later==null)later=e;continue;}
 				if(remove)it.remove();
 				if(e.posted)fromElement(e);
@@ -657,6 +708,19 @@ final class EventManager68k implements MacAppHost.Listener {
 		}
 	}
 
+	/** The window whose update event the program got last. CheckUpdate makes update events from the update region, so one the
+	 *  program did not answer comes again until BeginUpdate/EndUpdate or ValidRect empties it: ｼｽﾃﾑｿﾌﾄｴﾃﾞｨﾀ's 表現チェック plug-in
+	 *  InvalRects its 原文 pane in a state that ignores events and draws it from the next update - it got only the first.
+	 *  Not without end: a window nobody answers for would take the null events away for good. */
+	private int updateGiven,updateRepeats;
+	private static final int UPDATE_REPEATS=30;
+	private void updateAgain(){
+		int w=updateGiven;updateGiven=0;if(w==0)return;
+		if(tb.windows.window(w)==null||!tb.windows.updateStillNeeded(w)){updateRepeats=0;return;}
+		if(++updateRepeats>UPDATE_REPEATS){updateRepeats=0;if(Mac68kApi.TRACE)System.err.println("[68K] update of $"+Integer.toHexString(w)+" never answered");return;}
+		postUpdate(w);
+	}
+
 	private boolean waitNextEvent(M68kCpu cpu) throws M68kException {
 		int mask=memory.readWord(cpu.a[7]+12),eventPtr=memory.readLong(cpu.a[7]+8),sleep=memory.readLong(cpu.a[7]+4);cpu.a[7]+=14;
 		if(tb.threads.inProgramTask()){ // a program run in the launcher's process: the events are the launcher's, this is only its turn's end
@@ -669,7 +733,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		}
 		if(probeTaken)endMenuProbe(); // the made-up menu-bar click went by without MenuSelect
 		tb.runEventWork();tb.updateTicks();tb.runTimers();tb.runPeriodic();tb.menus.flushIfDirty();
-		closeIgnoredGoAway();beforeEvents();serviceHostDrags(cpu);deliverPendingQuit();trackQuit();
+		closeIgnoredGoAway();beforeEvents();serviceHostDrags(cpu);deliverPendingQuit();trackQuit();updateAgain();
 		if(tb.app!=null&&tb.hosted())tb.host().programWaiting(); // no window and no menus: the stand-in is its drop target
 		// WaitNextEvent gives the drivers and accessories their time as SystemTask does (a program using it need not call
 		// SystemTask): QuicKeys plays a shortcut from its driver's accRun
@@ -693,6 +757,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		if(Mac68kApi.TRACE&&what!=NULL_EVENT)System.err.printf("[68K] WaitNextEvent(mask $%04X) -> what=%d message=$%08X modifiers $%04X%s%n",mask,what,memory.readLong(eventPtr+2),memory.readWord(eventPtr+14),os!=null?" (through GetOSEvent)":"");
 		boolean result=os!=null?os:e!=null&&e.what!=NULL_EVENT;if(result&&tb.desk.offerEvent(cpu,eventPtr))result=false;
 		if(result&&tb.windows.offerSystemWindowEvent(cpu,eventPtr)){result=false;memory.writeWord(eventPtr,NULL_EVENT);}
+		if(result&&what==UPDATE_EVT)updateGiven=memory.readLong(eventPtr+2);
 		tb.writeBoolean(cpu.a[7],gneFilter(cpu,eventPtr,result)); // WaitNextEvent is GetNextEvent to SystemEvent and the filter too
 		firstEventCallMade=true;
 		tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu); // input-method text for the TSM document, then other threads get their turn
@@ -720,7 +785,7 @@ final class EventManager68k implements MacAppHost.Listener {
 	private boolean getNextEvent(M68kCpu cpu,boolean remove) throws M68kException {
 		int mask=memory.readWord(cpu.a[7]+4),eventPtr=memory.readLong(cpu.a[7]);cpu.a[7]+=6;
 		tb.runEventWork();tb.updateTicks();tb.runTimers();tb.runPeriodic();tb.menus.flushIfDirty();
-		if(remove){closeIgnoredGoAway();beforeEvents();serviceHostDrags(cpu);deliverPendingQuit();trackQuit();if(tb.app!=null&&tb.hosted())tb.host().programWaiting();}
+		if(remove){closeIgnoredGoAway();beforeEvents();serviceHostDrags(cpu);deliverPendingQuit();trackQuit();updateAgain();if(tb.app!=null&&tb.hosted())tb.host().programWaiting();}
 		if(remove)cpu.yielded();
 		Boolean os=remove?takeThroughGetOSEvent(cpu,mask,eventPtr):null;
 		Event e=os!=null?null:take(mask,remove);
@@ -730,6 +795,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		boolean result=os!=null?os:e!=null&&e.what!=NULL_EVENT;
 		if(remove&&result&&tb.desk.offerEvent(cpu,eventPtr))result=false;
 		if(remove&&result&&tb.windows.offerSystemWindowEvent(cpu,eventPtr)){result=false;memory.writeWord(eventPtr,NULL_EVENT);}
+		if(remove&&result&&memory.readWord(eventPtr)==UPDATE_EVT)updateGiven=memory.readLong(eventPtr+2);
 		if(remove){result=gneFilter(cpu,eventPtr,result);firstEventCallMade=true;}
 		tb.writeBoolean(cpu.a[7],result);
 		if(remove){tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu);}
@@ -823,7 +889,8 @@ final class EventManager68k implements MacAppHost.Listener {
 		}
 		if(CLICKLOG&&e!=null&&(e.what==MOUSE_DOWN||e.what==MOUSE_UP))System.err.println("[clicklog] delivered what="+e.what+" menuId="+e.menuId+" pc="+Integer.toHexString(tb.cpu.pc)+" sp="+Integer.toHexString(tb.cpu.a[7]));
 		if(e!=null&&e==deferredDown)synchronized(lock){deferredUpDeadline=Math.min(deferredUpDeadline,System.nanoTime()+DEFERRED_UP_NANOS);}
-		if(e!=null&&e.what==MOUSE_DOWN&&e.menuId==-1){goAwayDelivered=e.window;visibleAtGoAway=tb.windows.visibleWindows();goAwayTracksBefore=tb.windows.goAwayTracks;windowsCreatedBefore=tb.windows.windowsCreated;}
+		if(e!=null&&e.what==MOUSE_DOWN&&e.menuId==-1){goAwayDelivered=e.window;visibleAtGoAway=tb.windows.visibleWindows();goAwayTracksBefore=tb.windows.goAwayTracks;windowsCreatedBefore=tb.windows.windowsCreated;
+			int front=tb.windows.frontWindow();try{goAwayBehindDialog=front!=0&&front!=e.window&&tb.windows.isWindow(front)&&(short)memory.readWord(front+108)==2;}catch(M68kCpuException x){goAwayBehindDialog=false;}} // windowKind dialogKind
 	}
 
 	/**
@@ -839,6 +906,10 @@ final class EventManager68k implements MacAppHost.Listener {
 		goAwayDelivered=0;if(CLICKLOG)System.err.println("[clicklog] closeIgnored w="+Integer.toHexString(w)+" visible="+tb.windows.isVisible(w)+" all="+tb.windows.visibleWindows()+" tracks="+(tb.windows.goAwayTracks-goAwayTracksBefore)+" created="+(tb.windows.windowsCreated-windowsCreatedBefore));
 		List<Integer> before=visibleAtGoAway;visibleAtGoAway=null;
 		if(!tb.windows.isVisible(w))return;
+		// a dialog in front of the window took the click (an alert or modal dialog refuses clicks elsewhere): the program did not
+		// ignore it. SimpleText's "save changes?" alert was up when the document's close box was clicked again - the document was
+		// hidden, and after Cancel the unsaved document stayed out of sight
+		if(goAwayBehindDialog)return;
 		for(int v:tb.windows.visibleWindows())if(!before.contains(v))return; // the program answered with a window of its own
 		// ... or tracked the close box (MacPaint: TrackGoAway, "Save changes before closing?", Cancel - the window stays open)
 		if(tb.windows.windowsCreated!=windowsCreatedBefore)return;
@@ -871,6 +942,10 @@ final class EventManager68k implements MacAppHost.Listener {
 	private void writeEvent(int eventPtr,Event e) throws M68kCpuException {
 		if(eventPtr==0)return;
 		int what=e==null?NULL_EVENT:e.what;
+		// a resume says whether the clipboard changed while the program was in the background (convertClipboard): another
+		// program or host application put something new on the host clipboard since its suspend
+		if(e!=null&&e.what==OS_EVT&&(e.message>>>24)==SUSPEND_RESUME_MESSAGE&&!e.clipboardNoted){e.clipboardNoted=true;
+			ScrapManager68k scrap=tb.api.scrapManager();if((e.message&1)==0)scrap.suspended();else if(scrap.changedSinceSuspend())e.message|=2;}
 		memory.writeWord(eventPtr,what);
 		memory.writeLong(eventPtr+2,e==null?0:e.message);
 		memory.writeLong(eventPtr+6,tb.tickCount());

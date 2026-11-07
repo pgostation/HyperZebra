@@ -116,8 +116,12 @@ final class ControlPanelHost68k implements MacApp68k.HostedCode {
 		if(result==CDEV_GEN_ERR||result==CDEV_MEM_ERR||result==CDEV_RES_ERR){
 			cdevValue=result;
 			String why=result==CDEV_MEM_ERR?"not enough memory":result==CDEV_RES_ERR?"a resource is missing":"a general error";
-			failure="\""+title()+"\" could not be opened: "+why+" (cdev result "+result+")";
-			cpu.pushLong(dialog);trap(0xa983,4);dialog=0;closed=true;return; // DisposDialog
+			// cdevGenErr: the panel has said what it had to itself; the Control Panel closes it without a message of its own.
+			// ATM Deluxe 4.0 answers so on purpose: its initDev queues a notification whose response launches the panel file as
+			// the ATM Deluxe program (a PowerPC application in its data fork), then closes the panel.
+			if(result==CDEV_GEN_ERR)System.err.println("[68K "+app.name+"] \""+title()+"\" closed itself at open (cdevGenErr)");
+			else failure="\""+title()+"\" could not be opened: "+why+" (cdev result "+result+")";
+			cpu.pushLong(dialog);trap(0xa983,4);dialog=0;closed=true;tb.runNotificationResponses();return; // DisposDialog
 		}
 		cdevValue=result;
 		cpu.pushLong(dialog);trap(0xa915,4); // ShowWindow
@@ -128,6 +132,8 @@ final class ControlPanelHost68k implements MacApp68k.HostedCode {
 	private void close() throws M68kException {
 		if(closed)return;closed=true;
 		if(dialog!=0){setPort();call(CLOSE_DEV,0);cpu.pushLong(dialog);trap(0xa983,4);dialog=0;} // DisposDialog
+		try{KaleidoscopeScheme68k.panelClosed(file,tb.files.systemFolder);}catch(java.io.IOException e){System.err.println("[68K] Kaleidoscope scheme: "+e);}
+		tb.runNotificationResponses(); // the Finder's next event call would give a notification the panel queued its system task time
 	}
 
 	/** The union of the item rectangles of a DITL (for a cdev without 'nrct'). */

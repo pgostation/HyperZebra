@@ -16,11 +16,19 @@ import java.util.TreeSet;
  * A compiled region is the code reachable from a start address along direct branches and fall-throughs (calls included,
  * up to a size limit): one hidden class whose run method keeps the registers it touches in Java locals, so HotSpot can give
  * them host registers, and writes them back into the CPU when the region is left. A region is left through an indirect
- * branch to an address outside it, a branch to code it does not hold, an instruction it does not compile (the host gate,
- * sc, the POWER-only and overflow-enabled instructions, lswx/stswx, an unconditional trap: the interpreter runs those), a
- * taken trap, after icbi, and when the instructions it ran reach the next scheduler poll (checked on every backward branch
- * and indirect jump). An instruction whose memory access fails is not finished: the region stops before it and the
- * interpreter runs it again, so faults, the program's exception handler and crash reports work as they do without the JIT.
+ * branch to an address outside it, a branch to code it does not hold, an instruction it does not compile (sc, the POWER-only
+ * and overflow-enabled instructions, lswx/stswx, an unconditional trap: the interpreter runs those), a taken trap, after
+ * icbi, and when the instructions it ran reach the next scheduler poll (checked on every backward branch and indirect jump).
+ * An instruction whose memory access fails is not finished: the region stops before it and the interpreter runs it again,
+ * so faults, the program's exception handler and crash reports work as they do without the JIT. An indirect branch to a
+ * host gate (glue calling a native routine) calls the native from the region and goes on where it returns to.
+ *
+ * Each piece of code is compiled once: every block start of a region is one of its entries, and a new region stops where
+ * code another region enters begins (small leaf routines and glue excepted). HotSpot runs a new class in its bytecode
+ * interpreter, many times slower than {@link PpcCpu}'s, until the class has been used enough to be compiled, so copies of
+ * the same code in many regions kept programs with lots of lukewarm code (MacBench's Processor test) slow for tens of
+ * seconds. For the same reason a region dropped because its code was freed or written over is kept a while: the same code
+ * loaded at the same place again gets the class back, already compiled.
  *
  * The CR fields, XER's carry and the FPSCR's result class are kept apart in the locals and put together on the way out
  * (FPRF only from the last floating-point result, when something reads the FPSCR). Every instruction computes exactly what
@@ -41,9 +49,11 @@ final class PpcJit implements M68kMemory.CodeListener {
 	 *  back in the CPU and pc where it stopped; -2-n when it stopped before an instruction the interpreter must run next
 	 *  (a failed memory access, a taken trap: compiled code there would stop at once again); -1 when cpu.pc is not one of
 	 *  its entries (nothing changed). */
-	interface Code { int run(PpcCpu cpu) throws M68kException; }
+	abstract static class Code { abstract int run(PpcCpu cpu) throws M68kException; } // a class, not an interface: the call is a virtual one
+	/** The cache entry of an address without a region yet ({@link PpcCpu#executeJit} counts its heat). */
+	static final Code COLD=new Code(){@Override int run(PpcCpu cpu){return -1;}};
 	/** The cache entry of an address no region can start at (interpreted). */
-	static final Code NONE=cpu->-1;
+	static final Code NONE=new Code(){@Override int run(PpcCpu cpu){return -1;}};
 	/**
 	 * Thrown out of a store by which the running region dropped its own code: its fault handler stops it before the store,
 	 * and the interpreter does the store again (stores can be repeated) and runs the code as it is now.
@@ -71,6 +81,14 @@ final class PpcJit implements M68kMemory.CodeListener {
 	private static final int MAX_INSTRUCTIONS=Math.max(8,Integer.getInteger("hzppc.jitmax",320));
 	/** Whether a region takes in the functions it calls (-Dhzppc.jitcalls=false: calls leave the region). */
 	private static final boolean FOLLOW_CALLS=!"false".equalsIgnoreCase(System.getProperty("hzppc.jitcalls"));
+	/** Whether every block start of a region is an entry (-Dhzppc.jitallentries=false: the start, return sites and loop heads). */
+	private static final boolean ALL_ENTRIES=!"false".equalsIgnoreCase(System.getProperty("hzppc.jitallentries"));
+	/** Whether a new region leaves code other regions already enter to them (-Dhzppc.jitshare=false: compiles it again). */
+	private static final boolean SHARE=!"false".equalsIgnoreCase(System.getProperty("hzppc.jitshare"));
+	/** Instructions of a routine a region takes in although another region has it (see Discovery.smallLeaf). */
+	private static final int LEAF=Integer.getInteger("hzppc.jitleaf",32);
+	/** Whether indirect branches to host gates call the native from the compiled code (-Dhzppc.jitgates=false: they leave it). */
+	private static final boolean FOLLOW_GATES=!"false".equalsIgnoreCase(System.getProperty("hzppc.jitgates"));
 	/** HotSpot does not compile methods of 8000 bytecode bytes or more (HugeMethodLimit): a region stays below. */
 	private static final int CODE_LIMIT=7600;
 	/** Regions kept at most; past it all are dropped and compiled again as they run (a program that keeps making code). */
@@ -88,11 +106,25 @@ final class PpcJit implements M68kMemory.CodeListener {
 		/** The code it was compiled from: [start, end) pairs. */
 		final int[] ranges;final int instructions;
 		Code code;
+		/** The instruction words of {@link #ranges} as compiled, and the class (kept while the region is retired). */
+		int[] ops;Code compiled;int bytecode;boolean isRetired;
 		Region(int start,int[] entries,int[] ranges,int instructions){this.start=start;this.entries=entries;this.ranges=ranges;this.instructions=instructions;}
 		boolean overlaps(long from,long to){for(int i=0;i<ranges.length;i+=2)if(from<(ranges[i+1]&0xffffffffL)&&to>(ranges[i]&0xffffffffL))return true;return false;}
+		/** The instruction word at {@code address} as compiled (an address of its ranges). */
+		int opAt(int address){int k=0;for(int i=0;i<ranges.length;i+=2){if(address>=ranges[i]&&address<ranges[i+1])return ops[k+((address-ranges[i])>>>2)];k+=(ranges[i+1]-ranges[i])>>>2;}return 0;}
+		/** Its key among the retired regions for the entry {@code address}: the address and the instruction there. */
+		long retiredKey(int address){return retiredKey(address,opAt(address));}
+		static long retiredKey(int address,int op){return (long)address<<32|(op&0xffffffffL);}
+		/** Whether memory holds the code this region was compiled from again. */
+		boolean sameCode(M68kMemory memory){
+			int k=0;
+			try{for(int i=0;i<ranges.length;i+=2)for(int p=ranges[i];p!=ranges[i+1];p+=4){if(memory.physical(p)!=p||p>memory.size()-4||memory.readLong(p)!=ops[k++])return false;}}
+			catch(M68kCpuException e){return false;}
+			return true;
+		}
 	}
 
-	static final int CACHE_BITS=14,CACHE_MASK=(1<<CACHE_BITS)-1;
+	static final int CACHE_BITS=16,CACHE_MASK=(1<<CACHE_BITS)-1;
 	/** Direct-mapped cache of region entries by (pc>>>2)&CACHE_MASK, read by PpcCpu without a lock: key 1 is empty. */
 	final int[] cacheKey=new int[1<<CACHE_BITS];final Code[] cacheCode=new Code[1<<CACHE_BITS];
 	private final Map<Integer,Region> entries=new HashMap<Integer,Region>();
@@ -101,7 +133,20 @@ final class PpcJit implements M68kMemory.CodeListener {
 	/** Regions by the 64-byte lines of their code (see {@link M68kMemory#CODE_SHIFT}). */
 	private final Map<Integer,List<Region>> byLine=new HashMap<Integer,List<Region>>();
 	private final List<PpcCpu> cpus=new ArrayList<PpcCpu>();
+	/**
+	 * Regions dropped because their code was written over or freed, by entry and the instruction there ({@link
+	 * Region#retiredKey}): a program that loads the same code at the same place again (a code resource read anew for every
+	 * run, MacBench's tests) gets the region back, already compiled by HotSpot, instead of a new class that starts in the
+	 * bytecode interpreter. At most {@link #RETIRED_BYTECODE} bytes of bytecode are kept (-Dhzppc.jitretired), the least
+	 * recently retired go first.
+	 */
+	private final Map<Long,List<Region>> retired=new HashMap<Long,List<Region>>();
+	/** The retired regions, oldest first. */
+	private final java.util.LinkedHashSet<Region> retiredOrder=new java.util.LinkedHashSet<Region>();
+	private long retiredBytecode;
+	private static final long RETIRED_BYTECODE=Long.getLong("hzppc.jitretired",24L<<20);
 	private int regionCount,refusedCount;
+	long revived;
 	final M68kMemory memory;
 	// statistics
 	long compiled,dropped,compileNanos,bytecodeBytes,failures;
@@ -114,12 +159,15 @@ final class PpcJit implements M68kMemory.CodeListener {
 		return j;
 	}
 
-	/** The region code for an entry at {@code pc} missing from the direct cache: compiled once the address got hot. */
+	/** The region code for an entry at {@code pc} missing from the direct cache: compiled once the address got hot (until
+	 *  then the cache holds {@link #COLD} for it, and null comes back). */
 	synchronized Code lookup(int pc){
 		Region r=entries.get(pc);
 		if(r!=null){cache(pc,r.code);return r.code;}
-		int h=(pc>>>2)&(heat.length-1);
-		if(++heat[h]<THRESHOLD)return null;
+		List<Region> old=retired.isEmpty()?null:retired.get(Region.retiredKey(pc,opAt(pc)));
+		if(old!=null)for(Region o:old)if(o.sameCode(memory)){unretire(o);o.code=o.compiled;install(o);revived++;cache(pc,o.code);return o.code;}
+		int h=heatSlot(pc);
+		if(++heat[h]<THRESHOLD){cache(pc,COLD);return null;}
 		heat[h]=0;
 		r=compile(pc);
 		if(r==null){ // interpreted from here: remembered like a region of its one instruction, so that new code there is tried again
@@ -129,6 +177,11 @@ final class PpcJit implements M68kMemory.CodeListener {
 		cache(pc,r.code);
 		return r.code;
 	}
+	private int opAt(int pc){try{return memory.physical(pc)==pc&&pc<=memory.size()-4?memory.readLong(pc):0;}catch(M68kCpuException e){return 0;}}
+	int heatSlot(int pc){return (pc>>>2)&(heat.length-1);}
+	/** One more visit of {@code pc} (cached {@link #COLD}); true when it is hot enough for {@link #lookup} to compile. Without
+	 *  the lock: a lost count only delays a region. */
+	boolean warm(int pc){int h=heatSlot(pc);return ++heat[h]>=THRESHOLD;}
 	private void cache(int pc,Code code){int slot=(pc>>>2)&CACHE_MASK;cacheCode[slot]=code;cacheKey[slot]=pc;}
 
 	// ------------------------------------------------------------------ invalidation
@@ -150,7 +203,7 @@ final class PpcJit implements M68kMemory.CodeListener {
 	private void drop(Region r){
 		if(r.code==null)return;
 		Code code=r.code;r.code=null;
-		if(code==NONE)refusedCount--;else{regionCount--;dropped++;}
+		if(code==NONE)refusedCount--;else{regionCount--;dropped++;retire(r);}
 		byte[] m=memory.codeMarks();
 		forEachLine(r,line->{List<Region> list=byLine.get(line);if(list!=null){list.remove(r);if(list.isEmpty()){byLine.remove(line);if(m!=null&&line<m.length)m[line]=0;}}});
 		for(int e:r.entries){entries.remove(e,r);int slot=(e>>>2)&CACHE_MASK;if(cacheCode[slot]==code){cacheKey[slot]=1;cacheCode[slot]=null;}}
@@ -159,6 +212,18 @@ final class PpcJit implements M68kMemory.CodeListener {
 			else c.jitStop=Integer.MIN_VALUE; // running on another thread: it stops at its next backward branch
 		}
 		if(TRACE&&code!=NONE)System.err.printf("[ppc jit] dropped region %08X (%d instructions)%n",r.start,r.instructions);
+	}
+	private void retire(Region r){
+		if(r.ops==null||RETIRED_BYTECODE<=0)return;
+		for(int e:r.entries)retired.computeIfAbsent(r.retiredKey(e),k->new ArrayList<Region>(1)).add(r);
+		r.isRetired=true;retiredBytecode+=r.bytecode;retiredOrder.add(r);
+		while(retiredBytecode>RETIRED_BYTECODE&&!retiredOrder.isEmpty())unretire(retiredOrder.iterator().next());
+	}
+	/** Takes {@code r} out of the retired regions (revived, replaced or too old). */
+	private void unretire(Region r){
+		if(!r.isRetired)return;
+		for(int e:r.entries){long k=r.retiredKey(e);List<Region> l=retired.get(k);if(l!=null&&l.remove(r)&&l.isEmpty())retired.remove(k);}
+		r.isRetired=false;retiredBytecode-=r.bytecode;retiredOrder.remove(r);
 	}
 	private void forEachLine(Region r,java.util.function.IntConsumer f){
 		for(int i=0;i<r.ranges.length;i+=2){
@@ -169,7 +234,7 @@ final class PpcJit implements M68kMemory.CodeListener {
 	private void install(Region r){
 		if(r.code==NONE)refusedCount++;
 		else{if(regionCount>=MAX_REGIONS)dropAll();regionCount++;}
-		for(int e:r.entries)entries.put(e,r);
+		for(int e:r.entries){entries.put(e,r);int slot=(e>>>2)&CACHE_MASK;if(cacheKey[slot]==e)cacheCode[slot]=r.code;}
 		byte[] m=memory.codeMarks();
 		forEachLine(r,line->{List<Region> list=byLine.computeIfAbsent(line,k->new ArrayList<Region>(2));if(!list.contains(r))list.add(r);if(m!=null&&line<m.length)m[line]=1;});
 	}
@@ -178,10 +243,17 @@ final class PpcJit implements M68kMemory.CodeListener {
 		for(List<Region> list:new ArrayList<List<Region>>(byLine.values()))for(Region r:list.toArray(new Region[0]))drop(r);
 		entries.clear();Arrays.fill(cacheKey,1);Arrays.fill(cacheCode,null);
 	}
+	/** Drops every region and forgets the retired ones (the JIT is turned off). */
+	synchronized void clear(){dropAll();for(Region r:retiredOrder)r.isRetired=false;retired.clear();retiredOrder.clear();retiredBytecode=0;}
 
 	/** One line of statistics (-Dhzppc.stats). */
 	synchronized String statistics(){
-		return String.format("JIT %d regions (%d compiled, %d dropped, %d addresses interpreted, %d failed, %.0f ms, %d KB bytecode)",regionCount,compiled,dropped,refusedCount,failures,compileNanos/1e6,bytecodeBytes/1024);
+		if(PpcCpu.JIT_STATS){ // compiled instructions in all live regions against the distinct ones they cover
+			java.util.BitSet seen=new java.util.BitSet();long total=0;java.util.Set<Region> live=new HashSet<Region>(entries.values());
+			for(Region r:live){if(r.code==NONE)continue;total+=r.instructions;for(int i=0;i<r.ranges.length;i+=2)seen.set(r.ranges[i]>>>2,r.ranges[i+1]>>>2);}
+			return String.format("JIT %d regions (%d compiled, %d dropped, %d revived, %d failed, %.0f ms, %d KB bytecode, %d instructions compiled over %d distinct)",regionCount,compiled,dropped,revived,failures,compileNanos/1e6,bytecodeBytes/1024,total,seen.cardinality());
+		}
+		return String.format("JIT %d regions (%d compiled, %d dropped, %d revived, %d addresses interpreted, %d failed, %.0f ms, %d KB bytecode)",regionCount,compiled,dropped,revived,refusedCount,failures,compileNanos/1e6,bytecodeBytes/1024);
 	}
 
 	// ------------------------------------------------------------------ compiling
@@ -206,7 +278,8 @@ final class PpcJit implements M68kMemory.CodeListener {
 				Class<?> cls=LOOKUP.defineHiddenClass(bytes,true).lookupClass();
 				Code code=(Code)cls.getDeclaredConstructor().newInstance();
 				int[] ranges=d.ranges();
-				Region r=new Region(pc,d.entryList(),ranges,d.code.size());r.code=code;
+				Region r=new Region(pc,d.entryList(),ranges,d.code.size());r.code=r.compiled=code;r.bytecode=bytes.length;
+				r.ops=new int[d.code.size()];int k=0;for(int op:d.code.values())r.ops[k++]=op;
 				install(r);
 				compiled++;bytecodeBytes+=bytes.length;
 				if(TRACE)System.err.printf("[ppc jit] region %08X: %d instructions, %d entries, %d bytes of bytecode%n",pc,d.code.size(),r.entries.length,gen.c.pos());
@@ -271,11 +344,11 @@ final class PpcJit implements M68kMemory.CodeListener {
 				if(next==null)break;
 				int a=next;
 				if(code.containsKey(a)){leaders.add(a);continue;}
-				if(code.size()>=limit||!readable(a)||!compilable(word(a)))continue;
+				if(code.size()>=limit||!readable(a)||!compilable(word(a))||compiledElsewhere(a))continue;
 				leaders.add(a);
 				for(int p=a;;p+=4){
 					if(p!=a&&code.containsKey(p)){leaders.add(p);break;}
-					if(code.size()>=limit||!readable(p))break;
+					if(code.size()>=limit||!readable(p)||p!=a&&compiledElsewhere(p))break;
 					int op=word(p);
 					if(!compilable(op))break;
 					code.put(p,op);
@@ -285,7 +358,7 @@ final class PpcJit implements M68kMemory.CodeListener {
 						int target=primary==18?((op&2)!=0?0:p)+((op<<6)>>6&~3):((op&2)!=0?0:p)+(short)(op&0xfffc);
 						boolean always=primary==18||(((op>>>21)&0x14)==0x14);
 						if((op&1)==0){local.add(target);if(!always)local.add(p+4);}
-						else{returnSites.add(p+4);local.add(p+4);if(target==p+4)local.add(target);else if(FOLLOW_CALLS)calls.add(target);}
+						else{returnSites.add(p+4);local.add(p+4);if(target==p+4)local.add(target);else if(FOLLOW_CALLS){if(SHARE&&target!=start)smallLeaf(target);calls.add(target);}}
 					}else if(primary==19){
 						boolean always=((op>>>21)&0x14)==0x14||((op>>>1)&0x3ff)==528&&((op>>>21)&0x10)!=0;
 						if((op&1)!=0){returnSites.add(p+4);local.add(p+4);}
@@ -296,6 +369,38 @@ final class PpcJit implements M68kMemory.CodeListener {
 			}
 		}
 		private boolean readable(int p){return (p&3)==0&&memory.physical(p)==p&&p<=memory.size()-4;}
+		/**
+		 * Code another region already enters at {@code p}: this one jumps there instead of compiling it again (every region
+		 * a program's code ends up in starts in HotSpot's bytecode interpreter and must get hot on its own). Except small
+		 * leaf routines this one calls (see {@link #smallLeaf}), which a jump there and back would cost more than they do.
+		 */
+		private boolean compiledElsewhere(int p){
+			if(!SHARE||p==start)return false;
+			for(int i=0;i<leafRanges.size();i+=2)if(p>=leafRanges.get(i)&&p<leafRanges.get(i+1))return false;
+			Region r=entries.get(p);return r!=null&&r.code!=NONE&&r.code!=null;
+		}
+		private final List<Integer> leafRanges=new ArrayList<Integer>();
+		/**
+		 * A routine at {@code a} of at most {@link #LEAF} straight-line instructions (forward branches only) that calls nothing
+		 * and ends in blr or bctr: cross-fragment glue, accessors. Taken into the region even when another one has it.
+		 */
+		private void smallLeaf(int a){
+			int end=-1,reach=a; // reach: the furthest a forward branch goes
+			for(int p=a;p<a+4*LEAF;p+=4){
+				if(!readable(p))return;
+				int op=word(p);
+				if(!compilable(op))return;
+				int primary=op>>>26;
+				if(op==0x4e800020||op==0x4e800420){if(reach<=p){end=p+4;break;}continue;} // blr, bctr
+				if(primary==18||primary==16){
+					if((op&1)!=0||(op&2)!=0)return; // a call, an absolute branch
+					int target=p+(primary==18?((op<<6)>>6&~3):(short)(op&0xfffc));
+					if(target<=p||target>=a+4*LEAF)return;
+					reach=Math.max(reach,target);
+				}else if(primary==19&&(((op>>>1)&0x3ff)==16||((op>>>1)&0x3ff)==528))return; // other bclr/bcctr forms
+			}
+			if(end>0){leafRanges.add(a);leafRanges.add(end);}
+		}
 		private int word(int p){try{return memory.readLong(p);}catch(M68kCpuException e){return 0;}}
 		/** The start, the return sites, and the targets of backward branches (where a region stopped for the poll goes on). */
 		int[] entryList(){
@@ -305,6 +410,11 @@ final class PpcJit implements M68kMemory.CodeListener {
 				int p=en.getKey(),op=en.getValue();int primary=op>>>26;
 				if(primary==18||primary==16){int target=primary==18?((op&2)!=0?0:p)+((op<<6)>>6&~3):((op&2)!=0?0:p)+(short)(op&0xfffc);
 					if(target<=p&&code.containsKey(target))e.add(target);}
+			}
+			if(ALL_ENTRIES){ // every block start: code reached in the middle of a region enters it instead of starting another one over the same code
+				Integer prev=null;
+				for(Map.Entry<Integer,Integer> en:code.entrySet()){int p=en.getKey();
+					if(leaders.contains(p)||prev==null||prev!=p-4||endsBlock(code.get(prev)))e.add(p);prev=p;}
 			}
 			int[] list=new int[e.size()];int i=0;for(int v:e)list[i++]=v;return list;
 		}
@@ -327,7 +437,7 @@ final class PpcJit implements M68kMemory.CodeListener {
 	 */
 	private final class Gen {
 		final Discovery d;final boolean dry;
-		final JitClassFile cf=new JitClassFile("PpcJitRegion","java/lang/Object","PpcJit$Code");
+		final JitClassFile cf=new JitClassFile("PpcJitRegion","PpcJit$Code");
 		final JitClassFile.Code c;
 		// what the code uses (filled by the dry run, copied into the real one)
 		final boolean[] gprUsed,gprWritten,fprUsed,fprWritten,crUsed,crWritten;
@@ -466,6 +576,8 @@ final class PpcJit implements M68kMemory.CodeListener {
 			}
 			// an indirect branch leaving the region: its address for the crash report of a jump to 0 (PpcCpu.glueCallee)
 			c.bind(dynamicExitLabel);c.var(JitClassFile.ALOAD,lCpu);c.var(JitClassFile.ILOAD,lCur);c.putfield(CPU,"jitBranch","I");
+			JitClassFile.Label gate=c.label();
+			if(FOLLOW_GATES){c.var(JitClassFile.ALOAD,lMem);c.var(JitClassFile.ILOAD,lT0);c.invokestatic(JIT,"isGate","(LM68kMemory;I)Z");c.jump(JitClassFile.IFNE,gate);}
 			c.var(JitClassFile.ILOAD,lT0);c.var(JitClassFile.ISTORE,lNext);c.jump(JitClassFile.GOTO,exitLabel);
 			// a failed memory access: the instruction at cur runs again in the interpreter
 			JitClassFile.Label handler=c.label();
@@ -475,11 +587,20 @@ final class PpcJit implements M68kMemory.CodeListener {
 			epilogue();
 			c.bindHandler(handler);
 			op(JitClassFile.POP);c.var(JitClassFile.ILOAD,lCur);c.var(JitClassFile.ISTORE,lNext);ic(1);c.var(JitClassFile.ISTORE,lMode);c.jump(JitClassFile.GOTO,exitLabel);
+			// an indirect branch to a host gate (a call through glue to a native routine): the native runs from here, with the
+			// registers back in the CPU, and the code goes on where it returns to (outside the handler: its exceptions are real)
+			c.bind(gate);
+			storeState();
+			c.iinc(lCount,1);c.var(JitClassFile.ALOAD,lCpu);c.var(JitClassFile.ILOAD,lT0);c.invokevirtual(CPU,"jitGate","(I)Z");c.var(JitClassFile.ISTORE,lT1);
+			loadState();
+			c.var(JitClassFile.ALOAD,lCpu);c.getfield(CPU,"pc","I");c.var(JitClassFile.ISTORE,lT0);
+			c.var(JitClassFile.ILOAD,lT1);c.jump(JitClassFile.IFNE,dispatchLabel);
+			c.var(JitClassFile.ILOAD,lT0);c.var(JitClassFile.ISTORE,lNext);c.jump(JitClassFile.GOTO,exitLabel);
 			if(dry)return null;
 			if(c.pos()>CODE_LIMIT||!c.finish())return null;
 			JitClassFile.Code init=cf.method(0x0001,"<init>","()V");
 			init.objectLocal("java/lang/Object");init.maxStack=1;
-			init.var(JitClassFile.ALOAD,0);init.invokespecial("java/lang/Object","<init>","()V");init.op(JitClassFile.RETURN);init.finish();
+			init.var(JitClassFile.ALOAD,0);init.invokespecial("PpcJit$Code","<init>","()V");init.op(JitClassFile.RETURN);init.finish();
 			return cf.toBytes();
 		}
 
@@ -489,6 +610,17 @@ final class PpcJit implements M68kMemory.CodeListener {
 			if(!dry&&lF>=0){c.var(JitClassFile.ALOAD,lCpu);c.getfield(CPU,"f","[J");c.var(JitClassFile.ASTORE,lF);}
 			ic(0);c.var(JitClassFile.ISTORE,lCount);ic(0);c.var(JitClassFile.ISTORE,lNext);ic(0);c.var(JitClassFile.ISTORE,lCur);ic(0);c.var(JitClassFile.ISTORE,lMode);
 			ic(0);c.var(JitClassFile.ISTORE,lT0);ic(0);c.var(JitClassFile.ISTORE,lT1);c.lconst(0);c.var(JitClassFile.LSTORE,lL0);
+			loadState();
+			if(entryList.length==1)c.jump(JitClassFile.GOTO,blocks.get(entryList[0]));
+			else{
+				JitClassFile.Label miss=c.label();JitClassFile.Label[] t=new JitClassFile.Label[entryList.length];
+				for(int i=0;i<t.length;i++)t[i]=blocks.get(entryList[i]);
+				c.var(JitClassFile.ALOAD,lCpu);c.getfield(CPU,"pc","I");c.lookupswitch(entryList,t,miss);
+				c.bind(miss);ic(-1);op(JitClassFile.IRETURN);
+			}
+		}
+		/** The registers the region uses from the CPU into the locals. */
+		private void loadState(){
 			if(!dry){
 				for(int i=0;i<32;i++)if(gprUsed[i]){c.var(JitClassFile.ALOAD,lR);ic(i);op(JitClassFile.IALOAD);c.var(JitClassFile.ISTORE,gpr[i]);}
 				for(int i=0;i<32;i++)if(fprUsed[i]){c.var(JitClassFile.ALOAD,lF);ic(i);op(JitClassFile.LALOAD);c.invokestatic("java/lang/Double","longBitsToDouble","(J)D");c.var(JitClassFile.DSTORE,fpr[i]);}
@@ -502,17 +634,20 @@ final class PpcJit implements M68kMemory.CodeListener {
 				if(fpscrUsed){c.var(JitClassFile.ALOAD,lCpu);c.getfield(CPU,"fpscr","I");c.var(JitClassFile.ISTORE,lFpscr);}
 				if(fprfUsed){ic(0);c.var(JitClassFile.ISTORE,lFstate);c.dconst(0);c.var(JitClassFile.DSTORE,lFres);}
 			}
-			if(entryList.length==1)c.jump(JitClassFile.GOTO,blocks.get(entryList[0]));
-			else{
-				JitClassFile.Label miss=c.label();JitClassFile.Label[] t=new JitClassFile.Label[entryList.length];
-				for(int i=0;i<t.length;i++)t[i]=blocks.get(entryList[i]);
-				c.var(JitClassFile.ALOAD,lCpu);c.getfield(CPU,"pc","I");c.lookupswitch(entryList,t,miss);
-				c.bind(miss);ic(-1);op(JitClassFile.IRETURN);
-			}
 		}
 
 		private void epilogue(){
 			if(dry){op(JitClassFile.ICONST_0);op(JitClassFile.IRETURN);return;}
+			storeState();
+			c.var(JitClassFile.ALOAD,lCpu);c.var(JitClassFile.ILOAD,lNext);c.putfield(CPU,"pc","I");
+			JitClassFile.Label interpret=c.label();
+			c.var(JitClassFile.ILOAD,lMode);c.jump(JitClassFile.IFNE,interpret);
+			c.var(JitClassFile.ILOAD,lCount);op(JitClassFile.IRETURN);
+			c.bind(interpret);ic(-2);c.var(JitClassFile.ILOAD,lCount);op(JitClassFile.ISUB);op(JitClassFile.IRETURN);
+		}
+		/** The registers the region wrote from the locals back into the CPU. */
+		private void storeState(){
+			if(dry)return;
 			if(fprfUsed){ldFpscr();c.var(JitClassFile.ILOAD,lFstate);c.var(JitClassFile.DLOAD,lFres);c.invokestatic(JIT,"fprfIf","(IID)I");c.var(JitClassFile.ISTORE,lFpscr);}
 			for(int i=0;i<32;i++)if(gprWritten[i]){c.var(JitClassFile.ALOAD,lR);ic(i);c.var(JitClassFile.ILOAD,gpr[i]);op(JitClassFile.IASTORE);}
 			for(int i=0;i<32;i++)if(fprWritten[i]){c.var(JitClassFile.ALOAD,lF);ic(i);c.var(JitClassFile.DLOAD,fpr[i]);c.invokestatic("java/lang/Double","doubleToRawLongBits","(D)J");op(JitClassFile.LASTORE);}
@@ -529,11 +664,6 @@ final class PpcJit implements M68kMemory.CodeListener {
 				else c.var(JitClassFile.ILOAD,lXer);
 				c.putfield(CPU,"xer","I");}
 			if(fpscrWritten){c.var(JitClassFile.ALOAD,lCpu);c.var(JitClassFile.ILOAD,lFpscr);c.putfield(CPU,"fpscr","I");}
-			c.var(JitClassFile.ALOAD,lCpu);c.var(JitClassFile.ILOAD,lNext);c.putfield(CPU,"pc","I");
-			JitClassFile.Label interpret=c.label();
-			c.var(JitClassFile.ILOAD,lMode);c.jump(JitClassFile.IFNE,interpret);
-			c.var(JitClassFile.ILOAD,lCount);op(JitClassFile.IRETURN);
-			c.bind(interpret);ic(-2);c.var(JitClassFile.ILOAD,lCount);op(JitClassFile.ISUB);op(JitClassFile.IRETURN);
 		}
 
 		// ---- instructions
@@ -919,6 +1049,11 @@ final class PpcJit implements M68kMemory.CodeListener {
 	// ------------------------------------------------------------------ helpers called by the generated code
 
 	static int mask(int mb,int me){int a=-1>>>mb,b=-1<<(31-me);return mb<=me?a&b:a|b;}
+	/** Whether {@code target} holds a host gate (compiled code calls it in place, see {@link PpcCpu#jitGate}). */
+	static boolean isGate(M68kMemory m,int target){
+		if((target&3)!=0||m.physical(target)!=target||target>m.size()-4)return false;
+		try{return m.readLong(target)>>>26==PpcCpu.GATE_OPCODE;}catch(M68kCpuException e){return false;}
+	}
 	static int cmps(int a,int b,int xer){return (a<b?8:a>b?4:2)|(xer>>>31);}
 	static int cmpu(int a,int b,int xer){int c=Integer.compareUnsigned(a,b);return (c<0?8:c>0?4:2)|(xer>>>31);}
 	static int cr0(int v,int xer){return (v<0?8:v>0?4:2)|(xer>>>31);}

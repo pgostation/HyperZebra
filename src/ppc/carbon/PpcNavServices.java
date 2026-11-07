@@ -553,15 +553,17 @@ final class PpcNavServices {
 	/**
 	 * As {@link #fileList}, for chosen folders: each FSSpec names the folder by its own directory ID with an empty name
 	 * (vRefNum, dirID, ""), the form Navigation Services hands back for a chosen folder - Disk Copy 6.3 takes parID as the folder
-	 * (PBGetCatInfo with ioFDirIndex -1) and imaged the folder above it. Resolved as an FSSpec it is the same folder.
+	 * (PBGetCatInfo with ioFDirIndex -1) and imaged the folder above it. Resolved as an FSSpec it is the same folder. A chosen
+	 * volume ({@code volumes}) comes the same way, as its root directory (vRefNum, 2, ""): Alias Disk reads it with PBGetCatInfo
+	 * on parID and got fnfErr for the (vRefNum, 1, volume name) of FSMakeFSSpec.
 	 */
-	private int folderList(int desc,List<File> folders) throws M68kException {
+	private int folderList(int desc,List<File> folders,boolean volumes) throws M68kException {
 		int err=rt.toolbox("AECreateList",0,0,0,desc);if(err!=0)return err;
 		for(File f:folders){
 			int spec=fsSpec(f);
 			try{
 				FileManager68k fm=rt.toolbox.files.fileManager;
-				if(f.isDirectory()&&!fm.volumeRoot(f)){memory.writeLong(spec+2,fm.directoryIdFor(f));memory.fill(spec+6,64,0);}
+				if(f.isDirectory()&&(volumes||!fm.volumeRoot(f))){memory.writeLong(spec+2,fm.directoryIdFor(f));memory.fill(spec+6,64,0);}
 			}catch(java.io.IOException e){/* the plain FSSpec */}
 			try{err=rt.toolbox("AEPutPtr",desc,0,TYPE_FSS,spec,70);}finally{freeBlock(spec);}
 			if(err!=0)return err;
@@ -590,7 +592,7 @@ final class PpcNavServices {
 		memory.writeWord(reply+R_KEYSCRIPT,rt.toolbox.encoding==StackTextEncoding.JAPANESE?1:0); // smJapanese / smRoman
 		memory.writeLong(reply+R_TRANSLATION,0);
 		if(!valid){memory.writeLong(reply+R_SELECTION,TYPE_NULL);memory.writeLong(reply+R_SELECTION+4,0);return NO_ERR;}
-		int err=d.kind==CHOOSE_FOLDER?folderList(reply+R_SELECTION,d.selection):fileList(reply+R_SELECTION,d.selection);
+		int err=d.kind==CHOOSE_FOLDER||d.kind==CHOOSE_VOLUME?folderList(reply+R_SELECTION,d.selection,d.kind==CHOOSE_VOLUME):fileList(reply+R_SELECTION,d.selection);
 		if(err!=0){memory.writeByte(reply+R_VALID,0);return err;}
 		if(carbon&&d.kind==PUT)memory.writeLong(reply+R_SAVE_NAME,rt.libraries.textServices.newCFString(d.saveName));
 		return NO_ERR;

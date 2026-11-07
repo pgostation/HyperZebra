@@ -665,7 +665,14 @@ public class TQTMovie {
 	//----------------------------------------------------------
 	//変換本体
 	//----------------------------------------------------------
-	private static MovieAsset convert(File movieFile){
+	private static MovieAsset convert(File movieFile){return convert(movieFile,false);}
+	/**
+	 * A movie, MP3 or MIDI file for HyperZebra's media player (GMediaPlayerWindow), not kept in the cache: what ffmpeg
+	 * converts goes to a temporary folder, not beside the open stack (the file has nothing to do with it).
+	 */
+	static MovieAsset assetForPlayer(File movieFile){return convert(movieFile,true);}
+	/** {@code scratch}: ffmpeg's frames and sound go to a temporary folder instead of the stack's movie cache. */
+	private static MovieAsset convert(File movieFile, boolean scratch){
 		MovieAsset asset = new MovieAsset();
 		asset.converted = true;
 		//a Standard MIDI File opens as a music-only movie, as QuickTime's MIDI import does (BladeStory -BlackHeart-'s MIDI XFCN
@@ -730,7 +737,9 @@ public class TQTMovie {
 		if(!isFfmpegAvailable()) {System.out.println("QTMovie converter: ffmpeg unavailable");return asset;}
 		System.out.println("QTMovie converter: ffmpeg available");
 
-		File workDir = getCacheDir(movieFile);
+		File workDir;
+		if(scratch){try{workDir = TempFiles.createDirectory("hyperzebra_qtmovie_");}catch(IOException e){return asset;}}
+		else workDir = getCacheDir(movieFile);
 		if(workDir==null) return asset;
 
 		File frameDir = new File(workDir, "frames");
@@ -809,7 +818,7 @@ public class TQTMovie {
 	//動画ファイルごとのサブフォルダとして永続的に置く（アプリを再起動しても再変換しなくて済む）。
 	//スタックのフォルダが分からない場合だけ、システムのtempにフォールバックする。
 	private static File getCacheDir(File movieFile){
-		File hzbDir = (PCARD.pc.stack!=null && PCARD.pc.stack.file!=null) ?
+		File hzbDir = (PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.file!=null) ?
 			PCARD.pc.stack.file.getParentFile() : null;
 		if(hzbDir==null || !hzbDir.isDirectory()){
 			try {

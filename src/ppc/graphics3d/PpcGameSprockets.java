@@ -287,6 +287,18 @@ final class PpcGameSprockets {
 		int[] all={0,0,c.height,c.width};copy(c.back,all,c.window,all,0);
 		validate(c.window);if(c.backdrop!=0)validate(c.backdrop);
 	}
+	/**
+	 * The context's pixels are the screen itself on a real Mac, so a window of the program as big as the context is drawn over at
+	 * once. Here the context is a window of its own: Age of Empires II opens "Age of Empires II Expansion" (800x600, only to get
+	 * events) after it activated the context and writes its menus to the front buffer, which stayed behind that black window.
+	 * Smaller windows, the program's dialogs, keep their place in front.
+	 */
+	private void keepOnTop(Context c) throws M68kException {
+		if(c.state!=STATE_ACTIVE||c.window==0)return;
+		int front=tb("FrontWindow");if(front==0||front==c.window||front==c.backdrop)return;
+		int height=(short)memory.readWord(front+20)-(short)memory.readWord(front+16),width=(short)memory.readWord(front+22)-(short)memory.readWord(front+18);
+		if(width>=c.width&&height>=c.height)tb("BringToFront",c.window);
+	}
 	/** Nothing is left for an update event: the program does not know these windows. */
 	private void validate(int window) throws M68kException {
 		int[] saved=saveGWorld();int r=rt.allocate(8,2);
@@ -316,7 +328,7 @@ final class PpcGameSprockets {
 		waitFrame(c);
 		if(busyProc!=0)rt.cpu.call(busyProc,c.ref,refCon);
 		if(c.vblProc!=0)rt.cpu.call(c.vblProc,c.ref,c.vblRefCon);
-		if(c.state==STATE_ACTIVE)present(c);
+		if(c.state==STATE_ACTIVE){keepOnTop(c);present(c);}
 		if(c.underlay!=null)for(int[] r:c.invalid)copy(c.underlay.gworld,r,c.back,r,0);
 		c.invalid.clear();
 		return NO_ERR;
@@ -467,7 +479,7 @@ final class PpcGameSprockets {
 		l.register(lib,"DSpContext_GetBackBuffer",(r,c)->{Context x=context(arg(0));if(x==null){out(arg(2),0);ret(DSP_INVALID_CONTEXT);return;}
 			if(!x.reserved){out(arg(2),0);ret(DSP_NOT_RESERVED);return;}out(arg(2),x.back);ret(NO_ERR);});
 		l.register(lib,"DSpContext_GetFrontBuffer",(r,c)->{Context x=context(arg(0));if(x==null){out(arg(1),0);ret(DSP_INVALID_CONTEXT);return;}
-			if(!x.reserved){out(arg(1),0);ret(DSP_NOT_RESERVED);return;}out(arg(1),x.window);ret(NO_ERR);});
+			if(!x.reserved){out(arg(1),0);ret(DSP_NOT_RESERVED);return;}keepOnTop(x);out(arg(1),x.window);ret(NO_ERR);});
 		l.register(lib,"DSpContext_SetCLUTEntries",(r,c)->{ // (context, ColorSpec entries[], first, last)
 			Context x=context(arg(0));if(x==null){ret(DSP_INVALID_CONTEXT);return;}if(!x.reserved){ret(DSP_NOT_RESERVED);return;}
 			int entries=arg(1),first=arg(2)&0xffff,last=arg(3)&0xffff;if(entries==0||last<first||last>255){ret(PARAM_ERR);return;}

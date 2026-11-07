@@ -71,6 +71,10 @@ final class InstalledFonts68k {
 			for(int[] a:association){if(a[0]!=size)continue;if(a[1]==(face&7)){exact=a[2];exactStyle=a[1];}else if(a[1]==0)plain=a[2];}
 			BitmapFont68k font=BitmapFont68k.parse(id,size,exact!=0?face&~exactStyle:face,strikeData(exact!=0?exact:plain),sfnt());
 			if(font!=null)return font;
+			// a classic Roman family the System has as TrueType, which the host font stands in for: a suitcase holding only some
+			// of its strikes does not make the other sizes scaled bitmaps ("Equation Editor Fonts" carries Times 7 plain and
+			// italics: Times 14 came out a blown-up 7 and RealFont said no - DOCMaker's "fonts not available: Times 14")
+			if(scale&&!hasOutlines()&&id>=0&&id<Fonts68k.JAPANESE_SYSTEM_FONT&&Fonts68k.NAMES.containsKey(id))return null;
 			int from=scale?BitmapFont68k.nearestSize(sizes(),size):0;
 			return from==0?null:BitmapFont68k.scaled(strike(from,face,false),size,Fonts68k.scaleDisabled);
 		}

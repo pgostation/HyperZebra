@@ -128,7 +128,7 @@ public class PictureFile {
 	/** loadPbm through PictureCache (card and background pictures read at every card change) */
 	static BufferedImage loadPbmCached(String path){
 		try{
-			return PictureCache.read(path, "pbm", f -> loadPbm(f.getPath()));
+			return path==null ? null : PictureCache.readShared(new File(path), "pbm", f -> loadPbm(f.getPath()));
 		}catch(IOException e){
 			return null;
 		}

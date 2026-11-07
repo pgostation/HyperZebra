@@ -23,7 +23,32 @@ final class StreamingSound {
 
 	StreamingSound(Source source,AudioFormat format,long frames){this.source=source;this.format=format;this.frames=frames;}
 	static StreamingSound of(Mp3Decoder.Stream s){return new StreamingSound(s::pcm,s.format(),s.totalSamples());}
+	/** Decoded samples, read from the array as they play (no copy as bytes). */
+	static StreamingSound of(final QuickTimeSound.Pcm p){
+		return new StreamingSound(frame->{
+			final int[] at={(int)Math.min(p.samples.length,frame*p.channels)};
+			java.io.InputStream in=new java.io.InputStream(){
+				private int half=-1; // the low byte of a sample whose high byte was read
+				@Override public int read(){
+					if(half>=0){int b=half;half=-1;return b;}
+					if(at[0]>=p.samples.length)return -1;
+					short s=p.samples[at[0]++];half=s&0xff;return (s>>8)&0xff;
+				}
+				@Override public int read(byte[] b,int off,int len){
+					if(len==0)return 0;
+					int n=0;
+					if(half>=0&&n<len){b[off+n++]=(byte)half;half=-1;}
+					while(n+1<len&&at[0]<p.samples.length){short s=p.samples[at[0]++];b[off+n++]=(byte)(s>>8);b[off+n++]=(byte)s;}
+					if(n<len&&at[0]<p.samples.length&&half<0){short s=p.samples[at[0]++];b[off+n++]=(byte)(s>>8);half=s&0xff;}
+					return n==0?-1:n;
+				}
+			};
+			return new AudioInputStream(in,p.format(),p.frames()-at[0]/p.channels);
+		},p.format(),p.frames());
+	}
 
+	/** Where the sound comes from (tests). */
+	Source source(){return source;}
 	long getMicrosecondLength(){return (long)(frames*1e6/format.getSampleRate());}
 	synchronized long getMicrosecondPosition(){return (long)(currentFrame()*1e6/format.getSampleRate());}
 	private long currentFrame(){

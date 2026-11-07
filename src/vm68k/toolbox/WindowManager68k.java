@@ -27,6 +27,8 @@ final class WindowManager68k {
 		int contentColor=0xffffff; // wctb/dctb part 0: what the content is erased to
 		/** A colour tile the content is erased to instead (a Kaleidoscope scheme's dialog background): {width, height, argb...}. */
 		int[] contentTile;
+		/** The port's own bkPixPat while {@link #contentTile} is the scheme's: put back when the program colours the content itself. */
+		int plainBackPixPat;
 		int pendingGrowWidth,pendingGrowHeight;boolean everShown;
 		/** The WDEF 0 variant the program last had the regions calculated for, calling the defProc itself (HyperCard's
 		 *  `hide titleBar`: plainDBox on its zoomNoGrow card window); -1 = the procID's own. */
@@ -47,6 +49,9 @@ final class WindowManager68k {
 		int createdDefProc;
 	/** A window whose frame the program's own WDEF draws: the structure region relative to the content (frameLeft/Top <= 0) and its size. */
 		boolean custom;int frameLeft,frameTop,frameWidth,frameHeight;
+		/** A window larger than any buffer (see {@link #partialFrame}): the buffer and the host window are only the part of the
+		 *  content on the screen, frameLeft/Top (>= 0) .. frameWidth/Height; the record keeps the program's size and place. */
+		boolean partial;
 		/** HyperCard's own WDEF-0 wrapper changed the variant (PowerPC HyperCard's `hide titleBar`): the frame is rebuilt at DrawNew. */
 		boolean reframePending;
 		/** The structure region relative to the frame's top-left when it is not a plain rectangle (the host window takes that shape), else null. */
@@ -62,6 +67,8 @@ final class WindowManager68k {
 		KaleidoscopeScheme68k.WindowFrame theme;java.awt.image.BufferedImage themeImage;boolean themeGrow;
 		/** The scheme's frame a window created hidden takes when it is first shown, unless it covers the screen by then ({@link #themedFrame}). */
 		KaleidoscopeScheme68k.WindowFrame pendingTheme;
+		/** The kind of dialog frame of the scheme's the window has or takes when shown (KaleidoscopeScheme68k.MODAL ...), -1 for a document's. */
+		int themeDialog=-1;
 		/** The Platinum flavor of a dialog frame drawn natively ({@link #dialogFrame}: dBoxProc 1, altDBoxProc 6), -1 for none. */
 		int dialogFlavor=-1;
 		/** A Text Services Manager service window (NewServiceWindow): it floats in TSM's own layer, so the program's WindowList,
@@ -154,7 +161,9 @@ final class WindowManager68k {
 				// A repeat call from code running inside a program that already has windows changes nothing: Apple's license-agreement
 				// module (Installer 4 LPic scripts) calls InitWindows right after showing its dialog and then TEStyleNew in that dialog.
 				if(memory.readLong(0x9d6)==0&&wmgrPort!=0)setPortTo(wmgrPort);
+				boolean first=memory.readByte(0x8f2)!=0;
 				memory.writeByte(0x8f2,0);memory.writeWord(0x9dc,0xffff); // WWExist; PaintWhite TRUE
+				if(first)tb.quickDraw.initPalettes();
 				// DeskCPat: the System's 'ppat' 16 when pCDeskPat asks for a colour desktop (the ROM's InitWindows loads it)
 				if((memory.readByte(0x20b)&0x80)!=0&&memory.readLong(0xcd8)==0)memory.writeLong(0xcd8,qd.pixPatResource(16));
 				return true;
@@ -180,7 +189,7 @@ final class WindowManager68k {
 			case 0x917:{int w=pop(cpu);memory.writeLong(cpu.a[7],windowRecordAddress(w)?memory.readLong(w+152):0);return true;}
 			// HyperCard's card window is no window of this VM: an external moving or sizing it moves or sizes the real one
 			// (Dartmouth's SizeCardWindow XCMD: GetPort, then SizeWindow of that port; nothing happened)
-			case 0x91b:{boolean front=memory.readByte(cpu.a[7])!=0;int v=(short)memory.readWord(cpu.a[7]+2),h=(short)memory.readWord(cpu.a[7]+4),w=memory.readLong(cpu.a[7]+6);cpu.a[7]+=10;if(tb.cardWindow!=null&&w==tb.cardWindow.record){tb.cardWindow.moveWindow(h,v);return true;}move(w,h,v,userDragged(w));if(front)select(w);return true;}
+			case 0x91b:{boolean front=memory.readByte(cpu.a[7])!=0;int v=(short)memory.readWord(cpu.a[7]+2),h=(short)memory.readWord(cpu.a[7]+4),w=memory.readLong(cpu.a[7]+6);cpu.a[7]+=10;if(tb.cardWindow!=null&&w==tb.cardWindow.record){tb.cardWindow.moveWindow(h,v);return true;}boolean byUser=userDragged(w);if(byUser){int[] disp=tb.host().displacement(w);h+=disp[0];v+=disp[1];}move(w,h,v,byUser);if(front)select(w);return true;}
 			case 0x91d:{boolean update=memory.readByte(cpu.a[7])!=0;int h=(short)memory.readWord(cpu.a[7]+2),wdt=(short)memory.readWord(cpu.a[7]+4),w=memory.readLong(cpu.a[7]+6);cpu.a[7]+=10;if(tb.cardWindow!=null&&w==tb.cardWindow.record){tb.cardWindow.sizeWindow(wdt,h);return true;}resize(w,wdt,h,true,update,true);return true;}
 			case 0x925:{int bounds=memory.readLong(cpu.a[7]),start=memory.readLong(cpu.a[7]+4),w=memory.readLong(cpu.a[7]+8);cpu.a[7]+=12;
 				if(tb.cardWindow!=null&&w==tb.cardWindow.record){dragCardWindow(start,bounds);return true;}
@@ -197,7 +206,9 @@ final class WindowManager68k {
 				else if(win!=null&&tb.host().isMouseDown())result=growWindow(win,pt,bounds); // the program tracks a grow itself (its WDEF's wGrow draws the outline)
 				memory.writeLong(cpu.a[7],result);return true;}
 			case 0x91e:{int pt=memory.readLong(cpu.a[7]),w=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;Window win=windows.get(w);boolean hit;
-				if(win!=null&&win.custom)hit=trackCustom(win,4);else{hit=pendingGoAwayWindow==w&&w!=0;pendingGoAwayWindow=0;tb.events.clickTracked();}tb.writeBoolean(cpu.a[7],hit);goAwayTracks++;return true;}
+				// a close the host posted (its frame's close button, windowClosing) counts for a custom or themed frame too: tracking
+				// the pointer over the drawn close box answered FALSE for it, and SimpleText's themed windows never closed
+				if(win!=null&&win.custom&&!(pendingGoAwayWindow==w&&w!=0))hit=trackCustom(win,4);else{hit=pendingGoAwayWindow==w&&w!=0;pendingGoAwayWindow=0;tb.events.clickTracked();}tb.writeBoolean(cpu.a[7],hit);goAwayTracks++;return true;}
 			case 0x83b:{int part=(short)memory.readWord(cpu.a[7]),pt=memory.readLong(cpu.a[7]+2),w=memory.readLong(cpu.a[7]+6);cpu.a[7]+=10;Window win=windows.get(w);
 				tb.writeBoolean(cpu.a[7],win!=null&&win.custom&&trackCustom(win,part==IN_ZOOM_IN?5:6));return true;} // TrackBox: the host's frames have no zoom box; a custom WDEF's is tracked like its close box
 			case 0x83a:{boolean front=memory.readByte(cpu.a[7])!=0;int part=(short)memory.readWord(cpu.a[7]+2),w=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;zoomWindow(w,part,front);return true;}
@@ -231,7 +242,7 @@ final class WindowManager68k {
 			case 0x80a:{int w=pop(cpu);Window win=windows.get(w);memory.writeWord(cpu.a[7],win==null?0:win.procId&15);return true;}
 			case 0x92e:{int pic=memory.readLong(cpu.a[7]),w=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;if(windows.containsKey(w))memory.writeLong(w+148,pic);return true;}
 			case 0x92f:{int w=pop(cpu);memory.writeLong(cpu.a[7],windows.containsKey(w)?memory.readLong(w+148):0);return true;}
-			case 0x911:cpu.a[7]+=4;tb.writeBoolean(cpu.a[7],false);return true;
+			case 0x911:return checkUpdate(cpu);
 			case 0x94e:{int pt=memory.readLong(cpu.a[7]),rect=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;int v=(short)(pt>>16),h=(short)pt;int[] r=readRect(rect);v=Math.max(r[0],Math.min(r[2]-1,v));h=Math.max(r[1],Math.min(r[3]-1,h));memory.writeLong(cpu.a[7],(v&0xffff)<<16|(h&0xffff));return true;}
 			case 0x905:return dragGrayRegion(cpu);
 			case 0x926:{dragTheRgn=true;try{return dragGrayRegion(cpu);}finally{dragTheRgn=false;}} // DragTheRgn: DragGrayRgn that also calls DragHook ($9F6)
@@ -303,7 +314,7 @@ final class WindowManager68k {
 		// The trap decides the port kind, not the 'wctb': GetNewWindow's port is a classic GrafPort even with window colours
 		// (Revenge of Monsters takes portBits.bounds at offset 8 of such a window for its direct screen drawing).
 		int w=create(storage,WINDOW_SIZE,bounds,title,false,procId,behind,goAway,refCon,color);
-		if(w!=0&&wctb!=null)applyWindowColors(w,tb.resources.data(wctb));
+		if(w!=0&&wctb!=null)applyWindowColors(w,tb.resources.data(wctb),color);
 		if(w!=0&&color&&type==0x57494e44)tb.quickDraw.attachTemplatePalette(w,id);
 		if(w!=0&&visible)show(w,true);
 		return w;
@@ -347,10 +358,15 @@ final class WindowManager68k {
 		memory.writeLong(data+4,w);memory.writeLong(data+8,ctab);auxRecords.put(w,handle);return handle;
 	}
 	/** wctb/dctb: part 0 is the content colour; it becomes the port's background and the initial fill. */
-	void applyWindowColors(int w,byte[] table) throws M68kCpuException {
+	void applyWindowColors(int w,byte[] table) throws M68kCpuException {applyWindowColors(w,table,true);}
+	/** {@code background} false: GetNewWindow's classic GrafPort keeps its white bkColor, the 'wctb' colour only erases the content.
+	 *  Final Impact's WIND has a black content colour and its 1-bit sprites are drawn through that port (SetPortBits, EraseRect,
+	 *  DrawPicture): with a black bkColor every EraseRect blackened them and the game played on an all-black window. */
+	void applyWindowColors(int w,byte[] table,boolean background) throws M68kCpuException {
 		if(table==null||table.length<16)return;windowColorTables.put(w,table);int count=(short)MacApp68k.u2(table,6)+1;
 		for(int i=0;i<count&&8+i*8+8<=table.length;i++){int e=8+i*8;if(MacApp68k.u2(table,e)!=0)continue;
-			int rgb=(table[e+2]&0xff)<<16|(table[e+4]&0xff)<<8|(table[e+6]&0xff);setContentColor(w,rgb);return;}
+			int rgb=(table[e+2]&0xff)<<16|(table[e+4]&0xff)<<8|(table[e+6]&0xff);
+			if(background)setContentColor(w,rgb);else{Window win=windows.get(w);if(win!=null)win.contentColor=rgb;qd.fillWindowPort(w,rgb);}return;}
 	}
 
 	/** SetThemeWindowBackground: the Window Manager erases the content to the brush from now on (when shown, resized, exposed);
@@ -361,6 +377,9 @@ final class WindowManager68k {
 	}
 	void setContentColor(int w,int rgb) throws M68kCpuException {
 		Window win=windows.get(w);if(win==null)return;win.contentColor=rgb;
+		// the program's own colour (SetWinColor with a dctb) replaces a scheme's dialog tile, for EraseRect too: 3D Hearts Deluxe's
+		// installer and 3D Checkers erased their text boxes in Aqua pin stripes over a plain grey dialog
+		if(win.contentTile!=null){win.contentTile=null;if(win.plainBackPixPat!=0)qd.setBackPixPat(w,win.plainBackPixPat);win.plainBackPixPat=0;}
 		// RGBBackColor on the window's port, then fill the content with it
 		int savedPort=tb.api.currentQuickDrawPort();M68kCpu cpu=tb.cpu;int savedSp=cpu.a[7];
 		cpu.a[7]-=4;memory.writeLong(cpu.a[7],w);qd.handle(cpu,0x873);
@@ -384,10 +403,22 @@ final class WindowManager68k {
 		Window win=windows.get(w);if(win==null||ppat==null)return;
 		KaleidoscopeScheme68k.Img img=KaleidoscopeScheme68k.decodePpat(ppat);if(img==null)return;
 		int[] t=new int[2+img.argb.length];t[0]=img.w;t[1]=img.h;System.arraycopy(img.argb,0,t,2,img.argb.length);win.contentTile=t;
+		if(win.plainBackPixPat==0)win.plainBackPixPat=qd.backPixPat(w);
 		int pattern=tb.api.quickDraw().pixPatFromResource(ppat);tb.api.quickDraw().setBackPixPat(w,pattern);
 		eraseContent(w,win);
 	}
 
+	/** The part of a content of {@code width} x {@code height} at (left, top) that lies on the screen, content-local
+	 *  {top,left,bottom,right}; null when it all fits a buffer or none of it is on the screen. */
+	private int[] partialFrame(int top,int left,int width,int height){
+		int[] screen=qd.screenBounds();if(width<=Math.max(2048,screen[3]-screen[1])&&height<=Math.max(2048,screen[2]-screen[0]))return null;
+		int t=Math.max(top,screen[0]),l=Math.max(left,screen[1]),b=(int)Math.min((long)top+height,screen[2]),r=(int)Math.min((long)left+width,screen[3]);
+		return b>t&&r>l?new int[]{t-top,l-left,b-top,r-left}:null;
+	}
+	private void setPartial(Window win,int[] part){
+		win.partial=part!=null;if(part==null){if(!win.custom){win.frameLeft=0;win.frameTop=0;}return;}
+		win.frameTop=part[0];win.frameLeft=part[1];win.frameHeight=part[2]-part[0];win.frameWidth=part[3]-part[1];
+	}
 	/** Creates a window record (dialogs pass a larger record size). */
 	/** The 'WDEF' Handle of a procID (procID div 16), as the Window Manager stores it in windowDefProc; the frame itself is drawn natively. */
 	private int definitionProcedure(int procId) throws M68kCpuException {
@@ -406,7 +437,12 @@ final class WindowManager68k {
 		// A window's buffer covers its content, but no more than a screen-sized one (plus room to drag it about): MIDIGraphy's
 		// document is a DLOG of (0,0)-(9999,9999) it sizes afterwards, which asked for 400 MB of pixels and ran out of heap.
 		int[] screenArea=qd.screenBounds();int limitW=Math.max(2048,screenArea[3]-screenArea[1]),limitH=Math.max(2048,screenArea[2]-screenArea[0]);
+		// ... unless it is a backdrop round the screen: 123 with Hickory and Me opens a (-10000,-10000)-(10000,10000) window and
+		// draws with SetOrigin(-10000,-10000) so that local is global; cut to 2048 x 2048 at -10000 it lay off the screen (black)
+		int[] part=width>limitW||height>limitH?partialFrame(bounds[0],bounds[1],Math.min(width,32767),Math.min(height,32767)):null;
+		int fullWidth=Math.min(width,32767),fullHeight=Math.min(height,32767);
 		width=Math.max(1,Math.min(width,limitW));height=Math.max(1,Math.min(height,limitH));
+		if(part!=null){width=part[3]-part[1];height=part[2]-part[0];}
 		int record=storage!=0?storage:memory.allocate(Math.max(WINDOW_SIZE,recordSize),4);
 		memory.fill(record,Math.max(WINDOW_SIZE,recordSize),0);
 		// NIL wStorage: the record is a Ptr in the heap, as the ROM's NewPtr makes it - Dialoger's dChanger checks the DialogPtr it
@@ -414,6 +450,7 @@ final class WindowManager68k {
 		if(storage==0)tb.api.adoptPointer(record,Math.max(WINDOW_SIZE,recordSize));
 		qd.newWindowPort(record,width,height,!color); // NewWindow: the record also carries the classic portBits.bounds
 		Window win=new Window(record);win.ownRecord=storage==0;win.left=bounds[1];win.top=bounds[0];win.width=width;win.height=height;win.procId=procId;win.goAway=goAway;win.title=title;win.color=true;
+		if(part!=null){win.width=fullWidth;win.height=fullHeight;setPartial(win,part);qd.resizeWindowPort(record,fullWidth,fullHeight,0xffffff,part);}
 		memory.writeWord(record+108,8);memory.writeByte(record+110,0);memory.writeByte(record+111,0);memory.writeByte(record+112,goAway?1:0);
 		memory.writeLong(record+114,regionHandle(bounds[0]-20,bounds[1]-1,bounds[2]+1,bounds[3]+1));
 		memory.writeLong(record+118,regionHandle(bounds[0],bounds[1],bounds[2],bounds[3]));
@@ -433,12 +470,14 @@ final class WindowManager68k {
 		qd.describeWindowPixMap(record); // the port's PixMap record describes the screen at the window's position, as on a real Mac
 		win.dialogFlavor=dialogFrameFlavor(procId,bounds);
 		win.shownTitle=shownTitle(win);
-		if(win.dialogFlavor<0){KaleidoscopeScheme68k.WindowFrame theme=themedFrame(procId,bounds);if(visible)win.theme=theme;else win.pendingTheme=theme;}
+		{KaleidoscopeScheme68k.WindowFrame theme=themedFrame(procId,bounds);
+			if(theme!=null){win.themeDialog=themedDialogKind(procId);if(visible){win.theme=theme;win.dialogFlavor=-1;}else win.pendingTheme=theme;}}
 		if(customWdef(procId)||win.dialogFlavor>=0||win.theme!=null)prepareCustomFrame(win,true);
 		int[] px=qd.windowPortPixels(record);
 		win.shownTitle=shownTitle(win);
 		if(visible)tb.host().willShow(record);
 		if(win.custom){tb.host().createWindow(record,win.left+win.frameLeft,win.top+win.frameTop,win.frameWidth,win.frameHeight,win.shownTitle,procId,false,goAway,px[0],px[1],px[4],true);if(win.frameShape!=null)tb.host().setWindowShape(record,hostShape(win.frameShape));}
+		else if(win.partial)tb.host().createWindow(record,win.left+win.frameLeft,win.top+win.frameTop,win.frameWidth,win.frameHeight,win.shownTitle,procId,false,goAway,px[0],px[1],px[4]);
 		else tb.host().createWindow(record,win.left,win.top,width,height,win.shownTitle,procId,false,goAway,px[0],px[1],px[4]);
 		if(behind!=-1)tb.host().placeBehind(record,behind); // the host stacks new windows in front; NewWindow's behind argument says otherwise
 		// Erase to the window's background (white) so nothing stale shows before the first update.
@@ -516,14 +555,15 @@ final class WindowManager68k {
 			// The ROM asks a WDEF for its regions when the window becomes visible: MoveWindow/SizeWindow of a hidden window skip
 			// wCalcRgns, and WDEFs themselves ignore it while invisible (some palettes are created hidden, moved, then shown).
 			boolean adopted=!was&&!win.custom&&swappedDefinition(win);
-			if(adopted){win.theme=null;win.pendingTheme=null;win.dialogFlavor=-1;tb.host().setCustomFrame(w);}
+			if(adopted){win.theme=null;win.pendingTheme=null;win.themeDialog=-1;win.dialogFlavor=-1;tb.host().setCustomFrame(w);}
 			// A window created hidden takes the scheme's frame now, where the program has put it: JumpStart 1st Grade 2001 opens its
 			// window hidden at its WIND's size, then moves and sizes it over the whole screen (title bar out of sight) and shows it.
 			// Framed at NewWindow, the host kept the drawn title bar on the display, inside the frame round the game screen.
 			boolean themed=false;
 			if(!was&&win.pendingTheme!=null){KaleidoscopeScheme68k.WindowFrame theme=win.pendingTheme;win.pendingTheme=null;
-				if(!coversScreen(new int[]{win.top,win.left,win.top+win.height,win.left+win.width})){win.theme=theme;themed=true;tb.host().setCustomFrame(w);}}
-			if(!was&&(win.custom||adopted||themed)){prepareCustomFrame(win,false);int[] px=qd.windowPortPixels(w);tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveWindow(w,win.left+win.frameLeft,win.top+win.frameTop);}
+				if(!coversScreen(new int[]{win.top,win.left,win.top+win.height,win.left+win.width})){win.theme=theme;win.dialogFlavor=-1;themed=true;tb.host().setCustomFrame(w);}
+				else win.themeDialog=-1;}
+			if(!was&&(win.custom||adopted||themed)){prepareCustomFrame(win,false);int[] px=qd.windowPortPixels(w);tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveFrame(w,win.left+win.frameLeft,win.top+win.frameTop);}
 			// A window shown again after being hidden gets its content erased to the background (the real
 			// Window Manager's PaintOne does this) before the update event asks the program to redraw it.
 			// With PaintWhite FALSE the Window Manager leaves the content alone: on a real Mac the window then shows the screen that
@@ -645,14 +685,21 @@ final class WindowManager68k {
 	}
 
 	void move(int w,int left,int top) throws M68kCpuException {move(w,left,top,false);}
-	/** {@code byUser}: the user drags it (DragWindow of a frame drawn here): the host lets it go anywhere on the display. */
+	/**
+	 * {@code byUser}: the user drags it (DragWindow of a frame drawn here) to {@code left},{@code top} on the display, where the
+	 * host lets it go anywhere. As with a native frame the program keeps it on its screen and only the frame is shown out there:
+	 * HyperCard draws only the parts of its card window that lie on a GDevice, so a card in a Kaleidoscope frame dragged past
+	 * a game screen's edge was no longer updated.
+	 */
 	void move(int w,int left,int top,boolean byUser) throws M68kCpuException {
 		Window win=windows.get(w);if(win==null)return;
+		int dispX=0,dispY=0;
+		if(byUser){int[] place=tb.host().programPlace(w,left+win.frameLeft,top+win.frameTop);dispX=left+win.frameLeft-place[0];dispY=top+win.frameTop-place[1];left-=dispX;top-=dispY;}
 		int[] pending=readRegion(memory.readLong(w+122));if(pending[2]>pending[0]&&pending[3]>pending[1])setRegion(memory.readLong(w+122),pending[0]+top-win.top,pending[1]+left-win.left,pending[2]+top-win.top,pending[3]+left-win.left); // the global updateRgn moves with the window
 		int[] old=win.visible&&(left!=win.left||top!=win.top)?structureBounds(win):null;
 		win.left=left;win.top=top;qd.describeWindowPixMap(w);updateRegions(win);
 		if(old!=null)exposeBehind(win,old); // the record's portBits.bounds first: a WDEF computes its regions from it
-		tb.host().moveWindow(w,left+win.frameLeft,top+win.frameTop,byUser);if(byUser)rememberUserState(win);
+		tb.host().moveWindow(w,left+win.frameLeft,top+win.frameTop,byUser,dispX,dispY);if(byUser)rememberUserState(win);
 		calcVis();
 	}
 	/** WStateData.userState follows the window the USER moves or resizes while it is not in its standard state (so zooming in
@@ -793,12 +840,24 @@ final class WindowManager68k {
 		for(Map.Entry<Integer,Window> e:new ArrayList<Map.Entry<Integer,Window>>(windows.entrySet())){Window win=e.getValue();
 			if(win.visible){if(erase.contains(e.getKey()))eraseContent(e.getKey(),win);unionUpdate(e.getKey(),new int[]{0,0,win.height,win.width});tb.events.postUpdate(e.getKey());}}
 	}
+	/** Another scheme was chosen: windows in a scheme's frame take the new scheme's, and all redraw (their controls are the scheme's too). */
+	void schemeChanged() throws M68kCpuException {
+		KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);
+		if(scheme!=null)for(Window win:new ArrayList<Window>(windows.values())){
+			if(win.theme==null&&win.pendingTheme==null)continue;
+			KaleidoscopeScheme68k.WindowFrame frame=win.themeDialog>=0?scheme.dialogWindow(win.themeDialog):scheme.documentWindow();
+			if(frame==null)continue;
+			if(win.pendingTheme!=null)win.pendingTheme=frame;
+			if(win.theme!=null){win.theme=frame;reframe(win);}
+		}
+		redrawAll();
+	}
 	/** The main screen changed depth (SetDepth): window buffers are rebuilt at the new depth, as a real Mac redraws every window. */
 	void screenDepthChanged() throws M68kCpuException {
 		for(Map.Entry<Integer,Window> e:new ArrayList<Map.Entry<Integer,Window>>(windows.entrySet())){int w=e.getKey();Window win=e.getValue();
 			int[] before=qd.windowPortPixels(w);int depth=qd.windowDepth();if(before!=null&&before.length>4&&before[4]==depth){qd.describeWindowPixMap(w);continue;}
-			qd.resizeWindowPort(w,win.width,win.height,win.contentColor);int[] px=qd.windowPortPixels(w);
-			tb.host().resizeWindow(w,win.width,win.height,px[0],px[1],px[4]);
+			qd.resizeWindowPort(w,win.width,win.height,win.contentColor,win.partial?new int[]{win.frameTop,win.frameLeft,win.frameTop+win.frameHeight,win.frameLeft+win.frameWidth}:null);int[] px=qd.windowPortPixels(w);
+			if(win.partial)tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);else tb.host().resizeWindow(w,win.width,win.height,px[0],px[1],px[4]);
 			if(win.visible){unionUpdate(w,new int[]{0,0,win.height,win.width});tb.events.postUpdate(w);}}
 	}
 
@@ -819,11 +878,13 @@ final class WindowManager68k {
 		win.width=width;win.height=height;
 		if(fromApplication){win.pendingGrowWidth=0;win.pendingGrowHeight=0;if(pendingGrowWindow==w){pendingGrowWindow=0;growClickPosted=false;}}
 		if(changed){
-			if(win.custom){prepareCustomFrame(win,false);int[] px=qd.windowPortPixels(w);tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveWindow(w,win.left+win.frameLeft,win.top+win.frameTop);if(win.visible)drawFrame(win);}
+			if(win.custom){prepareCustomFrame(win,false);int[] px=qd.windowPortPixels(w);tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveFrame(w,win.left+win.frameLeft,win.top+win.frameTop);if(win.visible)drawFrame(win);}
 			else{
-				qd.resizeWindowPort(w,width,height,win.contentColor); // newly exposed content is erased to the window's content colour (PaintOne)
+				int[] part=width>4000||height>4000||win.partial?partialFrame(win.top,win.left,width,height):null;setPartial(win,part);
+				qd.resizeWindowPort(w,width,height,win.contentColor,part); // newly exposed content is erased to the window's content colour (PaintOne)
 				int[] px=qd.windowPortPixels(w);
-				tb.host().resizeWindow(w,width,height,px[0],px[1],px[4]);
+				if(win.partial){tb.host().resizeWindow(w,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveWindow(w,win.left+win.frameLeft,win.top+win.frameTop,false);}
+				else tb.host().resizeWindow(w,width,height,px[0],px[1],px[4]);
 				updateRegions(win);
 			}
 			tb.dialogs.windowResized(w);if(!fromApplication)rememberUserState(win);
@@ -862,8 +923,13 @@ final class WindowManager68k {
 	/** WDEFs a Carbon program registered by resource ID (RegisterWindowDefinition): a Handle whose master pointer is its WindowDefUPP. */
 	private final Map<Integer,Integer> registeredDefs=new HashMap<Integer,Integer>();
 	void registerDefinition(int id,int handle){if(handle==0)registeredDefs.remove(id);else registeredDefs.put(id,handle);}
+	/** Debug aid: -Dhz68k.guestwdef=true runs whatever WDEF the resource chain finds as guest code, WDEF 0 included (in the
+	 *  Kaleidoscope panel's process: the scheme engine's own frames, to compare with {@link #themedFrame}'s). */
+	private static final boolean GUEST_WDEFS=Boolean.getBoolean("hz68k.guestwdef");
 	private boolean customWdef(int procId){
-		if(CUSTOM_WDEF_DISABLED)return false;int id=procId>>4;if(registeredDefs.containsKey(id))return true;if(id==0||id==1)return false;
+		if(CUSTOM_WDEF_DISABLED)return false;int id=procId>>4;if(registeredDefs.containsKey(id))return true;
+		if(GUEST_WDEFS){ResourceFile68k.Resource res=tb.resources.find(0x57444546,id);return res!=null&&res.data()!=null&&res.data().length>16;}
+		if(id==0||id==1)return false;
 		ResourceFile68k.Resource res=tb.resources.find(0x57444546,id);return res!=null&&!tb.resources.isSystem(res)||floaterDef(id);
 	}
 	/** WDEF 66/67 (and the System 7.5 floating windows of WDEF 124, which Appearance draws the same way) without a definition
@@ -957,7 +1023,7 @@ final class WindowManager68k {
 	 * covers the screen (a game's backdrop) or with -Dhz68k.dialogframes=false. Returns the flavor, or -1.
 	 */
 	private int dialogFrameFlavor(int procId,int[] bounds){
-		if(!NATIVE_DIALOG_FRAMES||(procId>>4)!=0)return -1;int kind=procId&15;if(kind!=1&&kind!=3)return -1;
+		if(!NATIVE_DIALOG_FRAMES||(procId>>4)!=0||customWdef(procId))return -1;int kind=procId&15;if(kind!=1&&kind!=3)return -1;
 		int[] screen=qd.screenBounds();if(bounds[1]<=screen[1]&&bounds[3]>=screen[3]&&bounds[0]<=screen[0]+MacAppHost.MENU_BAR_HEIGHT&&bounds[2]>=screen[2]-MacAppHost.MENU_BAR_HEIGHT)return -1;
 		return kind==1?1:6;
 	}
@@ -999,11 +1065,30 @@ final class WindowManager68k {
 	 * WDEF, nor a window covering the screen (a game's backdrop, its title bar out of sight).
 	 */
 	private KaleidoscopeScheme68k.WindowFrame themedFrame(int procId,int[] bounds){
-		if(!THEMED_WINDOWS)return null;int id=procId>>4,kind=procId&15;
-		if(!(id==0&&(kind==0||kind==4||kind==8||kind==12)||id==64&&kind<8)||customWdef(procId))return null;
+		if(!THEMED_WINDOWS)return null;int id=procId>>4,kind=procId&15,dialog=themedDialogKind(procId);
+		if(!(id==0&&(kind==0||kind==4||kind==8||kind==12)||id==64&&kind<8||dialog>=0)||customWdef(procId))return null;
 		if(coversScreen(bounds))return null;
-		KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);return scheme==null?null:scheme.documentWindow();
+		KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);return scheme==null?null:dialog>=0?scheme.dialogWindow(dialog):scheme.documentWindow();
 	}
+	/**
+	 * The scheme's dialog frame a procID is drawn in: WDEF 0's dBoxProc (a modal dialog) and movableDBoxProc, the Appearance's
+	 * kWindowModalDialogProc, kWindowMovableModalDialogProc, kWindowAlertProc, kWindowMovableAlertProc and
+	 * kWindowMovableModalGrowProc (1042-1046); -1 for others. plainDBox and altDBoxProc keep their plain frames, as the engine
+	 * leaves them. A dBoxProc alert is told by the Dialog Manager ({@link #themeAsAlert}).
+	 */
+	static int themedDialogKind(int procId){
+		int id=procId>>4,kind=procId&15;
+		if(id==0)return kind==1?KaleidoscopeScheme68k.MODAL:kind==5?KaleidoscopeScheme68k.MOVABLE:-1;
+		if(id==65)return kind==2?KaleidoscopeScheme68k.MODAL:kind==3||kind==6?KaleidoscopeScheme68k.MOVABLE:kind==4?KaleidoscopeScheme68k.ALERT:kind==5?KaleidoscopeScheme68k.MOVABLE_ALERT:-1;
+		return -1;
+	}
+	/** An alert's window (the Dialog Manager's Alert, created hidden): the scheme's alert frame instead of the dialog's. */
+	void themeAsAlert(int w){
+		Window win=windows.get(w);if(win==null||win.pendingTheme==null||win.themeDialog<0)return;
+		KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);KaleidoscopeScheme68k.WindowFrame alert=scheme==null?null:scheme.dialogWindow(win.themeDialog|1);
+		if(alert!=null){win.pendingTheme=alert;win.themeDialog|=1;}
+	}
+	private static boolean movableDialog(Window win){return win.themeDialog==KaleidoscopeScheme68k.MOVABLE||win.themeDialog==KaleidoscopeScheme68k.MOVABLE_ALERT;}
 	/** Whether a content rect {top, left, bottom, right} covers the whole screen, its top at most the menu bar's height down. */
 	private boolean coversScreen(int[] bounds){
 		int[] screen=qd.screenBounds();
@@ -1011,21 +1096,29 @@ final class WindowManager68k {
 	}
 	/** The WDEF 0 variant the themed window is drawn as now: the procID's, or the one the program switched it to by calling the
 	 *  System's WDEF itself (HyperCard's `hide titleBar`: plainDBox); -1 for an Appearance (WDEF 64) document. */
-	private static int themedKind(Window win){return win.variant>=0?win.variant:(win.procId>>4)==64?-1:win.procId&15;}
+	private static int themedKind(Window win){return win.variant>=0?win.variant:(win.procId>>4)!=0||win.themeDialog>=0?-1:win.procId&15;}
 	/** The widgets the themed window has: the close box as the record's goAwayFlag says now (HyperCard sets it after NewWindow), the zoom box by variant. */
 	private int themedWidgets(Window win) throws M68kCpuException {
 		int k=themedKind(win),v=win.procId&15;boolean goAway=memory.readByte(win.record+112)!=0;
-		if(k<0)return (goAway?KaleidoscopeScheme68k.CLOSE:0)|((v&6)!=0?KaleidoscopeScheme68k.ZOOM:0);
-		return (goAway&&k!=5?KaleidoscopeScheme68k.CLOSE:0)|((k&8)!=0?KaleidoscopeScheme68k.ZOOM:0);
+		if(win.themeDialog>=0)return 0;
+		// a document window shows a collapse box as under Mac OS 8 (the engine draws one on every document window); collapsing
+		// is not done here, a click there drags the window
+		if(k<0)return (goAway?KaleidoscopeScheme68k.CLOSE:0)|((v&6)!=0?KaleidoscopeScheme68k.ZOOM:0)|KaleidoscopeScheme68k.COLLAPSE;
+		return (goAway&&k!=5?KaleidoscopeScheme68k.CLOSE:0)|((k&8)!=0?KaleidoscopeScheme68k.ZOOM:0)|(k==0||k==4||k==8||k==12?KaleidoscopeScheme68k.COLLAPSE:0);
 	}
-	private static boolean themedGrows(Window win){int k=themedKind(win);return k<0?(win.procId&1)!=0:k==0||k==8;}
+	private static boolean themedGrows(Window win){if(win.themeDialog>=0)return win.procId==1046;int k=themedKind(win);return k<0?(win.procId&1)!=0:k==0||k==8;}
 	private static java.awt.Font themedTitleFont(Window win){String own=win.title==null?"":win.title;return own.equals(win.shownTitle)?Fonts68k.font(0,12,0):Fonts68k.hostFont(0,12,0);}
-	private KaleidoscopeScheme68k.FrameLayout themedLayout(Window win) throws M68kCpuException {return win.theme.layout(win.width,win.height,win.shownTitle==null?"":win.shownTitle,themedWidgets(win),themedTitleFont(win));}
+	private KaleidoscopeScheme68k.FrameLayout themedLayout(Window win) throws M68kCpuException {
+		KaleidoscopeScheme68k.FrameLayout l=win.theme.layout(win.width,win.height,themedTitle(win),themedWidgets(win),themedTitleFont(win));
+		l.background=0xff000000|win.contentColor;return l;
+	}
+	/** The title the themed frame shows: none on a modal dialog's or alert's. */
+	private static String themedTitle(Window win){return win.shownTitle==null||win.themeDialog>=0&&!movableDialog(win)?"":win.shownTitle;}
 	/** The frame for the window's state, with the grow box over its corner once the program drew it (it may reach into the frame). */
 	private java.awt.image.BufferedImage themedImage(Window win,KaleidoscopeScheme68k.FrameLayout l) throws M68kCpuException {
 		boolean active=memory.readByte(win.record+111)!=0;
 		int pressed=win.pressedPart==4?KaleidoscopeScheme68k.CLOSE:win.pressedPart==5||win.pressedPart==6?KaleidoscopeScheme68k.ZOOM:0;
-		java.awt.image.BufferedImage img=win.theme.paint(l,win.shownTitle==null?"":win.shownTitle,active,pressed,themedTitleFont(win));
+		java.awt.image.BufferedImage img=win.theme.paint(l,themedTitle(win),active,pressed,themedTitleFont(win));
 		KaleidoscopeScheme68k.Img grow=win.themeGrow&&themedGrows(win)?win.theme.growBox(active):null;
 		if(grow!=null){Graphics2D g=img.createGraphics();try{g.drawImage(grow.image,l.outsets[1]+l.contentWidth-15,l.outsets[0]+l.contentHeight-15,null);}finally{g.dispose();}}
 		return img;
@@ -1041,7 +1134,7 @@ final class WindowManager68k {
 					paintFrame(win,s,g->AppearanceManager68k.Platinum.windowFrame(g,flavor,c,1,0,null));
 					java.awt.image.BufferedImage overlay=new java.awt.image.BufferedImage(Math.max(1,s[3]-s[1]),Math.max(1,s[2]-s[0]),java.awt.image.BufferedImage.TYPE_INT_ARGB);
 					Graphics2D g=overlay.createGraphics();try{g.translate(-s[1],-s[0]);AppearanceManager68k.Platinum.windowFrame(g,flavor,c,1,0,null);}finally{g.dispose();}
-					tb.host().setOverlay(win.record,overlay);return 0;}
+					tb.host().setOverlay(win.record,overlay);tb.host().setTitleBand(win.record,0);return 0;}
 				case 1:{int pv=(short)(param>>16),ph=(short)param;return pv>=c[0]&&pv<c[2]&&ph>=c[1]&&ph<c[3]?1:0;}
 				case 2:setRegion(memory.readLong(win.record+114),s[0],s[1],s[2],s[3]);setRegion(memory.readLong(win.record+118),c[0],c[1],c[2],c[3]);return 0;
 				default:return 0;
@@ -1056,10 +1149,12 @@ final class WindowManager68k {
 				final int sx=c[1]-l.outsets[1],sy=c[0]-l.outsets[0];
 				paintFrame(win,new int[]{sy,sx,sy+l.height,sx+l.width},g->g.drawImage(img,sx,sy,null));
 				tb.host().setOverlay(win.record,img); // the buffer has the screen's depth: the host shows the scheme's colours over it
+				tb.host().setTitleBand(win.record,l.outsets[0]); // an in-window menu bar goes under the title bar (Windows, Linux)
 				return 0;}
 			case 1:{ // wHit
 				int pv=(short)(param>>16),ph=(short)param;
 				if(pv>=c[0]&&pv<c[2]&&ph>=c[1]&&ph<c[3])return themedGrows(win)&&ph>=c[3]-15&&pv>=c[2]-15?3:1; // wInGrow / wInContent
+				if(win.themeDialog>=0&&!movableDialog(win))return 0; // a modal dialog's frame is no drag area
 				KaleidoscopeScheme68k.FrameLayout l=themedLayout(win);int x=ph-(c[1]-l.outsets[1]),y=pv-(c[0]-l.outsets[0]);
 				if(x<0||y<0||x>=l.width||y>=l.height)return 0;
 				if(active){
@@ -1103,7 +1198,7 @@ final class WindowManager68k {
 	private void reframe(Window win) throws M68kCpuException {
 		int[] old=win.visible?structureBounds(win):null;win.themeImage=null;
 		prepareCustomFrame(win,false);int[] px=qd.windowPortPixels(win.record);
-		tb.host().resizeWindow(win.record,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveWindow(win.record,win.left+win.frameLeft,win.top+win.frameTop);
+		tb.host().resizeWindow(win.record,win.frameWidth,win.frameHeight,px[0],px[1],px[4]);tb.host().moveFrame(win.record,win.left+win.frameLeft,win.top+win.frameTop);
 		if(win.visible){drawFrame(win);if(old!=null)exposeBehind(win,old);}
 	}
 	/** Calls into a window's definition from {@link #callWdef} under way (a WDEF 0 reached through them is not the program switching variants). */
@@ -1414,20 +1509,22 @@ final class WindowManager68k {
 		// in the middle of the display); the MoveWindow that follows counts as the user's move
 		Window dragged=bounds==null?null:windowWithStructure(new int[]{bounds[0]+toGlobalV,bounds[1]+toGlobalH,bounds[2]+toGlobalV,bounds[3]+toGlobalH});
 		int[] area=dragged==null?null:host.userDragArea();
+		int shownH=0,shownV=0; // a window shown away from the program's position: the outline starts round its frame, and the pointer is over that
 		if(area!=null){
+			int[] disp=host.displacement(dragged.record);shownH=disp[0];shownV=disp[1];
 			int sh=startH-bounds[1],sv=startV-bounds[0],w=bounds[3]-bounds[1]; // the start point within the outline
-			limit=new int[]{area[0]+sv-toGlobalV,area[1]-w+16+sh-toGlobalH,area[2]-16+sv-toGlobalV,area[3]-16+sh-toGlobalH};slop=null;
+			limit=new int[]{area[0]+sv-toGlobalV-shownV,area[1]-w+16+sh-toGlobalH-shownH,area[2]-16+sv-toGlobalV-shownV,area[3]-16+sh-toGlobalH-shownH};slop=null;
 			userDragWindow=dragged.record;userDragUntil=System.currentTimeMillis()+120_000;
 		}
-		if(bounds!=null&&bounds[3]>bounds[1]&&bounds[2]>bounds[0])host.showDragOutline(new int[]{bounds[1]+toGlobalH,bounds[0]+toGlobalV,bounds[3]-bounds[1],bounds[2]-bounds[0]});
+		if(bounds!=null&&bounds[3]>bounds[1]&&bounds[2]>bounds[0])host.showDragOutline(new int[]{bounds[1]+toGlobalH+shownH,bounds[0]+toGlobalV+shownV,bounds[3]-bounds[1],bounds[2]-bounds[0]});
 		int dh=0,dv=0;boolean inside=true;long deadline=System.currentTimeMillis()+120_000;
 		try{
 			while(host.isMouseDown()&&System.currentTimeMillis()<deadline){
-				java.awt.Point p=area!=null?host.unpinnedMouseLocation():host.mouseLocation();int h=p.x-toGlobalH,v=p.y-toGlobalV;
+				java.awt.Point p=area!=null?host.unpinnedMouseLocation():host.mouseLocation();int h=p.x-toGlobalH-shownH,v=p.y-toGlobalV-shownV;
 				inside=slop==null||(h>=slop[1]&&h<slop[3]&&v>=slop[0]&&v<slop[2]);
 				if(limit!=null){h=Math.max(limit[1],Math.min(limit[3]-1,h));v=Math.max(limit[0],Math.min(limit[2]-1,v));}
 				dh=axis==2?0:h-startH;dv=axis==1?0:v-startV;
-				if(bounds!=null)host.moveDragOutline(bounds[1]+toGlobalH+dh,bounds[0]+toGlobalV+dv);
+				if(bounds!=null)host.moveDragOutline(bounds[1]+toGlobalH+shownH+dh,bounds[0]+toGlobalV+shownV+dv);
 				if(action!=0)tb.callRoutine(action);
 				if(dragTheRgn){int hook=memory.readLong(0x9f6);if(hook!=0)tb.callRoutine(hook);}
 				try{Thread.sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
@@ -1495,6 +1592,12 @@ final class WindowManager68k {
 		unionUpdate(win.record,r);tb.events.postUpdate(win.record);
 		if(memory.readWord(0x9dc)==0||tb.isDesktopWindow(win.record))return; // PaintWhite FALSE: the Window Manager leaves the content alone
 		QdRegion e=QdRegion.rect(r[0],r[1],r[2],r[3]);win.unerased=win.unerased==null?e:QdRegion.combine(win.unerased,e,QdRegion.UNION);
+	}
+	/** A CopyBits covered this part of the content before the update came: on a real Mac the erase is long over then, and what was
+	 *  copied stays (AmoebArena closes its player dialog, copies the board in and has nothing left to draw at BeginUpdate). */
+	void drawnOver(int port,int top,int left,int bottom,int right){
+		Window win=windows.get(port);if(win==null||win.unerased==null||bottom<=top||right<=left)return;
+		win.unerased=QdRegion.combine(win.unerased,QdRegion.rect(top,left,bottom,right),QdRegion.DIFF);if(win.unerased.isEmpty())win.unerased=null;
 	}
 	/** BeginUpdate: what {@link #expose} left unerased and the update region still holds goes to the background. */
 	private void eraseUnerased(Window win,int updateRgn) throws M68kCpuException {
@@ -1659,7 +1762,10 @@ final class WindowManager68k {
 			if(w.custom){int sl=w.left+w.frameLeft,st=w.top+w.frameTop;if(h<sl||h>=sl+w.frameWidth||v<st||v>=st+w.frameHeight)continue;
 				// the ROM's part code is the wHit result + 2, the WDEF's own codes too (Appearance: wInCollapseBox 9 = inCollapseBox 11;
 				// Infini-D 2.0.1's view WDEF answers 10 for the pop-up in its title bar and opens it on part 12)
-				int hit=callWdef(w,1,v<<16|h&0xffff);if(hit==0)continue;return new int[]{w.record,partForHit(hit)};}
+				// a desk accessory's content is inSysWindow as in contentHit: Writing Guide DA (WDEF 0 frame) never got its clicks
+				int hit=callWdef(w,1,v<<16|h&0xffff);if(hit==0)continue;int part=partForHit(hit);
+				if(part==IN_CONTENT&&(short)memory.readWord(w.record+108)<0)part=IN_SYS_WINDOW;
+				return new int[]{w.record,part};}
 			if(h>=w.left&&h<w.left+w.width&&v>=w.top&&v<w.top+w.height)return contentHit(w,h,v);
 		}
 		if(!cardTested&&inRect(card,h,v))return new int[]{tb.cardWindow.record,IN_CONTENT};
@@ -1821,6 +1927,20 @@ final class WindowManager68k {
 	/** Whether the window's update region holds anything (invalidated or newly shown, and not yet redrawn through EndUpdate). */
 	boolean updatePending(int w) throws M68kCpuException {int[] r=readRegion(memory.readLong(w+122));return r[2]>r[0]&&r[3]>r[1];}
 	/** Empties the update region, as EndUpdate does once an update was drawn. */
+	/**
+	 * CheckUpdate(VAR theEvent): the update event of the frontmost visible window with something in its update region, made
+	 * from the region and left there for BeginUpdate (a window with a picture draws it and is passed over). Coldstone's main
+	 * loop (Anira) asks this before WaitNextEvent and redraws only when it says TRUE, so its window stayed white.
+	 */
+	private boolean checkUpdate(M68kCpu cpu) throws M68kCpuException {
+		int eventPtr=memory.readLong(cpu.a[7]);cpu.a[7]+=4;
+		for(Window w:new ArrayList<Window>(order)){
+			if(updateRank(w.record)<0||memory.readLong(w.record+122)==0||!updatePending(w.record)||drawWindowPicture(w.record))continue;
+			EventManager68k.Event e=new EventManager68k.Event(EventManager68k.UPDATE_EVT);e.message=w.record;
+			if(eventPtr!=0)tb.events.writeEventRecord(eventPtr,e);
+			tb.writeBoolean(cpu.a[7],true);return true;}
+		tb.writeBoolean(cpu.a[7],false);return true;
+	}
 	/** Draws the window's picture (SetWindowPic) over its content and empties its update region; false when it has none. */
 	boolean drawWindowPicture(int w){
 		try{if(!windows.containsKey(w))return false;int pic=memory.readLong(w+148);if(pic==0)return false;
@@ -1846,9 +1966,13 @@ final class WindowManager68k {
 		// The ROM's BeginUpdate leaves the port alone, so EndUpdate gives the former port back when the program set none in between:
 		// WaterRace answers the update of its backdrop window with BeginUpdate/EndUpdate alone while its preferences dialog is the
 		// port, then hit-tests the dialog's items with GetMouse (Done and Cancel did nothing: the mouse was in backdrop coordinates).
-		if(!"false".equals(System.getProperty("hz68k.beginupdateport"))){
-			int before=tb.api.currentQuickDrawPort();setPortTo(win.record);
-			win.portBeforeUpdate=before!=win.record?before:0;win.portSetsAtUpdate=qd.portSets;
+		// Only from another window's port, though: Escape Velocity 1.0.5 calls BeginUpdate with its offscreen OpenCPort as the
+		// port, paints and draws its main-menu picture there and CopyBits it into the window - drawn into the window instead,
+		// the offscreen stayed black and so did the menu.
+		int current=tb.api.currentQuickDrawPort();
+		if(!"false".equals(System.getProperty("hz68k.beginupdateport"))&&(current==0||windows.containsKey(current)||isWMgrPort(current))){
+			setPortTo(win.record);
+			win.portBeforeUpdate=current!=win.record?current:0;win.portSetsAtUpdate=qd.portSets;
 		}
 		int w=win.record;int[] u=readRegion(memory.readLong(w+122));
 		if(Mac68kApi.TRACE)System.err.println("[68K] BeginUpdate $"+Integer.toHexString(w)+" updateRgn (global) "+java.util.Arrays.toString(u)+" window at "+win.left+","+win.top+(win.updateVis!=null?" (nested)":""));
@@ -1856,10 +1980,11 @@ final class WindowManager68k {
 		int[] origin=readRect(w+16);win.updateOriginV=origin[0];win.updateOriginH=origin[1];
 		if(u[2]<=u[0]||u[3]<=u[1]){win.updateVis=qd.clipVisRgn(w,0,0,0,0);win.unerased=null;return;}
 		eraseUnerased(win,memory.readLong(w+122));
+		QdRegion shape=qd.regionShapeOf(memory.readLong(w+122)); // visRgn narrows to the region's own shape, not to its box
 		clearUpdate(w);
 		int[] portRect=readRect(w+16);int dv=portRect[0]-win.top,dh=portRect[1]-win.left;
-		if(u[0]+dv<=portRect[0]&&u[1]+dh<=portRect[1]&&u[2]+dv>=portRect[2]&&u[3]+dh>=portRect[3])return; // the whole content: nothing to narrow
-		win.updateVis=qd.clipVisRgn(w,u[0]+dv,u[1]+dh,u[2]+dv,u[3]+dh);
+		if(shape.isRect()&&u[0]+dv<=portRect[0]&&u[1]+dh<=portRect[1]&&u[2]+dv>=portRect[2]&&u[3]+dh>=portRect[3])return; // the whole content: nothing to narrow
+		win.updateVis=shape.isRect()?qd.clipVisRgn(w,u[0]+dv,u[1]+dh,u[2]+dv,u[3]+dh):qd.clipVisRgn(w,shape.offset(dh,dv));
 	}
 	/** InvalRect of a port-local rectangle of window {@code w} (whatever port is current), with its update event. */
 	void invalidate(int w,int top,int left,int bottom,int right) throws M68kCpuException {
@@ -1890,9 +2015,10 @@ final class WindowManager68k {
 	private void unionUpdate(int w,int[] r) throws M68kCpuException {
 		int handle=memory.readLong(w+122);if(handle==0)return;int[] old=readRegion(handle);Window win=windows.get(w);int dv=win==null?0:win.top,dh=win==null?0:win.left;
 		r=new int[]{r[0]+dv,r[1]+dh,r[2]+dv,r[3]+dh};
+		// InvalRect is a UnionRgn: the region keeps its shape. A bounding box made PUCHI-PUCHI SP's update (InvalRect of one pixel,
+		// plus the push buttons it moves) the whole sheet, and its EraseRect of the window inside BeginUpdate wiped the bubbles
 		if(old[2]<=old[0]||old[3]<=old[1])setRegion(handle,r[0],r[1],r[2],r[3]);
-		else if(memory.readWord(memory.readLong(handle))!=10)qd.setRegion(handle,QdRegion.combine(qd.regionShapeOf(handle),QdRegion.rect(r[0],r[1],r[2],r[3]),QdRegion.UNION)); // what a partial ValidRgn left keeps its shape
-		else setRegion(handle,Math.min(old[0],r[0]),Math.min(old[1],r[1]),Math.max(old[2],r[2]),Math.max(old[3],r[3]));
+		else qd.setRegion(handle,QdRegion.combine(qd.regionShapeOf(handle),QdRegion.rect(r[0],r[1],r[2],r[3]),QdRegion.UNION));
 	}
 
 	int regionHandle(int top,int left,int bottom,int right) throws M68kCpuException {return tb.api.createHandle(HostQuickDraw68k.regionBytes(top,left,bottom,right));}

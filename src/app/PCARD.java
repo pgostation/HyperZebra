@@ -28,7 +28,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
 
-import javax.imageio.ImageIO;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JMenu;
@@ -84,6 +83,7 @@ class PCARDFrame extends JFrame {
 	BufferedImage bgImg;     //バックグラウンドピクチャ
 	final PaintUndo paintHistory = new PaintUndo(); //複数段のUndo/Redo(差分矩形+浮動選択の複製)
 	BufferedImage previewBuf; //ストローク中の一時レイヤー(半透明ブラシ、消しゴム、図形プレビュー)
+	BufferedImage emptyPreview; //全面が透明だと分かっているときのpreviewBuf(PaintTool.beginPreviewが消さずに済む)
 	boolean previewVisible;   //previewBufを画面に重ねるか
 	float previewAlpha = 1.0f; //previewBufを重ねるときの不透明度
 	FloatingSelection floating; //浮動選択(矩形選択・投げなわ・スマート選択・ペーストが持ち上げた絵)
@@ -400,7 +400,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	
 	//アプリのバージョンはここだけに書く。release.sh / jpackage.sh / jpackage.ps1 はこの行を読んで
 	//パッケージのバージョンにするので、x.y.z(数字だけ)の形を保つこと。短い版(the short version)は x.y。
-	static final String longVersion="3.0.1";
+	static final String longVersion="3.0.2";
 	static final String version=longVersion.substring(0, longVersion.lastIndexOf('.'));
 
 	/**
@@ -629,6 +629,14 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		ppcJit = on;
 		PpcJit.sharedSetting = on;
 		prefs.putBoolean("ppcJit", on);
+	}
+	//HyperTalkのJITコンパイラ(TalkJit)。-Dhz.talk.jit=false が指定されているときはそちらが優先。
+	static boolean talkJit = prefs.getBoolean("talkJit", true);
+	static { TalkJit.setEnabled(talkJit); }
+	static void setTalkJit(boolean on){
+		talkJit = on;
+		TalkJit.setEnabled(on);
+		prefs.putBoolean("talkJit", on);
 	}
 	//68K VMで起動したアプリが見る画面の色数(8=256色, 16, 32=フルカラー)。
 	//次に起動するアプリから反映される。デフォルトはフルカラー。
@@ -895,6 +903,8 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
     String foundObject;
     
     public static void main(final String[] args) {
+    	if(!"false".equals(System.getProperty("hz.launcher"))) LauncherStore.enabled = true;
+    	GLauncher.readIconsAhead();
     	pc = new PCARD();
 		AppPaths.resourceTrashDirectory();
 
@@ -904,18 +914,8 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		HCData.setCurrentEncoding(StackTextEncoding.forLegacyLanguageSetting(pc.lang));
 
 		// ウィンドウアイコンの設定
-		File iconFile = new File("."+File.separatorChar+"resource"+File.separatorChar+"icon.png");
-		if (iconFile.isFile()) {
-			try {
-				Image icon = ImageIO.read(iconFile);
-				if (icon != null) {
-					defaultIcon = icon;
-					pc.setIconImage(icon);
-				}
-			} catch (IOException e1) {
-				System.err.println("Could not load application icon: " + e1.getMessage());
-			}
-		}
+		defaultIcon = StartupWork.icon();
+		if (defaultIcon != null) pc.setIconImage(defaultIcon);
         
 		//拡大表示はひとつの設定(「設定」の拡大表示): スタックの拡大と68Kアプリのゲーム画面の拡大を揃えておく(別々だった頃の値の名残)
 		if(ZOOM_OVERRIDE!=null) MacAppHost.screenScale = zoomChoice; //この起動だけ(設定には書かない)
@@ -943,6 +943,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		} catch (Exception e) {
 			
 		}
+		if(args.length==0) GLauncher.showEarly();
 
     	pc.addWindowListener(new WindowAdapter() {
 			public void windowClosing(WindowEvent e) {
@@ -978,6 +979,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		//「Home」メニューや go home は従来どおりHomeスタックへ移動する。
 		//配布用Support Files/home.hzbをユーザー領域へ展開し、sampleHomeAppからはリソースだけを抽出する。
 		HomeStack.ensure();
+		HomeGuard.startUp();
 		startUsingHome();
     	
     	String path = null;
@@ -990,12 +992,12 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 
     	//起動ウインドウ(ランチャー): 何も指定されなければ前面に、アプリやスタックが指定されたらその裏に
     	//(指定対象からフォーカスを奪わない)。-Dhz.launcher=false(テスト)では作らない。
-    	if(!"false".equals(System.getProperty("hz.launcher"))) LauncherStore.enabled = true;
     	DiskImages.purgeStaleInBackground(); // extracted disks a HyperZebra that did not quit normally left behind
     	StackBundle.purgeStaleInBackground(); // working copies of stack files (.hzb ZIP) with nothing left to write back
     	TempFiles.sweepLater(); // run folders of working files (<tmpdir>/HyperZebra) that a killed HyperZebra left behind
     	//起動引数が68K Macアプリならそのアプリを先に起動する(スタックは開かない): ランチャーを作る間(約0.4秒)にVMが走り出す
     	boolean launched68k = path!=null && OStack.launch68kApplication(path);
+    	StartupTrace.mark("before launcher");
     	GLauncher.install();
     	GLauncher.showLauncher(path==null);
     	//ゲームコントローラ: 割り当てたキー/マウスとして前面のスタックや68Kアプリに届く(-Dhz.gamepad=false で切る)
@@ -1086,15 +1088,55 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 			TTalk.CallMessage("doMenu", inFileMenu ? new String[]{"Close Stack", "File"} : new String[]{"Close Stack"}, pc.stack.curCard);
 			return;
 		}
+		closeStackHere(false);
+	}
+
+	/**
+	 * The launcher's "Force Quit…" of the stack on show, for a stack whose scripts no longer answer: the running handlers
+	 * end at once (cantAbort or not) and the stack closes without closeCard/closeBackground/closeStack; its changes are
+	 * written as on any close (HyperCard keeps each change as it is made). A script thread that does not get back from the
+	 * handlers within a second is interrupted, and one still away after three seconds (stuck in a host call) is left
+	 * behind: a new script thread closes the stack, and other stacks go on running.
+	 */
+	public static void forceQuitStack() {
+		final PCARD p = pc;
+		if(p==null || p.stack==null || p.stack.curCard==null) return;
+		final OStack stack = p.stack;
+		System.err.println("[stack "+stack.name+"] force quit");
+		final java.util.concurrent.atomic.AtomicBoolean started = new java.util.concurrent.atomic.AtomicBoolean();
+		TTalk.abortForStackClose();
+		TTalk.runOnScriptThread(() -> {
+			if(!started.compareAndSet(false, true)) return;
+			Thread.interrupted(); //the watchdog's interrupt, if it came just now: the script thread's waits must not end at once from here on
+			if(pc!=null && pc.stack==stack) closeStackHere(true);
+		}, true);
+		Thread watchdog = new Thread(() -> {
+			try{
+				for(int waited=0; waited<3000 && !started.get(); waited+=50){
+					Thread.sleep(50);
+					if(waited==1000 && !started.get()) TTalk.interruptScriptThread();
+				}
+			}catch(InterruptedException e){ return; }
+			if(!started.get()) TTalk.replaceStuckThread();
+		}, "stack force quit: "+stack.name);
+		watchdog.setDaemon(true);
+		watchdog.start();
+	}
+
+	/** Closes the stack on show on the script thread; {@code forced} (a force quit): no close messages, and the handlers
+	 *  stopped by it are over (their abort is cleared). */
+	private static void closeStackHere(boolean forced) {
 		//close window "<this stack>" from the closeCard the closing sends (Pictoids 2.0's cleanupWindows closes every window
-		//that was not there at openStack): the stack is closing already; closing it again recursed until "too much recursion"
-		if(closingStack) return;
+		//that was not there at openStack): the stack is closing already; closing it again recursed until "too much recursion".
+		//A force quit sends none, and goes ahead even when an earlier close was left unfinished (its thread stuck)
+		if(closingStack && !forced) return;
+		if(forced) TTalk.stop = false; //the aborted handlers are over: the stack coming back (another window) runs its messages
 		//other stacks open in windows of their own: this one closes and the frontmost of them comes back into the card
 		//window (as close card window); the launcher comes back only with the last stack
-		if(TTalk.closeToOtherWindow()) return;
+		if(TTalk.closeToOtherWindow(forced)) return;
 		closingStack = true;
 		try{
-			if(!prepareStackClose(StackSaving.Purpose.CLOSE)) return; //保存できず、ユーザーが閉じるのをやめた
+			if(!prepareStackClose(StackSaving.Purpose.CLOSE, forced)) return; //保存できず、ユーザーが閉じるのをやめた
 			OStack old = pc.stack;
 			pc.stack = new OStack(pc);
 			TTalk.dropMessagesFor(old);
@@ -1144,9 +1186,11 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	 * chose to keep the stack (StackSaving): it is then opened again (openStack/openBackground/openCard) and nothing is
 	 * thrown away. Runs on the script thread when a card is open.
 	 */
-	static boolean prepareStackClose(StackSaving.Purpose purpose) {
+	static boolean prepareStackClose(StackSaving.Purpose purpose) { return prepareStackClose(purpose, false); }
+	/** The same; {@code forced} (a force quit) sends no close messages. */
+	static boolean prepareStackClose(StackSaving.Purpose purpose, boolean forced) {
 		boolean sentClose = false;
-		if(pc.stack!=null && pc.stack.curCard!=null){
+		if(!forced && pc.stack!=null && pc.stack.curCard!=null){
 			try {
 				TTalk.doScriptforMenu("closeCard");
 				if(pc.stack.curCard!=null && pc.stack.curCard.bg != null) TTalk.doScriptforMenu("closeBackground");
@@ -1327,6 +1371,22 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	 * picture) in the stack window.
 	 */
 	/** Shows a control panel's window (the 'cdev' file in the System Folder's Control Panels), or brings it to the front when it is open. */
+	/**
+	 * A Kaleidoscope scheme was opened: it becomes the current scheme and running programs redraw in it. Nothing else shows
+	 * the change when no program runs (HyperZebra's own windows are not themed), so that is when it is told.
+	 */
+	private static void schemeOpened(File scheme) {
+		try { KaleidoscopeScheme68k.select(scheme); }
+		catch (IOException ex) {
+			new GDialog(pc, pc.intl.getDialogText("Can't switch the Kaleidoscope scheme.")+"\n"+ex.getMessage(), null, "OK", null, null);
+			return;
+		}
+		MacApp68k.schemeChangedAll();
+		if(KaleidoscopeScheme68k.controlPanel(QuickTimeService.systemFolder())==null)
+			new GDialog(pc, pc.intl.getDialogText("Switched the Kaleidoscope scheme to:")+"\n"+scheme.getName()+"\n"+pc.intl.getDialogText("Put the Kaleidoscope control panel in Control Panels to use them."), null, "OK", null, null);
+		else if(MacApp68k.runningApplications().isEmpty())
+			new GDialog(pc, pc.intl.getDialogText("Switched the Kaleidoscope scheme to:")+"\n"+scheme.getName(), null, "OK", null, null);
+	}
 	/** Tells where dropped Kaleidoscope schemes went; the Kaleidoscope control panel, when installed, can be opened to choose one. */
 	private static void schemesInstalled(List<String> names) {
 		File panel = KaleidoscopeScheme68k.controlPanel(QuickTimeService.systemFolder());
@@ -1387,7 +1447,8 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	static void openFiles(List<File> fileList, boolean askStacks) {
 		if(fileList==null || fileList.isEmpty()) return;
 		List<File> others = new java.util.ArrayList<File>();
-		List<String> installedFonts = new java.util.ArrayList<String>(), installedExtensions = new java.util.ArrayList<String>(), installedSchemes = new java.util.ArrayList<String>();
+		List<String> installedFonts = new java.util.ArrayList<String>(), installedExtensions = new java.util.ArrayList<String>();
+		List<File> installedSchemes = new java.util.ArrayList<File>();
 		for(File dropped: fileList){
 			dropped = MacApp68k.programOf(dropped); // a Mac OS 9 package ("X.app" folder) stands for the program inside
 			if(DiskImages.openFromUser(dropped)) continue; // a disk image is mounted for Mac programs (a .smi is a program too: not launched)
@@ -1400,7 +1461,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 			}
 			List<File> schemes = KaleidoscopeScheme68k.isSchemeFile(dropped) ? java.util.Collections.singletonList(dropped) : KaleidoscopeScheme68k.schemesIn(dropped);
 			if(!schemes.isEmpty()){ // a Kaleidoscope scheme (or a folder holding schemes) goes to Apple Menu Items' Kaleidoscope Schemes
-				try { for(File scheme: schemes) installedSchemes.add(KaleidoscopeScheme68k.install(scheme).getName()); }
+				try { for(File scheme: schemes) installedSchemes.add(KaleidoscopeScheme68k.installed(scheme)); }
 				catch (IOException ex) {
 					new GDialog(pc, pc.intl.getDialogText("Can't install the Kaleidoscope scheme.")+"\n"+ex.getMessage(), null, "OK", null, null);
 				}
@@ -1437,7 +1498,12 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 			new GDialog(pc, pc.intl.getDialogText("Installed extensions for Mac programs:")+"\n"+String.join(", ", installedExtensions)
 				+"\n"+pc.intl.getDialogText("Programs launched from now on use them."), null, "OK", null, null);
 		}
-		if(!installedSchemes.isEmpty()) schemesInstalled(installedSchemes);
+		if(installedSchemes.size()==1) schemeOpened(installedSchemes.get(0)); // several: nothing says which, the panel chooses
+		else if(!installedSchemes.isEmpty()){
+			List<String> names = new java.util.ArrayList<String>();
+			for(File scheme: installedSchemes) names.add(scheme.getName());
+			schemesInstalled(names);
+		}
 		if(!others.isEmpty()){
 			//スタックは "open stack … in a new window" として開く: 表示中のスタックは閉じずに自分のウインドウ(GStackWindow)に残り、
 			//複数のスタックを同時に開いておける(HyperCard 2.x の「新規ウインドウで開く」)。goToStack が保存を済ませる
@@ -1558,7 +1624,8 @@ class PCARDWindowListener implements WindowListener
 
 
 class Pidle extends Thread {
-	/** idle every 100 ms (10 a second) unless an "on idle" handler is running; then at display rate. */
+	/** idle every 100 ms (10 a second) unless an "on idle" handler is running; then at display rate (at HyperCard's pace
+	 *  under a stack's speed limit: StackSpeed.IDLE_INTERVAL_NANOS). */
 	static final long SLOW_IDLE_NANOS = 100_000_000L;
 	static final long FAST_IDLE_NANOS = 1_000_000_000L/60;
 
@@ -1584,8 +1651,8 @@ class Pidle extends Thread {
 			long now = System.nanoTime();
 			boolean fast = TTalk.idleHandlerAt!=0 && now-TTalk.idleHandlerAt < 1_000_000_000L;
 			if(PCARDFrame.pc.stack!=null && PCARDFrame.pc.stack.curCard!=null && PCARDFrame.pc.tool==null && AuthTool.tool==null){
-				if(TTalk.idle && !TTalk.idlePending && !TTalk.idleMessagesSuppressed && idleWindowActive() &&
-						now-lastIdle >= (fast ? FAST_IDLE_NANOS : SLOW_IDLE_NANOS)){
+				if(TTalk.idle && !TTalk.idlePending && !TTalk.idleMessageRunning && !TTalk.idleMessagesSuppressed && idleWindowActive() &&
+						now-lastIdle >= (fast ? StackSpeed.limited() ? StackSpeed.IDLE_INTERVAL_NANOS : FAST_IDLE_NANOS : SLOW_IDLE_NANOS)){
 					if(System.currentTimeMillis() >= TTalk.idleResumeTime){
 						//前回のidleメッセージがカード移動を伴う場合、処理が終わるまでは
 						//新しいidleメッセージを積まない(積むと古いカードの参照が残ってしまう)
@@ -1594,6 +1661,7 @@ class Pidle extends Thread {
 						TTalk.CallMessage("idle","",PCARDFrame.pc.stack.curCard, true, false);
 					}
 				}
+				if(TTalk.idle) GUI.flushPointerMessages();
 				if(now>=nextKeyCheck){
 					nextKeyCheck = now+SLOW_IDLE_NANOS;
 					GUI.keyEventCheck();

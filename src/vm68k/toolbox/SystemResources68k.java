@@ -12,6 +12,8 @@
 final class SystemResources68k {
 	/** 'STR ' -8192: the printer the Chooser chose (the driver file's name). */
 	static final int CHOSEN_PRINTER=-8192;
+	/** The printer the Chooser chose ('STR ' -8192): also the name of the printer resource file OpenResFile hands the PrLink glue. */
+	static final String PRINTER_NAME="HyperZebra Printer";
 	private SystemResources68k(){}
 
 	/** A 'vers' resource for System version {@code v} (BCD $0922 = 9.2.2): final release, region 0, "9.2.2" twice. */
@@ -73,7 +75,7 @@ final class SystemResources68k {
 		// The current printer's name, as the Chooser leaves it ('STR ' -8192): PageMaker 6 dims its whole Print dialog without one; MacWrite 2.2
 		// then looks for a driver file of that name and, finding none, disables Print (it said "no printing resource" before). The printer is the
 		// QuickDraw device of PrintManager68k (wDev $01xx), so no real driver's name is borrowed.
-		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("STR "),CHOSEN_PRINTER,null,0,pascal("HyperZebra Printer")));
+		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("STR "),CHOSEN_PRINTER,null,0,pascal(PRINTER_NAME)));
 		boolean japanese=encoding==StackTextEncoding.JAPANESE;
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl0"),0,"U.S.",0,itl0(false)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("itl1"),0,"U.S.",0,itl1(false)));
@@ -134,7 +136,12 @@ final class SystemResources68k {
 		for(java.util.Map.Entry<Integer,String> e:Fonts68k.NAMES.entrySet()){
 			int id=e.getKey();if(id==1||f.get(InstalledFonts68k.FOND,id)!=null)continue; // 1 = the application font, not a family
 			String name=fondName(e.getValue());if(f.getNamed(InstalledFonts68k.FOND,name)!=null)continue;
-			f.add(new ResourceFile68k.Resource(InstalledFonts68k.FOND,id,name,0x20,fond(id,e.getValue())));
+			// FOND and the 'sfnt' its outline entry names are made when first read, from the host stand-in's measures (SfntStandIn68k):
+			// FrameMaker 5 rejects a TrueType FOND without its sfnt and lays text out by the FOND's width table
+			String family=e.getValue();
+			ResourceFile68k.Resource fond=new ResourceFile68k.Resource(InstalledFonts68k.FOND,id,name,0x20,(byte[])null);fond.maker=()->SfntStandIn68k.fond(id,family);f.add(fond);
+			if(f.get(InstalledFonts68k.SFNT,id)==null){ResourceFile68k.Resource sfnt=new ResourceFile68k.Resource(InstalledFonts68k.SFNT,id,null,0x20,(byte[])null);
+				sfnt.maker=()->SfntStandIn68k.build(id,family);f.add(sfnt);}
 		}
 		return f;
 	}
@@ -143,24 +150,6 @@ final class SystemResources68k {
 		byte[] b=name.getBytes(java.nio.charset.Charset.forName("Shift_JIS"));
 		return StackTextEncoding.ROMAN.decode(b,0,b.length);
 	}
-	/**
-	 * A minimal 'FOND' for a family the host renders: the 52-byte header (family number, characters $20-$FF, rough metrics in
-	 * 4.12 fixed point, monospaced flag) and one association entry, size 0 = outlines (every size), so programs see a scalable
-	 * family; its 'sfnt' ID is the family number. Drawing never reads these - System FONDs are left to the host fonts.
-	 */
-	private static byte[] fond(int id,String name){
-		boolean mono=name.equals("Monaco")||name.equals("Courier")||name.contains("等幅");
-		byte[] d=new byte[60];
-		d[0]=(byte)(mono?0x80:0);d[2]=(byte)(id>>8);d[3]=(byte)id;
-		d[5]=0x20;d[7]=(byte)0xff;                                   // ffFirstChar, ffLastChar
-		d[8]=0x0c;d[9]=(byte)0xcc;d[10]=(byte)0xfc;d[11]=(byte)0xcd; // ascent 0.8, descent -0.2
-		d[14]=0x10;                                                  // widMax 1.0
-		d[50]=0;d[51]=2;                                             // ffVersion
-		d[52]=0;d[53]=0;                                             // one association entry
-		d[58]=(byte)(id>>8);d[59]=(byte)id;                          // size 0, style 0, sfnt id
-		return d;
-	}
-
 	/** 'fld#': per folder its type, a zero version word, the name's length as a word and the name, padded to an even length. */
 	private static byte[] folderNames(String[][] folders){
 		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();

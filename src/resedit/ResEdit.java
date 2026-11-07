@@ -82,7 +82,7 @@ public class ResEdit {
 		}
 
 		//各Typeごとに開いて選択する
-		if(type.equals("ICON") || type.equals("cicn") || type.equals("PICT") || type.equals("CURS")
+		if(type.equals("ICON") || type.equals("cicn") || type.equals("PICT") || type.equals("Pdat") || type.equals("CURS")
 				|| type.equals("crsr") || type.equals("PAT#") || type.equals("ppat")){
 			child = new IconTypeEditor(pc, type, object);
 		}
@@ -101,7 +101,7 @@ public class ResEdit {
 	}
 
 	static boolean isPictureType(String type){
-		return type.equals("ICON") || type.equals("cicn") || type.equals("PICT") || type.equals("CURS")
+		return type.equals("ICON") || type.equals("cicn") || type.equals("PICT") || type.equals("Pdat") || type.equals("CURS")
 			|| type.equals("crsr") || type.equals("PAT#") || type.equals("ppat");
 	}
 
@@ -496,7 +496,7 @@ class ResTypeEditor extends JFrame {
 }
 
 
-/** 画像系(ICON/cicn/PICT/CURS/crsr/PAT#/ppat)を格子状に一覧表示する。 */
+/** 画像系(ICON/cicn/PICT/Pdat/CURS/crsr/PAT#/ppat)を格子状に一覧表示する。 */
 class IconTypeEditor extends ResTypeEditor {
 	private static final long serialVersionUID = 1L;
 	//ドラッグで囲んで選ぶ矩形(contpane座標)。無いときはnull
@@ -687,14 +687,17 @@ class IconTypeEditor extends ResTypeEditor {
 	@Override
 	void createNewResource(){
 		int rsrcid = rsrc.getNewResourceId(type);
-		String newFileName = fileNameFor(rsrcid, ".png");
+		//Pdatは68KのColorizeHCがそのまま読むので、最初からヘッダ無しのPICTデータ(.data)で置く
+		boolean pdat = type.equals("Pdat");
+		String newFileName = fileNameFor(rsrcid, pdat ? ".data" : ".png");
 		File newFile = rsrc.fileToWrite(newFileName);
 		//PAT#/ppatとも、新規作成時は8x8のパターン1枚分から始める
 		//(PAT#は8*N x 8の横並び表現なのでN=1のとき8x8と同じ)
 		int size = type.equals("PAT#") || type.equals("ppat") ? 8 : 32;
 		BufferedImage bi = new BufferedImage(size,size,BufferedImage.TYPE_INT_ARGB);
 		try {
-			ImageIO.write(bi,"png",newFile);
+			if(pdat) Files.write(newFile.toPath(), HCResourceExport.pict(bi));
+			else ImageIO.write(bi,"png",newFile);
 		} catch (IOException e1) {
 			e1.printStackTrace();
 			return;
@@ -1047,9 +1050,14 @@ class IconTypeEditor extends ResTypeEditor {
 			newFileName = file.getAbsolutePath();
 		}
 		else{
-			newFileName = fileNameFor(iconid, ext);
+			newFileName = fileNameFor(iconid, type.equals("Pdat") ? ".data" : ext);
 			try{
-				ResEdit.copyFile(file, rsrc.fileToWrite(newFileName));
+				if(type.equals("Pdat")){
+					//Pdatはヘッダ無しのPICTデータ: PICTファイルは512バイトのヘッダを外し、ほかの画像はPICTにする
+					byte[] b = ext.equals(".pict") ? Files.readAllBytes(file.toPath()) : null;
+					Files.write(rsrc.fileToWrite(newFileName).toPath(), b!=null && b.length>512 ? Arrays.copyOfRange(b, 512, b.length) : HCResourceExport.pict(bi));
+				}
+				else ResEdit.copyFile(file, rsrc.fileToWrite(newFileName));
 			} catch (IOException e2) {
 				e2.printStackTrace();
 				String str = PCARD.pc.intl.getDialogText("Can't open the file '%1'.");

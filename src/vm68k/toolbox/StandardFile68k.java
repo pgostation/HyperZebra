@@ -80,7 +80,8 @@ final class StandardFile68k {
 
 	/** One Standard File call. */
 	private static final class Request {
-		boolean put,newStyle;int reply,dlgId,dlgHook,filterProc,fileFilter,yourData,activeList;String prompt="",defaultName="";int[] types;int numTypes=-1;
+		/** {@code yd}: CustomGetFile/CustomPutFile, whose procedures take yourDataPtr (StandardGetFile's fileFilter does not). */
+		boolean put,newStyle,yd;int reply,dlgId,dlgHook,filterProc,fileFilter,yourData,activeList;String prompt="",defaultName="";int[] types;int numTypes=-1;
 		boolean custom(){return dlgHook!=0||filterProc!=0||fileFilter!=0||(dlgId!=0&&dlgId!=GET_DLG_ID&&dlgId!=PUT_DLG_ID&&dlgId!=SF_GET_DLG_ID&&dlgId!=SF_PUT_DLG_ID)||"guest".equals(System.getProperty("hz68k.standardfile"));}
 	}
 
@@ -95,8 +96,8 @@ final class StandardFile68k {
 			case 4:{r.filterProc=memory.readLong(sp);r.dlgId=(short)memory.readWord(sp+4);r.reply=memory.readLong(sp+6);r.dlgHook=memory.readLong(sp+10);r.numTypes=(short)memory.readWord(sp+18);r.types=types(memory.readLong(sp+14),r.numTypes);r.fileFilter=memory.readLong(sp+20);r.prompt=tb.readPascal(memory.readLong(sp+24));cpu.a[7]+=32;break;}
 			case 5:{r.put=true;r.newStyle=true;r.reply=memory.readLong(sp);r.defaultName=tb.readPascal(memory.readLong(sp+4));r.prompt=tb.readPascal(memory.readLong(sp+8));cpu.a[7]+=12;break;}
 			case 6:{r.newStyle=true;r.reply=memory.readLong(sp);r.numTypes=(short)memory.readWord(sp+8);r.types=types(memory.readLong(sp+4),r.numTypes);r.fileFilter=memory.readLong(sp+10);cpu.a[7]+=14;break;}
-			case 7:{r.put=true;r.newStyle=true;r.yourData=memory.readLong(sp);r.activeList=memory.readLong(sp+8);r.filterProc=memory.readLong(sp+12);r.dlgHook=memory.readLong(sp+16);r.dlgId=(short)memory.readWord(sp+24);r.reply=memory.readLong(sp+26);r.defaultName=tb.readPascal(memory.readLong(sp+30));r.prompt=tb.readPascal(memory.readLong(sp+34));cpu.a[7]+=38;break;}
-			case 8:{r.newStyle=true;r.yourData=memory.readLong(sp);r.activeList=memory.readLong(sp+8);r.filterProc=memory.readLong(sp+12);r.dlgHook=memory.readLong(sp+16);r.dlgId=(short)memory.readWord(sp+24);r.reply=memory.readLong(sp+26);r.numTypes=(short)memory.readWord(sp+34);r.types=types(memory.readLong(sp+30),r.numTypes);r.fileFilter=memory.readLong(sp+36);cpu.a[7]+=40;break;}
+			case 7:{r.put=true;r.newStyle=true;r.yd=true;r.yourData=memory.readLong(sp);r.activeList=memory.readLong(sp+8);r.filterProc=memory.readLong(sp+12);r.dlgHook=memory.readLong(sp+16);r.dlgId=(short)memory.readWord(sp+24);r.reply=memory.readLong(sp+26);r.defaultName=tb.readPascal(memory.readLong(sp+30));r.prompt=tb.readPascal(memory.readLong(sp+34));cpu.a[7]+=38;break;}
+			case 8:{r.newStyle=true;r.yd=true;r.yourData=memory.readLong(sp);r.activeList=memory.readLong(sp+8);r.filterProc=memory.readLong(sp+12);r.dlgHook=memory.readLong(sp+16);r.dlgId=(short)memory.readWord(sp+24);r.reply=memory.readLong(sp+26);r.numTypes=(short)memory.readWord(sp+34);r.types=types(memory.readLong(sp+30),r.numTypes);r.fileFilter=memory.readLong(sp+36);cpu.a[7]+=40;break;}
 			default:throw new M68kMacApiException(cpu.pc,0xa9ea,"Pack3 selector "+selector);
 		}
 		File scripted=r.put?scriptedSave:scriptedReply;
@@ -455,6 +456,7 @@ final class StandardFile68k {
 					// The hook turned one of its own items into Open (for example, a "Select folder" button): it has put the answer into
 					// reply->sfFile, so the dialog ends with that instead of opening the folder selected in the list.
 					File named=null;try{named=tb.files.fileFor((short)memory.readWord(r.reply+6),memory.readLong(r.reply+8),tb.readPascal(r.reply+12));}catch(IOException ex){}
+					if(Mac68kApi.TRACE)System.err.println("[sf] hook's Open for item "+original+": reply "+tb.files.describeSpec(r.reply+6)+" -> "+named);
 					if(named!=null){chosen=named;good=true;break;}
 				}
 				if(hit==s.openItem&&original!=s.openItem&&original!=s.listItem&&!r.newStyle&&!r.put){
@@ -565,7 +567,7 @@ final class StandardFile68k {
 		finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);}
 	}
 
-	/** pascal Boolean fileFilter(CInfoPBPtr[, void* yourData]): true excludes the file. The block is the one HGetFileInfo fills,
+	/** pascal Boolean fileFilter(CInfoPBPtr[, void* yourData] - CustomGetFile only): true excludes the file. The block is the one HGetFileInfo fills,
 	 *  with the Mac name (a MacBinary container answers to its header name, so extension-based filters see ".sit", not ".bin"). */
 	private boolean excludedByFilter(Session s,File file) throws M68kException {
 		if(s.r.fileFilter==0)return false;
@@ -575,8 +577,8 @@ final class StandardFile68k {
 			memory.writeLong(pb+18,name);memory.writeWord(pb+22,tb.files.volumeRefNumFor(file));memory.writeLong(pb+48,tb.files.directoryIdFor(file.getParentFile()));
 			if(tb.files.osTrap(tb.cpu,pb,0xa20c)!=0)return false; // HGetFileInfo
 			M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();
-			cpu.a[7]-=2;cpu.pushLong(pb);if(s.r.newStyle)cpu.pushLong(s.r.yourData);
-			try{cpu.callPascal(s.r.fileFilter,s.r.newStyle?8:4);boolean excluded=memory.readByte(cpu.a[7])!=0;
+			cpu.a[7]-=2;cpu.pushLong(pb);if(s.r.yd)cpu.pushLong(s.r.yourData);
+			try{cpu.callPascal(s.r.fileFilter,s.r.yd?8:4);boolean excluded=memory.readByte(cpu.a[7])!=0;
 				if(Mac68kApi.TRACE)System.err.println("[sf] fileFilter "+displayName(file)+" type "+ResourceFile68k.typeName(memory.readLong(pb+32))+" -> "+(excluded?"hidden":"shown"));
 				return excluded;}
 			finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);}
@@ -775,7 +777,8 @@ final class StandardFile68k {
 		if(desk!=null&&canonical(desk).equals(canonical(s.directory)))for(File volume:tb.files.fileManager.volumes){if(!volume.isDirectory())continue;
 			s.entries.add(volume);rows.add(tb.encoding.encodeReplacing(volumeName(volume)));icons.add(ListManager68k.ICON_DISK);images.add(null);details.add(detailsOf(volume));}
 		for(File f:folders){s.entries.add(f);rows.add(tb.encoding.encodeReplacing(displayName(f)));icons.add(ListManager68k.ICON_FOLDER);images.add(FinderIcons68k.of(f));details.add(detailsOf(f));}
-		for(int i:index){File f=files.get(i);s.entries.add(f);rows.add(tb.encoding.encodeReplacing(displayName(f)));icons.add(fileIcons.get(i));images.add(FinderIcons68k.of(f));details.add(detailsOf(f));}
+		java.util.Map<Integer,File> owners=new java.util.HashMap<Integer,File>();
+		for(int i:index){File f=files.get(i);s.entries.add(f);rows.add(tb.encoding.encodeReplacing(displayName(f)));icons.add(fileIcons.get(i));images.add(fileImage(f,16,owners));details.add(detailsOf(f));}
 		int[] iconArray=new int[icons.size()];for(int i=0;i<iconArray.length;i++)iconArray[i]=icons.get(i);
 		boolean detail=s.headerRect!=null;
 		tb.listManager.setRows(s.list,rows,iconArray,images.toArray(new java.awt.image.BufferedImage[0]),detail?details.toArray(new String[0][]):null,detail?new int[]{COLUMN_WIDTHS[detailColumn]}:null);
@@ -920,6 +923,37 @@ final class StandardFile68k {
 		}
 		return sortDescending?order.reversed():order;
 	}
+	/**
+	 * The icon the Finder shows for an entry, the 16x16 member for a small size: a file's custom icon, a file's own bundle
+	 * (a program, a control panel), then what the desktop database has for its creator - the bundle (BNDL/FREF) of the
+	 * program with that creator gives the document's type its icon, as in the launcher's history - and last any icon the
+	 * file holds. {@code owners} keeps one desktop database answer per creator for one listing (null: none kept).
+	 */
+	private java.awt.image.BufferedImage fileImage(File f,int size,java.util.Map<Integer,File> owners){
+		if(f==null||!f.isFile())return FinderIcons68k.of(f);
+		java.awt.image.BufferedImage image=FinderIcons68k.ofCustom(f,size);if(image!=null)return image;
+		int type=tb.files.fileManager.shownType(f),creator=tb.files.fileCreator(f);
+		if(type!=0&&creator!=0&&FinderIcons68k.bundleOf(f).signature==creator){image=FinderIcons68k.ofDocument(f,type,size);if(image!=null)return image;}
+		if(type!=0&&creator!=0&&creator!=0x3f3f3f3f){ // '????': no creator to ask for
+			boolean small=size<=16;
+			if(creator==0x4d414353||creator==0x57494c44){ // 'MACS' (the System's files), 'WILD' (HyperZebra plays HyperCard): their own pictures, as PBDTGetIcon gives them
+				int color=small?0x69637338:0x69636c38,mask=small?0x69637323:0x49434e23; // ics8/ics# or icl8/ICN#
+				byte[] c=creator==0x4d414353?SystemIcons68k.systemFileIcon(type,color):SystemIcons68k.hyperCardIcon(type,color),
+					m=creator==0x4d414353?SystemIcons68k.systemFileIcon(type,mask):SystemIcons68k.hyperCardIcon(type,mask);
+				if(c!=null)return small?FinderIcons68k.decodeIcs8(c,m):FinderIcons68k.decodeIcl8(c,m);
+			}else{
+				File app;
+				if(owners!=null&&owners.containsKey(creator))app=owners.get(creator);
+				else{app=tb.app!=null&&tb.files.fileCreator(tb.app.file)==creator?tb.app.file:tb.files.applicationForCreator(creator);if(owners!=null)owners.put(creator,app);}
+				if(app!=null){
+					image=FinderIcons68k.ofDocument(app,type,size);
+					if(image==null)image=FinderIcons68k.ofDocument(app,FinderIcons68k.ANY_TYPE,size); // the program's icon for any file it opens
+					if(image!=null)return image;
+				}
+			}
+		}
+		return FinderIcons68k.of(f);
+	}
 	private static final java.text.SimpleDateFormat DATE_FORMAT=new java.text.SimpleDateFormat("yyyy/MM/dd HH:mm");
 	/** The detail columns of a row: date modified, size and kind. */
 	private String[] detailsOf(File f){
@@ -1035,7 +1069,7 @@ final class StandardFile68k {
 				Font font=Fonts68k.font(0,12,0),small=Fonts68k.font(0,10,0);FontMetrics fm=Fonts68k.metrics(font),sm=Fonts68k.metrics(small);
 				if(f==null){g.setFont(font);g.setColor(PREVIEW_DIM);String none="No selection";Fonts68k.drawString(g,fm,none,r[1]+(w-fm.stringWidth(none))/2,r[0]+h/2);return;}
 				int y=r[0]+12,cx=r[1]+w/2;
-				java.awt.image.BufferedImage icon=FinderIcons68k.of(f);
+				java.awt.image.BufferedImage icon=fileImage(f,32,null);
 				if(icon!=null)ListManager68k.paintImage(g,icon,cx-16,y,32,false);
 				else{Graphics2D big=(Graphics2D)g.create();big.translate(cx-16,y);big.scale(32/12.0,32/12.0);ListManager68k.paintIcon(big,f.isDirectory()?ListManager68k.ICON_FOLDER:tb.files.fileManager.shownType(f)==0x4150504c?ListManager68k.ICON_APPLICATION:ListManager68k.ICON_DOCUMENT,0,0);big.dispose();}
 				y+=40;

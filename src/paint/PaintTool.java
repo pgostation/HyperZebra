@@ -38,13 +38,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-/*
-import cello.jtablet.TabletManager;
-import cello.jtablet.event.TabletEvent;
-import cello.jtablet.event.TabletListener;
-import cello.jtablet.installer.JTabletExtension;
-*/
-
 //ペイントツール共通部。
 //
 //画像バッファの役割分担(PCARDFrameのフィールド):
@@ -62,7 +55,6 @@ public class PaintTool {
 	static float lastx[] = new float[2];
 	static float lasty[] = new float[2];
 	static long lastTime;
-	static boolean canTablet = false;
 	static PCARDFrame owner;
 
 	//2倍拡大表示モードは、IconEditor等(PCARD.pc以外のPCARDFrame)は対象外なので、
@@ -297,6 +289,10 @@ public class PaintTool {
 	static int brushOpacity = 100;
 	static int brushSpacing = 10;
 	static int brushStabilization = 0;
+	//ペンタブレットの筆圧(TabletInput)をブラシの太さ・不透明度に効かせるか(HyperTalk: the brushPressure)。
+	//スプレーの濃さと、ペンの消しゴム側で消すのは常に効く。
+	static boolean pressureSize = true;
+	static boolean pressureOpacity = false;
 	static float lineSize = 1;
 	static int alpha = 100;
 	static boolean antialias = false;
@@ -557,6 +553,13 @@ public class PaintTool {
 	//Tint(AppleWorks): 画素の色を colour へ TINT_PERCENT% 寄せる。色のアルファは
 	//強さとして掛ける(半透明の前景色なら薄く)。画素自身のアルファは変えない。
 	static final int TINT_PERCENT = 25;
+	/** Invert of a selection on a card: its empty parts are the white paper and turn black (HC J-2.3; HyperPiece 2 エンボス加工 makes
+	 *  white letters on black that way). An icon's empty parts are no paper and stay empty. */
+	static int invertedPixel(int c){
+		if(owner instanceof IconEditor) return (c&0xFF000000) | (~c&0x00FFFFFF);
+		return (c>>>24)==0 ? 0xFF000000 : (c&0xFF000000) | (~c&0x00FFFFFF);
+	}
+
 	static int tintPixel(int c, Color color){
 		int a = c&0xFF000000;
 		if(a==0) return c;
@@ -628,6 +631,7 @@ public class PaintTool {
 
 	//ストロークプレビュー用の一時レイヤー。サーフェースと同じ大きさを保証する。
 	static BufferedImage previewBuf(){
+		owner.emptyPreview = null; //the caller is about to draw on it
 		BufferedImage s = owner.getSurface();
 		if(owner.previewBuf==null ||
 			owner.previewBuf.getWidth()!=s.getWidth() || owner.previewBuf.getHeight()!=s.getHeight()){
@@ -637,8 +641,9 @@ public class PaintTool {
 	}
 	//プレビューレイヤーを空にして表示を開始する。alphaは画面へ重ねるときの不透明度。
 	static BufferedImage beginPreview(float alpha){
+		BufferedImage empty = owner.emptyPreview;
 		BufferedImage buf = previewBuf();
-		clearImage(buf);
+		if(buf!=empty) clearImage(buf);
 		owner.previewAlpha = alpha;
 		owner.previewVisible = true;
 		return buf;
@@ -653,6 +658,22 @@ public class PaintTool {
 			g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
 			g.drawImage(owner.previewBuf, 0, 0, null);
 			g.dispose();
+		}
+		endPreview();
+	}
+	//プレビューがrectの中にしか無いときのcommitPreview: rectだけ合成し、プレビューを空に戻す
+	static void commitPreview(float alpha, Rectangle rect){
+		BufferedImage buf = owner.previewBuf;
+		if(buf!=null){
+			Rectangle r = rect.intersection(new Rectangle(0, 0, buf.getWidth(), buf.getHeight()));
+			if(!r.isEmpty()){
+				Graphics2D g = owner.getSurface().createGraphics();
+				g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+				g.drawImage(buf, r.x, r.y, r.x+r.width, r.y+r.height, r.x, r.y, r.x+r.width, r.y+r.height, null);
+				g.dispose();
+				clearImage(buf, r);
+			}
+			owner.emptyPreview = buf;
 		}
 		endPreview();
 	}
@@ -787,20 +808,55 @@ public class PaintTool {
 		BufferedImage cur = currentSelectionMask();
 		if(cur==null) return null;
 		putBackFloating();
+		FloatingSelection f = liftMask(tightMask(cur));
+		repaintOwner();
+		return f;
+	}
+
+	/** The picture inside {@code region} (null: all of it) as a selection mask: white that reaches its edge is left out, as the lasso does */
+	private static BufferedImage tightMask(BufferedImage region){
 		BufferedImage s = owner.getSurface();
 		int w = s.getWidth(), h = s.getHeight();
 		BufferedImage picture = newArgb(w, h);
 		BufferedImage mask = newArgb(w, h);
 		for(int y=0; y<h; y++) for(int x=0; x<w; x++){
-			boolean in = (cur.getRGB(x, y)>>>24)!=0;
+			boolean in = region==null || (region.getRGB(x, y)>>>24)!=0;
 			int p = s.getRGB(x, y);
 			picture.setRGB(x, y, in && (p>>>24)!=0 ? (p|0xFF000000) : 0xFFFFFFFF);
 			mask.setRGB(x, y, in ? 0xFF000000 : 0);
 		}
 		LassoTool.clearWhiteFromEdges(picture, mask);
-		FloatingSelection f = liftMask(mask);
+		return mask;
+	}
+
+	/** The tool to go back to when a selection made by the Paint menu's Select or Select All ends; null when there is none */
+	static String toolBeforeSelect;
+	/** A press that ended such a selection: it paints nothing (HC J-2.3), its drag and its release are dropped */
+	private static boolean pressEndedSelection;
+
+	/**
+	 * The Paint menu's Select with nothing selected (HC J-2.3): the lasso closes in on all of the picture, however many separate shapes
+	 * it has, and the tool is the lasso while the selection lasts (HyperPiece++'s clock clears its hands with type "SX" with commandKey,
+	 * then goes on with the brush). With nothing to close in on, only the select tool is chosen.
+	 */
+	static void lassoWholePicture(){
+		owner = PCARD.pc;
+		BufferedImage mask = tightMask(null);
+		if(isAllTransparent(mask)){
+			TBButtonListener.ChangeTool("Select", null);
+			return;
+		}
+		String back = TBButtonListener.lastcmd;
+		TBButtonListener.ChangeTool("Lasso", null);
+		liftMask(mask);
+		toolBeforeSelect = back;
 		repaintOwner();
-		return f;
+	}
+
+	/** The selection the Paint menu made has ended (cut, cleared, clicked off): the tool in use before it comes back */
+	static void backToToolBeforeSelect(){
+		String back = toolBeforeSelect;
+		if(back!=null) TBButtonListener.ChangeTool(back, null);
 	}
 
 	//選択範囲の縁をradius画素ぼかす(feather selection by N)
@@ -1271,12 +1327,7 @@ public class PaintTool {
 	// idle処理
 	//-------------------
 	public static void tabletinit(){
-		 /*if (JTabletExtension.checkCompatibility(PaintTool.owner, "1.2.0")) {
-			 canTablet = true;
-			 if(tabletListener==null){
-				 tabletListener = new MyTabletListener();
-			 }
-	     }*/
+		TabletInput.start();
 
 		 if(PCARD.pc!=null && (PCARD.pc.paidle==null || !PCARD.pc.paidle.isAlive())){
 			 PCARD.pc.paidle = new PaintIdle();
@@ -1298,7 +1349,13 @@ public class PaintTool {
 	// マウスイベント(すべてEDTから呼ばれる)
 	//-------------------
 	public static void mouseUp(int x, int y){
+		TabletInput.endStroke();
 		if(owner==null) return;
+		if(pressEndedSelection){
+			pressEndedSelection = false;
+			mouse = false;
+			return;
+		}
 		if(owner.bit != 1){
 			//端数切り捨て
 			PaintTool.owner.bitLeft = (float)(int)PaintTool.owner.bitLeft;
@@ -1341,8 +1398,10 @@ public class PaintTool {
 			mouse = false;
 			return;
 		}
-		if(owner.tool!=null){
-			owner.tool.mouseUp(x,y);
+		toolInterface stroke = strokeTool();
+		penEraser = null;
+		if(stroke!=null){
+			stroke.mouseUp(x,y);
 			lastx[1] = lastx[0];
 			lasty[1] = lasty[0];
 			lastx[0] = x;
@@ -1392,14 +1451,34 @@ public class PaintTool {
 				//選択範囲の外をクリック: 確定してから新しい選択を始める
 				selectCombine = SELECT_REPLACE;
 				commitFloating();
+				if(toolBeforeSelect!=null){
+					backToToolBeforeSelect();
+					pressEndedSelection = true;
+					return;
+				}
 			}
 		}
 		else{
 			selectCombine = SELECT_REPLACE;
 		}
-		if(owner.tool!=null){
-			owner.tool.mouseDown(x,y);
+		//ペンの消しゴム側で鉛筆・スプレーを使ったら、そのストロークは消しゴムで消す
+		//(ブラシは自分で筆圧どおりに消す)
+		penEraser = TabletInput.eraser() && (owner.tool instanceof PencilTool || owner.tool instanceof SprayTool) ? new EraserTool() : null;
+		toolInterface stroke = strokeTool();
+		if(stroke!=null){
+			stroke.mouseDown(x,y);
 		}
+	}
+
+	//ペンの消しゴム側で始めたストロークの消しゴム(普段はnull)
+	private static toolInterface penEraser;
+	//今のストロークのツール
+	static toolInterface strokeTool(){
+		return penEraser!=null ? penEraser : owner.tool;
+	}
+	//スクリプトのdrag(間を置かない)で途中のmouseStillDownを省けるか
+	static boolean endPointIsEnough(){
+		return owner!=null && owner.floating==null && owner.tool instanceof ShapeToolBase && ((ShapeToolBase)owner.tool).endPointIsEnough();
 	}
 	public static void mouseWithin(int x, int y){
 		if(owner==null) return;
@@ -1424,6 +1503,7 @@ public class PaintTool {
 			//ポインタが乗っただけで浮動選択が捨てられ、選択した部分が透明になっていた
 			if(GUI.key[20]>=2 || GUI.key[21]>=2){
 				discardFloating();
+				backToToolBeforeSelect();
 				return;
 			}
 			//選択枠のアニメーション
@@ -1453,7 +1533,7 @@ public class PaintTool {
 		}
 	}
 	public static void mouseStillDown(int x, int y){
-		if(owner==null) return;
+		if(owner==null || pressEndedSelection) return;
 		if(GUI.key[' ']>0 && owner.bit!=1 && owner.tool!=null) {
 			//スペースキー+ドラッグで拡大表示位置をスクロール
 			BufferedImage s = owner.getSurface();
@@ -1507,7 +1587,8 @@ public class PaintTool {
 			lasty[0] = y;
 			return;
 		}
-		if(owner.tool!=null&&owner.tool.mouseStillDown(x,y)){
+		toolInterface stroke = strokeTool();
+		if(stroke!=null&&stroke.mouseStillDown(x,y)){
 			lastx[1] = lastx[0];
 			lasty[1] = lasty[0];
 			lastx[0] = x;
@@ -1653,22 +1734,50 @@ public class PaintTool {
 		return true;
 	}
 
-	//srcの内容をカード/バックグラウンドのpictへコピーする(必要ならpictを作り直す)
-	private static BufferedImage copyToPict(BufferedImage pict, BufferedImage src, int width, int height){
-		if(pict==null || pict.getWidth()!=width || pict.getHeight()!=height){
-			pict = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+	//srcの内容をカード/バックグラウンドのpictへコピーする(必要ならpictを作り直す)。
+	//変わった行だけを写し、何か変われば保存が必要の印(pictChanged)を付ける
+	private static BufferedImage copyToPict(OCardBase group, BufferedImage pict, BufferedImage src, int width, int height){
+		int[] from = directPixels(src);
+		boolean own = pict!=null && pict.getWidth()==width && pict.getHeight()==height && !PictureCache.isShared(pict);
+		int[] to = own && pict.getType()==BufferedImage.TYPE_INT_ARGB ? directPixels(pict) : null;
+		if(from!=null && to!=null && src.getWidth()==width && src.getHeight()==height){
+			for(int row=0; row<width*height; row+=width){
+				if(java.util.Arrays.mismatch(from, row, row+width, to, row, row+width)<0) continue;
+				System.arraycopy(from, row, to, row, width);
+				group.pictChanged = true;
+			}
+			return pict;
 		}
+		if(!own) pict = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = pict.createGraphics();
 		g.setComposite(AlphaComposite.Src);
 		g.drawImage(src, 0, 0, null);
 		g.dispose();
+		group.pictChanged = true;
 		return pict;
+	}
+
+	//ペイントモードに入ったとき: pictをペイント用バッファと同じ画素に揃える。以後はpictとの比較で変更が分かる
+	//(読み込んだ絵は形式も大きさもまちまちで、そのままでは比べられない)。ファイルは変更があるまで元のまま
+	static void adoptPictures(){
+		OCard card = PCARD.pc.stack.curCard;
+		if(card.pict!=null) card.pict = PaintUndo.copyInto(null, PCARD.pc.mainImg);
+		if(card.bg!=null && card.bg.pict!=null) card.bg.pict = PaintUndo.copyInto(null, PCARD.pc.bgImg);
 	}
 
 	//ペイントバッファの内容をカード/バックグラウンドのpictへ反映する(メモリ上のみ)。
 	//追加レイヤーはその場で編集しているので反映は要らないが、平らにした絵の
 	//キャッシュを捨て、アルファロックなら操作前の不透明度に戻す。
 	static public void toCdPict(){
+		toCdPict(true, true);
+	}
+	//ストロークの後: 描いたサーフェースの分だけ
+	static void surfaceToCdPict(){
+		if(owner==null) return;
+		BufferedImage surface = owner.getSurface();
+		toCdPict(surface==owner.mainImg, surface==owner.bgImg);
+	}
+	private static void toCdPict(boolean cardPicture, boolean bgPicture){
 		if(PaintTool.owner!=PCARDFrame.pc) return;
 		if(PCARD.pc.stack==null || PCARD.pc.stack.curCard==null || PaintTool.owner.mainImg==null) return;
 		OStack stack = PaintTool.owner.stack;
@@ -1686,22 +1795,24 @@ public class PaintTool {
 		if(card.bg!=null) card.bg.invalidateComposite();
 
 		//Cardピクチャ
-		if(isAllTransparent(PaintTool.owner.mainImg)){
-			card.pict = null;
-			card.bitmapName = null;
-		}
-		else{
-			card.pict = copyToPict(card.pict, PaintTool.owner.mainImg, stack.width, stack.height);
+		if(cardPicture){
+			if(isAllTransparent(PaintTool.owner.mainImg)){
+				card.pict = null;
+				card.bitmapName = null;
+			}
+			else{
+				card.pict = copyToPict(card, card.pict, PaintTool.owner.mainImg, stack.width, stack.height);
+			}
 		}
 
 		//Bgピクチャ
-		if(PaintTool.owner.bgImg==null || card.bg==null) return;
+		if(!bgPicture || PaintTool.owner.bgImg==null || card.bg==null) return;
 		if(isAllWhite(PaintTool.owner.bgImg)){
 			card.bg.pict = null;
 			card.bg.bitmapName = null;
 		}
 		else{
-			card.bg.pict = copyToPict(card.bg.pict, PaintTool.owner.bgImg, stack.width, stack.height);
+			card.bg.pict = copyToPict(card.bg, card.bg.pict, PaintTool.owner.bgImg, stack.width, stack.height);
 		}
 	}
 
@@ -1718,54 +1829,48 @@ public class PaintTool {
 	//ペイントツール同士の切り替えでは呼ばず、ペイントモードを抜けるときやカード移動、
 	//書き出しのときだけ呼ぶ。
 	static public void saveCdPictures(){
+		saveCdPicturesLater();
+		PictureSaver.flush();
+	}
+
+	//saveCdPicturesのファイルへの書き込みをPictureSaverに任せる。ペイントモードの出入りを繰り返すスクリプトは
+	//毎回これを通るので、変わっていない絵は書かず、変わった絵もここでは待たない
+	static public void saveCdPicturesLater(){
 		//カードピクチャにコピー(toCdPictはownerがカードのときだけ反映する)
 		if(PCARD.pc!=null && PCARD.pc.tool!=null) PaintTool.owner = PCARD.pc;
 		PaintTool.toCdPict();
 
 		if(PCARDFrame.pc==null || PCARDFrame.pc.stack==null || PCARDFrame.pc.stack.curCard==null) return;
 		if(PCARDFrame.pc.stack.file==null) return;
+		OCard card = PCARDFrame.pc.stack.curCard;
 
 		//ファイル保存 (card)
-		if(PCARDFrame.pc.stack.curCard.pict!=null){
-			if(PCARDFrame.pc.stack.curCard.bitmapName==null ||
-					PCARDFrame.pc.stack.curCard.bitmapName.length()==0 ||
-					!PCARDFrame.pc.stack.curCard.bitmapName.matches(".*\\.png"))
-			{
-				PCARDFrame.pc.stack.curCard.bitmapName = "BMAP_"+PCARDFrame.pc.stack.curCard.id+".png";
-				PCARDFrame.pc.stack.curCard.changed = true;
-			}
-			File file = new File(PCARDFrame.pc.stack.file.getParent()+File.separatorChar+PCARDFrame.pc.stack.curCard.bitmapName);
-			try {
-				StackProtection.writeImage(PCARDFrame.pc.stack, PCARDFrame.pc.stack.curCard.pict, file);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			PictureCache.invalidate(file);
-		}
+		savePicture(card);
 
 		//追加レイヤー
-		PaintLayers.save(PCARDFrame.pc.stack.curCard, PCARDFrame.pc.stack.file);
-		PaintLayers.save(PCARDFrame.pc.stack.curCard.bg, PCARDFrame.pc.stack.file);
+		PaintLayers.save(card, PCARDFrame.pc.stack.file);
+		PaintLayers.save(card.bg, PCARDFrame.pc.stack.file);
 
 		//ファイル保存 (bg)
-		if(PCARDFrame.pc.stack.curCard.bg!=null &&
-			PCARDFrame.pc.stack.curCard.bg.pict!=null)
-		{
-			if(PCARDFrame.pc.stack.curCard.bg.bitmapName==null ||
-					PCARDFrame.pc.stack.curCard.bg.bitmapName.length()==0 ||
-					!PCARDFrame.pc.stack.curCard.bg.bitmapName.matches(".*\\.png"))
-			{
-				PCARDFrame.pc.stack.curCard.bg.bitmapName = "BMAP_"+PCARDFrame.pc.stack.curCard.bg.id+".png";
-				PCARDFrame.pc.stack.curCard.bg.changed = true;
-			}
-			File file2 = new File(PCARDFrame.pc.stack.file.getParent()+File.separatorChar+PCARDFrame.pc.stack.curCard.bg.bitmapName);
-			try {
-				StackProtection.writeImage(PCARDFrame.pc.stack, PCARDFrame.pc.stack.curCard.bg.pict, file2);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			PictureCache.invalidate(file2);
+		if(card.bg!=null) savePicture(card.bg);
+	}
+
+	private static void savePicture(OCardBase group){
+		if(group.pict==null) return;
+		boolean png = group.bitmapName!=null && group.bitmapName.matches(".+\\.png");
+		//ペイントバッファが無いときはpictの変更をここでは見ていない
+		if(png && !group.pictChanged && PCARDFrame.pc.mainImg!=null) return;
+		if(!png){
+			group.bitmapName = "BMAP_"+group.id+".png";
+			group.changed = true;
 		}
+		File file = new File(PCARDFrame.pc.stack.file.getParent()+File.separatorChar+group.bitmapName);
+		try {
+			PictureSaver.save(PCARDFrame.pc.stack, group.pict, file);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		group.pictChanged = false;
 	}
 
 	//スポイト。透明度も含めて色を取得する。
@@ -1846,6 +1951,13 @@ class PaintUndo {
 		if(dst==null || dst.getWidth()!=src.getWidth() || dst.getHeight()!=src.getHeight()){
 			dst = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_ARGB);
 		}
+		if(src.getType()==BufferedImage.TYPE_INT_ARGB && dst.getType()==BufferedImage.TYPE_INT_ARGB){
+			int[] from = PaintTool.directPixels(src), to = PaintTool.directPixels(dst);
+			if(from!=null && to!=null){
+				System.arraycopy(from, 0, to, 0, src.getWidth()*src.getHeight());
+				return dst;
+			}
+		}
 		//RGBやインデックス画像も色を保ってARGBへ変換する。
 		dst.setRGB(0, 0, src.getWidth(), src.getHeight(),
 			src.getRGB(0, 0, src.getWidth(), src.getHeight(), null, 0, src.getWidth()), 0, src.getWidth());
@@ -1915,8 +2027,9 @@ class PaintUndo {
 			MyPanel.invalidateBlendCache();
 			return;
 		}
-		h.closePending(owner);
-		h.baseline = copyInto(null, owner.getSurface());
+		//前の操作のbaselineは差分を埋めれば今のサーフェースと同じ(全面のコピーが要らない)
+		BufferedImage current = h.closePending(owner);
+		h.baseline = current!=null ? current : copyInto(null, owner.getSurface());
 		h.baselineBackground = owner.isEditingBackground();
 		h.baselineLayer = activeLayerOf(owner, h.baselineBackground);
 		h.baselineFloat = f==null ? null : f.copy();
@@ -1939,12 +2052,14 @@ class PaintUndo {
 		if(owner!=null) owner.paintHistory.baselineLift = true;
 	}
 
-	//保留中の操作を履歴へ積む(何も変わっていなければ捨てる)
-	private void closePending(PCARDFrame owner){
-		if(baseline==null) return;
+	//保留中の操作を履歴へ積む(何も変わっていなければ捨てる)。今のサーフェースと同じ内容にしたbaselineを返す
+	//(その操作のレイヤーが今のサーフェースで、大きさも変わっていないとき。ほかはnull)
+	private BufferedImage closePending(PCARDFrame owner){
+		if(baseline==null) return null;
 		BufferedImage current = layerImage(owner, baselineBackground, baselineLayer);
 		Entry e = new Entry(baselineBackground, baselineLayer);
 		if(current!=null) diffInto(e, baseline, current);
+		BufferedImage upToDate = current!=null && current==owner.getSurface() ? patched(e, baseline, current) : null;
 		FloatingSelection f = owner.floating;
 		boolean floatChanged = (f==null) != (baselineFloat==null) || (f!=null && !f.sameAs(baselineFloat));
 		if(floatChanged){
@@ -1954,7 +2069,7 @@ class PaintUndo {
 		baseline = null;
 		baselineFloat = null;
 		baselineLift = false;
-		if(!e.changesSurface() && !floatChanged) return;
+		if(!e.changesSurface() && !floatChanged) return upToDate;
 		if(e.floatBefore!=null && e.floatAfter==null){
 			//確定・破棄: 持ち上げからここまでの一連のエントリを1つに畳む
 			java.util.ArrayList<Entry> session = new java.util.ArrayList<Entry>();
@@ -1966,11 +2081,25 @@ class PaintUndo {
 			}
 			session.add(e);
 			e = collapse(session, current);
-			if(e==null) return;
+			if(e==null) return upToDate;
 		}
 		past.addLast(e);
 		future.clear();
 		trim();
+		return upToDate;
+	}
+
+	//baselineのeの差分の範囲をcurrentから写す(大きさが変わった操作や、画素を直接扱えない画像はnull)
+	private static BufferedImage patched(Entry e, BufferedImage baseline, BufferedImage current){
+		if(e.beforeSize!=null) return null;
+		int[] a = PaintTool.directPixels(baseline), b = PaintTool.directPixels(current);
+		if(a==null || b==null) return null;
+		Rectangle r = e.rect;
+		if(r!=null){
+			int w = baseline.getWidth();
+			for(int y=r.y; y<r.y+r.height; y++) System.arraycopy(b, y*w+r.x, a, y*w+r.x, r.width);
+		}
+		return baseline;
 	}
 
 	//一連のエントリを、最初の前から最後の後までの1つのサーフェース差分にまとめる。
@@ -2025,13 +2154,16 @@ class PaintUndo {
 		int left = w, top = h, right = -1, bottom = -1;
 		for(int y=0; y<h; y++){
 			int row = y*w;
-			for(int x=0; x<w; x++){
+			int first = java.util.Arrays.mismatch(a, row, row+w, b, row, row+w);
+			if(first<0) continue;
+			if(first<left) left = first;
+			for(int x=w-1; x>right; x--){
 				if(a[row+x]==b[row+x]) continue;
-				if(x<left) left = x;
-				if(x>right) right = x;
-				if(y<top) top = y;
-				if(y>bottom) bottom = y;
+				right = x;
+				break;
 			}
+			if(y<top) top = y;
+			bottom = y;
 		}
 		if(right<left) return;
 		Rectangle r = new Rectangle(left, top, right-left+1, bottom-top+1);
@@ -2246,6 +2378,10 @@ class PencilTool implements toolInterface{
 	boolean shift;
 	int shiftx, shifty;
 
+	public PencilTool(){
+		PaintTool.tabletinit(); //ペンの消しゴム側(PaintTool.penEraser)
+	}
+
 	@Override
 	public String getName() {
 		return "Pencil";
@@ -2253,7 +2389,7 @@ class PencilTool implements toolInterface{
 
 	@Override
 	public void mouseUp(int x, int y) {
-		PaintTool.toCdPict();
+		PaintTool.surfaceToCdPict();
 		PaintTool.repaintOwner();
 
 		invert = false;
@@ -2372,7 +2508,6 @@ class PencilTool implements toolInterface{
 
 	@Override
 	public void end(){
-		//TabletManager.getDefaultManager().removeTabletListener(PaintTool.owner.mainPane, PaintTool.tabletListener);
 	}
 }
 
@@ -2386,8 +2521,11 @@ class PencilTool implements toolInterface{
 //を持つ「丸を並べる」ブラシにした。ストロークは常にプレビューレイヤーへ描き、
 //丸が重なっても濃くならないよう(Opacityがストローク全体で一様になるよう)
 //アルファは上書きでなく大きい方を残す。放したときにOpacity×透明度で
-//サーフェースへ合成する。筆圧(jtablet)は無いので、pressureは0.5=等倍のまま。
-//TODO 筆圧: Java側で使える筆圧API(JavaFX/JNI)が決まったらpressure→Size/Opacityを繋ぐ。
+//サーフェースへ合成する。
+//ペンタブレットの筆圧(TabletInput.pressure、0〜1。マウスならNaN=等倍)は、pressureSizeなら
+//直径、pressureOpacityなら丸ごとの濃さに効く。前の点からの間は筆圧を補間して丸を置くので、
+//太さは滑らかに変わる。丸ごとの濃さも「大きい方を残す」ので、重ねても濃くならない。
+//ペンの消しゴム側(eraser)で描くと、描いた範囲を筆圧どおりに消す。
 class BrushTool implements toolTabletInterface{
 	Cursor cursor;
 	boolean shift;
@@ -2399,10 +2537,12 @@ class BrushTool implements toolTabletInterface{
 	private float sx, sy, rawX, rawY;
 	//前の丸から進んだ距離(間隔に満たない分の持ち越し)
 	private float carry;
-	//丸のマスク(直径・硬さ・アンチエイリアスが同じ間は使い回す)
-	private static float[] dab;
-	private static int dabSide;
-	private static float dabDiameter, dabHardness;
+	//前の点の筆圧(NaN=マウス)。前の点からの間を補間する
+	private float lastPressure = Float.NaN;
+	//丸のマスク(直径ごと。硬さ・アンチエイリアスが変わったら作り直す)。筆圧で直径が
+	//変わり続けるので1つでなく直径ごとに持つ(直径はdiameterで0.25刻みに丸めてある)
+	private static final java.util.HashMap<Float, float[]> dabs = new java.util.HashMap<Float, float[]>();
+	private static float dabHardness = -1;
 	private static boolean dabAA;
 
 	@Override
@@ -2414,17 +2554,29 @@ class BrushTool implements toolTabletInterface{
 		PaintTool.tabletinit();
 	}
 
-	//直径(brushSizeが直径。pressure 0.5で等倍)
+	//直径(brushSizeが直径)。筆圧が太さに効くなら、筆圧0で1割、1で等倍
 	static float diameter(float pressure){
 		if(PaintTool.classicBrush>0) return 18f; //HyperCardのブラシは16x16に収まる(再描画範囲用)
-		return Math.max(1f, PaintTool.brushSize*pressure*2.0f);
+		if(Float.isNaN(pressure) || !PaintTool.pressureSize) return Math.max(1f, PaintTool.brushSize);
+		float d = PaintTool.brushSize*(0.1f+0.9f*pressure);
+		return Math.max(1f, Math.round(d*4f)/4f);
+	}
+
+	//丸ごとの濃さ(0〜1)。筆圧が不透明度に効くなら筆圧そのもの
+	static float dabStrength(float pressure){
+		if(Float.isNaN(pressure) || !PaintTool.pressureOpacity) return 1f;
+		return Math.max(0.02f, pressure);
 	}
 
 	//丸のマスク。中心からの距離r(半径Rで正規化したt=r/R)に対して、t<=hardnessは1、
 	//t>=1は0、その間は直線で落とす。硬さ100%でアンチエイリアスがオフなら境界で
 	//1/0に切る(HyperCardのブラシと同じ)。
 	static float[] dabMask(float diameter, float hardness, boolean aa){
-		if(dab!=null && dabDiameter==diameter && dabHardness==hardness && dabAA==aa) return dab;
+		if(dabHardness!=hardness || dabAA!=aa || dabs.size()>256){
+			dabs.clear(); dabHardness = hardness; dabAA = aa;
+		}
+		float[] cached = dabs.get(diameter);
+		if(cached!=null) return cached;
 		int side = Math.max(1, (int)Math.ceil(diameter));
 		float[] m = new float[side*side];
 		float R = diameter/2f, c = side/2f;
@@ -2444,14 +2596,14 @@ class BrushTool implements toolTabletInterface{
 				m[x+y*side] = cov;
 			}
 		}
-		dab = m; dabSide = side; dabDiameter = diameter; dabHardness = hardness; dabAA = aa;
+		dabs.put(diameter, m);
 		return m;
 	}
 
-	//丸を1つ置く(アルファは大きい方を残す)
-	static void stamp(BufferedImage buf, float cx, float cy, float diameter, int argb, BufferedImage pattern, boolean eraser){
+	//丸を1つ置く(アルファは大きい方を残す)。strengthは丸ごとの濃さ(筆圧、1=そのまま)
+	static void stamp(BufferedImage buf, float cx, float cy, float diameter, float strength, int argb, BufferedImage pattern, boolean eraser){
 		float[] m = dabMask(diameter, Math.max(0f, Math.min(1f, PaintTool.brushHardness/100f)), PaintTool.antialias);
-		int side = dabSide;
+		int side = Math.max(1, (int)Math.ceil(diameter));
 		int ox = Math.round(cx-side/2f), oy = Math.round(cy-side/2f);
 		int w = buf.getWidth(), h = buf.getHeight();
 		int[] px = PaintTool.directPixels(buf);
@@ -2471,7 +2623,7 @@ class BrushTool implements toolTabletInterface{
 					color = pp!=null ? pp[mx+my*pw] : pattern.getRGB(mx, my);
 				}
 				if(eraser) color = 0xFFFFFFFF;
-				int a = Math.round(((color>>>24)&0xFF)*cov);
+				int a = Math.round(((color>>>24)&0xFF)*cov*strength);
 				if(a<=0) continue;
 				int i = bx+by*w;
 				int old = px!=null ? px[i] : buf.getRGB(bx, by);
@@ -2484,7 +2636,8 @@ class BrushTool implements toolTabletInterface{
 
 	//(x0,y0)から(x1,y1)まで、間隔ごとに丸を置く。対称描画では対称な位置にも同じ
 	//丸を置く(鏡映・回転は距離を変えないので持ち越し距離carryは共通)。
-	private void dabLine(float x0, float y0, float x1, float y1, float diameter, int argb, BufferedImage pattern, boolean eraser){
+	//筆圧p0(始点)からp1(終点)の間は補間する(NaN=マウス)。
+	private void dabLine(float x0, float y0, float x1, float y1, float p0, float p1, int argb, BufferedImage pattern, boolean eraser){
 		AffineTransform[] ts = PaintTool.symmetryTransforms();
 		if(PaintTool.classicBrush>0){
 			int[] shape = PaintTool.CLASSIC_BRUSHES[PaintTool.classicBrush-1];
@@ -2501,7 +2654,7 @@ class BrushTool implements toolTabletInterface{
 			carry = carry0;
 			float[] a = PaintTool.symPoint(t, x0, y0);
 			float[] b = PaintTool.symPoint(t, x1, y1);
-			dabLine1(a[0], a[1], b[0], b[1], diameter, argb, pattern, eraser);
+			dabLine1(a[0], a[1], b[0], b[1], p0, p1, argb, pattern, eraser);
 		}
 	}
 
@@ -2546,22 +2699,31 @@ class BrushTool implements toolTabletInterface{
 		}
 	}
 
-	private void dabLine1(float x0, float y0, float x1, float y1, float diameter, int argb, BufferedImage pattern, boolean eraser){
+	private void dabLine1(float x0, float y0, float x1, float y1, float p0, float p1, int argb, BufferedImage pattern, boolean eraser){
 		BufferedImage buf = PaintTool.previewBuf();
-		float spacing = Math.max(0.5f, diameter*Math.max(1, PaintTool.brushSpacing)/100f);
 		float dx = x1-x0, dy = y1-y0;
 		float len = (float)Math.hypot(dx, dy);
 		if(len<=0f){
-			if(carry<0f){ stamp(buf, x0, y0, diameter, argb, pattern, eraser); carry = 0f; }
+			if(carry<0f){ stamp(buf, x0, y0, diameter(p1), dabStrength(p1), argb, pattern, eraser); carry = 0f; }
 			return;
 		}
+		boolean varying = !Float.isNaN(p0) && !Float.isNaN(p1) && p0!=p1;
+		float spacing = spacing(diameter(p0));
 		float t = carry<0f ? 0f : spacing-carry; //次の丸までの距離
-		if(carry<0f){ stamp(buf, x0, y0, diameter, argb, pattern, eraser); t = spacing; }
+		if(carry<0f){ stamp(buf, x0, y0, diameter(p0), dabStrength(p0), argb, pattern, eraser); t = spacing; }
 		while(t<=len){
-			stamp(buf, x0+dx*t/len, y0+dy*t/len, diameter, argb, pattern, eraser);
+			float p = varying ? p0+(p1-p0)*t/len : p1;
+			float d = diameter(p);
+			stamp(buf, x0+dx*t/len, y0+dy*t/len, d, dabStrength(p), argb, pattern, eraser);
+			spacing = spacing(d);
 			t += spacing;
 		}
 		carry = len-(t-spacing);
+	}
+
+	//丸の間隔(直径に対するbrushSpacing%)
+	private static float spacing(float diameter){
+		return Math.max(0.5f, diameter*Math.max(1, PaintTool.brushSpacing)/100f);
 	}
 
 	private int strokeColor(){
@@ -2575,7 +2737,7 @@ class BrushTool implements toolTabletInterface{
 
 	@Override
 	public void mouseUp(int x, int y) {
-		penUp(x, y, 0.5f, false);
+		penUp(x, y, TabletInput.pressure(), TabletInput.eraser());
 	}
 
 	@Override
@@ -2583,16 +2745,19 @@ class BrushTool implements toolTabletInterface{
 		if(stroking){
 			//放した点まで(手ぶれ補正の残りも)描き切る
 			if(shift){ if(shiftx==-1) y = shifty; else if(shifty==-1) x = shiftx; }
+			//放した点には筆圧が無い(0)ので、直前の筆圧のまま描く
 			if(sx!=x || sy!=y){
-				float d = diameter(pressure);
-				dabLine(sx, sy, x, y, d, strokeColor(), strokePattern(eraser), eraser);
-				PaintTool.repaintOwnerRect(PaintTool.symmetricBounds(PencilTool.strokeBounds(sx, sy, x, y, d, 1)));
+				dabLine(sx, sy, x, y, lastPressure, lastPressure, strokeColor(), strokePattern(previewEraser), previewEraser);
+				PaintTool.repaintOwnerRect(PaintTool.symmetricBounds(PencilTool.strokeBounds(sx, sy, x, y, diameter(Float.NaN), 1)));
 				sx = rawX = x; sy = rawY = y;
 			}
 			//プレビューレイヤーをサーフェースに書き込む
 			if(previewEraser){
+				//ペンの消しゴム側: プレビューの濃さだけ消す。不透明な層(バックグラウンドの絵)は
+				//消しゴムツールと同じく白へ、ほかは透明へ寄せる
 				BufferedImage preview = PaintTool.owner.previewBuf;
 				BufferedImage surface = PaintTool.owner.getSurface();
+				boolean white = PaintTool.owner.opaqueSurface();
 				int width = surface.getWidth();
 				int height = surface.getHeight();
 				for(int h=0; h<height; h++){
@@ -2600,9 +2765,15 @@ class BrushTool implements toolTabletInterface{
 						int src = preview.getRGB(w, h);
 						if((src&0xFF000000)==0) continue;
 						int tgt = surface.getRGB(w, h);
-						int a = (tgt>>>24);
-						a = (a * (0xFF-(src>>>24)))/0xFF;
-						surface.setRGB(w, h, (a<<24) | (tgt&0x00FFFFFF));
+						int k = src>>>24;
+						if(white){
+							int r = ((tgt>>16)&0xFF), g = ((tgt>>8)&0xFF), bl = (tgt&0xFF);
+							r += (0xFF-r)*k/0xFF; g += (0xFF-g)*k/0xFF; bl += (0xFF-bl)*k/0xFF;
+							surface.setRGB(w, h, 0xFF000000 | (r<<16) | (g<<8) | bl);
+						}else{
+							int a = ((tgt>>>24) * (0xFF-k))/0xFF;
+							surface.setRGB(w, h, (a<<24) | (tgt&0x00FFFFFF));
+						}
 					}
 				}
 				PaintTool.endPreview();
@@ -2613,7 +2784,7 @@ class BrushTool implements toolTabletInterface{
 			stroking = false;
 		}
 
-		PaintTool.toCdPict();
+		PaintTool.surfaceToCdPict();
 		PaintTool.repaintOwner();
 	}
 
@@ -2624,7 +2795,7 @@ class BrushTool implements toolTabletInterface{
 
 	@Override
 	public void mouseDown(int x, int y) {
-		penDown(x, y, 0.501f, false);
+		penDown(x, y, TabletInput.pressure(), TabletInput.eraser());
 	}
 
 	@Override
@@ -2646,6 +2817,7 @@ class BrushTool implements toolTabletInterface{
 
 		sx = rawX = x; sy = rawY = y;
 		carry = -1f; //最初の丸を置く
+		lastPressure = pressure;
 
 		PaintTool.lastx[0]=x;
 		PaintTool.lasty[0]=y;
@@ -2654,7 +2826,7 @@ class BrushTool implements toolTabletInterface{
 
 	@Override
 	public boolean mouseWithin(int x, int y) {
-		return penWithin(x, y, 0.5f);
+		return penWithin(x, y, Float.NaN);
 	}
 
 	public boolean penWithin(float x, float y, float pressure){
@@ -2669,7 +2841,7 @@ class BrushTool implements toolTabletInterface{
 		else{
 			PaintTool.owner.mainPane.setCursor(cursor);
 		}
-		return penStillDown(x, y, 0.5f, false);
+		return penStillDown(x, y, TabletInput.pressure(), TabletInput.eraser());
 	}
 
 	@Override
@@ -2698,11 +2870,13 @@ class BrushTool implements toolTabletInterface{
 			ny = sy+(y-sy)*pull;
 		}
 
-		float d = diameter(pressure);
-		dabLine(sx, sy, nx, ny, d, strokeColor(), strokePattern(eraser), eraser);
+		//消しゴム側かはストロークの最初に決まる(previewEraser)
+		dabLine(sx, sy, nx, ny, lastPressure, pressure, strokeColor(), strokePattern(previewEraser), previewEraser);
+		lastPressure = pressure;
 
-		//変更した範囲だけ再描画(paintComponentが半透明合成してくれる)
-		PaintTool.repaintOwnerRect(PaintTool.symmetricBounds(PencilTool.strokeBounds(sx, sy, nx, ny, d, 1)));
+		//変更した範囲だけ再描画(paintComponentが半透明合成してくれる)。筆圧で細くなっても
+		//等倍の直径より太くはならない
+		PaintTool.repaintOwnerRect(PaintTool.symmetricBounds(PencilTool.strokeBounds(sx, sy, nx, ny, diameter(Float.NaN), 1)));
 		sx = nx; sy = ny;
 
 		PaintTool.lastTime = System.currentTimeMillis();
@@ -2783,7 +2957,7 @@ class EraserTool implements toolTabletInterface{
 			stroking = false;
 		}
 
-		PaintTool.toCdPict();
+		PaintTool.surfaceToCdPict();
 		PaintTool.repaintOwner();
 	}
 
@@ -3095,16 +3269,28 @@ class PaintBucketTool implements toolInterface{
 
 		//パターンを適用
 		PaintTool.setPattern(false);
-		DataBuffer fillbuf = newSurface.getRaster().getDataBuffer();
-		DataBuffer patbuf = PaintTool.pat.getRaster().getDataBuffer();
 		int patW = PaintTool.pat.getWidth();
 		int patH = PaintTool.pat.getHeight();
-		for(int y=0; y<height; y++){
-			for(int x=0; x<width; x++){
-				int c1 = fillbuf.getElem(0, x+y*width);
-				if((c1 & 0xFF000000) != 0){
-					int c2 = patbuf.getElem(x%patW + (y%patH)*patW);
-					fillbuf.setElem(0, x+y*width, c2);
+		int[] fillPixels = PaintTool.directPixels(newSurface);
+		int[] patPixels = PaintTool.directPixels(PaintTool.pat);
+		if(fillPixels!=null && patPixels!=null){
+			for(int y=0; y<height; y++){
+				int row = y*width, patRow = (y%patH)*patW;
+				for(int x=0; x<width; x++){
+					if((fillPixels[row+x] & 0xFF000000) != 0) fillPixels[row+x] = patPixels[x%patW + patRow];
+				}
+			}
+		}
+		else{
+			DataBuffer fillbuf = newSurface.getRaster().getDataBuffer();
+			DataBuffer patbuf = PaintTool.pat.getRaster().getDataBuffer();
+			for(int y=0; y<height; y++){
+				for(int x=0; x<width; x++){
+					int c1 = fillbuf.getElem(0, x+y*width);
+					if((c1 & 0xFF000000) != 0){
+						int c2 = patbuf.getElem(x%patW + (y%patH)*patW);
+						fillbuf.setElem(0, x+y*width, c2);
+					}
 				}
 			}
 		}
@@ -3140,7 +3326,7 @@ class PaintBucketTool implements toolInterface{
 		}
 		PaintTool.endPreview();
 
-		PaintTool.toCdPict();
+		PaintTool.surfaceToCdPict();
 		PaintTool.repaintOwner();
 	}
 
@@ -3385,7 +3571,7 @@ class SmudgeTool implements toolInterface{
 			mouseStillDown(x, y);
 			stroking = false;
 		}
-		PaintTool.toCdPict();
+		PaintTool.surfaceToCdPict();
 		PaintTool.repaintOwner();
 	}
 
@@ -3548,7 +3734,7 @@ class StampTool implements toolInterface{
 			stroking = false;
 			from = null;
 		}
-		PaintTool.toCdPict();
+		PaintTool.surfaceToCdPict();
 		PaintTool.repaintOwner();
 	}
 
@@ -3599,6 +3785,10 @@ class StampTool implements toolInterface{
 class SprayTool implements toolInterface{
 	private Random rng = new Random();
 
+	public SprayTool(){
+		PaintTool.tabletinit(); //筆圧で濃さが変わる
+	}
+
 	@Override
 	public String getName(){
 		return "Spray Can";
@@ -3609,6 +3799,9 @@ class SprayTool implements toolInterface{
 	private void sprayAt(int x, int y){
 		int radius = Math.max(2, PaintTool.sprayRadius);
 		int dots = Math.max(2, radius/2);
+		//ペンの筆圧: 強く押すほど濃く(筆圧0.5で今までの濃さ)
+		float pressure = TabletInput.pressure();
+		if(!Float.isNaN(pressure)) dots = Math.max(1, Math.round(dots*2f*pressure));
 
 		Graphics2D g2 = PaintTool.owner.getSurface().createGraphics();
 		if(PaintTool.antialias){
@@ -3656,7 +3849,7 @@ class SprayTool implements toolInterface{
 	@Override
 	public void mouseUp(int x, int y) {
 		if(GUI.key[12]>0) return;
-		PaintTool.toCdPict();
+		PaintTool.surfaceToCdPict();
 		PaintTool.repaintOwner();
 	}
 
@@ -3747,6 +3940,16 @@ abstract class ShapeToolBase implements toolInterface{
 		lastClipRect = clipRect;
 	}
 
+	//毎回全体を描き直す図形か(前回の描画を消してから描くので、途中の位置は結果に残らず、絵はclipRectの中にある)
+	protected boolean redrawnWhole(){
+		return false;
+	}
+
+	//ドラッグの途中を省いても同じ絵になるか(Draw Multipleは途中の図形が残る)
+	boolean endPointIsEnough(){
+		return redrawnWhole() && !(PaintTool.drawMultiple && supportsMultiple());
+	}
+
 	//前回と今回の図形の範囲(対称描画では写した先も含む)
 	private Rectangle dirtyRect(Rectangle clipRect){
 		Rectangle r = (lastClipRect==null || lastClipRect.isEmpty()) ? clipRect : clipRect.union(lastClipRect);
@@ -3767,6 +3970,16 @@ abstract class ShapeToolBase implements toolInterface{
 
 	//プレビューをサーフェースへ確定する
 	protected void commitShape(){
+		if(previewing && lastClipRect!=null && endPointIsEnough()){
+			//図形のある範囲だけ合成して描き直す(大量の図形を描くスクリプトでは全面の処理が図形の数だけ積もる)
+			Rectangle drawn = dirtyRect(lastClipRect);
+			drawn.grow(2, 2);
+			PaintTool.commitPreview(PaintTool.alpha/100.0F, drawn);
+			previewing = false;
+			lastClipRect = null;
+			PaintTool.repaintOwnerRect(drawn);
+			return;
+		}
 		if(previewing){
 			PaintTool.commitPreview(PaintTool.alpha/100.0F);
 			previewing = false;
@@ -3883,6 +4096,9 @@ abstract class ShapeToolBase implements toolInterface{
 //矩形
 //-------------------
 class RectTool extends ShapeToolBase{
+	@Override
+	protected boolean redrawnWhole(){ return true; }
+
 	private Rectangle srcRect;
 
 	@Override
@@ -3945,6 +4161,9 @@ class RectTool extends ShapeToolBase{
 //HyperCardの角丸矩形は、角の大きさを変更するオプションを持たない。
 //ここでも固定の16px相当にし、それ以外の操作はRectToolと同じにする。
 class RoundRectTool extends ShapeToolBase{
+	@Override
+	protected boolean redrawnWhole(){ return true; }
+
 	static final float ARC = 16.0f;
 	private Rectangle srcRect;
 
@@ -4002,6 +4221,9 @@ class RoundRectTool extends ShapeToolBase{
 //楕円
 //-------------------
 class OvalTool extends ShapeToolBase{
+	@Override
+	protected boolean redrawnWhole(){ return true; }
+
 	private Rectangle srcRect;
 
 	@Override
@@ -4169,6 +4391,9 @@ class CurveTool extends ShapeToolBase{
 //正多角形
 //-------------------
 class RegPolyTool extends ShapeToolBase{
+	@Override
+	protected boolean redrawnWhole(){ return true; }
+
 	private Point center;
 
 	@Override
@@ -4374,6 +4599,9 @@ class PolyTool extends ShapeToolBase{
 //線分
 //-------------------
 class LineTool extends ShapeToolBase{
+	@Override
+	protected boolean redrawnWhole(){ return true; }
+
 	private Rectangle srcRect;
 
 	@Override
@@ -5405,37 +5633,3 @@ class PaintIdle {
 	}
 }
 
-
-/*class MyTabletListener implements TabletListener
-{
-	toolTabletInterface tool;
-	boolean in_stroke = false;
-
-	@Override
-	public void cursorDragged(TabletEvent event) {
-		if(event.getPressure() == 0.0) {
-			in_stroke = false;
-			return;
-		}
-		boolean eraser = (event.getDevice().getType() == cello.jtablet.TabletDevice.Type.ERASER);
-
-		if(!in_stroke){
-			tool.penDown(event.getFloatX(), event.getFloatY(), event.getPressure(), eraser);
-			in_stroke = true;
-		}
-    	tool.penStillDown(event.getFloatX(), event.getFloatY(), event.getPressure(), eraser);
-		PaintTool.lastx[1] = PaintTool.lastx[0];
-		PaintTool.lasty[1] = PaintTool.lasty[0];
-		PaintTool.lastx[0] = event.getFloatX();
-		PaintTool.lasty[0] = event.getFloatY();
-	}
-
-	@Override
-	public void cursorReleased(TabletEvent event) {
-		if(in_stroke){
-			boolean eraser = (event.getDevice().getType() == cello.jtablet.TabletDevice.Type.ERASER);
-			tool.penUp(event.getFloatX(), event.getFloatY(), event.getPressure(), eraser);
-			in_stroke = false;
-		}
-	}
-}*/

@@ -628,8 +628,10 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 				restoreRegisters68(saved68);
 				// an OS trap patched with PowerPC code (QuickTime patches NewPtr: procInfo "D1 trap word, D0 size -> A0") passes the
 				// trap on with CallOSTrapUniversalProc and returns only A0; the 68K caller then reads the result code in D0, which the
-				// 68K context shared with the nested call carries - the Speech Manager's INIT saw the size there and stopped (SysError 25)
-				if(nested>=0&&resultLocation!=0)cpu68.d[0]=(int)nested;
+				// 68K context shared with the nested call carries - the Speech Manager's INIT saw the size there and stopped (SysError 25).
+				// So with no result at all: QuickTime's ReserveMem patch ("D1 trap word, D0 size", void) left the size in D0, and the
+				// Events sample (Dev CD III) took it for MemErr and ended up at $100
+				if(nested>=0)cpu68.d[0]=(int)nested;
 				if(resultSize>0)writeReg(resultLocation,result,resultSize);
 				c.a[7]=sp+4;c.pc=returnAddress;
 				return true;}
@@ -1316,6 +1318,8 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	 * count in these units for PowerPC programs.
 	 */
 	static final int REAL_MIPS=233;
+	/** The weighed PowerPC instructions not charged yet (a fraction). */
+	private double weighed;
 
 	/** Timers, deferred work and the speed throttle, as the 68K emulator's poll; PowerPC instructions count one for one (MacApp68k.mips is in PowerPC MIPS here). */
 	@Override public void poll(PpcCpu c) throws M68kException {
@@ -1326,7 +1330,9 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		long delta=c.instructions-polledInstructions;polledInstructions=c.instructions;
 		// a 68K program's pace counts 68K instructions: PowerPC code it calls (a fat library such as StuffIt Expander's
 		// UnStuffEnginePPC) runs natively on the Power Mac: REAL_MIPS PowerPC instructions in the time of DEFAULT_MIPS 68K ones
-		cpu68.charge(app==null||!app.powerPC?delta*Toolbox68k.DEFAULT_MIPS/REAL_MIPS:delta); // an external's too (HyperCard's 68K world)
+		// a PowerPC program's own instructions weigh Toolbox68k.PPC_WEIGHT against its Toolbox's (the throttle divides by PPC_TOOLBOX_WEIGHT)
+		if(app!=null&&app.powerPC){weighed+=delta*Toolbox68k.PPC_WEIGHT/Toolbox68k.PPC_TOOLBOX_WEIGHT;long whole=(long)weighed;weighed-=whole;cpu68.charge(whole);}
+		else cpu68.charge(delta*Toolbox68k.DEFAULT_MIPS/REAL_MIPS); // an external's too (HyperCard's 68K world)
 		if(STATS){long t=System.nanoTime();toolbox.poll(cpu68);statPollNanos+=System.nanoTime()-t;}
 		else toolbox.poll(cpu68);
 	}
@@ -1353,6 +1359,7 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	}
 	/** -Dhzppc.statsTop=N: how many native calls each -Dhzppc.stats line lists (most time first). */
 	private static final int STATS_TOP=Integer.getInteger("hzppc.statsTop",8);
+	private long statJitRuns,statJitInterpreted;
 	private void statPoll(PpcCpu c){
 		statSample(c.pc);
 		long now=System.nanoTime();
@@ -1360,7 +1367,13 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		if(now-statStart<1_000_000_000L)return;
 		double secs=(now-statStart)/1e9;
 		StringBuilder sb=new StringBuilder(String.format("[ppc stats] %.1f PPC MIPS, %.1f 68K MIPS, poll+throttle %.0f ms;",(c.instructions-statInstructions)/secs/1e6,(cpu68.instructions-statInstructions68)/secs/1e6,statPollNanos/1e6/secs));
-		if(c.jit!=null)sb.append(' ').append(c.jit.statistics()).append(';');
+		if(c.jit!=null){sb.append(' ').append(c.jit.statistics()).append(String.format(", %.2fM region runs/s, %.1f MIPS interpreted",(c.jitRuns-statJitRuns)/secs/1e6,(c.jitInterpreted-statJitInterpreted)/secs/1e6)).append(';');
+			statJitRuns=c.jitRuns;statJitInterpreted=c.jitInterpreted;
+			if(c.jitEntrySamples!=null&&!c.jitEntrySamples.isEmpty()){
+				java.util.List<java.util.Map.Entry<Integer,int[]>> l=new java.util.ArrayList<java.util.Map.Entry<Integer,int[]>>(c.jitEntrySamples.entrySet());
+				l.sort((a,b)->b.getValue()[0]-a.getValue()[0]);
+				sb.append(" entries:");for(int k=0;k<12&&k<l.size();k++)sb.append(String.format(" %08X%s %d",l.get(k).getKey()&~1,(l.get(k).getKey()&1)!=0?"i":"",l.get(k).getValue()[0]));sb.append(';');
+				c.jitEntrySamples.clear();}}
 		Integer[] order=new Integer[statCount.length];for(int i=0;i<order.length;i++)order[i]=i;
 		java.util.Arrays.sort(order,(a,b)->Long.compare(statNanos[b],statNanos[a]));
 		for(int k=0;k<STATS_TOP&&k<order.length&&statCount[order[k]]>0;k++){int i=order[k];sb.append(String.format(" %s %d/%.0fms",nativeName(i),statCount[i],statNanos[i]/1e6/secs));}

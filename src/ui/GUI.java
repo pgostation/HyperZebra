@@ -212,6 +212,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			//修飾キーの押下/解放はダイアログ表示中などに取りこぼすので、どのキーイベントでも実際の状態に合わせる
 			if(e.getID()==KeyEvent.KEY_RELEASED || e.getID()==KeyEvent.KEY_PRESSED) syncModifiers(e);
 			if(inCardWindow(e) && stackKeys(e)) return true;
+			if(inCardWindow(e) && fieldKey(e)) return true;
 			//フォーカス移動(Shift-Tab、Ctrl-Tab)に取られる前に
 			if(e.getID()==KeyEvent.KEY_PRESSED && inCardWindow(e) && tabShortcut(e)){ e.consume(); return true; }
 			if(isSystemMenuKeyWhileScriptOwnsKeys(e)){
@@ -242,8 +243,12 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			if(!(e instanceof MouseEvent)) return;
 			int id = e.getID();
 			if(id==MouseEvent.MOUSE_PRESSED || id==MouseEvent.MOUSE_RELEASED) syncModifiers((MouseEvent)e);
-			if(id==MouseEvent.MOUSE_PRESSED){ mouseDown = true; mousePresses++; if(!TTalk.idle) handlerPress = mousePresses; noteClickLoc((MouseEvent)e); }
-			else if(id==MouseEvent.MOUSE_RELEASED) mouseDown = false;
+			if(id==MouseEvent.MOUSE_PRESSED){
+				mouseDown = true; mousePresses++; if(!TTalk.idle) handlerPress = mousePresses; noteClickLoc((MouseEvent)e);
+				Component on = ((MouseEvent)e).getComponent();
+				if(PCARD.pc!=null && (on==PCARD.pc || SwingUtilities.getWindowAncestor(on)==PCARD.pc)) dropSelectedRange();
+			}
+			else if(id==MouseEvent.MOUSE_RELEASED){ mouseDown = false; releaseOfRebuiltPart((MouseEvent)e); }
 		}, AWTEvent.MOUSE_EVENT_MASK);
 		globalMouseWatcherInstalled = true;
 	}
@@ -290,6 +295,59 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		}
 		if(!ownModifierKey(e)) return false;
 		ownKeyTyping = e.getID()==KeyEvent.KEY_PRESSED;
+		e.consume();
+		return true;
+	}
+
+	/** The key press just used up by {@link #fieldKey}: its character is not typed */
+	private static boolean fieldCommandTyping;
+	/**
+	 * Keys in a field being typed in, which has the focus so that the card window's own listener hears nothing: Tab, Return and
+	 * Enter are the commands tabKey, returnInField and enterInField, and a character is keyDown when a handler is there to get
+	 * it. They go through the message path from the field, HyperCard's own action comes at its end (TTalk.keyboardCommand).
+	 * The text component put a tab or a return into the text and no script heard of them (HyperPiece 2 文字を抜き出す加える,
+	 * リライタブルロックフィールド). Returns whether the event was used up.
+	 */
+	private static boolean fieldKey(KeyEvent e){
+		if(e.getID()==KeyEvent.KEY_TYPED && fieldCommandTyping){ fieldCommandTyping = false; e.consume(); return true; }
+		if(e.getID()!=KeyEvent.KEY_PRESSED && e.getID()!=KeyEvent.KEY_TYPED) return false;
+		if((e.getModifiersEx()&(InputEvent.META_DOWN_MASK|InputEvent.CTRL_DOWN_MASK|InputEvent.ALT_DOWN_MASK))!=0) return false;
+		PCARD pc = PCARD.pc;
+		if(pc==null || pc.tool!=null || AuthTool.tool!=null) return false;
+		OField fld = e.getComponent() instanceof MyTextArea ? ((MyTextArea)e.getComponent()).fldData : null;
+		if(fld==null || fld.enabled){
+			//the card window, a locked field or a button that kept the focus after a click: Tab and Return are the card's. Swing
+			//takes Tab to go round the parts before any listener hears it (カレンダー's tabKey)
+			if(e.getComponent() instanceof javax.swing.text.JTextComponent && fld==null) return false;
+			if(e.getID()!=KeyEvent.KEY_PRESSED || e.isShiftDown() || (e.getKeyCode()!=KeyEvent.VK_TAB && e.getKeyCode()!=KeyEvent.VK_ENTER)) return false;
+			if(e.getComponent()==pc && e.getKeyCode()==KeyEvent.VK_ENTER) return false; //its own listener has it
+			fieldCommandTyping = true;
+			gui.keyPressed(e);
+			e.consume();
+			return true;
+		}
+		if(fld.tableStyle || fld.outlineStyle) return false;
+		if(e.getID()==KeyEvent.KEY_PRESSED && e.getKeyCode()==KeyEvent.VK_ESCAPE){
+			//Esc in the open field is no text: keyDown, then go back as on the card (HC J-2.3)
+			GUI.clickField = fld;
+			TTalk.callKeyDown(Character.toString((char)27), "back", fld);
+			e.consume();
+			return true;
+		}
+		String command = null;
+		if(e.getID()==KeyEvent.KEY_TYPED){
+			char c = e.getKeyChar();
+			if(c>=32 && c!=127 && TTalk.handlerInPath(fld, "keydown")) command = "keyDown "+TTalk.quoteLiteral(String.valueOf(c));
+			if(command==null) return false;
+		}else{
+			if(e.isShiftDown()) return false;
+			if(e.getKeyCode()==KeyEvent.VK_TAB) command = "tabKey";
+			else if(e.getKeyCode()==KeyEvent.VK_ENTER) command = e.getKeyLocation()==KeyEvent.KEY_LOCATION_NUMPAD ? "enterInField" : "returnInField";
+			else return false;
+			fieldCommandTyping = true;
+		}
+		GUI.clickField = fld;
+		TTalk.fieldKeyCommand(command, fld);
 		e.consume();
 		return true;
 	}
@@ -352,6 +410,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		if(shortcut==SCRIPT_SHORTCUT_ABORT) {
 			if(!PCARDFrame.pc.stack.cantAbort) {
 				TTalk.requestUserAbort();
+				GDialog.closeForAbort(SwingUtilities.getRoot(e.getComponent()));
 			}
 		}
 		else {
@@ -428,6 +487,87 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		}
 		mouseDown = true;
 	}
+
+    /** mouseEnter and mouseLeave that fell into a handler: HyperCard compares the part under the pointer when it is idle again, so
+     *  the pointer going straight from one button to the next sends both. HyperZebra hears the two in one event-thread turn and the
+     *  mouseLeave just queued made the mouseEnter fall away (ボタンのfield活用: a keyboard of adjacent buttons named on entering). */
+    private static OObject deferredLeave, deferredEnter;
+    static void pointerEntered(OObject part){
+    	if(part==null) return;
+    	synchronized(GUI.class){
+    		if(TTalk.idle){ TTalk.CallMessage("mouseEnter", part); return; }
+    		if(part==deferredLeave) deferredLeave = null; else deferredEnter = part;
+    	}
+    }
+    static void pointerLeft(OObject part){
+    	if(part==null) return;
+    	synchronized(GUI.class){
+    		if(TTalk.idle){ TTalk.CallMessage("mouseLeave", part); return; }
+    		if(part==deferredEnter) deferredEnter = null; else if(deferredLeave==null) deferredLeave = part;
+    	}
+    }
+    /** From the idle thread: what the handler that just ended kept back. */
+    static void flushPointerMessages(){
+    	OObject leave, enter;
+    	synchronized(GUI.class){
+    		if(deferredLeave==null && deferredEnter==null) return;
+    		leave = deferredLeave; enter = deferredEnter;
+    		deferredLeave = null; deferredEnter = null;
+    	}
+    	if(leave!=null && GButton.onCurrentCard(leave)) TTalk.CallMessage("mouseLeave", leave);
+    	if(enter!=null && GButton.onCurrentCard(enter)) TTalk.CallMessage("mouseEnter", enter);
+    }
+
+    /** The part whose press sent mouseDown and its component: a handler can rebuild the card under the press (set the style of a
+     *  field does, フィールド属性変更), and the release then reaches no listener: HyperCard still sends the part its mouseUp. */
+    private static volatile OObject pressedPart;
+    private static volatile Component pressedView;
+    static void notePressedPart(OObject part, Component view){ pressedPart = part; pressedView = view; }
+    private static void releaseOfRebuiltPart(MouseEvent e){
+    	OObject part = pressedPart;
+    	Component view = pressedView;
+    	pressedPart = null; pressedView = null;
+    	if(part==null || view==null || view.getParent()!=null) return;
+    	PCARD pc = PCARD.pc;
+    	if(pc==null || pc.stack==null || pc.stack.curCard==null || pc.mainPane==null) return;
+    	OCardBase base = part.parent instanceof OBackground ? pc.stack.curCard.bg : pc.stack.curCard;
+    	if(base==null) return;
+    	OObject now = null;
+    	for(OButton b : base.btnList) if(part instanceof OButton && b.id==part.id) now = b;
+    	for(OField f : base.fldList) if(part instanceof OField && f.id==part.id) now = f;
+    	if(now==null) return;
+    	Point at = new Point(e.getXOnScreen(), e.getYOnScreen());
+    	SwingUtilities.convertPointFromScreen(at, pc.mainPane);
+    	int x = PCARD.toLogical(at.x), y = PCARD.toLogical(at.y);
+    	if(now instanceof OButton && ((OButton)now).getAutoHilite()){
+    		//autoHilite as the release would have done it: a plain button goes dark again wherever the release was, a check box
+    		//or radio button changes when it was inside (カレンダー: Time's mouseDown sets a field's style)
+    		OButton b = (OButton)now;
+    		boolean inside = x>=now.left && y>=now.top && x<now.left+now.width && y<now.top+now.height;
+    		if(b.style==9 || b.style==10){ if(inside) b.setHilite(b.style==10 || !b.storedHilite()); }
+    		else b.setHilite(false);
+    	}
+    	if(x<now.left || y<now.top || x>=now.left+now.width || y>=now.top+now.height) return;
+    	TTalk.callPendingMouseUp(now);
+    }
+
+    /** A selected range is only a hilite on the screen: HC J-2.3 ends it (the selectedText and selectedChunk are empty) when any
+     *  field's text or text style changes, at unlock screen, at a click and on leaving the card, in a locked or unlocked field
+     *  alike. An insertion point stays, and so does a list field's line. */
+    static void dropSelectedRange(){
+    	OField f = clickField;
+    	if(f==null || f.autoSelect || f.fld==null) return;
+    	int start = f.fld.getSelectionStart(), end = f.fld.getSelectionEnd();
+    	if(end<=start && !f.enabled) return; //an insertion point in a locked field goes too (HC J-2.3)
+    	clickField = null;
+    	f.fld.setSelectionStart(end);
+    	f.fld.setSelectionEnd(end);
+    }
+
+    /** The press (mousePresses then) whose mouseUp does not come: exit to HyperCard in its mouseDown handler. */
+    private static volatile int cancelledPress = -1;
+    public static void cancelMouseUp() { cancelledPress = mousePresses; }
+    public static boolean mouseUpCancelled() { return cancelledPress==mousePresses; }
 
     /** The press (mousePresses then) made while a handler ran: only such a press is the mouseClick while still held. */
     static volatile int handlerPress = -1;
@@ -699,13 +839,15 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			if(c==-1 && k>=32&&k<=128){
 				keyStr = Character.toString((char)k);
 			}
-			else if(c==0) keyStr = Character.toString('↑');
-			else if(c==1) keyStr = Character.toString('↓');
-			else if(c==2) keyStr = Character.toString('←');
-			else if(c==3) keyStr = Character.toString('→');
-			else if(c==20) keyStr = Character.toString('⌫');
-			else if(c==21) keyStr = Character.toString('⌦');
-			else if(c==22) keyStr = Character.toString('⎋');
+			//the arrows' characters, as on a Mac: keyDown numToChar(28) left, 29 right, 30 up, 31 down (HC J-2.3)
+			else if(c==0) keyStr = Character.toString((char)30);
+			else if(c==1) keyStr = Character.toString((char)31);
+			else if(c==2) keyStr = Character.toString((char)28);
+			else if(c==3) keyStr = Character.toString((char)29);
+			//Delete 8, Forward Delete 127, Esc 27 (HC J-2.3)
+			else if(c==20) keyStr = Character.toString((char)8);
+			else if(c==21) keyStr = Character.toString((char)127);
+			else if(c==22) keyStr = Character.toString((char)27);
 			else if(c>=100&&c<=109){
 				keyStr = Character.toString((char)(c-100+'0'));
 			}
@@ -716,7 +858,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			}
 			//挿入ポイントのあるフィールド(HyperCardの keyboard command の最初の受信者)
 			OObject keyTarget = PCARD.pc.stack.curCard;
-			if(clickField!=null && clickField.fld!=null && clickField.fld.isFocusOwner()) keyTarget = clickField;
+			if(clickField!=null && clickField.fld!=null && clickField.fld.isFocusOwner() && !clickField.enabled) keyTarget = clickField;
 			boolean inField = keyTarget instanceof OField;
 			if(e.getKeyCode()==KeyEvent.VK_ENTER){
 				//Return と Enter(テンキー) は別のコマンド
@@ -725,7 +867,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 				TTalk.CallMessage(message, "", keyTarget, false, false);
 			}
 			else if(e.getKeyCode()==KeyEvent.VK_TAB){
-				TTalk.CallMessage("tabKey", "", keyTarget, false, false);
+				TTalk.fieldKeyCommand("tabKey", keyTarget); //HyperCard's own action at the end: the next unlocked field
 			}
 			else if(controlDown(e) && keyStr==null && k>=32 && k<128 && !(c>=11 && c<=16)){
 				//controlKey <文字番号>
@@ -735,7 +877,9 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 				String message = "keyDown";
 				//key[14]ではなくこのキーイベントの修飾キーで決める(key[]は離したのが別のウインドウだと残ることがある)
 				if(commandDown(e)) message = "commandKeyDown";
-				TTalk.CallMessage(message,keyStr,keyTarget,false,false);
+				if(c>=0 && c<=3 && !commandDown(e)) TTalk.callKeyDown(keyStr, ARROW_NAMES[c], keyTarget);
+				else if(c==22 && !commandDown(e)) TTalk.callKeyDown(keyStr, "back", keyTarget);
+				else TTalk.CallMessage(message,keyStr,keyTarget,false,false);
 			}
 
 		}
@@ -817,20 +961,13 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		}*/
 	}
 	
+	private static final String[] ARROW_NAMES = {"up", "down", "left", "right"};
+
 	public static void keyEventCheck(){
 		boolean isOpened = false;
 		//if( PCARDFrame.pc.isFocused() ){
 			for(int i=0; i<128; i++){
 				if(key[i]==1 || key[i]==3){
-					if(TTalk.idle && AuthTool.tool==null) {
-						//特殊ショートカットキー
-						if(i>=0 && i<=3){
-							if(i==0) TTalk.CallMessage("arrowKey","up",PCARDFrame.pc.stack.curCard,true,false);
-							else if(i==1) TTalk.CallMessage("arrowKey","down",PCARDFrame.pc.stack.curCard,true,false);
-							else if(i==2) TTalk.CallMessage("arrowKey","left",PCARDFrame.pc.stack.curCard,true,false);
-							else if(i==3) TTalk.CallMessage("arrowKey","right",PCARDFrame.pc.stack.curCard,true,false);
-						}
-					}
 					if(key[12]==2 && key[14]==2 && !isOpened && StackProtection.canOpenScripts()){
 						isOpened = true;
 						if(i=='C' || i=='1' || i==101){
@@ -1187,11 +1324,12 @@ class GButton implements ActionListener, MouseListener, MouseMotionListener {
 		if(parent==PCARD.pc.stack.curCard||parent.objectType.equals("background")&&
 				((OBackground)parent).viewCard==PCARD.pc.stack.curCard){
 			if(TTalk.idle==true && ((MyButton)e.getSource()).btnData!=null && ((MyButton)e.getSource()).btnData.enabled==true){
-				TTalk.closeOpenFieldByUser(); //a click on a button closes the open field (HC J-2.3)
+				if(btn.btnData.getAutoHilite()) TTalk.closeOpenFieldByUser(); //a click on a button with autoHilite closes the open field (HC J-2.3)
 				if(GUI.doublePress(e, btn.btnData)) doublePressed = btn; //no mouseDown: mouseDoubleClick at the release
 				else{
 					TTalk.CallMessage("mouseDown", ((MyButton)e.getSource()).btnData);
 					mouseDownSent = btn;
+					GUI.notePressedPart(btn.btnData, btn);
 					GUI.startStillDown(btn.btnData);
 				}
 	    	}
@@ -1229,14 +1367,14 @@ class GButton implements ActionListener, MouseListener, MouseMotionListener {
     }
 	@Override
     public void mouseEntered(MouseEvent e) {
-		if(TTalk.idle==true && ((MyButton)e.getSource()).btnData!=null && ((MyButton)e.getSource()).btnData.enabled==true){
-			TTalk.CallMessage("mouseEnter", ((MyButton)e.getSource()).btnData);
+		if(((MyButton)e.getSource()).btnData!=null && ((MyButton)e.getSource()).btnData.enabled==true){
+			GUI.pointerEntered(((MyButton)e.getSource()).btnData);
 		}
     }
 	@Override
     public void mouseExited(MouseEvent e) {
-		if(TTalk.idle==true && ((MyButton)e.getSource()).btnData!=null && ((MyButton)e.getSource()).btnData.enabled==true){
-    		TTalk.CallMessage("mouseLeave", ((MyButton)e.getSource()).btnData);
+		if(((MyButton)e.getSource()).btnData!=null && ((MyButton)e.getSource()).btnData.enabled==true){
+			GUI.pointerLeft(((MyButton)e.getSource()).btnData);
     	}
     }
 
@@ -1270,6 +1408,7 @@ class GCheckBox implements ActionListener, MouseListener, MouseMotionListener {
 	//勝手に点くと自分自身を記憶してしまい、キャンセル時に元へ戻せなかった。
 	//ハイライトの反映はmouseUpを積む前に済ませる(スクリプトスレッドとの競合を避ける)。
 	static void clicked(OButton btn, AbstractButton source, boolean secondClick){
+		if(btn==null) return; //its mouseDown rebuilt the card (set the style of a field): the new button is on the screen
 		if(TTalk.idle==true){
 			if(btn.getAutoHilite()){
 				btn.setHilite(source.isSelected());
@@ -1297,9 +1436,9 @@ class GCheckBox implements ActionListener, MouseListener, MouseMotionListener {
     public void mousePressed(MouseEvent e) {
 		doublePressed = null;
 		if(TTalk.idle==true){
-			TTalk.closeOpenFieldByUser();
+			if(((MyCheck)e.getSource()).btnData.getAutoHilite()) TTalk.closeOpenFieldByUser();
 			if(GUI.doublePress(e, ((MyCheck)e.getSource()).btnData)) doublePressed = e.getSource();
-			else TTalk.CallMessage("mouseDown", ((MyCheck)e.getSource()).btnData);
+			else{ TTalk.CallMessage("mouseDown", ((MyCheck)e.getSource()).btnData); GUI.notePressedPart(((MyCheck)e.getSource()).btnData, (Component)e.getSource()); }
 			GUI.mouseDowned();
 			if(doublePressed==null) GUI.startStillDown(((MyCheck)e.getSource()).btnData);
     	}else
@@ -1316,14 +1455,10 @@ class GCheckBox implements ActionListener, MouseListener, MouseMotionListener {
 	public void mouseMoved(MouseEvent e) {
 	}
     public void mouseEntered(MouseEvent e) {
-		if(TTalk.idle==true){
-			TTalk.CallMessage("mouseEnter", ((MyCheck)e.getSource()).btnData);
-		}
+		GUI.pointerEntered(((MyCheck)e.getSource()).btnData);
     }
     public void mouseExited(MouseEvent e) {
-		if(TTalk.idle==true){
-    		TTalk.CallMessage("mouseLeave", ((MyCheck)e.getSource()).btnData);
-    	}
+		GUI.pointerLeft(((MyCheck)e.getSource()).btnData);
     }
 }
 
@@ -1336,6 +1471,9 @@ class GPopup implements ActionListener, PopupMenuListener {
 	
 	public void actionPerformed (ActionEvent e) {
 		//String cmd = e.getActionCommand();
+		//JComboBox fires an action for setSelectedIndex too: a script's "select line 2 of bg btn id 19" (poker.hzb) is no pick
+		//(no mouseUp, no click for the mouseClick)
+		if(((MyPopup)e.getSource()).settingSelection) return;
 		if(TTalk.idle==true){
 			TTalk.CallMessage("mouseUp", ((MyPopup)e.getSource()).btnData);
 		}
@@ -1385,9 +1523,9 @@ class GRadio implements ActionListener, MouseListener, MouseMotionListener {
     public void mousePressed(MouseEvent e) {
 		doublePressed = null;
 		if(TTalk.idle==true){
-			TTalk.closeOpenFieldByUser();
+			if(((MyRadio)e.getSource()).btnData.getAutoHilite()) TTalk.closeOpenFieldByUser();
 			if(GUI.doublePress(e, ((MyRadio)e.getSource()).btnData)) doublePressed = e.getSource();
-			else TTalk.CallMessage("mouseDown", ((MyRadio)e.getSource()).btnData);
+			else{ TTalk.CallMessage("mouseDown", ((MyRadio)e.getSource()).btnData); GUI.notePressedPart(((MyRadio)e.getSource()).btnData, (Component)e.getSource()); }
 			GUI.mouseDowned();
 			if(doublePressed==null) GUI.startStillDown(((MyRadio)e.getSource()).btnData);
     	}else
@@ -1402,14 +1540,10 @@ class GRadio implements ActionListener, MouseListener, MouseMotionListener {
 	public void mouseMoved(MouseEvent e) {
 	}
     public void mouseEntered(MouseEvent e) {
-		if(TTalk.idle==true){
-			TTalk.CallMessage("mouseEnter", ((MyRadio)e.getSource()).btnData);
-		}
+		GUI.pointerEntered(((MyRadio)e.getSource()).btnData);
     }
     public void mouseExited(MouseEvent e) {
-		if(TTalk.idle==true){
-    		TTalk.CallMessage("mouseLeave", ((MyRadio)e.getSource()).btnData);
-    	}
+		GUI.pointerLeft(((MyRadio)e.getSource()).btnData);
     }
 }
 
@@ -1436,7 +1570,10 @@ class GField implements MouseListener, MouseMotionListener {
     	//(HyperCard J-2.3/2.4。勇者の石の［Ｘ］［○］選択は実行中のクリックの clickChunk を見る)
     	GUI.noteFieldClick(fld, e.getX(), e.getY());
 		if(TTalk.idle==true){
-			if(!fld.enabled) TTalk.openFieldByUser(fld); //openField (the field open before closes)
+			if(!fld.enabled){
+				TTalk.openFieldByUser(fld); //openField (the field open before closes)
+				fillToClickedLine(fld, e.getY());
+			}
 	    	//ロックしたフィールドのクリックは選択も挿入ポイントも作らない(HyperCard: the selectedChunk/selectedField は空)。
 	    	//リストフィールドは下で選択行を決める
 	    	GUI.clickField = fld.enabled && !fld.autoSelect ? null : fld;
@@ -1444,48 +1581,7 @@ class GField implements MouseListener, MouseMotionListener {
 	    		if(fld.textHeight<fld.textSize){
 	    			fld.textHeight=fld.textSize;
 	    		}
-				//スクロールフィールドではMyTextAreaがJViewportのviewなので、e.getY()は
-				//既にスクロール済みのview座標(=テキスト全体の先頭起点)。ここへ更に
-				//fld.scrollを足すとスクロール量が二重に数えられ、スクロール後の
-				//clickLine/selectedLineが下の行を指してしまう。行の先頭は上余白
-				//(通常1px、wideMarginsなら8px)の分だけ下がる
-				int logicalY = PCARD.toLogical(e.getY());
-				int topMargin = OField.textTopMargin(1, fld.wideMargins);
-				int line = Math.max(1, (logicalY - topMargin)/fld.lineHeight() + 1);
-				//テキストより下の空白部分は、HyperCard同様(クリック位置がテキスト末尾に
-				//対応する)最後の行として扱う。以前はどの行にも当たらず、clickLineに
-				//前回の値が残っていた
-				String text = fld.getText();
-				int lineCount = 1;
-				for(int i=0; i<text.length(); i++) if(text.charAt(i)=='\n') lineCount++;
-				if(line>lineCount) line = lineCount;
-				//クリックした行の文字範囲(行末の改行は含めない)
-				int lineStart = 0, lineEnd = -1, cnt = 1;
-				for(int i=0; i<=text.length(); i++){
-					if(i==text.length() || text.charAt(i)=='\n'){
-						if(cnt==line){ lineEnd = i; break; }
-						cnt++;
-						lineStart = i+1;
-					}
-				}
-				if(lineEnd>=0){
-					if(fld.autoSelect && fld.dontWrap){
-						//Swingの選択範囲もクリックした行そのものにしておく。以前は次の行の
-						//末尾までを選択していたため、キャレットが見えている範囲の外へ出て
-						//JTextAreaがビューをスクロールさせ、最下行をクリックすると
-						//リストが勝手に1行ずれた
-						fld.selectedLine=line;
-						fld.selectedStart=line;
-						fld.selectedEnd=line;
-						//キャレット(dot)は行頭側に置き、長い行でも横にスクロールさせない
-						final int selFrom = lineStart, selTo = lineEnd;
-						fld.fld.keepScrollWhile(() -> {
-							fld.fld.setCaretPosition(selTo);
-							fld.fld.moveCaretPosition(selFrom);
-						});
-						PCARD.repaintLogicalRect(fld.left, fld.top, fld.width, fld.height);
-					}
-				}
+	    		pickListLine(fld, e.getY());
 			}
 			//locked (lockText) only: an unlocked field's click is editing and sends no mouse messages (mouseClicked)
 			doublePressed = null;
@@ -1494,6 +1590,7 @@ class GField implements MouseListener, MouseMotionListener {
 				if(GUI.doublePress(e, fld)) doublePressed = fld; //no mouseDown: mouseDoubleClick at the release
 				else{
 					TTalk.CallMessage("mouseDown", fld);
+					GUI.notePressedPart(fld, (Component)e.getSource());
 					mouseDownSent = fld;
 					if(fld.autoSelect && fld.dontWrap) TTalk.runOnScriptThread(() -> reshowListField(fld));
 					GUI.startStillDown(fld); //mouseStillDown while held
@@ -1504,6 +1601,67 @@ class GField implements MouseListener, MouseMotionListener {
 		else
 			GUI.mouseDowned();
     }
+	/** A click below the text of an unlocked field: returns fill the lines down to the one clicked, the insertion point at the end
+	 *  (HC J-2.3: a press in the lower half of a line counts as the next line; HyperPiece++ 改行させないフィールド, 共有テキストの編集). */
+	static void fillToClickedLine(OField fld, int viewY){
+		int lineHeight = fld.lineHeight();
+		int clicked = Math.floorDiv(2*(PCARD.toLogical(viewY)-OField.textTopMargin(1, fld.wideMargins))-lineHeight, 2*lineHeight);
+		String text = fld.getText();
+		int textRows;
+		try{
+			textRows = (int)Math.round(fld.fld.modelToView2D(text.length()).getY()/PCARD.scale()/lineHeight);
+		}catch(javax.swing.text.BadLocationException e){ return; }
+		if(text.endsWith("\n")) textRows++;
+		if(clicked<=textRows) return;
+		fld.setText(text+"\n".repeat(clicked-textRows));
+		fld.fld.setCaretPosition(fld.fld.getDocument().getLength());
+	}
+
+	/** The line of a list field under the pointer becomes the selected one. */
+	private static void pickListLine(OField fld, int viewY){
+		//スクロールフィールドではMyTextAreaがJViewportのviewなので、viewYは
+		//既にスクロール済みのview座標(=テキスト全体の先頭起点)。ここへ更に
+		//fld.scrollを足すとスクロール量が二重に数えられ、スクロール後の
+		//clickLine/selectedLineが下の行を指してしまう。行の先頭は上余白
+		//(通常1px、wideMarginsなら8px)の分だけ下がる
+		int logicalY = PCARD.toLogical(viewY);
+		int topMargin = OField.textTopMargin(1, fld.wideMargins);
+		int line = Math.max(1, (logicalY - topMargin)/fld.lineHeight() + 1);
+		//テキストより下の空白部分は、HyperCard同様(クリック位置がテキスト末尾に
+		//対応する)最後の行として扱う。以前はどの行にも当たらず、clickLineに
+		//前回の値が残っていた
+		String text = fld.getText();
+		int lineCount = 1;
+		for(int i=0; i<text.length(); i++) if(text.charAt(i)=='\n') lineCount++;
+		if(line>lineCount) line = lineCount;
+		//クリックした行の文字範囲(行末の改行は含めない)
+		int lineStart = 0, lineEnd = -1, cnt = 1;
+		for(int i=0; i<=text.length(); i++){
+			if(i==text.length() || text.charAt(i)=='\n'){
+				if(cnt==line){ lineEnd = i; break; }
+				cnt++;
+				lineStart = i+1;
+			}
+		}
+		if(lineEnd>=0){
+			if(fld.autoSelect && fld.dontWrap){
+				//Swingの選択範囲もクリックした行そのものにしておく。以前は次の行の
+				//末尾までを選択していたため、キャレットが見えている範囲の外へ出て
+				//JTextAreaがビューをスクロールさせ、最下行をクリックすると
+				//リストが勝手に1行ずれた
+				fld.selectedLine=line;
+				fld.selectedStart=line;
+				fld.selectedEnd=line;
+				//キャレット(dot)は行頭側に置き、長い行でも横にスクロールさせない
+				final int selFrom = lineStart, selTo = lineEnd;
+				fld.fld.keepScrollWhile(() -> {
+					fld.fld.setCaretPosition(selTo);
+					fld.fld.moveCaretPosition(selFrom);
+				});
+				PCARD.repaintLogicalRect(fld.left, fld.top, fld.width, fld.height);
+			}
+		}
+	}
 	/** The locked field whose press is the second click of a double-click (GUI.doublePress): mouseDoubleClick, no mouseDown/mouseUp. */
 	private OField doublePressed;
 	/** The locked field whose press sent mouseDown: its release sends mouseUp even while that mouseDown handler still runs. */
@@ -1543,20 +1701,20 @@ class GField implements MouseListener, MouseMotionListener {
     }
 	@Override
     public void mouseEntered(MouseEvent e) {
-		if(TTalk.idle==true){
-			TTalk.CallMessage("mouseEnter", ((MyTextArea)e.getSource()).fldData);
-    	}
+		GUI.pointerEntered(((MyTextArea)e.getSource()).fldData);
     }
 	@Override
     public void mouseExited(MouseEvent e) {
-		if(TTalk.idle==true){
-			TTalk.CallMessage("mouseLeave", ((MyTextArea)e.getSource()).fldData);
-		}
+		GUI.pointerLeft(((MyTextArea)e.getSource()).fldData);
     }
 
 	@Override
 	public void mouseDragged(MouseEvent e) {
 		//a locked field's mouseStillDown comes from GUI.startStillDown while held, dragged or not; an unlocked one gets none
+		//a list field's selected line follows the pointer inside the field, one line (HC J-2.3: drag from line 2 to 6 gives
+		//"line 6 to 6"; HyperPiece++ ドラッグで並べ替え reads it at the mouseUp)
+		OField fld = ((MyTextArea)e.getSource()).fldData;
+		if(fld!=null && fld.isListField() && !fld.multipleLines && ((MyTextArea)e.getSource()).getVisibleRect().contains(e.getPoint())) pickListLine(fld, e.getY());
 	}
 
 	@Override
@@ -1770,6 +1928,7 @@ class paintGUI implements MouseListener, MouseMotionListener/*, WindowListener*/
 		if(busyPress) return;
 		right = (javax.swing.SwingUtilities.isRightMouseButton(e));
 		GUI.syncModifiers(e);
+		TabletInput.update(e);
     	Point p = imagePoint(e);
     	PaintTool.mouseDown(p.x, p.y);
     }
@@ -1784,6 +1943,7 @@ class paintGUI implements MouseListener, MouseMotionListener/*, WindowListener*/
     }
 	public void mouseDragged(MouseEvent e) {
 		if(busyPress) return;
+		TabletInput.update(e);
     	Point p = imagePoint(e);
     	PaintTool.mouseStillDown(p.x, p.y);
 	}

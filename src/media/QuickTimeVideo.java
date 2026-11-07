@@ -110,6 +110,8 @@ final class QuickTimeVideo {
 		for(QuickTimeFile.Track t:tracks)if(canDecode(t))decoders.add(new TrackDecoder(t));
 	}
 	boolean decodersEmpty(){return decoders.isEmpty();}
+	/** Closes the movie's data forks (the frames are read no more). */
+	void close(){movie.close();}
 	int width(){return Math.max(1,box[3]-box[1]);}
 	int height(){return Math.max(1,box[2]-box[0]);}
 

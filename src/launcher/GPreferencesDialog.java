@@ -67,7 +67,7 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 	static class SettingsForm extends JPanel {
 		private static final long serialVersionUID = 1L;
 		final JComboBox<String> languageCombo, zoomCombo, printDpiCombo;
-		final JCheckBox confirmAccessCheck;
+		final JCheckBox confirmAccessCheck, talkJitCheck;
 		final JLabel note = new JLabel(" ");
 		/** Told when the language was changed in live mode (the launcher rebuilds itself in the new language). */
 		Runnable languageChanged;
@@ -96,6 +96,12 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 			confirmAccessCheck.setBorder(BorderFactory.createEmptyBorder(8, 16, 0, 16));
 			add(confirmAccessCheck);
 
+			talkJitCheck = new JCheckBox(dialogText("HyperTalk JIT compiler"));
+			talkJitCheck.setToolTipText(dialogText("Runs scripts faster. Off: the interpreter only."));
+			talkJitCheck.setSelected(PCARD.talkJit);
+			talkJitCheck.setBorder(BorderFactory.createEmptyBorder(4, 16, 0, 16));
+			add(talkJitCheck);
+
 			// the resolution cards print at, and the highest one 68K programs may pick through PrGeneral
 			JPanel printPanel = row();
 			printPanel.setBorder(BorderFactory.createEmptyBorder(4, 16, 8, 16));
@@ -119,7 +125,7 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 					if(language && languageChanged!=null) languageChanged.run();
 				}};
 				languageCombo.addActionListener(now);
-				zoomCombo.addActionListener(now); confirmAccessCheck.addActionListener(now); printDpiCombo.addActionListener(now);
+				zoomCombo.addActionListener(now); confirmAccessCheck.addActionListener(now); talkJitCheck.addActionListener(now); printDpiCombo.addActionListener(now);
 			}
 		}
 
@@ -131,6 +137,8 @@ class GPreferencesDialog extends JDialog implements ActionListener {
 			if(newConfirmAccess != Sandbox.enabled){
 				Sandbox.setEnabled(newConfirmAccess);
 			}
+			//HyperTalkのJITは実行中のスクリプトにもすぐ(次の文で)反映される
+			if(talkJitCheck.isSelected() != PCARD.talkJit) PCARD.setTalkJit(talkJitCheck.isSelected());
 			//拡大表示: スタックと68Kアプリのゲーム画面の両方、開いているものにもすぐ反映される
 			int newZoom = DisplayZoom.CHOICES[zoomCombo.getSelectedIndex()];
 			if(newZoom != PCARD.zoomChoice){

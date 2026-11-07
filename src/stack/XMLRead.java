@@ -32,7 +32,7 @@ public class XMLRead {
 	}
 
 	private static boolean readTocBody(String xmlfile, OStack inStack) {
-	    XMLInputFactory factory = XMLInputFactory.newInstance();
+	    XMLInputFactory factory = XmlSafe.input();
 	    
 	    XMLStreamReader reader = null;
 	    BufferedInputStream stream = null;
@@ -69,7 +69,6 @@ public class XMLRead {
 	        }
 	        
 	        reader = XmlText.decodingReader(factory.createXMLStreamReader(stream));
-	        System.setProperty("disallowDoctypeDecl", "true");
 	        
 	        while (reader.hasNext()) {
 	    		

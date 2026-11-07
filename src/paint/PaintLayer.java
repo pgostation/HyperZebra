@@ -476,6 +476,7 @@ class PaintLayers {
 		}
 		if(g.bitmapName!=null && !bitmapShared(stack, g)){
 			java.io.File f = new java.io.File(dir, g.bitmapName);
+			PictureSaver.cancel(f);
 			if(f.isFile()) f.delete();
 		}
 	}

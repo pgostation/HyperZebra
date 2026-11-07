@@ -16,7 +16,7 @@ final class TextServices68k {
 	static final int ERR_NOT_AN_APP=-2502,ERR_ALREADY_REGISTERED=-2503,ERR_NEVER_REGISTERED=-2504,ERR_INVALID_DOC=-2505,ERR_DOC_NOT_ACTIVE=-2507,ERR_CANT_OPEN=-2509,ERR_TS_NOT_FOUND=-2510,ERR_USE_INPUT_WINDOW=-2512,ERR_UNSUPPORTED_TYPE=-2518;
 	static final int TYPE_TSVC=0x74737663,TYPE_TSMTE=0x746d5445,TYPE_UDOC=0x75646f63;
 	static final int CLASS_TSVC=0x74737663,ID_UPDATE=0x75706474,ID_OFFSET2POS=0x73743270;
-	static final int KEY_REFCON=0x72656663,KEY_SERVER=0x73727669,KEY_DATA=0x6b646174,KEY_FIX_LENGTH=0x6669786c,KEY_HILITE=0x68726e67,KEY_CLAUSES=0x636c6175,KEY_SCRIPT_TAG=0x73636c67,KEY_OFFSET=0x6f667374,KEY_POINT=0x67706f73,KEY_LINE_HEIGHT=0x6b746c68;
+	static final int KEY_REFCON=0x72656663,KEY_SERVER=0x73727669,KEY_DATA=0x6b646174,KEY_FIX_LENGTH=0x6669786c,KEY_HILITE=0x68726e67,KEY_UPDATE_RANGE=0x75646e67,KEY_CLAUSES=0x636c6175,KEY_SCRIPT_TAG=0x73636c67,KEY_OFFSET=0x6f667374,KEY_POINT=0x67706f73,KEY_LINE_HEIGHT=0x6b746c68;
 	static final int TYPE_LONG=0x6c6f6e67,TYPE_SHORT=0x73686f72,TYPE_TEXT=0x54455854,TYPE_COMPONENT_INSTANCE=0x636d7069,TYPE_RANGE_ARRAY=0x74726179,TYPE_OFFSET_ARRAY=0x6f666179,TYPE_WRITING_CODE=0x696e746c,TYPE_QD_POINT=0x51447074,TYPE_POINT=0x51447074;
 	static final int STYLE_CARET=1,STYLE_RAW=2,STYLE_SELECTED_RAW=3,STYLE_CONVERTED=4,STYLE_SELECTED_CONVERTED=5;
 
@@ -97,7 +97,8 @@ final class TextServices68k {
 			case 13:{int slPtr=memory.readLong(sp),componentPtr=memory.readLong(sp+4);if(componentPtr!=0)memory.writeLong(componentPtr,0);if(slPtr!=0)writeScriptLanguage(slPtr);result=ERR_TS_NOT_FOUND;break;}
 			case 14:{int slPtr=memory.readLong(sp);if(slPtr!=0){scriptCode=(short)memory.readWord(slPtr);languageCode=(short)memory.readWord(slPtr+2);}break;}
 			case 15:{int slPtr=memory.readLong(sp);if(slPtr!=0)writeScriptLanguage(slPtr);break;}
-			case 16:{boolean useWindow=memory.readByte(sp)!=0;Document d=documents.get(memory.readLong(sp+2));if(d==null){result=ERR_INVALID_DOC;break;}if(useWindow&&d==activeDocument)fix(d);d.useWindow=useWindow;break;}
+			case 16:{boolean useWindow=memory.readByte(sp)!=0;int id=memory.readLong(sp+2); // UseInputWindow: NIL = every document of the program (ｼｽﾃﾑｿﾌﾄｴﾃﾞｨﾀ's Find window and dialogs)
+				Document d=id==0?activeDocument:documents.get(id);if(id!=0&&d==null){result=ERR_INVALID_DOC;break;}if(useWindow&&d!=null&&d==activeDocument)fix(d);allUseWindow=id==0&&useWindow;if(d!=null&&id!=0)d.useWindow=useWindow;break;} // going back to its document it names that one with false: the last call stands
 			case 17:case 26:{ // NewServiceWindow/NewCServiceWindow(wStorage, boundsRect, title, visible, theProc, behind, goAwayFlag, ts, VAR window):
 				// a floating window above the program's own - REALbasic makes its "always in front" windows this way (何かon林檎's ghost)
 				int windowPtr=memory.readLong(sp);boolean goAway=memory.readByte(sp+8)!=0;int behind=memory.readLong(sp+10),procId=(short)memory.readWord(sp+14);
@@ -134,8 +135,10 @@ final class TextServices68k {
 	}
 
 	/** Whether the host's composed text belongs to a program document (inline input) rather than to the host's own bottom line. */
+	/** UseInputWindow(NIL, true): the program's documents all take the input window. */
+	private boolean allUseWindow;
 	private Document inlineDocument(){
-		Document d=activeDocument;if(d==null||!d.active||d.useWindow)return null;
+		Document d=activeDocument;if(d==null||!d.active||d.useWindow||allUseWindow)return null;
 		if(d.tsmte)return d.teHandle!=0&&tb.textEdit.isRecord(d.teHandle)?d:null;
 		if(d.tsvc)return tb.appleEvents.hasHandler(CLASS_TSVC,ID_UPDATE)?d:null;
 		return null;
@@ -203,10 +206,12 @@ final class TextServices68k {
 		params.put(KEY_SCRIPT_TAG,new Object[]{TYPE_WRITING_CODE,new byte[]{0,(byte)(japanese?1:0),0,(byte)(japanese?11:0)}});
 		params.put(KEY_FIX_LENGTH,new Object[]{TYPE_LONG,longBytes(committed.length)});
 		int[] hilite=hiliteRanges(u,committed.length);
+		// the hilite and update ranges come with every update, the last one that only fixes text too: ｼｽﾃﾑｿﾌﾄｴﾃﾞｨﾀ's handler gives up with
+		// errAEDescNotFound without them. Update range: the area's old bytes, then the bytes that replace them (the whole area, see areaBytes).
+		params.put(KEY_HILITE,new Object[]{TYPE_RANGE_ARRAY,rangeArray(hilite)});
+		params.put(KEY_UPDATE_RANGE,new Object[]{TYPE_RANGE_ARRAY,rangeArray(new int[]{0,d.areaBytes,0,0,all.length,0})});
 		if(composing.length>0){
-			int n=hilite.length/3;byte[] ranges=new byte[2+n*10];ranges[0]=(byte)(n>>8);ranges[1]=(byte)n;
-			for(int i=0;i<n;i++){int o=2+i*10;putLong(ranges,o,hilite[i*3]);putLong(ranges,o+4,hilite[i*3+1]);ranges[o+8]=(byte)(hilite[i*3+2]>>8);ranges[o+9]=(byte)hilite[i*3+2];}
-			params.put(KEY_HILITE,new Object[]{TYPE_RANGE_ARRAY,ranges});
+			int n=hilite.length/3;
 			List<Integer> clauses=new ArrayList<Integer>();for(int i=0;i<n;i++){if(hilite[i*3+2]==STYLE_CARET)continue;if(clauses.isEmpty()||clauses.get(clauses.size()-1)!=hilite[i*3])clauses.add(hilite[i*3]);if(hilite[i*3+1]!=hilite[i*3])clauses.add(hilite[i*3+1]);}
 			byte[] offsets=new byte[2+clauses.size()*4];offsets[0]=(byte)(clauses.size()>>8);offsets[1]=(byte)clauses.size();for(int i=0;i<clauses.size();i++)putLong(offsets,2+i*4,clauses.get(i));
 			params.put(KEY_CLAUSES,new Object[]{TYPE_OFFSET_ARRAY,offsets});
@@ -221,6 +226,12 @@ final class TextServices68k {
 		List<byte[]> reply=new ArrayList<byte[]>();
 		if(tb.appleEvents.hasHandler(CLASS_TSVC,ID_OFFSET2POS)&&tb.appleEvents.sendToSelf(CLASS_TSVC,ID_OFFSET2POS,q,KEY_POINT,reply)==0&&reply.size()==2&&reply.get(1).length>=4){
 			byte[] pt=reply.get(1);inlineCaret=new int[]{(short)MacApp68k.u2(pt,2),(short)MacApp68k.u2(pt,0)-14,16};}
+	}
+	/** A TextRangeArray from {start,end,style} triples. */
+	private static byte[] rangeArray(int[] r){
+		int n=r.length/3;byte[] ranges=new byte[2+n*10];ranges[0]=(byte)(n>>8);ranges[1]=(byte)n;
+		for(int i=0;i<n;i++){int o=2+i*10;putLong(ranges,o,r[i*3]);putLong(ranges,o+4,r[i*3+1]);ranges[o+8]=(byte)(r[i*3+2]>>8);ranges[o+9]=(byte)r[i*3+2];}
+		return ranges;
 	}
 	private static byte[] longBytes(int v){return new byte[]{(byte)(v>>>24),(byte)(v>>>16),(byte)(v>>>8),(byte)v};}
 	private static void putLong(byte[] b,int o,int v){b[o]=(byte)(v>>>24);b[o+1]=(byte)(v>>>16);b[o+2]=(byte)(v>>>8);b[o+3]=(byte)v;}

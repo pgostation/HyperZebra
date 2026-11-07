@@ -249,7 +249,7 @@ msgctxt "menu"
 msgid "Cut Selection"
 msgstr "Auswahl ausschneiden"
 
-#: SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "Volume"
 msgstr "Lautstärke"
@@ -349,7 +349,7 @@ msgctxt "menu"
 msgid "Paste Picture"
 msgstr "Bild einsetzen"
 
-#: GMenu.java
+#: GMenu.java TTalk.java
 msgctxt "menu"
 msgid "Go"
 msgstr "Gehe zu"
@@ -449,7 +449,7 @@ msgctxt "menu"
 msgid "Objects"
 msgstr "Objekte"
 
-#: GFontDialog.java HyperCardResources68k.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java ShapeInfoPanel.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Font"
 msgstr "Schrift"
@@ -1651,6 +1651,12 @@ msgid "Runs at the speed of a 68040 Mac / an iMac G3. Off: some games run too fa
 msgstr "Läuft mit der Geschwindigkeit eines 68040 Mac / eines iMac G3. Aus: Einige Spiele laufen zu schnell."
 
 #: GPreferencesDialog.java
+msgid "HyperTalk JIT compiler"
+msgstr "HyperTalk-JIT-Compiler"
+
+msgid "Runs scripts faster. Off: the interpreter only."
+msgstr "Führt Skripte schneller aus. Aus: nur der Interpreter."
+
 msgid "PowerPC JIT compiler"
 msgstr "PowerPC-JIT-Compiler"
 
@@ -1904,6 +1910,10 @@ msgstr "Die übersetzten Ressourcen dieses Programms löschen? Es läuft ab dem 
 #: GTranslationSettingsDialog.java
 msgid "(deleted; Resource Translation… makes them again)"
 msgstr "(gelöscht; Ressourcenübersetzung… erstellt sie erneut)"
+
+#: GTranslationSettingsDialog.java
+msgid "(deleted; Resource Translation with AI Chat… makes them again)"
+msgstr "(gelöscht; Ressourcenübersetzung mit KI-Chat… erstellt sie erneut)"
 
 #: MacAppHost.java
 msgid "Translates its menus and dialogs into a copy of its resources."
@@ -2246,7 +2256,7 @@ msgstr "Wahltaste"
 msgid "Shift"
 msgstr "Umschalttaste"
 
-#: FileSystem68k.java GamepadHost.java PpcLibraries.java
+#: FileSystem68k.java GamepadHost.java PpcLibraries.java WacomTablet68k.java
 msgid "Control"
 msgstr "Control-Taste"
 
@@ -2434,17 +2444,21 @@ msgstr "Informationen zu laufenden Programmen…"
 msgid "Running Programs"
 msgstr "Laufende Programme"
 
-#: GAppInfoWindow.java MacApp68k.java
+#: GAppInfoWindow.java GLauncher.java MacApp68k.java
 msgid "Force Quit"
 msgstr "Sofort beenden"
 
-#: GAppInfoWindow.java GLauncher.java QuitSequence.java
+#: GAppInfoWindow.java GLauncher.java PCARD.java QuitSequence.java
 msgid "Force Quit…"
 msgstr "Sofort beenden…"
 
 #: GAppInfoWindow.java
 msgid "Force \"%s\" to quit? Changes it has not saved are lost."
 msgstr "Sofortiges Beenden von \"%s\" erzwingen? Nicht gesicherte Änderungen gehen verloren."
+
+#: GLauncher.java
+msgid "Force \"%s\" to quit? Its running handlers stop at once and it closes without its close messages; its changes are kept."
+msgstr "Sofortiges Beenden von \"%s\" erzwingen? Laufende Handler halten sofort an, und der Stapel wird ohne seine Schließen-Nachrichten geschlossen; Änderungen bleiben erhalten."
 
 #: GAppInfoWindow.java
 msgid "No Mac program is running."
@@ -2570,7 +2584,7 @@ msgstr "SIZE-Ressource"
 msgid "preferred"
 msgstr "bevorzugt"
 
-#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
+#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
 msgid "none"
 msgstr "keine"
 
@@ -2781,7 +2795,7 @@ msgstr "Einstellungen von \"{0}\"…"
 msgid "Colors, screen size and speed for one program"
 msgstr "Farben, Bildschirmgröße und Geschwindigkeit für ein Programm"
 
-#: GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java TTalk.java
 msgid "Other…"
 msgstr "Andere…"
 
@@ -3497,7 +3511,7 @@ msgstr "Breite:"
 msgid "Height:"
 msgstr "Höhe:"
 
-#: GColorDialog.java GMenu.java GPaintDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java TTalk.java
+#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java TTalk.java
 msgid "Cancel"
 msgstr "Abbrechen"
 
@@ -4107,6 +4121,16 @@ msgstr "Stabilisierer"
 
 #: GToolOptions.java
 msgctxt "menu"
+msgid "Pen Pressure"
+msgstr "Stiftdruck"
+
+#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+msgctxt "menu"
+msgid "Size"
+msgstr "Größe"
+
+#: GToolOptions.java
+msgctxt "menu"
 msgid "Line Size"
 msgstr "Liniengröße"
 
@@ -4275,6 +4299,65 @@ msgctxt "menu"
 msgid "Text Color"
 msgstr "Textfarbe"
 
+#: FieldTextMenus.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Plain"
+msgstr "Normal"
+
+#: FieldTextMenus.java GFontDialog.java PpcAtsui.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Bold"
+msgstr "Fett"
+
+#: FieldTextMenus.java GFontDialog.java PpcAtsui.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Italic"
+msgstr "Kursiv"
+
+#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Underline"
+msgstr "Unterstrichen"
+
+#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Outline"
+msgstr "Kontur"
+
+#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Shadow"
+msgstr "Schatten"
+
+#: FieldTextMenus.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Condense"
+msgstr "Schmal"
+
+#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Extend"
+msgstr "Breit"
+
+#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java Q3.java TTalk.java
+msgctxt "menu"
+msgid "Group"
+msgstr "Gruppe"
+
+#: FieldTextMenus.java GLauncher.java TTalk.java
+msgctxt "menu"
+msgid "Other…"
+msgstr "Andere…"
+
+#: FieldTextMenus.java
+msgctxt "menu"
+msgid "Text Color…"
+msgstr "Textfarbe…"
+
+#: FieldTextMenus.java
+msgid "Text size:"
+msgstr "Textgröße:"
+
 #: PaintFilter.java
 msgid "Filter"
 msgstr "Filter"
@@ -4442,11 +4525,11 @@ msgstr "Alpha-Kanal"
 msgid "Font"
 msgstr "Schrift"
 
-#: ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgid "Size"
 msgstr "Größe"
 
-#: GMenu.java HyperCardResources68k.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
+#: FieldTextMenus.java GMenu.java HyperCardResources68k.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
 msgid "Style"
 msgstr "Stil"
 
@@ -4689,7 +4772,7 @@ msgstr "Diese Art von Disk-Image kann noch nicht geöffnet werden."
 msgid "Mounting the disk image"
 msgstr "Disk-Image wird aktiviert"
 
-#: DiskImages.java
+#: TTalk.java
 msgid "Can't mount the disk image."
 msgstr "Das Disk-Image kann nicht aktiviert werden."
 
@@ -5010,11 +5093,11 @@ msgstr "Details"
 msgid "The screen (%d pixels wide) is wider than any Mac of the time, which may be the cause. Setting this program's resolution to 640×480 or 1024×768 in its settings in the launcher may make it work."
 msgstr "Der Bildschirm (%d Pixel breit) ist breiter als jeder andere Mac der Zeit, was die Ursache sein könnte. Wenn Sie die Auflösung dieses Programms auf 640×480 oder 1024×768 in den Einstellungen im Launcher einstellen, kann es funktionieren."
 
-#: VMTranslation.java
+#: TesseractInstall.java VMTranslation.java
 msgid "Chinese (Traditional)"
 msgstr "Chinesisch (traditionell)"
 
-#: VMTranslation.java
+#: TesseractInstall.java VMTranslation.java
 msgid "Chinese (Simplified)"
 msgstr "Chinesisch (vereinfacht)"
 
@@ -5724,7 +5807,7 @@ msgid ""
 "\n"
 "Drawing and text tools\n"
 "  Pencil — draws one-pixel lines; clicking a foreground-coloured pixel draws with the background colour.\n"
-"  Brush — paints soft or hard strokes with adjustable size, opacity, spacing and stabilisation.\n"
+"  Brush — paints soft or hard strokes with adjustable size, opacity, spacing and stabilisation; with a pen tablet, pressure can change its size and opacity, and the pen's eraser end erases.\n"
 "  Eraser — erases to transparency or reveals the background picture.\n"
 "  Line — draws a straight line; Shift constrains its angle.\n"
 "  Spray — sprays foreground or background colour with an adjustable radius.\n"
@@ -5760,7 +5843,7 @@ msgstr ""
 "\n"
 "Bleistift - zeichnet Linien mit einem Pixel; durch Klicken auf ein im Vordergrund gefärbtes Pixel zeichnet mit der Hintergrundfarbe.\n"
 "\n"
-"Pinsel – malt weiche oder harte Striche mit einstellbarer Größe, Deckkraft, Abstand und Stabilisierung.\n"
+"Pinsel – malt weiche oder harte Striche mit einstellbarer Größe, Deckkraft, Abstand und Stabilisierung. Mit einem Grafiktablett kann der Stiftdruck Größe und Deckkraft ändern, und das Radiererende des Stifts radiert.\n"
 "\n"
 "Radierer – löscht bis zur Transparenz oder zeigt das Hintergrundbild an.\n"
 "\n"
@@ -7433,7 +7516,7 @@ msgctxt "reference"
 msgid "Loops"
 msgstr "Endlos abspielen"
 
-#: SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
 msgctxt "reference"
 msgid "Volume"
 msgstr "Lautstärke"
@@ -7873,6 +7956,14 @@ msgstr "Pinselgröße (1–256), Härte (0–100), Deckkraft (1–100) und Absta
 msgctxt "reference"
 msgid "Stroke smoothing (0–98)"
 msgstr "Strichglättung (0–98)"
+
+msgctxt "reference"
+msgid "What pen tablet pressure changes for the brush: size, opacity, both or none"
+msgstr "Was der Stiftdruck des Grafiktabletts beim Pinsel ändert: size, opacity, both oder none"
+
+msgctxt "reference"
+msgid "The pen tablet's pressure now (0–100; empty when no pen is in use)"
+msgstr "Der aktuelle Stiftdruck des Grafiktabletts (0–100; leer, wenn kein Stift benutzt wird)"
 
 msgctxt "reference"
 msgid "Zoom (25–3200 %) and the card point at the top-left (x,y)"
@@ -8777,6 +8868,9 @@ msgstr "Kann end repeat nicht finden"
 #: TTalk.java
 msgid "Cannot understand the arguments to repeat with"
 msgstr "Kann die Argumente zu repeat with nicht verstehen"
+
+msgid "Cannot understand the arguments of {0}"
+msgstr "Die Argumente von {0} sind unverständlich"
 
 #: TTalk.java
 msgid "repeat with requires a start value and to"
@@ -10484,6 +10578,14 @@ msgid "brushSpacing must be between 1 and 200"
 msgstr "brushSpacing muss zwischen 1 und 200 liegen"
 
 #: TUtil.java
+msgid "brushPressure must be size, opacity, both or none"
+msgstr "brushPressure muss size, opacity, both oder none sein"
+
+#: TUtil.java
+msgid "Can't set the penPressure"
+msgstr "penPressure kann nicht gesetzt werden"
+
+#: TUtil.java
 msgid "{0} must be between 0 and 98"
 msgstr "{0} muss zwischen 0 und 98 liegen"
 
@@ -10876,7 +10978,7 @@ msgstr "Stapel öffnen"
 msgid "Open stack in new window"
 msgstr "In neuem Fenster öffnen"
 
-#: GPaintDialog.java MacAppHost.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
+#: GPaintDialog.java GTesseractLanguagesDialog.java MacAppHost.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
 msgid "OK"
 msgstr "OK"
 
@@ -11114,6 +11216,10 @@ msgid "The program runs with translated copies of its menus, dialogs and strings
 msgstr "Das Programm läuft mit übersetzten Kopien seiner Menüs, Dialoge und Texte, erstellt mit Ressourcenübersetzung…; die Programmdatei wird nie verändert."
 
 #: GTranslationSettingsDialog.java
+msgid "The program runs with translated copies of its menus, dialogs and strings, made by Resource Translation with AI Chat…; the program file is never changed."
+msgstr "Das Programm läuft mit übersetzten Kopien seiner Menüs, Dialoge und Texte, erstellt mit Ressourcenübersetzung mit KI-Chat…; die Programmdatei wird nie verändert."
+
+#: GTranslationSettingsDialog.java
 msgid "Show translation:"
 msgstr "Übersetzung anzeigen:"
 
@@ -11136,9 +11242,17 @@ msgstr "Den Übersetzungseinstellungen folgen"
 msgid "None yet: Resource Translation… makes them."
 msgstr "Noch keine: Ressourcenübersetzung… erstellt sie."
 
+#: GTranslationSettingsDialog.java
+msgid "None yet: Resource Translation with AI Chat… makes them."
+msgstr "Noch keine: Ressourcenübersetzung mit KI-Chat… erstellt sie."
+
 #: GTranslationForm.java
 msgid "Programs are translated by Resource Translation… (their menus, dialogs and strings); stacks show their button names and fields translated (File > Translation Settings…). These are the defaults; a program or stack can have its own."
 msgstr "Programme werden mit Ressourcenübersetzung… übersetzt (Menüs, Dialoge und Texte); Stapel zeigen Tastennamen und Felder übersetzt an (Datei > Übersetzungseinstellungen…). Dies sind die Vorgaben; ein Programm oder Stapel kann eigene haben."
+
+#: GTranslationForm.java
+msgid "Programs are translated by Resource Translation with AI Chat… (their menus, dialogs and strings); stacks show their button names and fields translated (File > Translation Settings…). These are the defaults; a program or stack can have its own."
+msgstr "Programme werden mit Ressourcenübersetzung mit KI-Chat… übersetzt (Menüs, Dialoge und Texte); Stapel zeigen Tastennamen und Felder übersetzt an (Datei > Übersetzungseinstellungen…). Dies sind die Vorgaben; ein Programm oder Stapel kann eigene haben."
 
 #: GLauncher.java
 msgid "Language and engine for one program or stack"
@@ -11248,6 +11362,14 @@ msgstr "Kaleidoscope-Schemata in „Apple Menu Items/Kaleidoscope Schemes“ ins
 #: PCARD.java
 msgid "Can't install the Kaleidoscope scheme."
 msgstr "Das Kaleidoscope-Schema kann nicht installiert werden."
+
+#: PCARD.java
+msgid "Can't switch the Kaleidoscope scheme."
+msgstr "Das Kaleidoscope-Schema kann nicht gewechselt werden."
+
+#: PCARD.java
+msgid "Switched the Kaleidoscope scheme to:"
+msgstr "Kaleidoscope-Schema gewechselt zu:"
 
 #: PCARD.java
 msgid "Choose one with Select Scheme... in the Kaleidoscope control panel."
@@ -11699,6 +11821,10 @@ msgid "Dock"
 msgstr "Dock"
 
 #: GLauncher.java
+msgid "{0} More in the Launcher…"
+msgstr "{0} weitere im Launcher…"
+
+#: GLauncher.java
 msgid "New Tab"
 msgstr "Neuer Tab"
 
@@ -11794,7 +11920,6 @@ msgstr "Nicht übersetzen"
 msgid "(the pictures stay as they are: a translated copy is shown)"
 msgstr "(die Bilder bleiben, wie sie sind: eine übersetzte Kopie wird angezeigt)"
 
-#: PictureTranslation.java
 msgid "Tesseract is not installed, so the text in pictures is not translated. Install it - macOS: brew install tesseract tesseract-lang; Windows: the Tesseract installer of UB Mannheim; Linux: the tesseract-ocr packages - and check again."
 msgstr "Tesseract ist nicht installiert, daher wird Text in Bildern nicht übersetzt. Installieren Sie es – macOS: brew install tesseract tesseract-lang; Windows: der Tesseract-Installer der UB Mannheim; Linux: die tesseract-ocr-Pakete – und prüfen Sie erneut."
 
@@ -11802,7 +11927,639 @@ msgstr "Tesseract ist nicht installiert, daher wird Text in Bildern nicht übers
 msgid "Tesseract {0} reads the text in pictures: {1} languages ({2}…)."
 msgstr "Tesseract {0} liest den Text in Bildern: {1} Sprachen ({2}…)."
 
+#: GTesseractLanguagesDialog.java
+msgid "Add Files…"
+msgstr "Dateien hinzufügen…"
+
+#: GTesseractLanguagesDialog.java
+msgid "Languages for Text in Pictures"
+msgstr "Sprachen für Text in Bildern"
+
+#: GTesseractLanguagesDialog.java
+msgid "Tick the languages of the pictures to read. They are downloaded from Tesseract's tessdata_fast models (Apache License 2.0) into HyperZebra's state folder."
+msgstr "Kreuzen Sie die Sprachen der zu lesenden Bilder an. Sie werden aus den tessdata_fast-Modellen von Tesseract (Apache License 2.0) in den Zustandsordner von HyperZebra geladen."
+
+#: GTesseractLanguagesDialog.java
+msgid "Where"
+msgstr "Ort"
+
+#: GTesseractLanguagesDialog.java
+msgid "Tesseract's own"
+msgstr "Von Tesseract"
+
+#: GTesseractLanguagesDialog.java
+msgid "Added"
+msgstr "Hinzugefügt"
+
+#: GTesseractLanguagesDialog.java
+msgid "Download"
+msgstr "Laden"
+
+#: GTesseractLanguagesDialog.java
+msgid "Tesseract language files (.traineddata)"
+msgstr "Tesseract-Sprachdateien (.traineddata)"
+
+#: GTranslationForm.java
+msgid "Download Tesseract…"
+msgstr "Tesseract laden…"
+
+#: GTranslationForm.java
+msgid "Languages…"
+msgstr "Sprachen…"
+
+#: GTranslationForm.java
+msgid "The Tesseract OCR installer of UB Mannheim (Apache License 2.0, {0}) is downloaded from GitHub and opened. Then English and Japanese language data are downloaded."
+msgstr "Das Tesseract-OCR-Installationsprogramm der UB Mannheim (Apache License 2.0, {0}) wird von GitHub geladen und geöffnet. Danach werden die Sprachdaten für Englisch und Japanisch geladen."
+
+#: GTranslationForm.java
+msgid "Tesseract OCR {0} (Apache License 2.0; built by HyperZebra from the unmodified sources, {1}) is downloaded from GitHub into HyperZebra's state folder, with English and Japanese language data."
+msgstr "Tesseract OCR {0} (Apache License 2.0; von HyperZebra aus den unveränderten Quellen gebaut, {1}) wird mit den Sprachdaten für Englisch und Japanisch von GitHub in den Zustandsordner von HyperZebra geladen."
+
+#: PictureTranslation.java
+msgid "Tesseract is not installed, so the text in pictures is not translated. Download it with Download Tesseract… on the launcher's Translation page."
+msgstr "Tesseract ist nicht installiert, daher wird der Text in Bildern nicht übersetzt. Laden Sie es mit „Tesseract laden…“ auf der Seite „Übersetzung“ des Launchers."
+
+#: PictureTranslation.java
+msgid "Tesseract is not installed, so the text in pictures is not translated. Install the tesseract-ocr packages of your system and check again."
+msgstr "Tesseract ist nicht installiert, daher wird der Text in Bildern nicht übersetzt. Installieren Sie die tesseract-ocr-Pakete Ihres Systems und prüfen Sie erneut."
+
+#: PictureTranslation.java
+msgid "Tesseract {0} has no languages: add them with Languages… on the launcher's Translation page."
+msgstr "Tesseract {0} hat keine Sprachen: Fügen Sie sie mit „Sprachen…“ auf der Seite „Übersetzung“ des Launchers hinzu."
+
+#: TesseractInstall.java
+msgid "Downloading Tesseract…"
+msgstr "Tesseract wird geladen…"
+
+#: TesseractInstall.java
+msgid "The downloaded Tesseract is damaged (its checksum differs)."
+msgstr "Das geladene Tesseract ist beschädigt (die Prüfsumme weicht ab)."
+
+#: TesseractInstall.java
+msgid "The download has no tesseract program."
+msgstr "Der Download enthält kein tesseract-Programm."
+
+#: TesseractInstall.java
+msgid "Looking for the Tesseract installer…"
+msgstr "Tesseract-Installationsprogramm wird gesucht…"
+
+#: TesseractInstall.java
+msgid "The Tesseract installer was not found."
+msgstr "Das Tesseract-Installationsprogramm wurde nicht gefunden."
+
+#: TesseractInstall.java
+msgid "Cancelled."
+msgstr "Abgebrochen."
+
+#: TesseractInstall.java
+msgid "The Tesseract installer is open: install it, then come back."
+msgstr "Das Tesseract-Installationsprogramm ist geöffnet: Installieren Sie es und kommen Sie dann zurück."
+
+#: TesseractInstall.java
+msgid "Install the tesseract-ocr packages of your system."
+msgstr "Installieren Sie die tesseract-ocr-Pakete Ihres Systems."
+
+#: TesseractInstall.java
+msgid "Downloading failed: {0}"
+msgstr "Laden fehlgeschlagen: {0}"
+
+#: TesseractInstall.java
+msgid "Downloading {0} ({1}/{2})…"
+msgstr "{0} wird geladen ({1}/{2})…"
+
+#: TesseractInstall.java
+msgid "{0} is not a Tesseract language file (.traineddata)."
+msgstr "{0} ist keine Tesseract-Sprachdatei (.traineddata)."
+
+#: TesseractInstall.java
+msgid "German (Fraktur)"
+msgstr "Deutsch (Fraktur)"
+
+#: TesseractInstall.java
+msgid "Middle English"
+msgstr "Mittelenglisch"
+
+#: TesseractInstall.java
+msgid "Middle French"
+msgstr "Mittelfranzösisch"
+
+#: TesseractInstall.java
+msgid "Ancient Greek"
+msgstr "Altgriechisch"
+
+#: TesseractInstall.java
+msgid "(vertical)"
+msgstr "(vertikal)"
+
+#: TesseractInstall.java
+msgid "(old)"
+msgstr "(alt)"
+
+#: TesseractInstall.java
+msgid "(Cyrillic)"
+msgstr "(kyrillisch)"
+
+#: TesseractInstall.java
+msgid "(Latin)"
+msgstr "(lateinisch)"
+
+#: TesseractInstall.java
+msgid "Kurdish (Kurmanji)"
+msgstr "Kurdisch (Kurmandschi)"
+
+#: GTesseractLanguagesDialog.java
+msgid "Language (code)"
+msgstr "Sprache (Code)"
+
 #: GTranslationSettingsDialog.java
 msgid "(its PICT resources, by Resource Translation…; the program file is never changed)"
 msgstr "(seine PICT-Ressourcen, mit Ressourcenübersetzung…; die Programmdatei wird nie verändert)"
 
+#: GTranslationSettingsDialog.java
+msgid "(its PICT resources, by Resource Translation with AI Chat…; the program file is never changed)"
+msgstr "(seine PICT-Ressourcen, mit Ressourcenübersetzung mit KI-Chat…; die Programmdatei wird nie verändert)"
+
+#: GTextDocumentWindow.java
+msgid "Text Encoding:"
+msgstr "Textkodierung:"
+
+#: GTextDocumentWindow.java
+msgid "Wrap lines"
+msgstr "Zeilen umbrechen"
+
+#: GTextDocumentWindow.java
+msgid "Fixed-width font"
+msgstr "Festbreitenschrift"
+
+#: GTextDocumentWindow.java
+msgid "Smaller text"
+msgstr "Kleinere Schrift"
+
+#: GTextDocumentWindow.java
+msgid "Larger text"
+msgstr "Größere Schrift"
+
+#: GTextDocumentWindow.java
+msgid "Save as UTF-8…"
+msgstr "Als UTF-8 sichern…"
+
+#: GTextDocumentWindow.java
+msgid "Smaller"
+msgstr "Verkleinern"
+
+#: GTextDocumentWindow.java
+msgid "Larger"
+msgstr "Vergrößern"
+
+#: GTextDocumentWindow.java
+msgid "Save as PNG…"
+msgstr "Als PNG sichern…"
+
+#: GTextDocumentWindow.java
+msgid "The picture can't be read."
+msgstr "Das Bild kann nicht gelesen werden."
+
+#: GLauncher.java
+msgid "Copy URL"
+msgstr "URL kopieren"
+
+#: GLauncher.java
+msgid "Internet location \"%s\""
+msgstr "Internetadresse „%s“"
+
+#: GLauncher.java
+msgid "Can't open the URL."
+msgstr "Die URL kann nicht geöffnet werden."
+
+#: GTextDocumentWindow.java
+msgid "Save a copy the host's editors read"
+msgstr "Eine Kopie sichern, die heutige Editoren lesen"
+
+#: GMediaPlayerWindow.java GTextDocumentWindow.java
+msgid "Choose another name: the original stays as it is."
+msgstr "Bitte einen anderen Namen wählen: Das Original bleibt unverändert."
+
+#: GMediaPlayerWindow.java GTextDocumentWindow.java
+msgid "Can't save the file."
+msgstr "Die Datei kann nicht gesichert werden."
+
+#: GLauncher.java
+msgid "HyperZebra text viewer"
+msgstr "HyperZebra-Textanzeige"
+
+#: GLauncher.java
+msgid "HyperZebra media player"
+msgstr "HyperZebra-Medienwiedergabe"
+
+#: GMediaPlayerWindow.java
+msgid "This is no sound or movie file."
+msgstr "Dies ist keine Ton- oder Filmdatei."
+
+#: GMediaPlayerWindow.java
+msgid "Loop"
+msgstr "Wiederholen"
+
+#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+msgid "Volume"
+msgstr "Lautstärke"
+
+#: GMediaPlayerWindow.java
+msgid "Save as WAVE…"
+msgstr "Als WAVE sichern…"
+
+#: GMediaPlayerWindow.java
+msgid "Save as MIDI…"
+msgstr "Als MIDI sichern…"
+
+#: GMediaPlayerWindow.java
+msgid "Copy Frame"
+msgstr "Bild kopieren"
+
+#: GMediaPlayerWindow.java
+msgid "Play / Pause (Space)"
+msgstr "Wiedergabe / Pause (Leertaste)"
+
+#: GMediaPlayerWindow.java
+msgid "Save a copy the host's programs play"
+msgstr "Eine Kopie sichern, die die Programme des Hosts abspielen"
+
+#: GMediaPlayerWindow.java
+msgid "Save the music as a Standard MIDI File"
+msgstr "Die Musik als Standard-MIDI-Datei sichern"
+
+#: MediaDocument.java
+msgid "Sound:"
+msgstr "Ton:"
+
+#: GMediaPlayerWindow.java
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+#: GMediaPlayerWindow.java
+msgid "The video can't be decoded"
+msgstr "Das Video kann nicht dekodiert werden"
+
+#: GMediaPlayerWindow.java
+msgid "The sound can't be decoded"
+msgstr "Der Ton kann nicht dekodiert werden"
+
+#: GMediaPlayerWindow.java
+msgid "Can't play the file."
+msgstr "Die Datei kann nicht abgespielt werden."
+
+#: GMediaPlayerWindow.java
+msgid "Nothing in the file can be played."
+msgstr "Nichts in der Datei kann abgespielt werden."
+
+#: GLauncher.java
+msgid "Can't open the file."
+msgstr "Die Datei kann nicht geöffnet werden."
+
+#: StackTextEncoding.java TextDocument.java
+msgid "Japanese (Shift-JIS)"
+msgstr "Japanisch (Shift-JIS)"
+
+#: TextDocument.java
+msgid "Japanese (EUC-JP)"
+msgstr "Japanisch (EUC-JP)"
+
+#: TextDocument.java
+msgid "Japanese (ISO-2022-JP)"
+msgstr "Japanisch (ISO-2022-JP)"
+
+#: PpcCoreFoundation.java TextDocument.java
+msgid "Unicode (UTF-8)"
+msgstr "Unicode (UTF-8)"
+
+#: PpcCoreFoundation.java TextDocument.java
+msgid "Unicode (UTF-16)"
+msgstr "Unicode (UTF-16)"
+
+#: TextDocument.java
+msgid "Unicode (UTF-16 Little-Endian)"
+msgstr "Unicode (UTF-16 Little-Endian)"
+
+#: PpcCoreFoundation.java StackTextEncoding.java
+msgid "Western (Mac OS Roman)"
+msgstr "Westeuropäisch (Mac OS Roman)"
+
+#: StackTextEncoding.java
+msgid "Central European (Mac OS)"
+msgstr "Mitteleuropäisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Croatian (Mac OS)"
+msgstr "Kroatisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Cyrillic (Mac OS)"
+msgstr "Kyrillisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Greek (Mac OS)"
+msgstr "Griechisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Hebrew (Mac OS)"
+msgstr "Hebräisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Icelandic (Mac OS)"
+msgstr "Isländisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Romanian (Mac OS)"
+msgstr "Rumänisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Thai (Mac OS)"
+msgstr "Thai (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Turkish (Mac OS)"
+msgstr "Türkisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Ukrainian (Mac OS)"
+msgstr "Ukrainisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Arabic (Mac OS)"
+msgstr "Arabisch (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Chinese Simplified (Mac OS)"
+msgstr "Chinesisch vereinfacht (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Chinese Traditional (Mac OS)"
+msgstr "Chinesisch traditionell (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Korean (Mac OS)"
+msgstr "Koreanisch (Mac OS)"
+
+#: MediaDocument.java
+msgid "Music:"
+msgstr "Musik:"
+
+#: MediaDocument.java
+msgid "Standard MIDI File (format {0})"
+msgstr "Standard-MIDI-Datei (Format {0})"
+
+#: MediaDocument.java
+msgid "{0} tracks"
+msgstr "{0} Spuren"
+
+#: MediaDocument.java
+msgid "{0}-bit uncompressed"
+msgstr "{0} Bit unkomprimiert"
+
+#: MediaDocument.java
+msgid "{0} fps"
+msgstr "{0} Bilder/s"
+
+#: MediaDocument.java
+msgid "Video:"
+msgstr "Video:"
+
+#: MediaDocument.java
+msgid "QuickTime Music"
+msgstr "QuickTime-Musik"
+
+#: MediaDocument.java
+msgid "Other tracks:"
+msgstr "Weitere Spuren:"
+
+#: MediaDocument.java
+msgid "{0}-bit gray"
+msgstr "{0} Bit Graustufen"
+
+#: MediaDocument.java
+msgid "{0}-bit float"
+msgstr "{0} Bit Gleitkomma"
+
+#: MediaDocument.java
+msgid "joint stereo"
+msgstr "Joint Stereo"
+
+#: MediaDocument.java
+msgid "dual channel"
+msgstr "Zweikanal"
+
+#: MediaDocument.java
+msgid "mono"
+msgstr "Mono"
+
+#: MediaDocument.java
+msgid "stereo"
+msgstr "Stereo"
+
+#: MediaDocument.java
+msgid "{0} channels"
+msgstr "{0} Kanäle"
+
+#: MediaDocument.java
+msgid "1 track"
+msgstr "1 Spur"
+
+#: EditionDialogs.java
+msgid "Sound"
+msgstr "Ton"
+
+#: EditionDialogs.java
+msgid "Editions"
+msgstr "Ausgaben"
+
+#: EditionDialogs.java
+msgid "Publish"
+msgstr "Verlegen"
+
+#: EditionDialogs.java
+msgid "“{0}” already exists. Replace it with the new edition?"
+msgstr "„{0}“ ist bereits vorhanden. Durch die neue Ausgabe ersetzen?"
+
+#: EditionDialogs.java
+msgid "Subscribe To"
+msgstr "Abonnieren"
+
+#: EditionDialogs.java
+msgid "Subscribe"
+msgstr "Abonnieren"
+
+#: EditionDialogs.java
+msgid "Publisher Options"
+msgstr "Verleger-Optionen"
+
+#: EditionDialogs.java
+msgid "Subscriber Options"
+msgstr "Abonnenten-Optionen"
+
+#: EditionDialogs.java
+msgid "Publisher to:"
+msgstr "Verleger für:"
+
+#: EditionDialogs.java
+msgid "Subscriber to:"
+msgstr "Abonnent von:"
+
+#: EditionDialogs.java
+msgid "(edition not found)"
+msgstr "(Ausgabe nicht gefunden)"
+
+#: EditionDialogs.java
+msgid "Send Editions:"
+msgstr "Ausgaben senden:"
+
+#: EditionDialogs.java
+msgid "Get Editions:"
+msgstr "Ausgaben empfangen:"
+
+#: EditionDialogs.java
+msgid "On Save"
+msgstr "Beim Sichern"
+
+#: EditionDialogs.java
+msgid "Automatically"
+msgstr "Automatisch"
+
+#: EditionDialogs.java
+msgid "Manually"
+msgstr "Manuell"
+
+#: EditionDialogs.java
+msgid "Send Edition Now"
+msgstr "Ausgabe jetzt senden"
+
+#: EditionDialogs.java
+msgid "Get Edition Now"
+msgstr "Ausgabe jetzt holen"
+
+#: EditionDialogs.java
+msgid "Latest Edition:"
+msgstr "Neueste Ausgabe:"
+
+#: EditionDialogs.java
+msgid "Cancel Publisher"
+msgstr "Verleger aufheben"
+
+#: EditionDialogs.java
+msgid "Cancel Subscriber"
+msgstr "Abonnent aufheben"
+
+#: EditionDialogs.java
+msgid "Open Publisher"
+msgstr "Verleger öffnen"
+
+#: EditionDialogs.java
+msgid "Cancel this publisher? The document stops sending editions."
+msgstr "Diesen Verleger aufheben? Das Dokument sendet dann keine Ausgaben mehr."
+
+#: EditionDialogs.java
+msgid "Cancel this subscriber? The document stops getting editions."
+msgstr "Diesen Abonnenten aufheben? Das Dokument erhält dann keine Ausgaben mehr."
+
+msgid "Stationery Pad"
+msgstr "Formularblock"
+
+msgid "\"{0}\" is a stationery pad: a new document is made from it and opened."
+msgstr "„{0}“ ist ein Formularblock: Daraus wird ein neues Dokument erstellt und geöffnet."
+
+msgid "Name of the new document:"
+msgstr "Name des neuen Dokuments:"
+
+msgid "{0} copy"
+msgstr "{0} Kopie"
+
+msgid "\"{0}\" already exists. Choose another name."
+msgstr "„{0}“ ist bereits vorhanden. Wählen Sie einen anderen Namen."
+
+msgid "The new document could not be made: {0}"
+msgstr "Das neue Dokument konnte nicht erstellt werden: {0}"
+
+msgid "Home Stack Changed"
+msgstr "Home-Stapel geändert"
+
+msgid "Something outside HyperZebra changed the Home stack's file while it was open. HyperZebra's own copy has been saved over that change."
+msgstr "Etwas außerhalb von HyperZebra hat die Datei des Home-Stapels geändert, während er geöffnet war. HyperZebras eigene Fassung wurde darüber gespeichert."
+
+msgid "The Home stack's scripts were changed outside HyperZebra. Scripts in Home run in every stack."
+msgstr "Die Skripte des Home-Stapels wurden außerhalb von HyperZebra geändert. Skripte in Home laufen in jedem Stapel."
+
+msgid "Keep Home As It Is"
+msgstr "Home so lassen"
+
+msgid "Restore the Last Copy"
+msgstr "Letzte Kopie wiederherstellen"
+
+msgid "Handlers added or changed: {0}"
+msgstr "Hinzugefügte oder geänderte Handler: {0}"
+
+msgid "Virus Found"
+msgstr "Virus gefunden"
+
+msgid "The stack \"{0}\" carries the MerryXmas virus, which copies itself into the Home stack and into every stack you open."
+msgstr "Der Stapel „{0}“ enthält das Virus MerryXmas, das sich in den Home-Stapel und in jeden geöffneten Stapel kopiert."
+
+msgid "Remove the Virus"
+msgstr "Virus entfernen"
+
+msgid "Open As Is"
+msgstr "Unverändert öffnen"
+
+msgid "wants to change the scripts of the stack:"
+msgstr "möchte die Skripte dieses Stapels ändern:"
+
+msgid "wants to change the protection of the stack:"
+msgstr "möchte den Schutz dieses Stapels ändern:"
+
+msgid "wants to paste into the stack:"
+msgstr "möchte etwas in diesen Stapel einsetzen:"
+
+msgid "The Home stack's scripts run in every stack. Old stacks spread viruses this way: allow this only for an installation you started yourself."
+msgstr "Die Skripte des Home-Stapels laufen in jedem Stapel. Alte Stapel verbreiten Viren auf diesem Weg: Erlauben Sie dies nur bei einer Installation, die Sie selbst gestartet haben."
+
+msgid "Old stacks spread viruses by writing into other stacks: allow this only for an installation you started yourself."
+msgstr "Alte Stapel verbreiten Viren, indem sie in andere Stapel schreiben: Erlauben Sie dies nur bei einer Installation, die Sie selbst gestartet haben."
+
+msgid "wants to change the program code of:"
+msgstr "möchte den Programmcode ändern von:"
+
+msgid "would load extensions that are new or have changed:"
+msgstr "würde neue oder geänderte Systemerweiterungen laden:"
+
+msgid "is an extension infected with the virus:"
+msgstr "ist eine Systemerweiterung, infiziert mit dem Virus:"
+
+msgid "Viruses of the classic Mac spread by adding their code to programs. Allow this only for an installation or update you started yourself."
+msgstr "Viren des klassischen Mac verbreiteten sich, indem sie Programmen ihren Code hinzufügten. Erlauben Sie dies nur bei einer Installation oder Aktualisierung, die Sie selbst gestartet haben."
+
+msgid "An extension runs inside every program, and viruses of the classic Mac stayed resident this way. Allow this if you installed them yourself; otherwise they stay out for now."
+msgstr "Eine Systemerweiterung läuft in jedem Programm, und Viren des klassischen Mac blieben so aktiv. Erlauben Sie dies, wenn Sie sie selbst installiert haben; andernfalls bleiben sie vorerst draußen."
+
+msgid "It stays out unless you allow it."
+msgstr "Sie wird nur geladen, wenn Sie es erlauben."
+
+msgid "It holds a virus and was not opened."
+msgstr "Die Datei enthält einen Virus und wurde nicht geöffnet."
+
+msgid "\"{0}\" is infected with the virus {1}."
+msgstr "„{0}“ ist mit dem Virus {1} infiziert."
+
+msgid "Repairing puts the program back as it was; the infected file is kept in Deleted Files."
+msgstr "Die Reparatur stellt das Programm wieder her; die infizierte Datei wird in „Deleted Files“ aufbewahrt."
+
+msgid "HyperZebra cannot repair this file. If you open it anyway, changes it tries to make to other programs are still refused."
+msgstr "HyperZebra kann diese Datei nicht reparieren. Wenn Sie sie trotzdem öffnen, wird weiterhin nachgefragt, bevor sie andere Programme ändert."
+
+msgid "Don't Open"
+msgstr "Nicht öffnen"
+
+msgid "Repair and Open"
+msgstr "Reparieren und öffnen"
+
+msgid "Open Anyway"
+msgstr "Trotzdem öffnen"
+
+msgid "Not a scrolling field."
+msgstr "Dies ist kein rollbares Feld."

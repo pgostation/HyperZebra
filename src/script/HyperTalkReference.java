@@ -705,6 +705,8 @@ powerKeys || the powerKeys || Paint shortcut keys
 *brushColor || the brushColor|penColor|brushBackColor|penBackColor || Paint colours as r,g,b (0–65535 each); the back colour can be none
 *brushSize || the brushSize|brushHardness|brushOpacity|brushSpacing || Brush size (1–256), hardness (0–100), opacity (1–100) and spacing (1–200)
 *brushStabilizer || the brushStabilizer|brushStabilization || Stroke smoothing (0–98)
+*brushPressure || the brushPressure || What pen tablet pressure changes for the brush: size, opacity, both or none
+*penPressure || the penPressure || The pen tablet's pressure now (0–100; empty when no pen is in use)
 *zoom || the zoom|zoomOrigin || Zoom (25–3200 %) and the card point at the top-left (x,y)
 *gradient || the gradient|gradientAngle || Paint fill (off, linear, radial or texture) and the gradient's angle in degrees
 *fillTexture || the fillTexture|fillTolerance || Texture fill (Wood, Marble, Clouds, Sand, Granite, Brick, Canvas, Water, an image file or none) and bucket tolerance (0–100)

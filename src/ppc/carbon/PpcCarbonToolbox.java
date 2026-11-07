@@ -78,17 +78,39 @@ final class PpcCarbonToolbox {
 	/** True when {@code port} has the CGrafPort layout at offsets 8-15 (grafVars, chExtra, pnLocHFrac): windows made with
 	 *  NewWindow keep a classic GrafPort's portBits.bounds there (see QuickDraw68k.newWindowPort). */
 	private boolean colorLayout(int port) throws M68kCpuException {return (memory.readWord(port+6)&0xc000)==0xc000&&rt.toolbox.api.isHandle(memory.readLong(port+8));}
-	/** CopyPixPat of a port's pattern into the program's PixPatHandle; returns that Handle. */
-	private int copyPortPattern(int port,int offset,int out) throws M68kException {int src=memory.readLong(port+offset);if(src!=0&&out!=0&&src!=out)rt.toolbox("CopyPixPat",src,out);return out;}
+	/** CopyPixPat of a port's pattern into the program's PixPatHandle; returns that Handle. A port without the colour layout
+	 *  (a classic GrafPort, or a NewWindow/GetNewDialog window's record) holds an 8-byte Pattern there - bkPat 32, pnPat 58,
+	 *  fillPat 40 - which goes into the Handle as a pattern PixPat: Asshole II's GetPortPenPixPat on its dialog read pnPat's
+	 *  black bytes as the PixPat Handle FFFFFFFF and CopyPixPat crashed. */
+	private int copyPortPattern(int port,int offset,int out) throws M68kException {if(out==0)return out;
+		if(!colorLayout(port)){rt.toolbox.api.quickDraw().loadPatternPixPat(out,memory.readBytes(port+(offset==FILL_PIX_PAT?40:offset),8));return out;}
+		int src=memory.readLong(port+offset);
+		if(src==0||!rt.toolbox.api.isHandle(src)){byte[] solid=new byte[8];if(offset!=BK_PIX_PAT)java.util.Arrays.fill(solid,(byte)-1);rt.toolbox.api.quickDraw().loadPatternPixPat(out,solid);} // none yet: black pen and fill, white background
+		else if(src!=out)rt.toolbox("CopyPixPat",src,out);
+		return out;}
+
+	/** SetPortPenPixPat/SetPortBackPixPat copy the pattern into the port's own PixPat (CopyPixPat), as Carbon's accessors do:
+	 *  programs save the pattern with GetPort...PixPat into a NewPixPat, put it back and dispose of it (Asshole II), so the port
+	 *  must not keep their Handle. A port without the colour layout takes the pattern's pat1Data into its 8-byte Pattern. */
+	private void setPortPattern(int port,int offset,int pattern,String trap) throws M68kException {
+		if(pattern==0)return;int data=memory.readLong(pattern);
+		if(!colorLayout(port)){if(data!=0)memory.copy(data+20,port+offset,8);return;}
+		int own=memory.readLong(port+offset);
+		if(own==pattern)return;
+		if(own==0||!rt.toolbox.api.isHandle(own)||memory.readLong(own)==0){own=rt.toolbox("NewPixPat");if(own==0)return;final int made=own;inPort(port,()->rt.toolbox(trap,made));} // the port's own PixPat from now on
+		rt.toolbox("CopyPixPat",pattern,own);
+	}
 
 	private void defineQuickDraw(PpcLibraries l){
 		l.register(null,"GetPixBounds",(r,c)->{int pm=arg(0),out=arg(1);memory.copy(memory.readLong(pm)+6,out,8);ret(out);}); // PixMap.bounds
 		l.register(null,"GetPortBackPixPat",(r,c)->{int[] a=args(2);ret(copyPortPattern(a[0],BK_PIX_PAT,a[1]));});
 		l.register(null,"GetPortPenPixPat",(r,c)->{int[] a=args(2);ret(copyPortPattern(a[0],PN_PIX_PAT,a[1]));});
 		l.register(null,"GetPortFillPixPat",(r,c)->{int[] a=args(2);ret(copyPortPattern(a[0],FILL_PIX_PAT,a[1]));});
-		l.register(null,"SetPortBackPixPat",(r,c)->{int[] a=args(2);inPort(a[0],()->rt.toolbox("BackPixPat",a[1]));});
-		l.register(null,"SetPortPenPixPat",(r,c)->{int[] a=args(2);inPort(a[0],()->rt.toolbox("PenPixPat",a[1]));});
-		l.register(null,"SetPortFillPixPat",(r,c)->{int[] a=args(2);int old=memory.readLong(a[0]+FILL_PIX_PAT);if(old!=0&&a[1]!=0)rt.toolbox("CopyPixPat",a[1],old);else memory.writeLong(a[0]+FILL_PIX_PAT,a[1]);});
+		l.register(null,"SetPortBackPixPat",(r,c)->{int[] a=args(2);setPortPattern(a[0],BK_PIX_PAT,a[1],"BackPixPat");});
+		l.register(null,"SetPortPenPixPat",(r,c)->{int[] a=args(2);setPortPattern(a[0],PN_PIX_PAT,a[1],"PenPixPat");});
+		l.register(null,"SetPortFillPixPat",(r,c)->{int[] a=args(2);
+			if(!colorLayout(a[0])){int data=a[1]==0?0:memory.readLong(a[1]);if(data!=0)memory.copy(data+20,a[0]+40,8);return;} // classic fillPat: the PixPat's pat1Data
+			int old=memory.readLong(a[0]+FILL_PIX_PAT);if(old!=0&&a[1]!=0)rt.toolbox("CopyPixPat",a[1],old);else memory.writeLong(a[0]+FILL_PIX_PAT,a[1]);});
 		l.register(null,"GetPortChExtra",(r,c)->{int port=arg(0);ret(colorLayout(port)?(short)memory.readWord(port+12):0);});
 		l.register(null,"GetPortSpExtra",(r,c)->ret(memory.readLong(arg(0)+76)));
 		l.register(null,"GetPortFracHPenLocation",(r,c)->{int port=arg(0);ret(colorLayout(port)?memory.readWord(port+14):0);});

@@ -102,7 +102,7 @@ final class HfsVolume {
 				folders.put(id,e);if(id!=2)parents.put(e,parent);
 			}else if(type==2&&data.length>=102){
 				DiskImage.Entry e=new DiskImage.Entry();
-				e.name=name;e.locked=(u1(data,2)&1)!=0;
+				e.name=name;e.locked=(u1(data,2)&1)!=0;e.attributes=u1(data,2)&0x40;
 				System.arraycopy(data,4,e.finderInfo,0,16);
 				e.id=u4(data,20);
 				e.dataLength=u4(data,26)&0xffffffffL;e.resourceLength=u4(data,36)&0xffffffffL;
@@ -199,7 +199,7 @@ final class HfsVolume {
 				int nameLength=u1(directory,at+50);
 				if(at+51+nameLength>(sector+1)*512)break;
 				DiskImage.Entry e=new DiskImage.Entry();
-				e.locked=(flags&1)!=0;
+				e.locked=(flags&1)!=0;e.attributes=flags&0x40;
 				System.arraycopy(directory,at+2,e.finderInfo,0,16);
 				e.finderInfo[14]=0;e.finderInfo[15]=0; // fdFldr: the Finder's folder number, meaningless outside its Desktop file
 				e.id=u4(directory,at+18);

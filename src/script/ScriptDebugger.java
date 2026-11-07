@@ -61,15 +61,15 @@ class ScriptDebugger {
 		Frame frame = new Frame(object, message, memData, isFunction);
 		synchronized(frames){
 			frames.add(frame);
+			frameCount = frames.size();
 		}
 		active = true;
 		return frame;
 	}
 
 	/** 実行中のハンドラの深さ(呼び出しスタックの段数) */
-	static int frameDepth(){
-		synchronized(frames){ return frames.size(); }
-	}
+	static int frameDepth(){ return frameCount; }
+	private static volatile int frameCount;
 
 	/** 呼び出しスタックの末尾 n 段("object: message" の並び)。再帰エラーの説明用 */
 	static String frameTrail(int n){
@@ -89,6 +89,7 @@ class ScriptDebugger {
 		synchronized(frames){
 			int i = frames.lastIndexOf(frame);
 			if(i>=0) frames.remove(i);
+			frameCount = frames.size();
 		}
 	}
 
@@ -123,6 +124,7 @@ class ScriptDebugger {
 	static void reset(){
 		synchronized(frames){
 			frames.clear();
+			frameCount = 0;
 		}
 		stepDepth = -1;
 		paused = false;
@@ -211,6 +213,12 @@ class ScriptDebugger {
 	 * objectのスクリプトそのもの(行番号がエディタと対応する)を実行しているときだけ働き、
 	 * do/sendの文字列やメッセージボックスの行では何もしない。
 	 */
+	/** Compiled code makes a call without beforeStatement: where its handler stands, for the call stack */
+	static void atLine(MemoryData memData, int line){
+		Frame frame = currentFrame();
+		if(frame!=null && frame.memData==memData) frame.line = line;
+	}
+
 	static void beforeStatement(OObject object, ArrayList<String> scriptList, int line, MemoryData memData)
 	throws xTalkException
 	{

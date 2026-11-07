@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFileAttributes;
+import java.nio.file.attribute.PosixFilePermission;
 
 /**
  * What the Finder keeps of a file beside its forks and Finder info - its lock, its creation date, its comment - on the host file
@@ -12,7 +14,9 @@ import java.nio.file.attribute.FileTime;
  * file), SetFInfo's creation dates and FinderComments' comments were never seen again.
  *
  * - The lock is macOS's Locked (the uchg flag the Finder's Locked checkbox sets), elsewhere the read-only attribute / no write
- *   permission; a file the host will not let anyone write reads back as locked (ioFlAttrib bit 0), as it already did.
+ *   permission; a file the host will not let anyone write reads back as locked (ioFlAttrib bit 0), as it already did. On macOS a
+ *   file of the user's that only its permissions keep read-only ({@link #readOnlyCopy}: a game folder copied from its CD keeps
+ *   r--r--r--) is no locked file: the Finder does not show it Locked, and on a Mac the copy on the hard disk would be writable.
  * - The creation date is the host's birth time where the host keeps one.
  * - The comment is the Spotlight comment attribute the Finder writes (com.apple.metadata:kMDItemFinderComment, a binary property
  *   list holding one string) on macOS, and the AppleDouble sidecar's Comment entry (ID 4) where the host has no forks.
@@ -21,7 +25,30 @@ final class HostFileAttributes68k {
 	private HostFileAttributes68k(){}
 
 	/** True when the host keeps the file from being written (the Finder's Locked, read-only): the file is locked to programs. */
-	static boolean locked(File file){return file!=null&&file.isFile()&&!file.canWrite();}
+	static boolean locked(File file){return file!=null&&file.isFile()&&!file.canWrite()&&!readOnlyCopy(file);}
+
+	/**
+	 * True for a file of the user's that is read-only by its permissions alone (no owner write bit) on macOS, where the Finder's
+	 * Locked is the uchg flag instead: UltraHyperDisc's games, copied from the CD with r--r--r--, stopped at their own files -
+	 * Space Joust and Killer Box Virus with "-45" (fLckdErr), StarGates with "Please run this program from a Hard-disk.".
+	 */
+	static boolean readOnlyCopy(File file){
+		if(file==null||!GMenu.isMacOSX()||!file.isFile()||file.canWrite())return false;
+		try{PosixFileAttributes a=Files.readAttributes(file.toPath(),PosixFileAttributes.class);
+			return !a.permissions().contains(PosixFilePermission.OWNER_WRITE)&&a.owner().getName().equals(System.getProperty("user.name"));}
+		catch(IOException|UnsupportedOperationException|SecurityException e){return false;}
+	}
+
+	/** True when the file can be written, or can be once {@link #makeWritable} gives a {@link #readOnlyCopy} its write permission back. */
+	static boolean mayBecomeWritable(File file){return file!=null&&(file.canWrite()||readOnlyCopy(file));}
+
+	/** Makes a {@link #readOnlyCopy} writable for its owner (what a program writing it finds on a Mac); false when the file stays unwritable (Locked, or the host refused). */
+	static boolean makeWritable(File file){
+		if(file==null||file.canWrite())return file!=null;
+		if(!readOnlyCopy(file)||!file.setWritable(true,true)||!file.canWrite())return false;
+		System.err.println("[file] "+file.getName()+": read-only copy made writable for the program");
+		return true;
+	}
 
 	/** Locks or unlocks the file on the host; false when the host refused. */
 	static boolean setLocked(File file,boolean locked){

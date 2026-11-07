@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamReader;
@@ -241,7 +240,7 @@ class ResClipboard {
 	private static List<Clip> read(String text, Rsrc rsrc){
 		ArrayList<Clip> clips = new ArrayList<Clip>();
 		try {
-			XMLStreamReader reader = XMLInputFactory.newInstance().createXMLStreamReader(
+			XMLStreamReader reader = XmlSafe.input().createXMLStreamReader(
 				new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)), "UTF-8");
 			Clip c = null;
 			while(reader.hasNext()){

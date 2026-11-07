@@ -732,7 +732,7 @@ public class OCard extends OCardBase {
 				}
 				if(new File(path).exists() && !new File(path).isDirectory()){
 					try {
-						cd.pict = PictureCache.read(new File(path), "imageio", StackProtection::readImage);
+						cd.pict = PictureCache.readShared(new File(path), "imageio", StackProtection::readImage);
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
@@ -751,7 +751,7 @@ public class OCard extends OCardBase {
 		try {
 			if(file.exists()) {
 				//System.out.println(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".png");
-				cd.pict = PictureCache.read(file, "imageio", StackProtection::readImage);
+				cd.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
 				cd.label = MyLabel.getMyCdLabel(cd/*new ImageIcon(stack.file.getParent()+"/resource/cdp"+this.id+".png")*/);
 				cd.label.setBounds(0,0,cd.stack.width,cd.stack.height);
 				PCARD.pc.mainPane.add(cd.label);
@@ -759,7 +759,7 @@ public class OCard extends OCardBase {
 				file=new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".jpeg");
 				if(file.exists()) {
 					//System.out.println(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".jpeg");
-					cd.pict = PictureCache.read(file, "imageio", StackProtection::readImage);
+					cd.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
 					cd.pict = makeAlphaImage2(cd.pict);
 					cd.label = MyLabel.getMyCdLabel(cd/*new ImageIcon(stack.file.getParent()+"/resource/cdp"+this.id+".jpeg")*/);
 					cd.label.setBounds(0,0,cd.stack.width,cd.stack.height);

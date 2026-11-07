@@ -46,17 +46,12 @@ public class VEffect {
 	 *  使うときにだけ絵を取る(captureBeforeChange)。アニメーションの1コマごとのカード全体の描画を省く */
 	static volatile boolean lazyLock = false;
 
-	/** lock screen を絵なしで始める。直前のコマの描画を済ませてから EDT 上でロックする */
+	/** lock screen を絵なしで始める。部品はロック開始時のままなので、ロック前のコマはロック中に描かれても同じ絵になる。
+	 *  描画を待たない(毎コマ lock screen するゲームでは、そのコマの描画の分だけスクリプトが止まっていた) */
 	static void lockLazily() {
-		if(PCARDFrame.pc==null || PCARDFrame.pc.mainPane==null){ PCARD.lockedScreen = true; return; }
 		oldoff = null;
-		PCARD.runOnEDT(() -> {
-			javax.swing.RepaintManager m = RepaintManager.currentManager(PCARDFrame.pc.mainPane);
-			if(m instanceof CardRepaintManager) ((CardRepaintManager)m).paintNow();
-			oldoff = null;
-			lazyLock = true;
-			PCARD.lockedScreen = true;
-		});
+		lazyLock = PCARDFrame.pc!=null && PCARDFrame.pc.mainPane!=null;
+		PCARD.lockedScreen = true;
 	}
 
 	/** (EDT) 絵なしのロック中にツリーが変わる直前: ロック開始時の画面(今のツリー)を絵にしておく */
@@ -200,7 +195,7 @@ public class VEffect {
 
 	//finish=false なら効果の終わりの画像を次の効果の開始画像(oldoff)として残し、画面は確定しない
 	public static void visualEffect(int effect, int toEffect, int speed, boolean finish) {
-		visualEffect(effect, toEffect, effectDuration(effect, speed), finish, null);
+		visualEffect(effect, toEffect, effectDuration(effect, playSpeed(speed)), finish, null);
 	}
 
 	/** AddColor's transitions (TXcmd.AddColor): only the rectangle area changes, from the picture taken by setOldOff to
@@ -394,6 +389,10 @@ public class VEffect {
 		return effectDuration(speed);
 	}
 
+	/** -Dhz.effects.fastest=true (the test runs): every effect plays at very fast, whatever speed the script asked for */
+	private static final boolean FASTEST = Boolean.getBoolean("hz.effects.fastest");
+	private static int playSpeed(int speed){ return FASTEST && speed>=1 && speed<=5 ? 1 : speed; }
+
 	static long effectDuration(int speed){
 		switch(speed){
 			case 1: return 100;
@@ -409,7 +408,7 @@ public class VEffect {
 	 *  (HC J-2.3 measured: 30 ticks at normal). A script thread's pause; an abort ends it. */
 	public static void holdPlain(int speed){
 		if(SwingUtilities.isEventDispatchThread()) return;
-		long end = System.nanoTime()+effectDuration(0, speed)*1_000_000L;
+		long end = System.nanoTime()+effectDuration(0, playSpeed(speed))*1_000_000L;
 		while(System.nanoTime()<end && !TTalk.stop){
 			try{ Thread.sleep(5); }catch(InterruptedException e){ Thread.currentThread().interrupt(); break; }
 		}

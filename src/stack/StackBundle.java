@@ -324,7 +324,9 @@ final class StackBundle {
 	 */
 	static String sync(File f){
 		Bundle b = bundleOf(f);
-		return b==null ? null : sync(b);
+		if(b==null) return null;
+		PictureSaver.flush();
+		return sync(b);
 	}
 
 	private static String sync(Bundle b){
@@ -362,6 +364,7 @@ final class StackBundle {
 
 	/** Quitting: every open packed stack is written back, and the working folders that reached their files are removed. */
 	static void shutDown(){
+		PictureSaver.flush();
 		for(Bundle b: bundles()){
 			String why = sync(b);
 			if(why==null && b.packed.isFile()) synchronized(b){ deleteTree(b.root); }

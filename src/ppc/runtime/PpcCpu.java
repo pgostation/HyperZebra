@@ -49,6 +49,9 @@ final class PpcCpu {
 	int jitBranch;
 	/** The region running now and its thread (PpcJit: a store of its own that changes its code stops it). */
 	PpcJit.Code jitRunning;Thread jitThread;
+	/** -Dhzppc.stats: compiled region runs, instructions interpreted in JIT mode, and region entries by address (sampled). */
+	static final boolean JIT_STATS=Boolean.getBoolean("hzppc.stats");
+	long jitRuns,jitInterpreted;final java.util.HashMap<Integer,int[]> jitEntrySamples=JIT_STATS?new java.util.HashMap<Integer,int[]>():null;
 	private static final int POLL_INTERVAL=4096;
 	/** Ring buffer of recent instruction addresses for crash dumps (-Dhzppc.pchistory=n, a power of two). */
 	private static final int PC_HISTORY=Integer.getInteger("hzppc.pchistory",256);
@@ -196,7 +199,7 @@ final class PpcCpu {
 	/** Turns the JIT on or off (at the next scheduler poll); the debug traces keep the interpreter. */
 	void useJit(boolean on){
 		if(on&&(TRACE_RANGES.length>0||WATCH)){if(!jitBlockedTold){jitBlockedTold=true;System.err.println("[ppc] JIT off while -Dhzppc.pctrace / -Dhz68k.watch trace instructions");}on=false;}
-		if(!on&&jit!=null)jit.dropAll(); // the interpreter only from now on: the compiled classes can go
+		if(!on&&jit!=null)jit.clear(); // the interpreter only from now on: the compiled classes can go
 		jit=on?PpcJit.attach(memory,this):null;
 	}
 	private static boolean jitBlockedTold;
@@ -208,26 +211,29 @@ final class PpcCpu {
 	private boolean executeJit() throws M68kException {
 		PpcJit j=jit;
 		int[] keys=j.cacheKey;PpcJit.Code[] codes=j.cacheCode;
+		jitThread=Thread.currentThread();
 		for(;;){
 			int at=pc;
 			if(at==RETURN_SENTINEL)return true;
 			int slot=(at>>>2)&PpcJit.CACHE_MASK;
 			PpcJit.Code code=keys[slot]==at?codes[slot]:j.lookup(at);
+			if(code==PpcJit.COLD)code=j.warm(at)?j.lookup(at):null;
 			if(code!=null&&code!=PpcJit.NONE){
 				long before=instructions;
 				jitStop=POLL_INTERVAL-(int)(before&(POLL_INTERVAL-1));
 				pcHistory[pcHistoryPos++&(PC_HISTORY-1)]=at;
-				jitRunning=code;jitThread=Thread.currentThread();
+				jitRunning=code;
 				int n;
+				if(JIT_STATS&&(++jitRuns&63)==0)jitEntrySamples.computeIfAbsent(at,k->new int[1])[0]++;
 				try{n=code.run(this);}finally{jitRunning=null;}
 				if(pc==0||(pc&3)!=0)pcHistory[pcHistoryPos++&(PC_HISTORY-1)]=jitBranch; // what glueCallee looks behind
 				if(n>=0){
-					instructions=before+n;
+					instructions+=n; // not before+n: natives the region called ran code that counted its own
 					if(((before^instructions)&-POLL_INTERVAL)!=0){if(scheduler!=null)scheduler.poll(this);return false;}
 					continue;
 				}
 				if(n<-1){ // stopped before an instruction the interpreter runs (a failed access: it fails again, for real)
-					instructions=before+(-2-n);
+					instructions+=-2-n;
 					boolean due=((before^instructions)&-POLL_INTERVAL)!=0;
 					if(interpretBlock())return false;
 					if(due){if(scheduler!=null)scheduler.poll(this);return false;}
@@ -236,6 +242,21 @@ final class PpcCpu {
 			}
 			if(interpretBlock())return false;
 		}
+	}
+	/**
+	 * A host gate that compiled code reached through an indirect branch (glue calling a native routine), with the registers
+	 * back in the CPU: runs it as {@link #step} does. False when the code must not go on from where it returns to (a region was
+	 * dropped meanwhile, maybe that one: code the native loaded over it; the JIT was turned off).
+	 */
+	boolean jitGate(int at) throws M68kException {
+		PpcJit j=jit;PpcJit.Code running=jitRunning;int stop=jitStop;long drops=j.dropped;
+		int op=memory.readLong(at);
+		pcHistory[pcHistoryPos++&(PC_HISTORY-1)]=at;
+		pc=at+4;jitRunning=null; // PowerPC code the native runs is not the region's own
+		try{natives.call(this,op&0x03ffffff);}finally{jitRunning=running;}
+		if(pc==at+4)pc=lr&~3;
+		jitStop=stop; // a nested run set its own
+		return jit==j&&j.dropped==drops;
 	}
 	/** Interprets from pc up to the next control transfer (JIT mode, code without a region); true when a scheduler poll was made. */
 	private boolean interpretBlock() throws M68kException {
@@ -248,6 +269,7 @@ final class PpcCpu {
 			int op=(m[p]&0xff)<<24|(m[p+1]&0xff)<<16|(m[p+2]&0xff)<<8|m[p+3]&0xff;
 			pcHistory[pcHistoryPos++&(PC_HISTORY-1)]=at;
 			pc=at+4;
+			if(JIT_STATS&&(++jitInterpreted&63)==0)jitEntrySamples.computeIfAbsent(at|1,k->new int[1])[0]++;
 			try{step(op,at);}
 			catch(IllegalInstruction e){if(e.level!=nesting||e.pc!=at||!deliverException(ILLEGAL_INSTRUCTION_EXCEPTION,at,0))throw e;}
 			catch(ProtectionFault e){if(e.level!=nesting||!deliverException(READ_ONLY_MEMORY_EXCEPTION,at,e.address))throw e;}

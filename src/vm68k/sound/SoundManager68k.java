@@ -103,9 +103,9 @@ final class SoundManager68k {
 		ChannelState state=channels.get(channel);int result;
 		if(state==null)result=BAD_CHANNEL;
 		else if(command==0)result=BAD_FORMAT;
-		else if(!immediate&&(!state.pending.isEmpty()||queueBusy(state))){
-			// SndDoCommand behind a sampled sound still playing or a waitCmd still running: the command waits its turn in the
-			// channel's queue (bufferCmds sent back to back used to play on top of each other)
+		else if(!immediate&&(!state.pending.isEmpty()||state.callBacksDue>0||heldFor(state,memory.readWord(command)&0x3fff))){
+			// SndDoCommand behind a sampled sound still playing, a waitCmd still running or a callBack still to run: the command
+			// waits its turn in the channel's queue (bufferCmds sent back to back used to play on top of each other)
 			if(state.pending.size()>=QUEUE_LENGTH)result=QUEUE_FULL;
 			else{state.pending.add(memory.readBytes(command,8));result=NO_ERR;
 				if(SND_TRACE)System.err.println("[snd] queued command "+(memory.readWord(command)&0x3fff)+" param2=$"+Integer.toHexString(memory.readLong(command+4))+" channel $"+Integer.toHexString(channel)+" ("+state.pending.size()+" waiting)");
@@ -129,11 +129,28 @@ final class SoundManager68k {
 		SoundMixer68k.Voice last=state.lastQueued;return last!=null&&last.playing();
 	}
 
+	/**
+	 * Whether a command of {@code kind} has to wait in the queue: as {@link #queueBusy}, except that a callBackCmd behind a
+	 * short buffer runs once the mixer has nearly taken it ({@link SoundMixer68k.Voice#onNearEnd}), as a Mac's Sound Manager
+	 * calls back when its mixer has the buffer - the next one the callBack sends then follows on without a gap.
+	 */
+	private static boolean heldFor(ChannelState state,int kind){
+		if(!queueBusy(state))return false;
+		if(kind!=CALL_BACK_CMD||state.waiting||state.paused||state.doubleBuffer!=null&&!state.doubleBuffer.finished)return true;
+		SoundMixer68k.Voice last=state.lastQueued;return !(shortBuffer(last)&&last.nearlyEnded);
+	}
+	/** A decoded sound of under half a second: a buffer of a stream rather than a sound of its own. */
+	static boolean shortBuffer(SoundMixer68k.Voice v){return v!=null&&v.source==null&&v.frames<v.sourceRate*0.5;}
+
 	/** Runs the queued commands that are now free to run (on the emulation thread). */
 	private void drain(ChannelState state) throws M68kCpuException {
 		if(state.draining)return;state.draining=true;
 		try{
-			while(!state.pending.isEmpty()&&!queueBusy(state)&&channels.get(state.channel)==state){
+			// the Sound Manager takes the next command only once a callBackCmd's routine has run: what the routine puts in front
+			// of the waiting commands comes before them. Director's CarbonSndPlayDoubleBuffer callBack queues its next buffer so,
+			// ahead of the projector's own callBackCmd (param1 123) behind it; drained first, that one reached the double-buffer
+			// routine, which took its param2 for its channel info and called a NIL doubleBack (3pm-slump, Macintosh Garden)
+			while(!state.pending.isEmpty()&&state.callBacksDue==0&&!heldFor(state,((state.pending.peek()[0]&255)<<8|(state.pending.peek()[1]&255))&0x3fff)&&channels.get(state.channel)==state){
 				byte[] cmd=state.pending.poll();memory.load(state.channel+20,cmd);
 				SoundMixer68k.Voice linked=state.prelinked.remove(cmd);
 				if(linked!=null){ // a bufferCmd already decoded and linked behind the sound before it: it is (or now starts) playing
@@ -282,18 +299,64 @@ final class SoundManager68k {
 		final byte[] cmd=new byte[8];for(int i=0;i<8;i++)cmd[i]=(byte)memory.readByte(command+i);scheduleCallBack(state,cmd);}
 	/** As above, for the callBackCmd {@code cmd} (8 bytes). */
 	private void scheduleCallBack(final ChannelState state,final byte[] cmd) throws M68kCpuException {
-		if(state.callback==0)return;final int generation=state.generation;
+		if(callBackOf(state)==0)return;final int generation=state.generation;
 		final Runnable run=new Runnable(){@Override public void run(){try{
-			Toolbox68k tb=macApi.application();if(tb==null||state.generation!=generation)return;M68kCpu cpu=tb.cpu;memory.load(state.channel+20,cmd);
+			Toolbox68k tb=macApi.application();if(tb==null||state.generation!=generation)return;int callback=callBackOf(state);if(callback==0)return;
+			M68kCpu cpu=tb.cpu;memory.load(state.channel+20,cmd);
 			if(Mac68kApi.TRACE||SND_TRACE)System.err.println("[68K] sound callback for channel $"+Integer.toHexString(state.channel));
 			int[] d=cpu.d.clone(),a=cpu.a.clone();int sr=cpu.sr;cpu.a[7]-=Toolbox68k.INTERRUPT_STACK_SLACK;cpu.pushLong(state.channel);cpu.pushLong(state.channel+20);
-			try{cpu.callPascal(state.callback,8);}finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}
+			List<byte[]> exposed=exposeQueue(state);
+			state.inCallBack=true;
+			try{cpu.callPascal(callback,8);}finally{state.inCallBack=false;System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}
+			if(adoptQueue(state,exposed))drain(state);
 		}catch(M68kException e){throw Toolbox68k.wrap(e);}}};
 		SoundSynth68k synth=state.synthesizer;if(synth!=null&&synth.busy()){synth.callback(()->macApi.application().later(run));return;} // behind the queued notes
 		final SoundMixer68k.Voice last=state.lastQueued;
-		if(last==null||!last.playing()){macApi.application().later(run);return;}
-		last.onEnd(new Runnable(){@Override public void run(){Toolbox68k tb=macApi.application();if(tb!=null)tb.later(run);}});
+		// the queue waits for the routine (see drain); a stopped sound still runs its end hooks, so the count comes back down
+		state.callBacksDue++;
+		final Runnable counted=()->{try{run.run();}finally{state.callBacksDue--;
+			try{if(state.callBacksDue==0)drain(state);}catch(M68kCpuException e){throw Toolbox68k.wrap(e);}}};
+		if(last==null||last.ended){macApi.application().later(counted);return;} // (one linked behind the sound playing has not started yet)
+		Runnable due=new Runnable(){@Override public void run(){Toolbox68k tb=macApi.application();if(tb!=null)tb.later(counted);}};
+		// a short buffer of a stream: once the mixer has nearly taken it, so the next one the callBack sends follows on (startClip
+		// links it); after a longer sound the callBack still says it has been heard to the end
+		if(shortBuffer(last))last.onNearEnd(due);else last.onEnd(due);
 	}
+
+	/**
+	 * The channel record's own queue (qHead at 32, qTail at 34, queue[qLength] at 36) as a callBack sees it: the commands
+	 * still waiting, ending at qTail = qLength; qHead -1 when there are none. Apple's CarbonSndPlayDoubleBuffer (Carbon has
+	 * no SndPlayDoubleBuffer) queues its next bufferCmd and callBackCmd from the callBack by writing them in front of the
+	 * waiting ones there (qHead--, queue[qHead] = cmd) rather than through SndDoCommand; Arnold (Amstrad CPC emulator)
+	 * plays its sound that way, and its emulation, paced by the buffers, stopped after the first one. Returns the commands
+	 * put there, or null when the record has no room for them.
+	 */
+	private List<byte[]> exposeQueue(ChannelState state) throws M68kCpuException {
+		int length=memory.readWord(state.channel+30);
+		if(length<1||length>QUEUE_LENGTH||state.pending.size()>=length)return null;
+		List<byte[]> waiting=new ArrayList<byte[]>(state.pending);int head=length-waiting.size();
+		for(int i=0;i<waiting.size();i++)memory.load(state.channel+36+(head+i)*8,waiting.get(i));
+		memory.writeWord(state.channel+32,waiting.isEmpty()?-1:head);memory.writeWord(state.channel+34,length);
+		return waiting;
+	}
+	/** After the callBack: the commands it wrote in front of {@code exposed} in the record go to the front of the queue. True when there were any. */
+	private boolean adoptQueue(ChannelState state,List<byte[]> exposed) throws M68kCpuException {
+		if(exposed==null)return false;
+		int length=memory.readWord(state.channel+30),head=(short)memory.readWord(state.channel+32),tail=memory.readWord(state.channel+34);
+		if(head<0||head>=length||tail>length||head>=tail)return false;
+		int added=tail-head-exposed.size();if(added<=0)return false;
+		for(int i=0;i<exposed.size();i++)if(!java.util.Arrays.equals(memory.readBytes(state.channel+36+(head+added+i)*8,8),exposed.get(i)))return false;
+		for(int i=added-1;i>=0;i--){byte[] cmd=memory.readBytes(state.channel+36+(head+i)*8,8);state.pending.addFirst(cmd);
+			if(SND_TRACE)System.err.println("[snd] callBack put command "+(((cmd[0]&255)<<8|(cmd[1]&255))&0x3fff)+" in the channel record's queue");}
+		return true;
+	}
+
+	/**
+	 * The channel's callBack field: SndNewChannel puts its userRoutine there, and a program may set it afterwards - Arnold
+	 * (Amstrad CPC emulator) opens its channel with none and stores a NewSndCallBackUPP into chan->callBack; its emulation
+	 * waits for that callback after every sound buffer and stopped after a few frames.
+	 */
+	private int callBackOf(ChannelState state) throws M68kCpuException {return memory.readLong(state.channel+8);}
 
 	private boolean play(M68kCpu cpu) throws M68kCpuException {if(DEBUG_FILE_PLAY)System.err.println("[68K] SndPlay $"+Integer.toHexString(memory.readLong(cpu.a[7]+6)));
 		int sp=cpu.a[7];boolean async=memory.readByte(sp)!=0;int handle=memory.readLong(sp+2),channel=memory.readLong(sp+6);cpu.a[7]+=10;
@@ -521,8 +584,13 @@ final class SoundManager68k {
 	private int startClip(ChannelState state,AudioInputStream stream,boolean async) {
 		final SoundMixer68k.Voice voice=voiceFor(state,stream);
 		if(voice==null)return BAD_FORMAT;
+		// a sound started from the callBack of the one still finishing (VocalWriter's synthesizer: SndDoImmediate bufferCmd,
+		// then callBackCmd, per 50 ms buffer) follows it without a gap, as on a Mac whose mixer had already taken that one
+		SoundMixer68k.Voice previous=state==null?null:state.tail;
+		boolean linked=async&&state.inCallBack&&previous!=null&&previous.nearlyEnded&&previous.source==null&&SoundMixer68k.get().link(previous,voice);
+		if(SND_TRACE&&state!=null)System.err.println("[snd] buffer "+voice.frames+" frames "+(linked?"linked behind the one finishing":"started")+" (inCallBack "+state.inCallBack+", previous "+(previous==null?"none":previous.ended?"ended":previous.nearlyEnded?"nearly ended":"playing")+")");
 		if(state!=null)state.lastQueued=state.tail=voice;
-		SoundMixer68k.get().start(voice);
+		if(!linked)SoundMixer68k.get().start(voice);
 		if(!async){while(voice.playing())try {Thread.sleep(5);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}SoundMixer68k.get().stop(voice);}
 		return NO_ERR;
 	}
@@ -534,6 +602,7 @@ final class SoundManager68k {
 		if(voice==null||state==null)return voice;
 		synchronized(state.voices){state.voices.removeIf(old->old.ended);state.voices.add(voice);}applyVolume(state,voice);
 		final ChannelState owner=state;voice.onEnd(new Runnable(){@Override public void run(){synchronized(owner.voices){owner.voices.remove(voice);}drainLater(owner);}});
+		if(shortBuffer(voice))voice.onNearEnd(()->drainLater(owner)); // a callBackCmd queued behind it may run now (heldFor)
 		return voice;
 	}
 
@@ -809,8 +878,11 @@ final class SoundManager68k {
 
 	/**
 	 * SndStartFilePlay(chan, fRefNum, resNum, bufferSize, theBuffer, theSelection, theCompletion, async): an AIFF/AIFC file
-	 * open under fRefNum, or the 'snd ' resource resNum, plays on the channel (a private one when chan is NIL, then always
-	 * synchronously). The completion routine (pascal proc(chan)) runs when the sound ends.
+	 * open under fRefNum plays on the channel (a private one when chan is NIL, then always synchronously). The completion
+	 * routine (pascal proc(chan)) runs when the sound ends. fRefNum 0 is badFormat whatever resNum names, as Sound Manager 3.3
+	 * answered in Basilisk II (Nov 4 2026, SFPTest): resNum 0, a missing 'snd ' and the System's 'snd ' 1 alike, nothing
+	 * played - IM Sound's 'snd ' resource play by resNum is not there in 3.x. Active Lancer Demo's classic music path
+	 * passes fRefNum 0 and stops at that error on a real Mac too.
 	 */
 	private boolean startFilePlay(M68kCpu cpu,int sp,int argBytes) throws M68kCpuException {
 		boolean async=memory.readByte(sp)!=0;int completion=memory.readLong(sp+2),resNum=(short)memory.readWord(sp+18),fRefNum=(short)memory.readWord(sp+20),channel=memory.readLong(sp+22);cpu.a[7]+=argBytes;
@@ -832,10 +904,6 @@ final class SoundManager68k {
 				try{stream=AudioSystem.getAudioInputStream(new ByteArrayInputStream(data));}
 				catch(UnsupportedAudioFileException unsupported){try{stream=MaceConverter.open(data);}catch(IOException e){stream=null;}if(stream==null)stream=MaceConverter.openIma4(data);}catch(IOException e){stream=null;}
 				result=stream==null?BAD_FORMAT:startClip(state,stream,channel!=0&&async);}
-		}else if(resNum!=0){
-			ResourceFile68k.Resource r=macApi.application().resources.find(0x736e6420,resNum);byte[] sound=r==null?null:macApi.application().resources.data(r);
-			if(Mac68kApi.TRACE)System.err.println("[68K] SndStartFilePlay snd "+resNum+(sound==null?" not found":" "+sound.length+" bytes")+" async="+async);
-			result=sound==null?RES_PROBLEM:hasSynthesizerCommands(sound)?playCommands(state,macApi.createHandle(sound),sound,channel!=0&&async):playBytes(state,sound,channel!=0&&async);
 		}else result=BAD_FORMAT;
 		if(completion!=0&&result==NO_ERR)fileCompletion(state,channel,completion,channel!=0&&async);
 		if(Mac68kApi.TRACE||DEBUG_FILE_PLAY||result!=NO_ERR)System.err.println("[68K] SndStartFilePlay channel $"+Integer.toHexString(channel)+" fRefNum "+fRefNum+" resNum "+resNum+" -> "+result);
@@ -1048,6 +1116,8 @@ final class SoundManager68k {
 		volatile int generation;
 		/** The sound most recently started on the channel: a callBackCmd waits for it. */
 		volatile SoundMixer68k.Voice lastQueued;
+		/** The channel's callBack is running (emulation thread): a bufferCmd it issues follows the buffer still finishing. */
+		boolean inCallBack;
 		/** The last sound started or linked on the channel: the next queued bufferCmd is linked behind it. */
 		SoundMixer68k.Voice tail;
 		/** Queue entries (by identity) of bufferCmds decoded and linked ahead of time, and their voices. */
@@ -1056,6 +1126,8 @@ final class SoundManager68k {
 		final java.util.ArrayDeque<byte[]> pending=new java.util.ArrayDeque<byte[]>();
 		/** A waitCmd is running; waitToken tells its timer whether a quietCmd/flushCmd cancelled it. */
 		volatile boolean waiting;volatile int waitToken;boolean draining;
+		/** callBacks of drained callBackCmds that have not run yet: the queue waits for them (see {@link SoundManager68k#drain}). */
+		int callBacksDue;
 		ChannelState(int channel,int synth,int init,int callback){this.channel=channel;this.synth=synth;this.init=init;this.callback=callback;}
 	}
 }

@@ -279,6 +279,7 @@ final class TextEdit68k {
 		memory.writeWord(r+SEL_START,start);memory.writeWord(r+SEL_END,end);
 		if(start!=oldStart||end!=oldEnd){State s=records.get(handle);if(s!=null)s.nullStyle=null;} // a new selection drops the null style
 		if(!redraw||memory.readWord(r+ACTIVE)==0)return; // an inactive record shows no highlight or caret: TESetSelect draws nothing there (奈美江ちゃんとの世界's runtime selects all in text blocks it keeps invisible)
+		fitLayout(handle);r=rec(handle);
 		// only the lines whose highlight (or caret) changes are redrawn: the old selection's lines and the new one's
 		int a0=lineOf(r,oldStart),a1=lineOf(r,oldEnd),b0=lineOf(r,start),b1=lineOf(r,end);
 		if(Math.max(a0,b0)<=Math.min(a1,b1)+1)update(handle,Math.min(a0,b0),Math.max(a1,b1));
@@ -298,6 +299,14 @@ final class TextEdit68k {
 		int r=rec(handle);int text=memory.readLong(r+H_TEXT);if(text==0)return;
 		int n=Math.min(Math.max(0,tb.api.handleSize(text)),32767);memory.writeWord(r+LENGTH,n);
 		if(memory.readWord(r+SEL_END)>n)memory.writeWord(r+SEL_END,n);if(memory.readWord(r+SEL_START)>n)memory.writeWord(r+SEL_START,n);
+	}
+
+	/** Lays the record out again when its line starts no longer end at the text's length: a program set teLength or hText itself
+	 *  (SimpleText's Undo swaps both in the record, then calls TESetSelect(0, 32767) before TESetText) and the old line starts
+	 *  and style runs reached past the new text - its redraw failed with "arraycopy: length -4 is negative". */
+	private void fitLayout(int handle) throws M68kCpuException {
+		int r=rec(handle);int h=memory.readLong(r+H_TEXT);int length=h==0?0:Math.min(memory.readWord(r+LENGTH),Math.max(0,tb.api.handleSize(h)));
+		if(lineEnd(r,lineCount(r)-1)!=length)recalc(handle);
 	}
 
 	void recalc(int handle) throws M68kCpuException {
@@ -569,6 +578,7 @@ final class TextEdit68k {
 	 * rectangle-style ones itself; fields whose rectangles overlap must not wipe each other's text). Editing redraws erase.
 	 */
 	void update(int handle,int firstLine,int lastLine,boolean erase) throws M68kCpuException {
+		fitLayout(handle);
 		int r=rec(handle);int port=memory.readLong(r+IN_PORT);
 		byte[] text=text(handle);Font font=font(r);FontMetrics fm=Fonts68k.metrics(font);
 		int[] view=rect(r+VIEW),dest=rect(r+DEST);int[] tops=lineTops(r);int n=lineCount(r);
@@ -674,7 +684,7 @@ final class TextEdit68k {
 	private int idle(int handle) throws M68kCpuException {
 		int r=rec(handle);State s=records.get(handle);if(s==null||memory.readWord(r+ACTIVE)==0)return 0;
 		long now=System.currentTimeMillis();long caretTime=memory.readLong(r+CARET_TIME)*1000L/60L;if(caretTime<=0)caretTime=500;
-		if(now-s.lastBlink>=caretTime){s.lastBlink=now;s.caretVisible=!s.caretVisible;if(memory.readWord(r+SEL_START)==memory.readWord(r+SEL_END))toggleCaret(handle);}
+		if(now-s.lastBlink>=caretTime){s.lastBlink=now;s.caretVisible=!s.caretVisible;if(memory.readWord(r+SEL_START)==memory.readWord(r+SEL_END)){fitLayout(handle);toggleCaret(handle);}}
 		return (int)Math.min(0x7fff,(now-s.lastBlink)*60/1000);
 	}
 
@@ -714,10 +724,15 @@ final class TextEdit68k {
 		textBox(text,box,just,tb.translator()==null?null:tb.translated(VMTranslation.Kind.TEXT,tb.decode(text)));
 	}
 	/** @param translation what is shown instead of the text (wrapped in the box, smaller when it does not fit), or null */
-	void textBox(byte[] text,int box,int just,String translation) throws M68kCpuException {
+	void textBox(byte[] text,int box,int just,String translation) throws M68kCpuException {textBox(text,box,just,translation,true,true);}
+	/** @param erase false: the text alone, over what the box holds - Carbon's DrawThemeTextBox draws that way (Asshole II's white
+	 *  player names on black plates came out as white bars when the box was erased first)
+	 *  @param wrap false: lines break at returns only, still justified in the box (DrawThemeTextBox's wrapToWidth false; a box
+	 *  widened to 32000 instead put its right-justified score-board names out of sight) */
+	void textBox(byte[] text,int box,int just,String translation,boolean erase,boolean wrap) throws M68kCpuException {
 		int[] b=readRect(box);int port=tb.api.currentQuickDrawPort();
 		int[] t=tb.api.quickDraw().textState();Font font=Fonts68k.font(t[0],t[3],t[1]);int[] fi=Fonts68k.fontInfo(font);int lineHeight=fi[0]+fi[1]+fi[3];
-		List<Integer> starts=lineStarts(text,0,font,Math.max(8,b[3]-b[1]),false);
+		List<Integer> starts=lineStarts(text,0,font,wrap?Math.max(8,b[3]-b[1]):32000,false);
 		// TETextBox erases the box with EraseRect (the port's background PATTERN) and draws in the port's text mode: Factory 1.1 sets
 		// BackPat(black) and TextMode(srcXor) on its status bar, white text on black on a Mac (black on white boxes here before)
 		int back=tb.api.quickDraw().eraseRgb(b[1],b[0]),fore=tb.api.quickDraw().foregroundRgb(),mode=t[2]&0x3f;
@@ -725,7 +740,7 @@ final class TextEdit68k {
 		// the erase is EraseRect itself, so a background PixPat shows (a Kaleidoscope scheme's pin-striped dialogs). It comes
 		// BEFORE the surface is taken: QuickDraw flushes staged surfaces when it touches the buffer, so a surface staged first
 		// (a 1-bit or indexed window) was written back before the text went into it and every static text item came out blank.
-		boolean erased=eraseBox(box);
+		boolean erased=!erase||eraseBox(box);
 		if(translation!=null){
 			if(!erased)tb.api.quickDraw().fillRgb(b[0],b[1],b[2],b[3],back);
 			Object[] saved=fore!=tb.api.quickDraw().foregroundRgb()?tb.api.quickDraw().saveForeground():null;
@@ -786,7 +801,11 @@ final class TextEdit68k {
 	// ------------------------------------------------------------------ editing
 
 	private int offsetAt(int handle,int h,int v) throws M68kCpuException {
+		fitLayout(handle);
 		int r=rec(handle);byte[] text=text(handle);Font font=font(r);int[] dest=rect(r+DEST);boolean styled=styleHandle(r)!=0;
+		// Below the last line is the end of the text, whatever h says (a click under the text puts the caret after it). PrintOMatic Lite
+		// asks for the bottom left of its page: the left end of the last line said nothing fit and it made empty pages for ever.
+		int[] tops=lineTops(r);if(v-dest[0]>=tops[tops.length-1])return text.length;
 		int line=lineAt(r,v-dest[0]);
 		int start=lineStart(r,line),end=lineEnd(r,line);byte[] lineBytes=trimCr(text,start,end);
 		int x0=xOf(r,text,font,line,start);
@@ -848,7 +867,9 @@ final class TextEdit68k {
 				Font font=font(r);int x=xOf(r,text,font,line,selStart);int[] tops=lineTops(r);int[] dest=rect(r+DEST);int p=offsetAt(handle,x,dest[0]+(tops[target]+tops[target+1])/2);setSelection(handle,p,p,true);return;}
 			default:break;
 		}
-		if(ch<0x20&&ch!=0x0d&&ch!=0x09&&ch!=0x03)return;
+		// $11-$14 are glyphs of the system fonts (command, check, diamond, Apple): HyperCard's ask password filter turns every
+		// typed key into $14, which then showed nothing in the field
+		if(ch<0x20&&ch!=0x0d&&ch!=0x09&&ch!=0x03&&(ch<0x11||ch>0x14))return;
 		if(ch==0x03)ch=0x0d;
 		insertAtSelection(handle,new byte[]{(byte)ch},true);
 	}
@@ -880,7 +901,9 @@ final class TextEdit68k {
 	 * shifted by the byte difference are the same), or down to the bottom of the view when lines were added or removed.
 	 */
 	private void replaceRange(int handle,int start,int end,byte[] bytes,int newSelStart,int newSelEnd) throws M68kCpuException {
+		fitLayout(handle);
 		int r=rec(handle);byte[] text=text(handle);
+		start=Math.max(0,Math.min(text.length,start));end=Math.max(start,Math.min(text.length,end)); // hText may be shorter than teLength
 		int oldCount=lineCount(r);int[] oldStarts=new int[oldCount];for(int i=0;i<oldCount;i++)oldStarts[i]=lineStart(r,i);
 		int firstLine=lineOf(r,start);
 		byte[] joined=new byte[text.length-(end-start)+bytes.length];System.arraycopy(text,0,joined,0,start);System.arraycopy(bytes,0,joined,start,bytes.length);System.arraycopy(text,end,joined,start+bytes.length,text.length-end);

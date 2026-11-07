@@ -47,6 +47,8 @@ final class M68kCpu {
 	final int[] a = new int[8];
 	final M68kMemory memory;
 	private final long timeBaseOrigin=System.nanoTime();
+	/** What emulator opcode $FE04 answers: a version past those of the Power Macs' 68K emulators programs know (see step). */
+	static final int EMULATOR_VERSION=0x3000;
 	/** The MC68881/68882 coprocessor (F-line instructions); null when -Dhz68k.fpu=false. */
 	final M68kFpu fpu;
 	int pc;
@@ -463,6 +465,10 @@ final class M68kCpu {
 				if(op==0xFE09){ // Power Mac emulator ReadTimeBase: UnsignedWide in A0 (high), D0 (low), like Microseconds
 					long ticks=(System.nanoTime()-timeBaseOrigin)/1000*(PpcCpu.TIME_BASE_HZ/1_000_000);
 					a[0]=(int)(ticks>>>32);d[0]=(int)ticks;
+					return;
+				}
+				if(op==0xFE04){ // Power Mac emulator opcode with a selector in D0. 0: the 68K emulator's version in A0 - PowerFPU 1.0 (installer, FPU TimeTest XCMDs) asks after Gestalt 'sysa' = PowerPC and patches only the emulators it knows ($10B3..$20F3, 1995-97), a newer one gets its "not supported" instead of a VM error. Others are declined with Z clear (TimeTest's $13 then takes A0 = NIL)
+					if(d[0]==0){a[0]=EMULATOR_VERSION;setLogicFlags(0,4);}else setLogicFlags(1,4);
 					return;
 				}
 				if(op==0xFE0A){ // private emulator opcode PowerPC memory testers (Gauge PRO) issue with a selector in D0: the VM has no paging, so logical == physical (selector $13 answers the physical address), everything else (hold/unhold/cache) is accepted

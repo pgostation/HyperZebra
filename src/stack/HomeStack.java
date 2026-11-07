@@ -56,17 +56,21 @@ final class HomeStack {
 
 	/**
 	 * Makes sure the Home stack folder exists: nothing when it does, otherwise converts the Home stack of a HyperCard
-	 * Player distribution found beside the program. True when the folder is usable afterwards.
+	 * Player distribution found beside the program. True when the folder is usable afterwards. A Home made here is
+	 * HyperZebra's own: the {@link HomeGuard} takes it as the known one.
 	 */
 	static boolean ensure(){
 		if(exists()) return true;
 		File bundled = bundledHome();
-		if(bundled.isFile()) return install(bundled, sampleApplication(), folder());
-		File source = playerHome();
-		if(source==null) return false;
-		File target = folder();
-		boolean made = ensure(source, target);
-		if(made) forgetFolder();
+		boolean made;
+		if(bundled.isFile()) made = install(bundled, sampleApplication(), folder());
+		else {
+			File source = playerHome();
+			if(source==null) return false;
+			made = ensure(source, folder());
+			if(made) forgetFolder();
+		}
+		if(made) HomeGuard.installed();
 		return made;
 	}
 
@@ -405,7 +409,7 @@ final class HomeStack {
 		return cd;
 	}
 	private static javax.xml.stream.XMLStreamReader elementReader(String xml, String element) throws Exception {
-		javax.xml.stream.XMLStreamReader reader = javax.xml.stream.XMLInputFactory.newInstance().createXMLStreamReader(new java.io.StringReader(xml));
+		javax.xml.stream.XMLStreamReader reader = XmlSafe.input().createXMLStreamReader(new java.io.StringReader(xml));
 		while(reader.hasNext()){
 			if(reader.next()==javax.xml.stream.XMLStreamConstants.START_ELEMENT && reader.getLocalName().equals(element)) return reader;
 		}

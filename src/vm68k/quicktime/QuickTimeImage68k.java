@@ -85,6 +85,7 @@ final class QuickTimeImage68k {
 		int bits=depth>32?depth-32:depth;int[] argb=new int[width*height];java.util.Arrays.fill(argb,0xffffffff);
 		int[] clut=bits<=8?colorTable(description,depth):null;
 		int rowBytes=bits>=8?width*(bits/8):(width*bits+7)/8;if(bits==32)rowBytes=width*4;if(bits==24)rowBytes=width*3;if(bits==16)rowBytes=width*2;
+		if(data.length%height==0&&data.length/height>rowBytes)rowBytes=data.length/height; // padded rows (a 113-wide 1-bit picture of Barcode Automator: 16 bytes)
 		for(int y=0;y<height;y++){int row=y*rowBytes;if(row>=data.length)break;
 			for(int x=0;x<width;x++){int pixel;
 				switch(bits){

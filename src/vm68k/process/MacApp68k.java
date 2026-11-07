@@ -248,6 +248,11 @@ final class MacApp68k implements Runnable {
 	/** The next process serial number (the low long of a ProcessSerialNumber): a program's, or one a program runs on a task of its own. */
 	static synchronized int newSerialNumber(){int serial;do serial=nextSerial++;while(Toolbox68k.standInSerial(serial));return serial;}
 
+	/** Another Kaleidoscope scheme was chosen outside the panel: every running program redraws in it at once. */
+	static void schemeChangedAll(){
+		for(MacApp68k app:runningApplications()){final Toolbox68k tb=app.toolbox;
+			if(tb!=null)tb.laterAtEvent(()->{try{tb.windows.schemeChanged();}catch(M68kCpuException e){if(Mac68kApi.TRACE)System.err.println("[68K] scheme change: "+e);}});}
+	}
 	/** The zoom setting changed: every running program shows its screen magnified by the new choice at once. */
 	static void zoomChangedAll(){for(MacApp68k app:runningApplications()){MacAppHost h=app.host;if(h!=null)h.rezoom(app);}}
 	/** This program's own zoom setting changed ({@code own}: null follows the preference). */
@@ -497,11 +502,17 @@ final class MacApp68k implements Runnable {
 		app.thread=new Thread(app,"68K service: "+app.name);app.thread.setDaemon(true);app.thread.start();
 		return app;
 	}
-	/** True when the file is a control panel: a 'cdev' code resource at the control-panel ID and no CODE 0 (a 'cdev' with CODE segments is a program). */
+	/**
+	 * True when the file is a control panel: a 'cdev' code resource at the control-panel ID and no CODE 0 (a 'cdev' with CODE
+	 * segments is a program), or the Finder type 'cdev', which the Finder opens as a control panel whatever else the file holds:
+	 * CinéMac for Director savers (PMSCRSVR, Macintosh Garden) carry their Director projector as CODE + PEF, and run as a program
+	 * the projector stopped at "Problem with the file" (27) instead of the panel opening.
+	 */
 	static boolean isControlPanel(File file){
 		if(file==null||!file.isFile())return false;
 		try{ResourceFile68k rf=ResourceFile68k.open(file);
-			return rf.get(ResourceFile68k.fourcc("cdev"),ControlPanelHost68k.CPANEL_ID)!=null&&rf.get(ResourceFile68k.fourcc("CODE"),0)==null;
+			if(rf.get(ResourceFile68k.fourcc("cdev"),ControlPanelHost68k.CPANEL_ID)==null)return false;
+			return rf.get(ResourceFile68k.fourcc("CODE"),0)==null||FinderInfo68k.type(file)==ResourceFile68k.fourcc("cdev");
 		}catch(IOException e){return false;}
 	}
 	/** Opens a control panel in a process of its own, as the Finder does when a 'cdev' file is opened. */
@@ -513,11 +524,13 @@ final class MacApp68k implements Runnable {
 	/**
 	 * True when the file is a desk accessory: a 'DRVR' and no CODE 0 or 'cdev' (the System 7 'dfil' files, also old
 	 * Font/DA Mover suitcases with a single accessory). A HyperCard stack is none, even with a 'DRVR' in its resource
-	 * fork (FPlay XCMD's ".SndDriver" in Celtic Museum / NLU, Info-Mac II).
+	 * fork (FPlay XCMD's ".SndDriver" in Celtic Museum / NLU, Info-Mac II). Nor is a system extension by its file type: Aqua
+	 * Cursor Extension (an 'INIT' with its settings window as a 'DRVR', Macintosh Garden) is installed, not opened.
 	 */
 	static boolean isDeskAccessory(File file){
 		if(file==null||!file.isFile())return false;
 		if(OStack.looksLikeHyperCardStack(file.getPath()))return false;
+		if(FinderInfo68k.type(file)!=0&&Extensions68k.isExtensionFile(file))return false;
 		try{ResourceFile68k rf=ResourceFile68k.open(file);
 			return !rf.ofType(ResourceFile68k.fourcc("DRVR")).isEmpty()&&rf.get(ResourceFile68k.fourcc("CODE"),0)==null&&rf.get(ResourceFile68k.fourcc("cdev"),ControlPanelHost68k.CPANEL_ID)==null;
 		}catch(IOException e){return false;}
@@ -554,6 +567,7 @@ final class MacApp68k implements Runnable {
 	private static final ThreadLocal<Boolean> UNATTENDED_LAUNCH=new ThreadLocal<Boolean>();
 	/** {@code deskAccessory}: the name of the accessory to open ("" = the first), or null. */
 	private static MacApp68k launch(File file,ResourceFile68k rf,List<File> documents,boolean controlPanel,String deskAccessory) throws IOException {
+		rf=VirusScan68k.beforeLaunch(file,rf);
 		MacApp68k app=new MacApp68k(file,rf,documents);
 		app.unattended=UNATTENDED_LAUNCH.get()!=null||Boolean.getBoolean("hz68k.unattended"); // debug aid: -Dhz68k.unattended=true runs every program so
 		app.unpaced=UNATTENDED_LAUNCH.get()!=null||!controlPanel&&deskAccessory==null&&ExtractorApps.shippedExpander(file); // the shipped expanders and their installers
@@ -596,6 +610,10 @@ final class MacApp68k implements Runnable {
 		app.thread=new Thread(app,"68K: "+app.name);
 		app.thread.setDaemon(true);
 		running.add(app);installFlushHook();
+		// a launched application is the front process (Process Manager): ClarisWorks asks GetFrontProcess/SameProcess at start-up
+		// for its "in the foreground" flag; answered with the program that was active before, it drew its window inactive, left
+		// its Format/Font/Size/Style menus out and waited for a resume that never came (its host windows were active all along)
+		if(!app.backgroundOnly()){activeApplication=app;finderFront=false;}
 		app.thread.start();
 		tell(true,app);
 		final String snapshotDir=System.getProperty("hz68k.snapshot");
@@ -768,7 +786,10 @@ final class MacApp68k implements Runnable {
 		// its input saw end-of-file at once (wumpus repeated its prompt forever). Hosted desk accessories and control panels
 		// run in a world their host has set up.
 		if(hosted==null){memory.writeByte(0x8f2,0xff);memory.writeByte(0x8f3,0xff);}
-		if(controlPanel!=null)toolbox.extensions.loadControlPanel(file);
+		// a control panel's INIT runs in its process before the panel opens; so it does when the panel file is launched as a program:
+		// ATM Deluxe 4.0's panel launches itself (the ATM Deluxe program in its data fork), which says "ATM Deluxe was not loaded
+		// when you last restarted" without the INIT's driver and patches
+		if(controlPanel!=null||hosted==null&&FinderInfo68k.type(file)==ResourceFile68k.fourcc("cdev"))toolbox.extensions.loadControlPanel(file);
 		toolbox.resources.extensionsLoaded();
 		// start-up is over: notification responses the INITs queued get their system task time (QuickTime finishes its start-up)
 		toolbox.runNotificationResponses();
@@ -889,6 +910,10 @@ final class MacApp68k implements Runnable {
 				if(p[0].equals("pctrace")){M68kCpu.setPcTrace(p.length>=2?p[1]:"");continue;} // pctrace start-end[,start-end] (hex) / pctrace alone = off
 				if(p[0].equals("sclick")&&p.length>=3){ // sclick <screenX> <screenY>: press and release the emulated button there (Button()/GetMouse pollers, the screen stand-in)
 					int sx=Integer.parseInt(p[1]),sy=Integer.parseInt(p[2]);host.simulateMouse(sx,sy,true);try{Thread.sleep(80);}catch(InterruptedException ignored){}host.simulateMouse(sx,sy,false);continue;}
+				if(p[0].equals("sdrag")&&p.length>=5){ // sdrag <x1> <y1> <x2> <y2>: press the emulated button at the first screen point, move to the second in steps, release (DragInstall's icon onto a disk)
+					int x1=Integer.parseInt(p[1]),y1=Integer.parseInt(p[2]),x2=Integer.parseInt(p[3]),y2=Integer.parseInt(p[4]);
+					try{host.simulateMouse(x1,y1,true);Thread.sleep(200);for(int i=1;i<=12;i++){host.simulateMouse(x1+(x2-x1)*i/12,y1+(y2-y1)*i/12,true);Thread.sleep(60);}Thread.sleep(200);}catch(InterruptedException ignored){}
+					host.simulateMouse(x2,y2,false);continue;}
 				if(p[0].equals("mouse")&&p.length>=4){ // mouse press|drag|release <screenX> <screenY>: AWT-level mouse events (drives Swing popups)
 					host.injectAwtMouse(p[1].equals("press")?java.awt.event.MouseEvent.MOUSE_PRESSED:p[1].equals("release")?java.awt.event.MouseEvent.MOUSE_RELEASED:java.awt.event.MouseEvent.MOUSE_DRAGGED,Integer.parseInt(p[2]),Integer.parseInt(p[3]));continue;}
 				if(p[0].equals("mount")&&p.length>=2){ // mount <disk image path>: inserts a disk while the program runs (diskEvt; installers asking for the next disk)
@@ -921,6 +946,13 @@ final class MacApp68k implements Runnable {
 					final Toolbox68k tb=toolbox;tb.laterAtEvent(()->{try{byte[] t=tb.encoding.encode(title);byte[] pt=new byte[Math.min(255,t.length)+1];pt[0]=(byte)(pt.length-1);System.arraycopy(t,0,pt,1,pt.length-1);
 						int h=tb.controls.create(window,v[1],v[2],v[3],v[4],pt,true,v[5],v[6],v[7],v[0],0);System.err.println("[68K debug] newcontrol $"+Integer.toHexString(h));}
 						catch(M68kException|java.nio.charset.CharacterCodingException e){throw new RuntimeException(e);}});continue;}
+				if(p[0].equals("newwindow")&&p.length>=6){ // newwindow <procID> <top> <left> <bottom> <right> [title]: NewCWindow, shown in front (WDEF comparisons)
+					final int[] v=new int[5];for(int i=0;i<5;i++)v[i]=Integer.parseInt(p[1+i]);
+					final String title=p.length>6?line.trim().split("\\s+",7)[6]:"";
+					final Toolbox68k tb=toolbox;tb.laterAtEvent(()->{try{int w=tb.windows.create(0,WindowManager68k.WINDOW_SIZE,new int[]{v[1],v[2],v[3],v[4]},title,true,v[0],-1,true,0,true);System.err.println("[68K debug] newwindow $"+Integer.toHexString(w));}
+						catch(M68kException e){throw new RuntimeException(e);}});continue;}
+				if(p[0].equals("disposewindow")&&p.length>=2){final int w=parseHex(p[1]);final Toolbox68k tb=toolbox; // disposewindow <recordHex>: DisposeWindow (a newwindow's)
+					tb.laterAtEvent(()->{try{tb.windows.disposeWindow(w);}catch(M68kException e){throw new RuntimeException(e);}});continue;}
 				if(p[0].equals("ctlhilite")&&p.length>=3){ // ctlhilite <controlHex> <part>: HiliteControl (255 = inactive)
 					final int h=parseHex(p[1]),part=Integer.parseInt(p[2]);final Toolbox68k tb=toolbox;
 					tb.laterAtEvent(()->{try{int d=tb.controls.data(h);if(d!=0){memory.writeByte(d+17,part);tb.controls.draw(h);}}catch(M68kException e){throw new RuntimeException(e);}});continue;}
@@ -958,6 +990,7 @@ final class MacApp68k implements Runnable {
 					if(im!=null)javax.imageio.ImageIO.write(im,"png",new File(p[2]));else System.err.println("[68K debug] no pixels for port "+p[1]);continue;}
 				if(p[0].equals("sfsave")&&p.length>=2){StandardFile68k.scriptedSave=new File(line.trim().substring(6).trim());continue;} // sfsave <path>: the next Save panel answers this file
 				if(p[0].equals("navreply")){String v=line.trim().substring(8).trim();if(v.isEmpty())System.clearProperty("hzppc.navreply");else System.setProperty("hzppc.navreply",v);continue;} // navreply <answers>: the Navigation Services answers from now on, as -Dhzppc.navreply (paths separated by ':' within one, ';' between dialogs; none = the user's again)
+				if(p[0].equals("edoptions")&&p.length>=2){EditionManager68k.scriptedOptions=line.trim().substring(9).trim();continue;} // edoptions <answer>: the next Section Options dialog answers this (ok|cancel|read|writ|goto|cncl [manual|auto])
 				if(p[0].equals("sfreply")&&p.length>=2){StandardFile68k.scriptedReply=new File(line.trim().substring(7).trim());continue;} // sfreply <path>: the next plain Open panel answers this file (spaces allowed)
 				if(p[0].equals("drop")&&p.length>=4){ // drop [shift] [cmd] [option] [control] <screenX> <screenY> <path>: files dragged from the host's Finder and dropped there (Drag Manager, else Open Documents)
 					int skip=1,mods=0x80;while(skip<p.length&&!p[skip].matches("-?\\d+")){String m=p[skip++];mods|=m.equals("cmd")?0x100:m.equals("shift")?0x200:m.equals("option")?0x800:m.equals("control")?0x1000:0;}
@@ -1007,6 +1040,12 @@ final class MacApp68k implements Runnable {
 		if(depthOverride!=null)return preferred; // the user chose this program's depth
 		if(predatesDirectDevices()){
 			System.err.println("[68K "+name+"] screen depth "+preferred+" lowered to 8: the program predates 32-Bit QuickDraw (Color QuickDraw without Gestalt or QDExtensions)");
+			return 8;}
+		if(leavesDirectScreen()){
+			System.err.println("[68K "+name+"] screen depth "+preferred+" lowered to 8: the program quits at once on a direct screen (pixelSize tested before _ExitToShell)");
+			return 8;}
+		if(FinderInfo68k.creator(file)==ResourceFile68k.fourcc("PJ93")){ // false colours on a direct screen: the movie's palette only reaches an indexed one (Dr. Brain's Lost Mind demo)
+			System.err.println("[68K "+name+"] screen depth "+preferred+" lowered to 8: a Director 4 projector");
 			return 8;}
 		String asks="false".equals(System.getProperty("hz68k.autodepthscan"))?null:IndexedScreenText.findIn(resources); // debug: -Dhz68k.autodepthscan=false leaves it to the run-time check
 		if(asks!=null){System.err.println("[68K "+name+"] screen depth "+preferred+" lowered to 8: the program asks for a 256-colour screen (\""+asks+"\")");return 8;}
@@ -1178,6 +1217,25 @@ final class MacApp68k implements Runnable {
 		}
 		return false;
 	}
+	/**
+	 * True when the program's code compares a PixMap's pixelSize with 16, 24 or 32 and goes straight to _ExitToShell: it leaves
+	 * without a word on a direct screen. Anyone for Cards 1.01: cmpi.w #16,32(a0); bne.s; _ExitToShell, also for 24 and any
+	 * other depth above 8. A screen of 8 bits from the start; asking at run time cannot tell it from a program that has done
+	 * its work and ends without a window.
+	 */
+	boolean leavesDirectScreen(){
+		for(ResourceFile68k.Resource r:resources.ofType(ResourceFile68k.fourcc("CODE"))){
+			if(r.id==0)continue;
+			byte[] code=r.data();
+			for(int i=4;i+5<code.length;i+=2){
+				int opcode=((code[i]&0xff)<<8)|(code[i+1]&0xff),value=((code[i+2]&0xff)<<8)|(code[i+3]&0xff),offset=((code[i+4]&0xff)<<8)|(code[i+5]&0xff);
+				if((opcode&0xfff8)!=0x0c68||offset!=32||(value!=16&&value!=24&&value!=32))continue; // cmpi.w #depth,32(An)
+				for(int k=i+6;k<i+18&&k+1<code.length;k+=2)if(code[k]==(byte)0xa9&&code[k+1]==(byte)0xf4)return true;
+			}
+		}
+		return false;
+	}
+
 	/** True when the program's code uses Color QuickDraw but neither _Gestalt nor _QDExtensions (see {@link #screenDepthFor}). */
 	boolean predatesDirectDevices(){
 		boolean colorQuickDraw=false;
@@ -1238,7 +1296,10 @@ final class MacApp68k implements Runnable {
 	 * Manager, it keeps flags in the top byte of its pointers (Word 1.0). So does one whose SIZE resource does not claim
 	 * is32BitCompatible ($0080): Excel 1.01F asks NewPtr for $01699F22 bytes and never opened a window in the large world. The
 	 * same goes for such a program that reads the 24-bit Memory Manager's block headers itself ({@link #readsBlockHeaders24}):
-	 * Uninvited keeps flags in the top byte of the Handles its resource cache links together.
+	 * Uninvited keeps flags in the top byte of the Handles its resource cache links together. And for one linked with MPW's
+	 * 24-bit SANE str2dec ({@link #linksSaneStr2Dec24}), which masks the string's address with Lo3Bytes: the text a dialog
+	 * gives it lies on the stack, above 16 MB in the large world, so every number read as NaN (PageMaker 3.01's Page setup:
+	 * "Not a valid measurement").
 	 * Other programs without a SIZE resource stay in the large world: some size buffers from the screen (Fractal Contours
 	 * asks for 14 MB on a wide display).
 	 */
@@ -1282,6 +1343,23 @@ final class MacApp68k implements Runnable {
 		}
 		return false;
 	}
+	/**
+	 * True when the program's code holds MPW SANE's str2dec of the 24-bit days: movem.l 12(A6),D4-D6; and.l Lo3Bytes,D6
+	 * (the string pointer, then its top byte cleared). PageMaker 3.01, Illustrator 88, Separator 2.0, M 2.2.4.
+	 */
+	boolean linksSaneStr2Dec24(){
+		if(hosted!=null||powerPC)return false;
+		final byte[] sig={0x4c,(byte)0xee,0x00,0x70,0x00,0x0c,(byte)0xcc,(byte)0xb8,0x03,0x1a};
+		for(ResourceFile68k.Resource r:resources.ofType(ResourceFile68k.fourcc("CODE"))){
+			if(r.id==0)continue;
+			byte[] code=r.data();
+			scan:for(int i=4;i+sig.length<=code.length;i+=2){
+				for(int k=0;k<sig.length;k++)if(code[i+k]!=sig[k])continue scan;
+				return true;
+			}
+		}
+		return false;
+	}
 	private boolean walksHeapHeaders(){
 		return !resources.ofType(ResourceFile68k.fourcc("KAHL")).isEmpty()||!resources.ofType(ResourceFile68k.fourcc("PJMM")).isEmpty();
 	}
@@ -1289,15 +1367,20 @@ final class MacApp68k implements Runnable {
 	private boolean addressing24(){
 		String forced=System.getProperty("hz68k.addr24");
 		if(forced!=null)return Boolean.parseBoolean(forced);
-		return !service&&hosted==null&&(!hasSizeResource()||(sizeFlags()&0x80)==0)&&(!resources.ofType(ResourceFile68k.fourcc("PCOD")).isEmpty()||readsBlockHeaders24());
+		return !service&&hosted==null&&(!hasSizeResource()||(sizeFlags()&0x80)==0)&&(!resources.ofType(ResourceFile68k.fourcc("PCOD")).isEmpty()||readsBlockHeaders24()||linksSaneStr2Dec24());
 	}
 
 	/** SIZE resource flags word ($4000 acceptSuspendResumeEvents, $1000 canBackground, $0080 is32BitCompatible, $0040 isHighLevelEventAware...): also the low word of the Process Manager's processMode. */
-	int sizeFlags(){
+	int sizeFlags(){return sizeFlags(resources);}
+	private static int sizeFlags(ResourceFile68k resources){
 		ResourceFile68k.Resource size=resources.get(ResourceFile68k.fourcc("SIZE"),-1);
 		if(size==null)size=resources.get(ResourceFile68k.fourcc("SIZE"),0);
 		if(size==null||size.length()<2)return 0;
 		return ((size.data()[0]&0xff)<<8)|(size.data()[1]&0xff);
+	}
+	/** SIZE flag $0010 isStationeryAware: the program makes its own untitled document from a stationery pad, so the Finder hands it the pad itself. */
+	static boolean isStationeryAware(File program){
+		try{return (sizeFlags(ResourceFile68k.open(program))&0x0010)!=0;}catch(IOException e){return false;}
 	}
 
 	private final java.util.concurrent.atomic.AtomicBoolean tornDown=new java.util.concurrent.atomic.AtomicBoolean();

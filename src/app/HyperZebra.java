@@ -6,14 +6,17 @@ import java.util.List;
 public class HyperZebra{
 
 	public static void main(final String[] args) throws Exception {
+		StartupTrace.mark("main");
 		if(relaunchWithCorrectWorkingDirectoryIfNeeded(args)){
 			return;//子プロセス側で本体が動くので、ここでは何もしない
 		}
 
-		if(GMenu.isMacOSX()){
+		//GMenuやPCARDのクラスの初期化はAWTを起動して時間がかかるので、StartupWorkを始めるまでは触らない
+		boolean mac = System.getProperty("os.name","").startsWith("Mac");
+		if(mac){
 			//Property
 			System.setProperty("com.apple.mrj.application.apple.menu.about.name",
-					PCARD.AppName);//about box
+					"HyperZebra");//about box
 
 			System.setProperty("apple.laf.useScreenMenuBar", "true");
 			System.setProperty("com.apple.macos.useScreenMenuBar", "true");
@@ -22,8 +25,10 @@ public class HyperZebra{
 			System.setProperty("apple.awt.rendering","speed");
 			System.setProperty("apple.awt.graphics.UseQuartz","false");
 
-			setDockIcon();
 		}
+		StartupWork.start();
+		//jpackageのアプリはバンドルのアイコンで出る。要るのはjava -jarと、再起動した子プロセス
+		if(mac && (System.getProperty("jpackage.app-path")==null || System.getenv("HYPERZEBRA_RELAUNCHED")!=null)) setDockIcon();
 
 		PCARD.main(args);
     }
@@ -32,17 +37,19 @@ public class HyperZebra{
 	//アイコンを使わず、Dockに汎用の「exec」アイコンを出してしまう。バンドルの.icnsの元画像(resource/icon.png)で
 	//Dockアイコンを差し替える(java -jarでの起動でもJavaのコーヒーカップの代わりにこのアイコンになる)。
 	private static void setDockIcon(){
-		File iconFile = new File("resource"+File.separatorChar+"icon.png");
-		if(!iconFile.isFile()) return;
-		try{
-			if(!java.awt.Taskbar.isTaskbarSupported()) return;
-			java.awt.Taskbar taskbar = java.awt.Taskbar.getTaskbar();
-			if(!taskbar.isSupported(java.awt.Taskbar.Feature.ICON_IMAGE)) return;
-			java.awt.Image icon = javax.imageio.ImageIO.read(iconFile);
-			if(icon!=null) taskbar.setIconImage(icon);
-		} catch(Throwable t){
-			System.err.println("[dock] cannot set the Dock icon: "+t);
-		}
+		Thread t = new Thread(new Runnable(){ public void run(){
+			try{
+				if(!java.awt.Taskbar.isTaskbarSupported()) return;
+				java.awt.Taskbar taskbar = java.awt.Taskbar.getTaskbar();
+				if(!taskbar.isSupported(java.awt.Taskbar.Feature.ICON_IMAGE)) return;
+				java.awt.Image icon = StartupWork.icon();
+				if(icon!=null) taskbar.setIconImage(icon);
+			} catch(Throwable t){
+				System.err.println("[dock] cannot set the Dock icon: "+t);
+			}
+		}}, "start-up: Dock icon");
+		t.setDaemon(true);
+		t.start();
 	}
 
 	//このアプリはresource/やhomeなど、多くのファイルをカレントディレクトリ
@@ -53,10 +60,12 @@ public class HyperZebra{
 	//
 	//JavaはJVM起動後にOSレベルのカレントディレクトリを変更する手段を持たない
 	//(java.io.Fileの相対パスはプロセス起動時のOSのカレントディレクトリに
-	//固定されており、System.setProperty("user.dir",...)では変わらない)ため、
-	//正しいディレクトリ(jpackageアプリの"app"フォルダ)を突き止めた上で、
+	//固定されており、System.setProperty("user.dir",...)では変わらない)。
+	//jpackageのアプリは起動オプション-Duser.dir=$APPDIRで絶対パスの基準を"app"フォルダにしてあるので、
+	//OS側はNativeChdir(Java 22以降のForeign Function API)で移す(changeDirectoryInPlace)。
+	//できないときは、正しいディレクトリ(jpackageアプリの"app"フォルダ)を突き止めた上で、
 	//そこをカレントディレクトリに指定してjpackage生成のランチャー自身を
-	//子プロセスとして再起動することで解決する。
+	//子プロセスとして再起動することで解決する(JVMの起動が2回になるぶん遅い)。
 	//
 	//通常のjava -jarでの起動(既にresource/が見えている場合)や、jpackage化
 	//されていない環境では即falseを返し、何もしない。
@@ -77,6 +86,9 @@ public class HyperZebra{
 		if(appDir==null){
 			return false;//見つけられなかった。通常通り起動を試みる(失敗するかもしれない)
 		}
+		if(changeDirectoryInPlace(appDir)){
+			return false;
+		}
 
 		try{
 			List<String> command = new ArrayList<String>();
@@ -96,6 +108,18 @@ public class HyperZebra{
 			return false;//再起動に失敗した場合は、諦めて通常通り起動を試みる
 		}
 		return true;//ここには来ない(System.exitで終了済み)
+	}
+
+	//このプロセスのままカレントディレクトリをdirへ移す。-Duser.dirが同じ場所を指しているときだけ
+	//(java.io.FileやPathの絶対パスはuser.dirを基準にするので、OS側だけ移すと食い違う)
+	private static boolean changeDirectoryInPlace(File dir){
+		try{
+			if(!dir.getCanonicalPath().equals(new File(System.getProperty("user.dir","")).getCanonicalPath())) return false;
+			Object changed = Class.forName("NativeChdir").getMethod("chdir", String.class).invoke(null, dir.getPath());
+			return Boolean.TRUE.equals(changed) && new File("resource").isDirectory();
+		} catch(ReflectiveOperationException | IOException | LinkageError e){
+			return false;//NativeChdirが無い(Java 21以前)、または呼べない: 再起動する
+		}
 	}
 
 	//Finderで.hzbなどをダブルクリックして起動したとき、macOSは開く書類を起動引数ではなくApple Event(Open Documents)で、

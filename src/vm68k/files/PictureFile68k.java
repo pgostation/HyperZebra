@@ -44,6 +44,27 @@ final class PictureFile68k {
 	/** Whether {@code type} is a host picture type the program sees as PICT: PNG only (GIF and JPEG were Mac formats already). */
 	static boolean isHostImageType(int type){return type==PNGF;}
 
+	/**
+	 * Whether {@code program} reads PNG files itself: its code - the PEF in the data fork, the CODE in the resource fork - holds
+	 * the name of PNG's header chunk, "IHDR" (libpng, SDL_image, GameSmith's PNG backgrounds). Such a program is handed host PNG
+	 * files as they are: Abbaye des Morts (an SDL port) opened "graphics/intro.png" with fopen, read the PICT copy and its
+	 * IMG_Load failed. Programs from before PNG (the ones the PICT copy is for) never carry the name.
+	 */
+	static boolean readsPng(File program){
+		if(program==null||!program.isFile())return false;
+		try{
+			if(program.length()<=SCAN_LIMIT&&contains(Files.readAllBytes(program.toPath()),IHDR))return true;
+			byte[] fork=ResourceFile68k.readForkBytes(program,null);
+			return fork!=null&&contains(fork,IHDR);
+		}catch(IOException|RuntimeException e){return false;}
+	}
+	private static final byte[] IHDR={'I','H','D','R'};
+	private static final long SCAN_LIMIT=256L<<20;
+	private static boolean contains(byte[] data,byte[] what){
+		outer:for(int i=0;i+what.length<=data.length;i++){for(int j=0;j<what.length;j++)if(data[i+j]!=what[j])continue outer;return true;}
+		return false;
+	}
+
 	/** PNG or JPEG by their magic numbers. */
 	static boolean looksLikeImage(byte[] b){
 		if(b.length<8)return false;

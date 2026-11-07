@@ -10,7 +10,13 @@ final class MovieImport68k implements Components68k.Native {
 	static final int EAT=0x65617420,MIDI=0x4d696469,MUSI=0x6d757369;
 	static final int BAD_SELECTOR=0x80008002;
 
-	static void register(Components68k components,Toolbox68k tb){components.registerNative(EAT,MIDI,MUSI,0,new MovieImport68k());}
+	static final int SDEC=0x73646563,MP3=0x2e6d7033,FHG=0x66686720;
+
+	/**
+	 * Also 'sdec' '.mp3', what QuickTime 4 brought and the native sound and movie paths decode themselves (Mp3Decoder): Age of
+	 * Empires II looks for the component at start and offers to install QuickTime when it is not there.
+	 */
+	static void register(Components68k components,Toolbox68k tb){components.registerNative(EAT,MIDI,MUSI,0,new MovieImport68k());components.registerNative(SDEC,MP3,FHG,0,new MovieImport68k());}
 
 	/** The import itself (MovieImportFile/Handle and their settings) is not offered: the toolbox's own readers do it. */
 	@Override public int call(int ci,int what,int p) throws M68kException {

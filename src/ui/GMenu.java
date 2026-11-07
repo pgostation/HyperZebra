@@ -241,12 +241,13 @@ public class GMenu {
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Export HyperCard Stack…")));mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Import SVG…")));mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Export Card Image…")));mi.addActionListener(listener);
-		    addTranslationItems(m);
 		    m.addSeparator();
 		    //このスタックだけの拡大表示・キー・コントローラ・フォルダ外へのアクセス(StackSettings)。セキュリティの設定なので
 		    //doMenuを通さない(スタックのdoMenuハンドラに止められない)
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Individual Stack Settings…")));
 		    mi.addActionListener(new ActionListener(){ public void actionPerformed(ActionEvent e){ showStackSettings(); }});
+		    addTranslationItems(m);
+		    m.addSeparator();
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Compact Stack")));mi.setEnabled(false);mi.setEnabled(false);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Protect Stack…")));mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Delete Stack…")));mi.setEnabled(false);mi.setEnabled(false);
@@ -430,7 +431,7 @@ public class GMenu {
 		    // Paintメニュー
 		    m=new JMenu(PCARD.pc.intl.getText("Paint"));
 		    mb.add(m);
-		    //m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Select")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, s));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Select")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, s));mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Select All")));mi.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, s));mi.addActionListener(listener);
 		    m.add(cb = new JCheckBoxMenuItem(PCARD.pc.intl.getText("FatBits")));cb.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_F, s));cb.addActionListener(listener);
 		    //任意倍率の拡大縮小(FatBitsは8倍固定)。Cmd+= / Cmd+- / Cmd+0
@@ -518,7 +519,6 @@ public class GMenu {
 	 * It acts at once (no doMenu: the stack's own menu handlers are not asked).
 	 */
 	private static void addTranslationItems(JMenu m){
-		m.addSeparator();
 		final String settingsText = PCARD.pc.intl.getText("Translation Settings…");
 		JMenuItem settings = new JMenuItem(settingsText);
 		settings.addActionListener(new ActionListener(){ public void actionPerformed(ActionEvent e){
@@ -616,6 +616,7 @@ public class GMenu {
 				menubar.add(newMenu);
 			}
 		}
+		FieldTextMenus.addTo(menubar, srcMenuBar);
 		menubar.add(balloonHelpMenu());
 		//スクリプトが全メニューを削除した直後は空のことがある
     	if(menubar.getComponentCount()>0 && menubar.getComponent(0) instanceof JMenu){
@@ -965,11 +966,18 @@ class GMenuBrowse implements ActionListener {
 				return;
 			}
 			if(eng.equalsIgnoreCase("Paste Card") || item.equalsIgnoreCase("Paste Card")){
+				if(fromScript && !StackGuard.allowsPaste()) return;
 				OCard pasted = CardClipboard.paste(PCARD.pc.stack.curCard);
 				TTalk.sendNewCard = true; //移動先で(openCardの前に)newCardを送る(New Card と同じ)
 				goToNewCard(pasted.id);
 				return;
 			}
+		}
+		//HyperZebra's Tools menu chooses the tool, also with a paint tool, where Select alone is the Paint menu's item
+		if(item!=null && menuName!=null && menuName.equalsIgnoreCase(PCARD.pc.intl!=null ? PCARD.pc.intl.getText("Tool") : "Tool") &&
+				"Select".equalsIgnoreCase(PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(item) : item)){
+			TTalk.doScriptforMenu("choose select tool");
+			return;
 		}
 		JMenu menu = menuName!=null && !menuName.isEmpty() ? TTalk.findMenu(menuName) : null;
 		//doMenu "Keep", "Paint" right after "choose tool 4" (J-Paint's filters): the Paint menu is in the paint menu bar
@@ -1284,6 +1292,7 @@ class GMenuBrowse implements ActionListener {
 
 	public static void doMenu(String in_cmd) throws xTalkException {
 		String cmd = PCARD.pc.intl.getEngText(in_cmd);
+		if(TTalk.editSelectedText(cmd)) return;
 		// Menu messages normally arrive on the interpreter thread. Shape authoring changes Swing widgets.
 		boolean shapeAction=java.util.Arrays.asList("shape","edit shapes","new shape","new shape…","shape info…",
 			"import svg…","cut shape","copy shape","paste shape","delete shape").contains(cmd.toLowerCase(java.util.Locale.ROOT))
@@ -1458,8 +1467,12 @@ class GMenuBrowse implements ActionListener {
 			TTalk.doScriptforMenu("choose field tool");
 		}
 		else if(cmd.equalsIgnoreCase("Select")){
-			//with a paint selection up this is the Paint menu's Select: the selection tightens around the picture in it
-			if(PCARD.pc.tool!=null && AuthTool.tool==null && PaintTool.owner!=null && PaintTool.floating()!=null) PaintTool.tightenSelection();
+			//with a paint tool this is the Paint menu's Select: a selection tightens around the picture in it, with none the lasso
+			//closes in on all of the picture
+			if(PCARD.pc.tool!=null && AuthTool.tool==null && PaintTool.owner!=null){
+				if(PaintTool.floating()!=null) PaintTool.tightenSelection();
+				else PCARD.runOnEDT(PaintTool::lassoWholePicture);
+			}
 			else TTalk.doScriptforMenu("choose select tool");
 		}
 		else if(cmd.equalsIgnoreCase("Lasso")){
@@ -1535,7 +1548,9 @@ class GMenuBrowse implements ActionListener {
 	        	if(target.getClass() == MyRadio.class) obtn = ((MyRadio)target).btnData;
 	        	if(target.getClass() == MyCheck.class) obtn = ((MyCheck)target).btnData;
 	        	if(target.getClass() == MyPopup.class) obtn = ((MyPopup)target).btnData;
-	        	AuthDialog.openAuthDialog(PCARD.pc, "button", obtn);
+	        	//with Shift the script instead, as Shift-double-click (HC J-2.3: a script's doMenu with the key held)
+	        	if(GUI.key[11]>0 && obtn!=null && StackProtection.canOpenScripts()) ScriptEditor.openScriptEditor(PCARD.pc, obtn);
+	        	else AuthDialog.openAuthDialog(PCARD.pc, "button", obtn);
 			}else{
 	    		new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("No selected button."),
 	    				null,"OK",null,null);
@@ -1548,7 +1563,8 @@ class GMenuBrowse implements ActionListener {
 	        	if(target.getClass() == MyTextArea.class) obtn = ((MyTextArea)target).fldData;
 	        	if(target.getClass() == MyScrollPane.class) obtn = ((MyScrollPane)target).fldData;
 	        	
-	        	AuthDialog.openAuthDialog(PCARD.pc, "field", obtn);
+	        	if(GUI.key[11]>0 && obtn!=null && StackProtection.canOpenScripts()) ScriptEditor.openScriptEditor(PCARD.pc, obtn);
+	        	else AuthDialog.openAuthDialog(PCARD.pc, "field", obtn);
 			}else{
 	    		new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("No selected field."),
 	    				null,"OK",null,null);
@@ -1575,7 +1591,7 @@ class GMenuBrowse implements ActionListener {
 		else if(cmd.equalsIgnoreCase("Delete Shape")){if(ShapeTool.active())ShapeEditor.deleteSelected();}
 		else if(cmd.equalsIgnoreCase("Copy Shape")){if(ShapeTool.active())ShapeEditor.copySelected();}
 		else if(cmd.equalsIgnoreCase("Cut Shape")){if(ShapeTool.active()){ShapeEditor.copySelected();ShapeEditor.deleteSelected();}}
-		else if(cmd.equalsIgnoreCase("Paste Shape")){if(ShapeTool.active())ShapeEditor.paste();}
+		else if(cmd.equalsIgnoreCase("Paste Shape")){if(ShapeTool.active()&&(!fromScript||StackGuard.allowsPaste()))ShapeEditor.paste();}
 		else if(cmd.equalsIgnoreCase("Card Info…")){
 			AuthDialog.openAuthDialog(PCARD.pc, "card", PCARD.pc.stack.curCard);
 			waitForInfoDialog();
@@ -1832,7 +1848,7 @@ class GMenuBrowse implements ActionListener {
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Paste Button")){
-			if(AuthTool.tool.getClass()==ButtonTool.class){
+			if(AuthTool.tool.getClass()==ButtonTool.class && (!fromScript || StackGuard.allowsPaste())){
 				Toolkit kit = Toolkit.getDefaultToolkit();
 				Clipboard clip = kit.getSystemClipboard();
 
@@ -1845,7 +1861,7 @@ class GMenuBrowse implements ActionListener {
 					e.printStackTrace();
 				}
 				if(str!=null && str.startsWith("<buttonclip>")){
-				    XMLInputFactory factory = XMLInputFactory.newInstance();
+				    XMLInputFactory factory = XmlSafe.input();
 				    XMLStreamReader reader = null;
 				    try {
 						reader = factory.createXMLStreamReader(new ByteArrayInputStream(str.getBytes()));
@@ -2032,7 +2048,7 @@ class GMenuBrowse implements ActionListener {
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Paste Field")){
-			if(AuthTool.tool.getClass()==FieldTool.class){
+			if(AuthTool.tool.getClass()==FieldTool.class && (!fromScript || StackGuard.allowsPaste())){
 				Toolkit kit = Toolkit.getDefaultToolkit();
 				Clipboard clip = kit.getSystemClipboard();
 
@@ -2045,7 +2061,7 @@ class GMenuBrowse implements ActionListener {
 					e.printStackTrace();
 				}
 				if(str!=null && str.startsWith("<fieldclip>")){
-				    XMLInputFactory factory = XMLInputFactory.newInstance();
+				    XMLInputFactory factory = XmlSafe.input();
 				    XMLStreamReader reader = null;
 				    try {
 						reader = factory.createXMLStreamReader(new ByteArrayInputStream(str.getBytes()));

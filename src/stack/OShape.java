@@ -470,7 +470,7 @@ public class OShape extends OObject {
 		// Keep trailing empty lines, as buttons and fields do.
 		scriptList.clear();for(String line:script.split("\n",-1))scriptList.add(line);
 		stringList=new ArrayList[scriptList.size()];typeList=new ArrayList[scriptList.size()];
-		handlerList=null;handlerLineList=null;wrapFlag=false;
+		handlerList=null;handlerLineList=null;wrapFlag=false;jit=null;TalkJit.scriptEpoch++;
 	}
 	private static String string(XMLStreamReader r,String key,String fallback){String v=r.getAttributeValue(null,key);return v==null?fallback:v;}
 	private static int integer(XMLStreamReader r,String key,int fallback){try{return Integer.parseInt(string(r,key,""));}catch(Exception e){return fallback;}}

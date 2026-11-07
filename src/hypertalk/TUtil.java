@@ -61,11 +61,37 @@ public class TUtil {
 		//a CURS hot spot may lie outside its 16x16 image (JHUG Image of HCPower: set cursor in mouseEnter); the host refuses
 		//one outside the image (IndexOutOfBoundsException "invalid hotSpot"), so it is moved to the nearest pixel
 		Point at = new Point(Math.max(0, Math.min(bi.getWidth()-1, hotSpot.x)), Math.max(0, Math.min(bi.getHeight()-1, hotSpot.y)));
+		BufferedImage img = bi;
+		//Windows (and X11) cursors have one fixed size (32x32 at 100%) and the host stretches a 16x16 CURS to it: the cursor was
+		//twice its size. Here it keeps its own size times the screen scale, in the top left of a transparent cursor-sized image
+		//(as MacAppHost's VM cursors); macOS takes any size and gets the image as it is
+		Dimension best = Toolkit.getDefaultToolkit().getBestCursorSize(bi.getWidth(), bi.getHeight());
+		if(best.width>0 && best.height>0 && (best.width!=bi.getWidth() || best.height!=bi.getHeight())){
+			double s = screenScale();
+			s = Math.min(s, Math.min(best.width/(double)bi.getWidth(), best.height/(double)bi.getHeight()));
+			int w = Math.max(1, (int)Math.round(bi.getWidth()*s)), h = Math.max(1, (int)Math.round(bi.getHeight()*s));
+			img = new BufferedImage(Math.max(w, best.width), Math.max(h, best.height), BufferedImage.TYPE_INT_ARGB);
+			java.awt.Graphics2D g = img.createGraphics();
+			g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+			g.drawImage(bi, 0, 0, w, h, null);
+			g.dispose();
+			//the hot spot pixel's middle in the scaled image (the same pixel at 100%)
+			at = new Point(Math.min(w-1, (int)((at.x+0.5)*s)), Math.min(h-1, (int)((at.y+0.5)*s)));
+		}
 		Cursor cr;
-		try{ cr = Toolkit.getDefaultToolkit().createCustomCursor(bi, at, "none-cursor"); }
-		catch(IndexOutOfBoundsException e){ cr = Toolkit.getDefaultToolkit().createCustomCursor(bi, new Point(0, 0), "none-cursor"); }
+		try{ cr = Toolkit.getDefaultToolkit().createCustomCursor(img, at, "none-cursor"); }
+		catch(IndexOutOfBoundsException e){ cr = Toolkit.getDefaultToolkit().createCustomCursor(img, new Point(0, 0), "none-cursor"); }
 		customCursors.put(bi, new Object[]{new Point(hotSpot), cr});
 		return cr;
+	}
+
+	/** The pixels per point of the screen of the card window (Windows 150% = 1.5), 1 when unknown. */
+	private static double screenScale(){
+		try{
+			java.awt.GraphicsConfiguration gc = PCARD.pc!=null ? PCARD.pc.getGraphicsConfiguration() : null;
+			if(gc==null) gc = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration();
+			return Math.max(1, gc.getDefaultTransform().getScaleX());
+		}catch(Exception e){ return 1; }
 	}
 
 	/**
@@ -694,6 +720,11 @@ public class TUtil {
 		return (owner.objectType.equals("background") ? "bkgnd field " : "card field ")+n;
 	}
 
+	/** The selection is the message box's: no field has one and a script selected its text */
+	static boolean messageBoxSelected(){
+		return GMsg.msg!=null && GMsg.msg.isVisible() && GMsg.area!=null && (GMsg.area.getSelectionEnd()>GMsg.area.getSelectionStart() || GMsg.msg.typedInto());
+	}
+
 	static OField findFocusedOrClickedField(){
 		OField found = GUI.clickField;
 		//select コマンドやクリックで決まったフィールドを優先する(フォーカスの移動は非同期なので)
@@ -709,6 +740,12 @@ public class TUtil {
 			if(compo!=null && compo.isFocusOwner()) found = field;
 		}
 		return found;
+	}
+
+	/** The field the global selectedChunk, selectedLine, selectedLoc… speak of: a list field's line is no selection of text */
+	static OField selectionField(){
+		OField field = findFocusedOrClickedField();
+		return field!=null && field.isListField() ? null : field;
 	}
 
 	/** A number followed at once by a character that is neither a letter, a digit, a space nor HyperTalk punctuation */
@@ -1600,7 +1637,7 @@ public class TUtil {
 	{
 		if(0==message.compareTo("tool")){
 			if(PCARD.pc.tool!=null){
-				if(PCARD.pc.tool.getClass()==SelectTool.class) result.theResult = "select tool";
+				if(PCARD.pc.tool.getClass()==SelectTool.class) result.theResult = PCARD.pc.tool==TTalk.selectToolWentLasso ? "lasso tool" : "select tool";
 				else if(PCARD.pc.tool.getClass()==LassoTool.class) result.theResult = "lasso tool";
 				else if(PCARD.pc.tool.getClass()==SmartSelectTool.class) result.theResult = "magicwand tool";
 				else if(PCARD.pc.tool.getClass()==PencilTool.class) result.theResult = "pencil tool";
@@ -1627,12 +1664,15 @@ public class TUtil {
 			}
 			else result.theResult = "browse tool";
 		}
-		else if((0==message.compareTo("selectedtext") || 0==message.compareTo("selectedline")) && params!=null && params.length>0 && params[0].length()>0){
-			//the selectedText/selectedLine of <listField|popupButton>
+		else if((0==message.compareTo("selectedtext") || 0==message.compareTo("selectedline") || 0==message.compareTo("selectedlines")) &&
+				params!=null && params.length>0 && params[0].length()>0){
+			//the selectedText/selectedLine of <listField|popupButton>; selectedLines is selectedLine (HC J-2.3: word 2 of
+			//selectedLines of me in poker.hzb's Bet pop-ups), the row list of a table/outline field
 			OObject obj = TTalk.getObject(params[0], memData, target);
 			if(obj instanceof OField){
 				OField f = (OField)obj;
 				if(0==message.compareTo("selectedtext")) result.theResult = f.getSelectedText();
+				else if(0==message.compareTo("selectedlines") && (f.tableStyle || f.outlineStyle)) result.theResult = tableRowList(f);
 				else result.theResult = fieldSelectedLineRef(f);
 			}
 			else if(obj instanceof OButton){
@@ -1655,8 +1695,9 @@ public class TUtil {
 			if(GUI.clickField!=null && GUI.clickField.fld!=null){
 				//select コマンドやクリックで決まったフィールドを優先する(フォーカスの移動は非同期なので、直前に
 				//フォーカスのあった別のフィールドの選択を返していた: select line 2 of cd fld "F2" の後に "bc")
-				result.theResult = GUI.clickField.getSelectedText();
+				result.theResult = GUI.clickField.isListField() ? "" : GUI.clickField.getSelectedText();
 				if(result.theResult==null) result.theResult = "";
+				result.ret = 0; //selectedText() called as a function checks it (スクリプト書き換え)
 				return result;
 			}
 			//入力フォーカスのあるフィールドを検索して選択テキストを返す
@@ -1677,13 +1718,18 @@ public class TUtil {
 				}
 			}
 			if(result.theResult==null){
-				result.theResult = "";
+				result.theResult = messageBoxSelected() ? GMsg.area.getSelectedText() : "";
 			}
 		}
 		else if(0==message.compareTo("selectedchunk")){
 			//現在選択中のテキストを指すチャンク式
 			result.theResult = "";
-			OField field = findFocusedOrClickedField();
+			OField field = selectionField();
+			if((field==null || field!=GUI.clickField && field.fld!=null && field.fld.getSelectionEnd()==field.fld.getSelectionStart()) && messageBoxSelected()){
+				//select text of msg (HC J-2.3: "char 1 to 4 of message box")
+				result.theResult = "char "+(GMsg.area.getSelectionStart()+1)+" to "+GMsg.area.getSelectionEnd()+" of message box";
+				return result;
+			}
 			if(field!=null && field.fld!=null){
 				int start = field.fld.getSelectionStart();
 				int end = field.fld.getSelectionEnd();
@@ -1700,7 +1746,7 @@ public class TUtil {
 		else if(0==message.compareTo("selectedline")){
 			//現在選択中のテキストを含む行(選択が無ければ空)
 			result.theResult = "";
-			OField field = findFocusedOrClickedField();
+			OField field = selectionField();
 			if(field!=null && field.fld!=null){
 				int start = field.fld.getSelectionStart();
 				int end = field.fld.getSelectionEnd();
@@ -1714,8 +1760,8 @@ public class TUtil {
 							if(i<end-1) lastLine++;
 						}
 					}
-					if(firstLine==lastLine) result.theResult = "line "+firstLine+" of "+fieldNumberRef(field);
-					else result.theResult = "line "+firstLine+" to "+lastLine+" of "+fieldNumberRef(field);
+					//the line it starts on, however far it goes (HC J-2.3: select line 2 to 3 of cd fld 1 gives "line 2 of card field 1")
+					result.theResult = "line "+firstLine+" of "+fieldNumberRef(field);
 				}
 				else if(field==GUI.clickField){
 					//挿入ポイントだけ(select after line 2 of …)でもその行(HyperCard J-2.3: "line 2 of card field 4")
@@ -1729,7 +1775,7 @@ public class TUtil {
 		else if(0==message.compareTo("selectedfield")){
 			//現在選択中のテキストのあるフィールド: "card field N" / "bkgnd field N"(番号形式、HyperCard)
 			result.theResult = "";
-			OField field = findFocusedOrClickedField();
+			OField field = selectionField();
 			//挿入ポイントだけでもそのフィールド(HyperCard J-2.3 / 2.4: select after char 2 of … → "card field 3")
 			if(field!=null && field.fld!=null && (field.fld.getSelectionEnd()>field.fld.getSelectionStart() || field==GUI.clickField)){
 				result.theResult = fieldNumberRef(field);
@@ -1739,14 +1785,29 @@ public class TUtil {
 			//現在選択中のテキストの中央位置(カード座標)
 			result.theResult = "";
 			//HyperCard: 選択範囲(または挿入ポイント)の左端と下端(カード座標)。挿入ポイントだけでも返す
-			OField field = findFocusedOrClickedField();
+			OField field = selectionField();
 			if(field!=null && field.fld!=null && (field.fld.isFocusOwner() || field==GUI.clickField)){
 				int start = field.fld.getSelectionStart();
 				try{
 					Rectangle2D r1 = field.fld.modelToView2D(start);
 					double scale = PCARD.scale();
-					int x = (int)(r1.getX()/scale) + field.left;
-					int y = (int)((r1.getY()+r1.getHeight())/scale) + field.top;
+					double left = r1.getX(), top = r1.getY();
+					if(field.scrollPane!=null) top -= MyScrollPane.toViewScroll(field.scroll); //where it shows
+					if(field.textAlign!=0){
+						//the view lays every line out from the left
+						double lineLeft = field.fld.modelToView2D(javax.swing.text.Utilities.getRowStart(field.fld, start)).getX();
+						double lineRight = field.fld.modelToView2D(javax.swing.text.Utilities.getRowEnd(field.fld, start)).getX();
+						double room = field.fld.getWidth()-2*lineLeft-(lineRight-lineLeft);
+						left += field.textAlign==1 ? room/2 : room;
+					}
+					int x = (int)(left/scale) + field.left;
+					int y = (int)((top+r1.getHeight())/scale) + field.top;
+					if(field.scroll==0 && (field.styleList==null || field.styleList.isEmpty())){
+						//the rows as the field draws them, the view's may be taller (selectedLoc is how a script measures a line)
+						int margin = OField.textTopMargin(1, field.wideMargins);
+						long row = Math.round((r1.getY()/scale-margin)/(r1.getHeight()/scale));
+						y = field.top+margin+(int)(row+1)*field.lineHeight();
+					}
 					result.theResult = x+","+y;
 				}catch(Exception e){}
 			}
@@ -1811,6 +1872,11 @@ public class TUtil {
 			if(i<=0||i>65535) result.theResult = "";
 			else{
 				char c = (char)i;
+				//92 is the yen sign of a Japanese stack, as its text reads that byte (HC J-2.3: numToChar(92) = "¥" = "\")
+				if(i==92 && scriptEncoding()==StackTextEncoding.JAPANESE){
+					String one = legacyChar(i);
+					if(one!=null) c = one.charAt(0);
+				}
 				//128〜255 はスタックの文字コードの1バイト文字(HyperCard J-2.3: numToChar(194) = "ﾂ"(継続記号)、
 				//numToChar(177) = "ｱ"。Mac OS Roman のスタックなら numToChar(165) = "•")
 				if(i>=128 && i<=255){
@@ -1920,6 +1986,18 @@ public class TUtil {
 		}
 		else if(0==message.compareTo("brushstabilization") || 0==message.compareTo("brushstabilizer")){
 			result.theResult = Integer.toString(PaintTool.brushStabilization);
+			result.ret = 0;
+		}
+		else if(0==message.compareTo("brushpressure")){
+			//ペンの筆圧を何に効かせるか: size / opacity / size,opacity / none
+			result.theResult = PaintTool.pressureSize ? (PaintTool.pressureOpacity ? "size,opacity" : "size") : (PaintTool.pressureOpacity ? "opacity" : "none");
+			result.ret = 0;
+		}
+		else if(0==message.compareTo("penpressure")){
+			//ペンタブレットの今の筆圧(0〜100、浮かせていれば0)。最近ペンが使われていなければ空
+			TabletInput.start();
+			float p = TabletInput.latest();
+			result.theResult = Float.isNaN(p) ? "" : Integer.toString(Math.round(p*100));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("zoom")){
@@ -2208,6 +2286,7 @@ public class TUtil {
 			result.ret = 0;
 		}
 		else if(message.equalsIgnoreCase("keydown")){
+			TTalk.keyDownLeftThePath();
 			result.ret = 0;
 		}
 		else if(message.equalsIgnoreCase("commandkeydown")){
@@ -2264,8 +2343,7 @@ public class TUtil {
 				Rsrc rsrc = PCARD.pc.stack.rsrc;
 				Rsrc.rsrcClass named = rsrc.findByNameAll(params[0],"PICT");
 				if(named!=null){
-					bi = rsrc.getImage(params[0],"PICT");
-					if(named.name!=null && named.name.length()>0) windowName = named.name;
+					bi = rsrc.getImage(params[0],"PICT"); //the window keeps the name as the script wrote it (HC J-2.3: openPicture "sutame" for PICT "Sutame")
 				}
 				else if(params[0].trim().matches("-?[0-9]+")){
 					int rsrcid = Integer.parseInt(params[0].trim());
@@ -2303,6 +2381,11 @@ public class TUtil {
 				if(bi==null) bi = loadPictureFile(TTalk.convertFromMacPath(params[0]));
 				//":fix:Flower.pic": a partial path from the folder open file uses (UDI UxGetFileIcon demo buttons)
 				if(bi==null) bi = loadPictureFile(TTalk.resolveFilePath(params[0]));
+				//HyperCard's search path for documents (A-OK!: ":A-OK! Graphics:" in the global documents, picture "Earth Path Indicator",file)
+				if(bi==null) for(File folder : TTalk.searchPathFolders("documents")){
+					File found = new File(folder, params[0]);
+					if(found.isFile()){ bi = loadPictureFile(found.getPath()); if(bi!=null) break; }
+				}
 				//ウィンドウ名はファイル名(パスは含めない)
 				String fileName = new File(TTalk.convertFromMacPath(params[0])).getName();
 				if(!fileName.isEmpty()) windowName = fileName;
@@ -2624,7 +2707,8 @@ public class TUtil {
 	/** The message box in the card-window coordinates "set the loc of msg" uses. */
 	static java.awt.Rectangle messageBoxRect(){
 		Point origin = getCardOriginOnScreen();
-		return new java.awt.Rectangle(PCARD.toLogical(GMsg.msg.getX()-origin.x), PCARD.toLogical(GMsg.msg.getY()-origin.y), PCARD.toLogicalLength(GMsg.msg.getWidth()), PCARD.toLogicalLength(GMsg.msg.getHeight()));
+		//the text box without the title bar, as big as HyperCard's for the scripts that lay out around it (HC J-2.3: 472 by 35)
+		return new java.awt.Rectangle(PCARD.toLogical(GMsg.msg.getX()-origin.x), PCARD.toLogical(GMsg.msg.getY()-origin.y), 472, 35);
 	}
 
 	/** loc/rect/left/…/visible of HyperCard's Scroll/FatBits windoids: kept, nothing is shown. False for another property. */
@@ -2982,7 +3066,8 @@ public class TUtil {
 			return fld==null ? "" : Boolean.toString(fld.multipleLines);
 		}
 		else if(0==prpty.compareTo("sharedtext")){
-			return fld==null ? "" : Boolean.toString(fld.sharedText);
+			//only a background field has it: empty for a card field (HC J-2.3)
+			return fld==null || !fld.parent.objectType.equals("background") ? "" : Boolean.toString(fld.sharedText);
 		}
 		else if(0==prpty.compareTo("showlines")){
 			return fld==null ? "" : Boolean.toString(fld.showLines);
@@ -3017,7 +3102,9 @@ public class TUtil {
 			return fld==null || !fld.outlineStyle ? "" : fld.selectedPath;
 		}
 		else if(0==prpty.compareTo("selectedlines")){
-			return fld==null ? "" : tableRowList(fld);
+			//a table/outline field's rows; otherwise the selectedLine (HC J-2.3: the selectedLines of a pop-up = "line 2 of card button 7")
+			if(fld!=null && (fld.tableStyle || fld.outlineStyle)) return tableRowList(fld);
+			return getProperty("selectedline", obj, target, memData);
 		}
 		else if(0==prpty.compareTo("widemargins")){
 			return fld==null ? "" : Boolean.toString(fld.wideMargins);
@@ -3365,6 +3452,9 @@ public class TUtil {
 			return obj instanceof OStack ? Boolean.toString(((OStack)obj).cantPeek) : "";
 		}
 		else if(0==prpty.compareTo("scroll")){
+			//only a scrolling field has a scroll: HyperCard J-2.3 stops the handler for any other one (probe Arc28 Scroll Get;
+			//Real-Time Messages' message log)
+			if(fld!=null && fld.style!=5) throw new xTalkException("Not a scrolling field.");
 			if(fld!=null) return Integer.toString(fld.scroll);
 			if(obj==OWindow.cdwindow || obj instanceof OCard){
 				//the scroll of card window: the card point at the window's top left (0,0 unless the window is smaller than the card)
@@ -3684,7 +3774,9 @@ public class TUtil {
 		obj = backgroundPartOfView(obj, inProperty);
 		//a part that moves is copied at its old place too
 		java.awt.Rectangle before = obj instanceof OButton || obj instanceof OField ? new java.awt.Rectangle(obj.left, obj.top, obj.width, obj.height) : null;
+		java.awt.Point windowWas = obj==OWindow.cdwindow && PCARD.pc!=null ? PCARD.pc.getLocation() : null;
 		setPropertyNow(obj, inProperty, value);
+		if(windowWas!=null && !windowWas.equals(PCARD.pc.getLocation())) TTalk.cardWindowMoved();
 		if(REDRAWN_PART_PROPERTIES.contains(inProperty.toLowerCase(java.util.Locale.ROOT))) partChangedOnScreen(obj, before);
 		//a stack that is not open (read on the side for "stack X", or one in use) has no autosave: HyperCard writes the change
 		//into that stack's file (HC J-2.3 measured: set the script of stack "Bare Words" from another stack, then the file holds
@@ -3942,8 +4034,8 @@ public class TUtil {
 			((OCardBase)fld.parent).changed = true;
 		}
 		else if(0==prpty.compareTo("sharedtext")){
-			if(fld==null || fld.parent==null || !fld.parent.objectType.equals("background"))
-				throw new xTalkException("sharedText can only be set on background fields");
+			if(fld==null) throw new xTalkException("sharedText can only be set on background fields");
+			if(fld.parent==null || !fld.parent.objectType.equals("background")) return; //a card field: nothing, no error (HC J-2.3)
 			fld.sharedText = propertyBoolean("sharedText", value);
 			((OCardBase)fld.parent).changed = true;
 		}
@@ -4184,6 +4276,7 @@ public class TUtil {
 				if(ScriptDebugger.depth()==0) throw new xTalkException("No such icon");
 				return;
 			}
+			if(iconId==btn.icon && btn.iconURI==null) StackSpeed.unchanged(); //HyperCard draws nothing for the icon it has (speed limit)
 			btn.setIcon(iconId);
 		}
 		else if(0==prpty.compareTo("visible")){
@@ -4573,6 +4666,22 @@ public class TUtil {
 				int v = propertyInteger("brushSpacing", value);
 				if(v<1 || v>200) throw new xTalkException("brushSpacing must be between 1 and 200");
 				PaintTool.brushSpacing = v;
+			}
+			else if(0==prpty.compareTo("brushpressure")){
+				//set the brushPressure to size,opacity (both / none / 空も可)
+				boolean size = false, opacity = false;
+				for(String w : value.toLowerCase(java.util.Locale.ROOT).split("[,\\s]+")){
+					if(w.isEmpty() || w.equals("none") || w.equals("false")) continue;
+					else if(w.equals("size")) size = true;
+					else if(w.equals("opacity")) opacity = true;
+					else if(w.equals("both") || w.equals("true")){ size = true; opacity = true; }
+					else throw new xTalkException("brushPressure must be size, opacity, both or none");
+				}
+				PaintTool.pressureSize = size;
+				PaintTool.pressureOpacity = opacity;
+			}
+			else if(0==prpty.compareTo("penpressure")){
+				throw new xTalkException("Can't set the penPressure");
 			}
 			else if(0==prpty.compareTo("brushstabilization") || 0==prpty.compareTo("brushstabilizer")){
 				int v = propertyInteger(inProperty, value);
@@ -5157,6 +5266,7 @@ public class TUtil {
 				}
 				fld.setScroll(v);
 			}
+			else if(fld!=null) throw new xTalkException("Not a scrolling field."); //HyperCard J-2.3 probe Arc28 Err Scroll
 			else if(cd!=null) {
 				int v1, v2;
 				String[] strAry = value.split(",");

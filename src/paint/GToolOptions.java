@@ -224,8 +224,9 @@ class GToolOptions {
 		return row;
 	}
 
-	//ブラシ: 大きさのマス目の下に、硬さ・不透明度・間隔・手ぶれ補正のスライダー
-	//(どれも動かした瞬間に効く)。BrushTool参照。
+	//ブラシ: 大きさのマス目の下に、硬さ・不透明度・間隔・手ぶれ補正のスライダーと、
+	//ペンタブレットの筆圧を太さ・不透明度に効かせるかのチェック(どれも変えた瞬間に効く)。
+	//BrushTool・TabletInput参照。
 	static JPanel brushOptions(JPopupMenu popup){
 		JPanel panel = new JPanel();
 		panel.setLayout(new javax.swing.BoxLayout(panel, javax.swing.BoxLayout.Y_AXIS));
@@ -235,7 +236,20 @@ class GToolOptions {
 		panel.add(labelled("Opacity", slider(1, 100, PaintTool.brushOpacity, "%", v -> PaintTool.brushOpacity = v)));
 		panel.add(labelled("Spacing", slider(1, 200, PaintTool.brushSpacing, "%", v -> PaintTool.brushSpacing = v)));
 		panel.add(labelled("Stabilizer", slider(0, 98, PaintTool.brushStabilization, "%", v -> PaintTool.brushStabilization = v)));
+		JPanel pressure = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 4, 0));
+		pressure.add(check("Size", PaintTool.pressureSize, v -> PaintTool.pressureSize = v));
+		pressure.add(check("Opacity", PaintTool.pressureOpacity, v -> PaintTool.pressureOpacity = v));
+		panel.add(labelled("Pen Pressure", pressure));
 		return panel;
+	}
+
+	//チェックボックス(押した瞬間に効く)。nameはメニューの文脈で訳す
+	static javax.swing.JCheckBox check(String name, boolean value, Consumer<Boolean> onChange){
+		javax.swing.JCheckBox box = new javax.swing.JCheckBox(PCARD.pc.intl.getToolText(name), value);
+		box.setName(name);
+		box.setFocusable(false);
+		box.addActionListener(e -> onChange.accept(box.isSelected()));
+		return box;
 	}
 
 	//見出し付きの行(スライダーの左に小さな見出し)

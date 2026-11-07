@@ -243,6 +243,14 @@ final class PpcLibraries {
 		int n=0;if(p!=0)while(n<255&&memory.readByte(p+n)!=0){memory.writeByte(to+1+n,memory.readByte(p+n));n++;}
 		memory.writeByte(to,n);return to;
 	}
+	/** The Pascal string at {@code p} as a C string at {@code to}. */
+	private void pascalToCAt(int p,int to) throws M68kCpuException {
+		int n=memory.readByte(p);for(int i=0;i<n;i++)memory.writeByte(to+i,memory.readByte(p+1+i));memory.writeByte(to+n,0);
+	}
+	/** A (char *name, short vRefNum) File Manager call of the CLib glue: {@code word} with the name as a Pascal string. */
+	private int namedPbTrap(int word) throws M68kException {
+		return withPb(80+256,pb->{memory.writeLong(pb+18,cToPascalAt(arg(0),pb+80));memory.writeWord(pb+22,arg(1));return pbTrap(word,pb);});
+	}
 	/** C string at {@code p} to a Pascal string in place (returns p). */
 	private int c2p(int p) throws M68kCpuException {
 		if(p==0)return 0;
@@ -349,7 +357,7 @@ final class PpcLibraries {
 		rave=new PpcRave(rt);rave.define(this); // QuickDraw 3D RAVE (the "QuickDraw™ 3D Accelerator" library)
 		qd3d=new PpcQuickDraw3D(rt);qd3d.define(this); // QuickDraw 3D 1.6 itself (the "QuickDraw™ 3D" library)
 		openGL=new PpcOpenGL(rt);openGL.define(this); // Apple OpenGL 1.2.1 (OpenGLLibrary, OpenGLUtility, OpenGLMemory)
-		defineFindByContent();
+		defineDesktopResources();defineFindByContent();
 		// the Window Manager's private layer calls (PrivateInterfaceLib, _LayerDispatch $A829 on 68K): one layer per process,
 		// the program's window list its sub-windows. Audion 3 walks it (GetCurLayer was unresolved: a jump to 0)
 		def("GetCurLayer",(r,c)->ret(r.runOnStack(new int[]{0x7003,0xa829},0,0,4)));
@@ -367,7 +375,12 @@ final class PpcLibraries {
 	 * nothing (kFBCnoIndexesFound), indexing is not offered. Sherlock 2 warned at every launch that the library was missing and
 	 * searches by name through the File Manager anyway.
 	 */
-	private void defineFindByContent(){
+	/** Private entries of the Translation library that DragInstall (Apache Longbow demo, Iconic.PPC_nd) calls on each file it copied: the desktop database needs no help here. */
+	private void defineDesktopResources(){
+		def("Translation","InstallDesktopResources",(r,c)->ret(0));
+		def("Translation","PreflightPaulIconInstall",(r,c)->ret(0));
+	}
+		private void defineFindByContent(){
 		final String lib="Find by Content";final int noIndexes=-30501;
 		final java.util.Set<Integer> sessions=new java.util.HashSet<Integer>();
 		def(lib,"FBCVolumeIsIndexed",(r,c)->ret(0));
@@ -547,7 +560,12 @@ final class PpcLibraries {
 		def("EnoughSystemHeapSlop",(r,c)->ret(1));
 		PpcRuntime.Native move=(r,c)->{int n=arg(2);if(n>0)memory.copy(arg(0),arg(1),n);};
 		def("BlockMoveData",move);def("BlockMoveUncached",move);def("BlockMoveDataUncached",move);def("BlockMove",move);
-		def("StackSpace",(r,c)->ret(Math.max(0,c.r[1]-r.stackBase)));
+		// StackSpace: from SP down to the application limit when the program raised it into the stack (ApplLimit, $130; the stack
+		// starts there): Abalone 1.5.1 gives the heap all but 64K of its stack - SetApplLimit(GetApplLimit() + 1K), MaxApplZone
+		// while StackSpace() > 64K - and looped for ever while the answer stayed SP - stack base.
+		def("StackSpace",(r,c)->{int sp=c.r[1],floor=r.stackBase,limit=memory.readLong(0x130);
+			if(Integer.compareUnsigned(limit,floor)>0&&Integer.compareUnsigned(limit,sp)<0&&Integer.compareUnsigned(sp,r.stackTop)<=0)floor=limit;
+			ret(Math.max(0,sp-floor));});
 		def("c2pstr",(r,c)->ret(c2p(arg(0))));def("C2PStr",(r,c)->ret(c2p(arg(0))));
 		def("p2cstr",(r,c)->ret(p2c(arg(0))));def("P2CStr",(r,c)->ret(p2c(arg(0))));
 		def("CopyPascalStringToC",(r,c)->{int s=arg(0),d=arg(1);int n=memory.readByte(s);memory.copy(s+1,d,n);memory.writeByte(d+n,0);});
@@ -617,6 +635,33 @@ final class PpcLibraries {
 		// identifies a linked image by the file type getfinfo reports (Last Call's bar backgrounds, bg_picts:bgN.jpg)
 		def("getfinfo",(r,c)->ret(withPb(112+256,pb->{memory.writeLong(pb+18,cToPascalAt(arg(0),pb+112));memory.writeWord(pb+22,arg(1));int e=pbTrap(0xa00c,pb);if(e==0&&arg(2)!=0)memory.copy(pb+32,arg(2),16);return e;})));
 		def("setfinfo",(r,c)->ret(withPb(112+256,pb->{memory.writeLong(pb+18,cToPascalAt(arg(0),pb+112));memory.writeWord(pb+22,arg(1));int e=pbTrap(0xa00c,pb);if(e!=0)return e;memory.copy(arg(2),pb+32,16);memory.writeWord(pb+22,arg(1));memory.writeLong(pb+18,pb+112);return pbTrap(0xa00d,pb);})));
+		// The rest of the CLib glue's C-string File Manager calls: the name copied to a Pascal string in the block's spare room.
+		// 80 Days Demo opens its 80D.RSC with fsopen (refNum 0 left: "RESRC.C - 130: Seek error in recource file")
+		def("fsopen",(r,c)->ret(withPb(80+256,pb->{memory.writeLong(pb+18,cToPascalAt(arg(0),pb+80));memory.writeWord(pb+22,arg(1));int e=pbTrap(0xa000,pb);if(arg(2)!=0)memory.writeWord(arg(2),memory.readWord(pb+24));return e;})));
+		def("openrf",(r,c)->ret(withPb(80+256,pb->{memory.writeLong(pb+18,cToPascalAt(arg(0),pb+80));memory.writeWord(pb+22,arg(1));int e=pbTrap(0xa00a,pb);if(arg(2)!=0)memory.writeWord(arg(2),memory.readWord(pb+24));return e;})));
+		def("create",(r,c)->ret(withPb(112+256,pb->{ // (fileName, vRefNum, creator, fileType)
+			int name=cToPascalAt(arg(0),pb+112);memory.writeLong(pb+18,name);memory.writeWord(pb+22,arg(1));int e=pbTrap(0xa008,pb);if(e!=0)return e;
+			memory.writeWord(pb+28,0);e=pbTrap(0xa00c,pb);if(e!=0)return e;
+			memory.writeLong(pb+32,arg(3));memory.writeLong(pb+36,arg(2));memory.writeWord(pb+22,arg(1));memory.writeLong(pb+18,name);return pbTrap(0xa00d,pb);})));
+		def("fsdelete",(r,c)->ret(namedPbTrap(0xa009)));
+		def("fsrename",(r,c)->ret(withPb(80+512,pb->{memory.writeLong(pb+18,cToPascalAt(arg(0),pb+80));memory.writeWord(pb+22,arg(1));memory.writeLong(pb+28,cToPascalAt(arg(2),pb+336));return pbTrap(0xa00b,pb);})));
+		def("setflock",(r,c)->ret(namedPbTrap(0xa041)));
+		def("rstflock",(r,c)->ret(namedPbTrap(0xa042)));
+		def("SetFLock",(r,c)->ret(withPb(80,pb->{memory.writeLong(pb+18,arg(0));memory.writeWord(pb+22,arg(1));return pbTrap(0xa041,pb);})));
+		def("RstFLock",(r,c)->ret(withPb(80,pb->{memory.writeLong(pb+18,arg(0));memory.writeWord(pb+22,arg(1));return pbTrap(0xa042,pb);})));
+		def("setvol",(r,c)->ret(namedPbTrap(0xa015)));
+		def("flushvol",(r,c)->ret(namedPbTrap(0xa013)));
+		def("unmountvol",(r,c)->ret(namedPbTrap(0xa00e)));
+		def("eject",(r,c)->ret(namedPbTrap(0xa017)));
+		def("getvol",(r,c)->ret(withPb(80+256,pb->{ // (volName out, *vRefNum)
+			memory.writeLong(pb+18,arg(0)==0?0:pb+80);int e=pbTrap(0xa014,pb);if(arg(0)!=0)pascalToCAt(pb+80,arg(0));if(arg(1)!=0)memory.writeWord(arg(1),memory.readWord(pb+22));return e;})));
+		def("getvinfo",(r,c)->ret(withPb(80+256,pb->{ // (drvNum, volName out, *vRefNum, *freeBytes)
+			memory.writeLong(pb+18,arg(1)==0?0:pb+80);memory.writeWord(pb+22,arg(0));memory.writeWord(pb+28,0);int e=pbTrap(0xa007,pb);
+			if(arg(1)!=0)pascalToCAt(pb+80,arg(1));if(arg(2)!=0)memory.writeWord(arg(2),memory.readWord(pb+22));
+			if(arg(3)!=0)memory.writeLong(arg(3),memory.readWord(pb+62)*memory.readLong(pb+48));return e;})));
+		def("openresfile",(r,c)->ret(withPb(256,p->r.toolbox("OpenResFile",cToPascalAt(arg(0),p)))));
+		def("createresfile",(r,c)->withPb(256,p->r.toolbox("CreateResFile",cToPascalAt(arg(0),p))));
+		def("openrfperm",(r,c)->ret(withPb(256,p->r.toolbox("OpenRFPerm",cToPascalAt(arg(0),p),arg(1),arg(2)))));
 		def("HGetFInfo",(r,c)->ret(withPb(112,pb->{memory.writeLong(pb+18,arg(2));memory.writeWord(pb+22,arg(0));memory.writeLong(pb+48,arg(1));int e=pbTrap(0xa20c,pb);if(e==0&&arg(3)!=0)memory.copy(pb+32,arg(3),16);return e;})));
 		def("HSetFInfo",(r,c)->ret(withPb(112,pb->{memory.writeLong(pb+18,arg(2));memory.writeWord(pb+22,arg(0));memory.writeLong(pb+48,arg(1));int e=pbTrap(0xa20c,pb);if(e!=0)return e;memory.copy(arg(3),pb+32,16);memory.writeWord(pb+22,arg(0));memory.writeLong(pb+48,arg(1));return pbTrap(0xa20d,pb);})));
 		def("Rename",(r,c)->ret(withPb(80,pb->{memory.writeLong(pb+18,arg(0));memory.writeWord(pb+22,arg(1));memory.writeLong(pb+28,arg(2));return pbTrap(0xa00b,pb);})));

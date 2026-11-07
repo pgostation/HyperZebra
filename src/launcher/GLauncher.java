@@ -122,7 +122,8 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	static GLauncher instance;
 	static final int FILTER_ALL=0, FILTER_APPS=1, FILTER_STACKS=2, FILTER_DOCS=3;
 	private static final int ICON=32;
-	private final LauncherAppearance appearance = new LauncherAppearance(new File(AppPaths.stateDirectory(), "launcher-appearance.properties"));
+	private final LauncherAppearance appearance = new LauncherAppearance(appearanceFile());
+	private static File appearanceFile(){ return new File(AppPaths.stateDirectory(), "launcher-appearance.properties"); }
 	private int dockIconSize(){ return appearance.dockSize; }
 	private JScrollPane dockScroll;
 	private JScrollPane listScroll;
@@ -139,7 +140,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			return i>=0 && getCellBounds(i, i).contains(e.getPoint()) ? model.get(i).path : null;
 		}
 	};
-	private final JToggleButton allButton, appsButton, stacksButton, docsButton;
+	private JToggleButton allButton, appsButton, stacksButton, docsButton;
 	/** The tabs of the middle's pages in the side column, in order (History, Settings, Mac Application Settings, Translation, Appearance, About). */
 	private final List<JButton> tabs = new ArrayList<JButton>();
 	/** The dock's button that spreads it over the window and back, and View's menu item for the same. */
@@ -252,6 +253,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	private String currentCard = "recent";
 	private JComponent appearancePage;
 	/** The "vm" card until the Mac Application Settings page is first shown. */
+	private JPanel settingsPlaceholder;
 	private JPanel vmPlaceholder;
 	/** The "translation" card until the Translation page is first shown (its status asks the translation helper). */
 	private JPanel translationPlaceholder;
@@ -265,7 +267,18 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	private static final int DOCK_HOLD_MS = 1000;
 	private final javax.swing.Timer dockHoldEnd = new javax.swing.Timer(DOCK_HOLD_MS, new ActionListener(){ public void actionPerformed(ActionEvent e){ refreshDock(); }});
 	{ dockHoldEnd.setRepeats(false); }
-	private final Map<String,Icon> iconCache = new HashMap<String,Icon>();
+	/** The icons read so far, by {@link #iconKey}: whichever thread read them, and across {@link #rebuild}. */
+	private static final Map<String,Icon> iconCache = new java.util.concurrent.ConcurrentHashMap<String,Icon>();
+	/** The icons on their way ({@link #iconLater}). */
+	private static final Set<String> iconsAsked = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	/** One lock per file: the same file is asked for at two sizes, and a packed stack's icons are unpacked into one folder. */
+	private static final Map<String,Object> iconFileLocks = new java.util.concurrent.ConcurrentHashMap<String,Object>();
+	private static final java.util.concurrent.ExecutorService iconReaders = java.util.concurrent.Executors.newFixedThreadPool(3, r -> {
+		Thread t = new Thread(r, "launcher icons");
+		t.setDaemon(true);
+		return t;
+	});
+	private static final java.util.concurrent.atomic.AtomicBoolean iconRepaintPosted = new java.util.concurrent.atomic.AtomicBoolean();
 	private static BufferedImage appIconImage, stackIconImage, documentIconImage, hyperZebraIcon;
 
 	// ------------------------------------------------------------------ life cycle
@@ -283,12 +296,33 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		return null;
 	}
 
+	/** The window {@link #showEarly} put up, until {@link #install} fills it. */
+	private static GLauncher early;
+
+	/**
+	 * Puts the launcher's window up at once, its pages to follow from {@link #install}: anything with text waits for the
+	 * system's fonts, half a second into the start on a Mac, and the window's frame and backdrop need none of them.
+	 * Called when HyperZebra starts with nothing to open.
+	 */
+	static void showEarly(){
+		if(java.awt.GraphicsEnvironment.isHeadless() || "false".equals(System.getProperty("hz.launcher"))) return;
+		SwingUtilities.invokeLater(new Runnable(){ public void run(){
+			if(instance!=null || early!=null) return;
+			early = new GLauncher();
+			early.setVisible(true);
+			StartupTrace.mark("window shown");
+		}});
+	}
+
 	/** Creates the launcher (once, on the EDT); nothing in headless runs or with -Dhz.launcher=false. */
 	static void install(){
 		if(instance!=null || java.awt.GraphicsEnvironment.isHeadless() || "false".equals(System.getProperty("hz.launcher"))) return;
 		PCARD.runOnEDT(new Runnable(){ public void run(){
 			if(instance!=null) return;
-			instance = new GLauncher();
+			GLauncher launcher = early!=null ? early : new GLauncher();
+			early = null;
+			launcher.build();
+			instance = launcher;
 			LauncherStore.addListener(instance);
 			MacApp68k.addListener(instance);
 		}});
@@ -417,21 +451,28 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		javax.swing.ToolTipManager.sharedInstance().setDismissDelay(Math.max(javax.swing.ToolTipManager.sharedInstance().getDismissDelay(), 15000));
 		addWindowListener(new WindowAdapter(){
 			@Override public void windowClosing(WindowEvent e){ closeRequested(); }
-			@Override public void windowActivated(WindowEvent e){ refresh(); }
+			@Override public void windowActivated(WindowEvent e){ if(bottom!=null) refresh(); }
 		});
-		setJMenuBar(buildMenuBar());
 		JPanel canvas = appearance.canvas();
 		canvas.setLayout(new BorderLayout(0, 8));
 		canvas.setBorder(BorderFactory.createEmptyBorder(6, 10, 8, 10));
 		setContentPane(canvas);
+		getRootPane().putClientProperty("apple.awt.windowAppearance", appearance.dark() ? "NSAppearanceNameDarkAqua" : "NSAppearanceNameAqua");
+		// the window comes back where it was left (when that is still on a display), else at its default size in the middle
+		java.awt.Rectangle saved = appearance.window;
+		if(saved!=null && onSomeDisplay(saved)) setBounds(saved);
+		else { setSize(760, 560); setLocationRelativeTo(null); }
+	}
+
+	/** The window's contents, in a frame that may be on screen already ({@link #showEarly}). */
+	private void build(){
+		setJMenuBar(buildMenuBar());
 		center.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
 		// the middle: the column of buttons on the left; the history, the introduction or a settings page on the right
 		center.add(buildRecentPanel(), "recent");
 		center.add(buildAboutPanel(), "about");
-		GPreferencesDialog.SettingsForm settings = new GPreferencesDialog.SettingsForm(true);
-		settings.languageChanged = new Runnable(){ public void run(){ languageChanged(); } };
-		center.add(settingsPage(stackSettingsPage(settings)), "settings");
+		center.add(settingsPlaceholder = new JPanel(), "settings"); // built when first shown, as the next two
 		center.add(vmPlaceholder = new JPanel(), "vm"); // built when first shown: its MIDI device list asks CoreMIDI (~0.7 s at start-up)
 		center.add(translationPlaceholder = new JPanel(), "translation"); // built when first shown: it starts the translation helper
 		center.add(appearancePage = settingsPage(buildAppearancePanel()), "appearance");
@@ -469,10 +510,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		applyAppearance();
 		setMinimumSize(new Dimension(200, 200));
 		addWindowListener(new WindowAdapter(){ @Override public void windowOpened(WindowEvent e){ updateMinimumSize(); } });
-		// the window comes back where it was left (when that is still on a display), else at its default size in the middle
-		java.awt.Rectangle saved = appearance.window;
-		if(saved!=null && onSomeDisplay(saved)) setBounds(saved);
-		else { setSize(760, 560); setLocationRelativeTo(null); }
+		updateMinimumSize();
 		boundsSaver = new javax.swing.Timer(500, new ActionListener(){ public void actionPerformed(ActionEvent e){ rememberBounds(); }});
 		boundsSaver.setRepeats(false);
 		addComponentListener(new java.awt.event.ComponentAdapter(){
@@ -898,6 +936,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		javax.swing.ToolTipManager.sharedInstance().registerComponent(list);
 		list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION); // Shift/Cmd-click several rows to remove them at once
 		list.setFixedCellHeight(52);
+		list.setFixedCellWidth(1); // the viewport's width: without a fixed width the list asks every row's renderer, for all of the history
 		list.setDragEnabled(true);
 		list.setTransferHandler(new TransferHandler(){
 			private static final long serialVersionUID = 1L;
@@ -1230,7 +1269,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			List<LauncherStore.Item> selected = list.getSelectedValuesList();
 			final int view = listScroll!=null ? listScroll.getVerticalScrollBar().getValue() : -1;
 			model.clear();
-			for(LauncherStore.Item it: items) model.addElement(it);
+			model.addAll(items);
 			List<Integer> keep = new ArrayList<Integer>();
 			for(LauncherStore.Item it: selected){ int i = items.indexOf(it); if(i>=0) keep.add(i); }
 			if(!keep.isEmpty()) list.setSelectedIndices(keep.stream().mapToInt(Integer::intValue).toArray());
@@ -1259,6 +1298,14 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		if(!"dock".equals(card) && appearance.dockGrid){ tabBeforeExpand = card; setDockExpanded(false); return; } // arrangeDock comes back here
 		if("dock".equals(card) && !appearance.dockGrid) card = tabBeforeExpand;
 		currentCard = card;
+		if("settings".equals(card) && settingsPlaceholder != null){
+			int at = java.util.Arrays.asList(center.getComponents()).indexOf(settingsPlaceholder);
+			center.remove(settingsPlaceholder); settingsPlaceholder = null;
+			GPreferencesDialog.SettingsForm settings = new GPreferencesDialog.SettingsForm(true);
+			settings.languageChanged = new Runnable(){ public void run(){ languageChanged(); } };
+			JComponent page = settingsPage(stackSettingsPage(settings));
+			center.add(page, "settings", at); appearance.styleTree(page);
+		}
 		if("vm".equals(card) && vmPlaceholder != null){
 			center.remove(vmPlaceholder); vmPlaceholder = null;
 			JComponent vm = settingsPage(vmPage(new GPreferencesDialog.VmForm(true)));
@@ -1612,6 +1659,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	void openDocuments(File app, List<File> documents){
 		for(File d: documents) if(d==null || !d.exists()){ setStatus(text("Not found")+": "+(d==null ? "" : d.getPath()), true); return; }
 		if(app==null || !app.isFile()){ setStatus(text("Not found")+": "+(app==null ? "" : app.getPath()), true); return; }
+		documents = StationeryPads.documentsFor(this, app, documents); // a stationery pad: a new document made from it, as the Finder does
 		if(documents.isEmpty()) return;
 		MacApp68k running = MacApp68k.runningFrom(app);
 		if(running!=null){
@@ -1642,8 +1690,9 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	/**
 	 * A document dropped (or opened) away from any program's icon: opened in the program chosen for its kind of file,
 	 * else - an archive with one known expander - in that; otherwise the user picks from the programs that can open it
-	 * ({@link DocumentOpeners}), HyperZebra's own picture editor for a picture, and the resource editor for a file with
-	 * resources. Returns false when the file is not a document this handles (a stack, a picture or ZIP archive HyperZebra
+	 * ({@link DocumentOpeners}), HyperZebra's own picture editor for a picture, its text viewer for a text document or a text or
+	 * picture clipping and its media player for a sound or movie file (shown without asking when no program made for the type
+	 * opens it), the URL of an Internet location file, and the resource editor for a file with resources. Returns false when the file is not a document this handles (a stack, a picture or ZIP archive HyperZebra
 	 * opens itself, a folder) so the caller opens it the usual way; true when it was taken care of, cancelled included.
 	 */
 	static boolean openDocument(final File doc){ return openDocument(doc, true); }
@@ -1660,8 +1709,18 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		if(chosen==null && archive) chosen = DocumentOpeners.obvious(doc);
 		if(chosen==null && archive) chosen = DocumentOpeners.expanderFor(doc);
 		if(chosen!=null){ instance.openDocuments(chosen, Collections.singletonList(doc)); return true; }
-		List<File> candidates = DocumentOpeners.candidates(doc);
+		// an Internet location file (a URL the Finder kept): its URL, to open on the host, when no program made for the type is known
+		String url = InternetLocation.url(doc, type);
+		if(url!=null && DocumentOpeners.candidates(doc, type, false).isEmpty()) return openLocation(doc, url);
+		// a text document (a ReadMe in Shift-JIS...) that no program made for its type opens: HyperZebra's text viewer, not a resource editor
+		final boolean text = !archive && !picture && TextDocument.isTextDocument(doc, type);
+		// a sound or movie file (a QuickTime movie, a System 7 sound file...) that no program made for it opens: HyperZebra's media player
+		final MediaDocument.Kind media = archive || picture || text ? null : MediaDocument.kindOf(doc, type);
+		int seenAs = text && type==0 ? TextDocument.TEXT : media!=null && type==0 ? MediaDocument.typeFor(doc, media) : type;
+		List<File> candidates = DocumentOpeners.candidates(doc, seenAs, !text && media==null);
 		if(candidates.isEmpty() && picture) return false; // HyperZebra's own picture editor, as always
+		if(candidates.isEmpty() && text) return showText(doc);
+		if(candidates.isEmpty() && media!=null) return showMedia(doc);
 		// an archive nothing expands: the expander first, even when text editors could open a BinHex file (a .sit.hqx listed them)
 		if((candidates.isEmpty() || !DocumentOpeners.expanderKnown()) && archive && offerExpanders && offerExpanders(doc)) return true;
 		boolean resources = hasResources(doc);
@@ -1672,11 +1731,48 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			if(resources && editor.equals(GDialog.clicked)) OStack.openResourceForkInEditor(doc.getPath());
 			return true;
 		}
-		Object choice = instance.chooseOpener(doc, type, candidates, picture, resources);
+		Object choice = instance.chooseOpener(doc, type, candidates, picture, text, media!=null, resources);
 		if(choice==null) return true;
 		if(choice instanceof File) instance.openDocuments((File)choice, Collections.singletonList(doc));
+		else if(OPEN_TEXT.equals(choice)) showText(doc);
+		else if(OPEN_MEDIA.equals(choice)) showMedia(doc);
 		else if(OPEN_PICTURE.equals(choice)) TTalk.CallMessage("edit picture \""+doc.getPath()+"\"", "", null, false, true);
 		else if(OPEN_RESOURCES.equals(choice)) OStack.openResourceForkInEditor(doc.getPath());
+		return true;
+	}
+	/**
+	 * An Internet location's URL, shown with the choice to open it in the host's browser (or mail program, for mailto:) or
+	 * copy it - most of these URLs are decades old. Always true: the drop is taken care of.
+	 */
+	private static boolean openLocation(File doc, String url){
+		String open = text("Open"), copy = text("Copy URL");
+		new GDialog(PCARD.pc, text("Internet location \"%s\"").replace("%s", LauncherStore.displayName(doc))+"\n"+url, null, text("Cancel"), copy, open);
+		if(copy.equals(GDialog.clicked)){
+			java.awt.datatransfer.StringSelection s = new java.awt.datatransfer.StringSelection(url);
+			java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(s, s);
+		}
+		else if(open.equals(GDialog.clicked)){
+			try{
+				java.net.URI uri = new java.net.URI(url);
+				java.awt.Desktop desktop = java.awt.Desktop.getDesktop();
+				if("mailto".equalsIgnoreCase(uri.getScheme()) && desktop.isSupported(java.awt.Desktop.Action.MAIL)) desktop.mail(uri);
+				else desktop.browse(uri);
+			}catch(Exception e){
+				new GDialog(PCARD.pc, text("Can't open the URL.")+"\n"+url+(e.getMessage()==null ? "" : "\n"+e.getMessage()), null, "OK", null, null);
+			}
+		}
+		return true;
+	}
+	/** Shows a text document in HyperZebra's text viewer ({@link GTextDocumentWindow}). Always true: the drop is taken care of. */
+	private static boolean showText(File doc){
+		try{ GTextDocumentWindow.show(doc); }
+		catch(IOException e){ new GDialog(PCARD.pc, text("Can't open the file.")+"\n"+e.getMessage(), null, "OK", null, null); }
+		return true;
+	}
+	/** Plays a sound or movie file in HyperZebra's media player ({@link GMediaPlayerWindow}). Always true: the drop is taken care of. */
+	private static boolean showMedia(File doc){
+		try{ GMediaPlayerWindow.show(doc); }
+		catch(IOException e){ new GDialog(PCARD.pc, text("Can't open the file.")+"\n"+e.getMessage(), null, "OK", null, null); }
 		return true;
 	}
 	/**
@@ -1764,7 +1860,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	}
 	/** A program the launcher runs in the VM: a 68K/PowerPC application, or a stand-alone stack last run as one. */
 	private static boolean isProgram(File f){ return f.isFile() && (MacApp68k.isApplication(f) || runsAsProgram(f)); }
-	static final String OPEN_PICTURE = "picture", OPEN_RESOURCES = "resources", IMPORT_STACK = "import", RUN_STANDALONE = "standalone";
+	static final String OPEN_PICTURE = "picture", OPEN_TEXT = "text", OPEN_MEDIA = "media", OPEN_RESOURCES = "resources", IMPORT_STACK = "import", RUN_STANDALONE = "standalone";
 	/** Tests: answers the "Open With" chooser (the choices offered → the one taken, null for Cancel) instead of showing it. */
 	static java.util.function.Function<List<Object>,Object> openerChoiceForTest;
 	/** A picture HyperZebra's paint editor opens: PICT, PNG, JPEG, GIF, PBM by type or name. */
@@ -1786,7 +1882,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		if(isHostProgram(f)) return true;
 		if(!f.isFile() || MacApp68k.isApplication(f) || OStack.looksLikeHyperCardStack(f.getPath()) || StackBundle.isPacked(f) || ZipExpander.isZip(f) || DocumentOpeners.isArchive(f)) return false;
 		int type = DocumentOpeners.typeOf(f);
-		if(isPicture(f, type) || hasResources(f) || (type!=0 && LauncherStore.get().openerFor(type)!=null)) return false;
+		if(isPicture(f, type) || hasResources(f) || TextDocument.isTextDocument(f, type) || MediaDocument.isMediaDocument(f, type) || (type!=0 && LauncherStore.get().openerFor(type)!=null)) return false;
 		return DocumentOpeners.candidates(f).isEmpty();
 	}
 	/** A program of the host itself: a Mac OS X application on macOS, a program or shortcut on Windows, a launcher file on Linux. */
@@ -1801,12 +1897,14 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 
 	/**
 	 * "Open "doc" with:" - a list of the programs that can open the document (their icons and names), the picture editor
-	 * and the resource editor when they apply, and "Always open this kind of file with this program". Returns the File
-	 * of the program, OPEN_PICTURE, OPEN_RESOURCES, or null when cancelled.
+	 * text viewer, media player and the resource editor when they apply, and "Always open this kind of file with this program".
+	 * Returns the File of the program, OPEN_PICTURE, OPEN_TEXT, OPEN_MEDIA, OPEN_RESOURCES, or null when cancelled.
 	 */
-	private Object chooseOpener(File doc, final int type, List<File> candidates, boolean picture, boolean resources){
+	private Object chooseOpener(File doc, final int type, List<File> candidates, boolean picture, boolean text, boolean media, boolean resources){
 		final List<Object> choices = new ArrayList<Object>(candidates);
 		if(picture) choices.add(OPEN_PICTURE);
+		if(text) choices.add(OPEN_TEXT);
+		if(media) choices.add(OPEN_MEDIA);
 		if(resources) choices.add(OPEN_RESOURCES);
 		return chooseFrom(doc, type, choices, 0, true, text("Open %s with:"));
 	}
@@ -1835,6 +1933,8 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 				}
 				else if(IMPORT_STACK.equals(value)){ label.setIcon(new ImageIcon(stackIcon())); label.setText(text("Import as a HyperZebra stack")); }
 				else if(RUN_STANDALONE.equals(value)){ label.setIcon(new ImageIcon(scaleIcon(documentIconFor(doc), ICON))); label.setText(text("Run as an application in the 68K VM")); }
+				else if(OPEN_TEXT.equals(value)){ label.setIcon(new ImageIcon(stackIcon())); label.setText(text("HyperZebra text viewer")); }
+				else if(OPEN_MEDIA.equals(value)){ label.setIcon(new ImageIcon(stackIcon())); label.setText(text("HyperZebra media player")); }
 				else{ label.setIcon(new ImageIcon(OPEN_PICTURE.equals(value) ? stackIcon() : documentIcon())); label.setText(OPEN_PICTURE.equals(value) ? text("HyperZebra picture editor") : text("Resource editor")); }
 				label.setOpaque(true);
 				label.setBackground(selected ? l.getSelectionBackground() : l.getBackground());
@@ -1914,6 +2014,11 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			String s = stage==0x20 ? "d" : stage==0x40 ? "a" : stage==0x60 ? "b" : "";
 			return !s.isEmpty() ? v+s+release : v;
 		}catch(IOException | RuntimeException e){ return null; }
+	}
+	/** The document's icon (its Finder icon, else the generic document's), for windows that show a document. */
+	static BufferedImage documentIconOf(File doc, int size){
+		BufferedImage image = instance!=null ? instance.documentImage(doc, null, size) : null;
+		return image!=null ? image : documentIcon();
 	}
 	private BufferedImage documentIconFor(File doc){
 		BufferedImage image = documentImage(doc, null, ICON);
@@ -2071,7 +2176,8 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			if(app!=null && app.isFile()) addSettingsItem(menu, app, true);
 		}else if(exists){
 			final MacApp68k running = MacApp68k.runningFrom(item.file());
-			menu.add(mi = new JMenuItem(text(running!=null ? "Bring to Front" : "Open")));
+			final boolean stackOpen = running==null && isOpenStack(item.file());
+			menu.add(mi = new JMenuItem(text(running!=null || stackOpen ? "Bring to Front" : "Open")));
 			mi.addActionListener(new ActionListener(){ public void actionPerformed(ActionEvent e){ openItem(item); }});
 			if(running==null && item.isApp() && MacApp68k.isApplication(item.file())) addSafeOpenItems(menu, item.file(), null);
 			if(running==null && MacApp68k.isStandaloneStack(item.file())){ // a stand-alone application stack: the other way of opening it
@@ -2094,6 +2200,9 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			if(running!=null){
 				menu.addSeparator();
 				addQuitItems(menu, running);
+			}else if(stackOpen){
+				menu.addSeparator();
+				addCloseStackItems(menu, item.file());
 			}
 		}else{
 			menu.add(mi = new JMenuItem(text("Locate…")));
@@ -2336,6 +2445,36 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		mi.addActionListener(new ActionListener(){ public void actionPerformed(ActionEvent e){ GAppInfoWindow.confirmForceQuit(GLauncher.this, running); }});
 	}
 
+	/**
+	 * An open stack's "Close Stack" (closeCard/closeStack are sent, its changes written) and, for the stack on show, whose
+	 * scripts run, "Force Quit…": after a confirmation its handlers stop and it closes without its messages
+	 * ({@link PCARD#forceQuitStack}) - for a stack caught in a script that no longer answers.
+	 */
+	private void addCloseStackItems(JPopupMenu menu, final File stack){
+		JMenuItem mi;
+		menu.add(mi = new JMenuItem(text("Close Stack")));
+		mi.addActionListener(new ActionListener(){ public void actionPerformed(ActionEvent e){
+			if(isStackOnShow(stack)) PCARD.closeCurrentStack(); else GStackWindow.closeStack(TTalk.windowStackKey(stack.getPath())); }});
+		if(!isStackOnShow(stack)) return;
+		menu.add(mi = new JMenuItem(text("Force Quit…")));
+		mi.addActionListener(new ActionListener(){ public void actionPerformed(ActionEvent e){ confirmForceQuitStack(stack); }});
+	}
+
+	/** Asks, then force quits the stack on show; true when it was forced. */
+	boolean confirmForceQuitStack(File stack){
+		if(!isStackOnShow(stack)) return false;
+		String message = text("Force \"%s\" to quit? Its running handlers stop at once and it closes without its close messages; its changes are kept.")
+			.replace("%s", LauncherStore.displayName(stack));
+		String[] options = {text("Force Quit"), text("Cancel")};
+		int answer = forceQuitAnswerForTest!=null ? forceQuitAnswerForTest
+			: JOptionPane.showOptionDialog(this, message, text("Force Quit"), JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[1]);
+		if(answer!=0 || !isStackOnShow(stack)) return false;
+		PCARD.forceQuitStack();
+		return true;
+	}
+	/** Tests: the answer to the force quit confirmation (0 = Force Quit) instead of the dialog. */
+	static volatile Integer forceQuitAnswerForTest;
+
 	// ------------------------------------------------------------------ the dock
 
 	private final class DockButton extends JButton {
@@ -2351,7 +2490,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			String name = LauncherStore.displayName(file);
 			setToolTipText(name+(running!=null ? " ("+text("running")+")" : stackOpen ? " ("+text("open")+")" : "")+(!registered ? " - "+text("not in the dock") : ""));
 			putClientProperty("launcher.dock", true);
-		setIcon(new AppearIcon(icon(file, dockIconSize()), LauncherStore.identity(file)));
+		setIcon(new AppearIcon(iconLater(file, dockIconSize()), LauncherStore.identity(file)));
 		getAccessibleContext().setAccessibleName(name);
 			setFont(getFont().deriveFont(11f));
 			setText(shorten(name));
@@ -2502,9 +2641,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 				addQuitItems(menu, running);
 			}else if(isOpen){
 				menu.addSeparator();
-				menu.add(mi = new JMenuItem(text("Close Stack")));
-				mi.addActionListener(new ActionListener(){ public void actionPerformed(ActionEvent e){
-					if(isStackOnShow(file)) PCARD.closeCurrentStack(); else GStackWindow.closeStack(TTalk.windowStackKey(file.getPath())); }});
+				addCloseStackItems(menu, file);
 			}
 			return menu;
 		}
@@ -2776,6 +2913,64 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		menu.add(mi);
 		return menu;
 	}
+	/**
+	 * The dock as a submenu (the Apple menu of a program in the VM): its items, or a submenu per tab while the dock shows
+	 * several tabs. A list is read when it opens, so a long dock costs nothing while the program changes its menus, and
+	 * shows its first {@link #DOCK_MENU_ENTRIES} entries.
+	 */
+	JMenu dockMenu(){
+		final JMenu menu = new JMenu(text("Dock"));
+		fillWhenOpening(menu, () -> {
+			LauncherStore store = LauncherStore.get();
+			List<LauncherStore.DockTab> tabs = store.dockTabs();
+			if(!store.dockTabsShown() || tabs.size()<2){ addDockEntries(menu, store.shownDockTab()); return; }
+			for(int i=0; i<Math.min(tabs.size(), DOCK_MENU_ENTRIES); i++){
+				final int tab = i;
+				final JMenu items = new JMenu(tabName(tab));
+				if(tabs.get(tab).color!=null) items.setIcon(swatch(new Color(tabs.get(tab).color), false));
+				fillWhenOpening(items, () -> addDockEntries(items, tab));
+				menu.add(items);
+			}
+			addDockOverflow(menu, tabs.size(), -1);
+		});
+		return menu;
+	}
+	/** Entries of a list of the dock in a menu; a list this long still fits a screen, the rest is reached in the launcher. */
+	static final int DOCK_MENU_ENTRIES = 30;
+	/** {@code menu} gets its entries from {@code fill} each time it opens. Until then a stand-in keeps it a submenu with something to open. */
+	private void fillWhenOpening(final JMenu menu, final Runnable fill){
+		menu.add(disabledItem(text("None")));
+		menu.addMenuListener(new javax.swing.event.MenuListener(){
+			public void menuSelected(javax.swing.event.MenuEvent e){ menu.removeAll(); fill.run(); }
+			public void menuDeselected(javax.swing.event.MenuEvent e){}
+			public void menuCanceled(javax.swing.event.MenuEvent e){}
+		});
+	}
+	private static JMenuItem disabledItem(String title){ JMenuItem mi = new JMenuItem(title); mi.setEnabled(false); return mi; }
+	/** The items of a tab: choosing one is a click on its dock button. A file that has moved is grey, as in Recent Documents. */
+	private void addDockEntries(JMenu menu, int tab){
+		List<File> items = LauncherStore.get().dockItems(tab);
+		if(items.isEmpty()){ menu.add(disabledItem(text("None"))); return; }
+		for(final File f: items.subList(0, Math.min(items.size(), DOCK_MENU_ENTRIES))){
+			JMenuItem mi = new JMenuItem(LauncherStore.displayName(f), icon(f, 16));
+			mi.setToolTipText(f.getPath());
+			mi.setEnabled(MacApp68k.programOf(f).exists());
+			mi.addActionListener(e -> open(f));
+			menu.add(mi);
+		}
+		addDockOverflow(menu, items.size(), tab);
+	}
+	/** After a cut list: how many entries were left out, leading to them in the launcher ({@code tab} on show, unless -1). */
+	private void addDockOverflow(JMenu menu, int total, final int tab){
+		if(total<=DOCK_MENU_ENTRIES) return;
+		menu.addSeparator();
+		JMenuItem mi = new JMenuItem(text("{0} More in the Launcher…").replace("{0}", String.valueOf(total-DOCK_MENU_ENTRIES)));
+		mi.addActionListener(e -> {
+			if(tab>=0 && LauncherStore.get().dockTabsShown()) selectDockTab(tab);
+			showLauncher(true);
+		});
+		menu.add(mi);
+	}
 	/** A tab's context menu: rename, colour, a new tab, delete (not the last tab). */
 	JPopupMenu tabMenu(final int tab){
 		JPopupMenu menu = new JPopupMenu();
@@ -2958,7 +3153,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		}
 		public Component getListCellRendererComponent(JList<? extends LauncherStore.Item> l, LauncherStore.Item item, int index, boolean selected, boolean focus){
 			boolean exists = item.exists();
-			iconLabel.setIcon(exists ? icon(item, ICON) : new ImageIcon(item.isApp() ? appIcon() : item.isDocument() ? documentIcon() : stackIcon()));
+			iconLabel.setIcon(exists ? iconLater(item, ICON) : new ImageIcon(item.isApp() ? appIcon() : item.isDocument() ? documentIcon() : stackIcon()));
 			iconLabel.setEnabled(exists);
 			nameLabel.setText(item.name());
 			StringBuilder detail = new StringBuilder(text(item.isApp() ? "Mac program" : item.isDocument() ? "Document" : "Stack"));
@@ -3001,10 +3196,73 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 
 	// ------------------------------------------------------------------ icons
 
+	private static String iconKey(File f, int size){ return size+":"+f.getPath(); }
+	private static String iconKey(LauncherStore.Item item, int size){ return item.isDocument() ? size+":doc:"+item.path+"@"+item.app : iconKey(item.file(), size); }
+
+	/**
+	 * Starts reading the icons the launcher is about to show, as HyperZebra starts: they are there when the window comes up,
+	 * and the window does not wait for them. An icon means reading a program's whole resource fork, several times for a
+	 * document, which cost the first window half a second with a full history.
+	 */
+	static void readIconsAhead(){
+		if(java.awt.GraphicsEnvironment.isHeadless() || "false".equals(System.getProperty("hz.launcher"))) return;
+		iconReaders.execute(new Runnable(){ public void run(){
+			LauncherStore store = LauncherStore.get();
+			int dockSize = new LauncherAppearance(appearanceFile()).dockSize;
+			List<LauncherStore.Item> history = store.recentItems();
+			for(File f: store.allDockItems()) if(f.exists()) iconLater(f, dockSize);
+			for(LauncherStore.Item item: history) if(item.exists()) iconLater(item, ICON);
+		}});
+	}
+
+	/** The icon of a history row or a dock button; blank at its size until a thread has read it, and repainted then. */
+	private static Icon iconLater(final LauncherStore.Item item, final int size){
+		if(!item.isDocument()) return iconLater(item.file(), size);
+		final String key = iconKey(item, size);
+		return iconLater(key, size, item.file(), new java.util.concurrent.Callable<Icon>(){ public Icon call(){ return icon(item, size); }});
+	}
+	private static Icon iconLater(final File f, final int size){
+		if(!f.exists()) return icon(f, size); // nothing to read: a stack not written yet comes from its working folder, and is asked for again
+		return iconLater(iconKey(f, size), size, f, new java.util.concurrent.Callable<Icon>(){ public Icon call(){ return icon(f, size); }});
+	}
+	private static Icon iconLater(final String key, int size, final File file, final java.util.concurrent.Callable<Icon> read){
+		Icon icon = iconCache.get(key);
+		if(icon!=null) return icon;
+		if(iconsAsked.add(key)) iconReaders.execute(new Runnable(){ public void run(){
+			try{
+				synchronized(iconFileLocks.computeIfAbsent(file.getPath(), k -> new Object())){ read.call(); }
+			}catch(Exception e){
+				System.err.println("Could not read the icon of "+file+": "+e);
+			}
+			iconsAsked.remove(key);
+			if(iconRepaintPosted.compareAndSet(false, true)) SwingUtilities.invokeLater(new Runnable(){ public void run(){
+				iconRepaintPosted.set(false);
+				if(instance==null) return;
+				instance.list.repaint();
+				instance.dockPanel.repaint();
+			}});
+		}});
+		return new LaterIcon(key, size);
+	}
+	/** What a dock button shows for this file right now (tests). */
+	Icon dockIconLater(File f){ return iconLater(f, dockIconSize()); }
+
+	/** Stands in for an icon being read: paints it once it is there, so a dock button needs no rebuilding. */
+	private static final class LaterIcon implements Icon {
+		private final String key; private final int size;
+		LaterIcon(String key, int size){ this.key = key; this.size = size; }
+		public int getIconWidth(){ return size; }
+		public int getIconHeight(){ return size; }
+		public void paintIcon(Component c, Graphics g, int x, int y){
+			Icon icon = iconCache.get(key);
+			if(icon!=null) icon.paintIcon(c, g, x, y);
+		}
+	}
+
 	/** A history row's icon: a document's comes from the program that opened it (see {@link #documentImage}). */
-	private Icon icon(LauncherStore.Item item, int size){
+	private static Icon icon(LauncherStore.Item item, int size){
 		if(!item.isDocument()) return icon(item.file(), size);
-		String key = size+":doc:"+item.path+"@"+item.app;
+		String key = iconKey(item, size);
 		Icon cached = iconCache.get(key);
 		if(cached!=null) return cached;
 		BufferedImage image = documentImage(item.file(), item.appFile(), size);
@@ -3018,7 +3276,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	 * program whose signature is the document's creator; a program's "any file" icon ('****') only when none claims the
 	 * type itself. Null when nothing has one.
 	 */
-	private BufferedImage documentImage(File doc, File app, int size){
+	private static BufferedImage documentImage(File doc, File app, int size){
 		if(doc==null || !doc.isFile()) return null;
 		BufferedImage image = null;
 		try{ image = FinderIcons68k.ofCustom(doc, size); }catch(RuntimeException ignored){}
@@ -3044,8 +3302,8 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		}
 		return null;
 	}
-	private Icon icon(File f, int size){
-		String key = size+":"+f.getPath();
+	private static Icon icon(File f, int size){
+		String key = iconKey(f, size);
 		Icon cached = iconCache.get(key);
 		if(cached!=null) return cached;
 		BufferedImage image = null;
@@ -3080,7 +3338,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	 * A stack icon with a small "HZ" tag at its lower right, so HyperZebra stacks stand out from Mac programs and
 	 * documents (whose icons they often resemble). Drawn at paint time so the letters stay sharp on HiDPI screens.
 	 */
-	private final class HzBadgeIcon implements Icon {
+	private static final class HzBadgeIcon implements Icon {
 		private final Icon icon;
 		HzBadgeIcon(Icon icon){ this.icon = icon; }
 		public int getIconWidth(){ return icon.getIconWidth(); }
@@ -3098,7 +3356,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 			int bx = x+size-w, by = y+size-h, arc = Math.max(4, h/2);
 			g2.setColor(new Color(255, 255, 255, 220));
 			g2.fillRoundRect(bx-1, by-1, w+2, h+2, arc+2, arc+2); // a light rim keeps it apart from dark icons
-			g2.setColor(appearance.accent());
+			g2.setColor(instance!=null ? instance.appearance.accent() : Color.GRAY);
 			g2.fillRoundRect(bx, by, w, h, arc, arc);
 			g2.setColor(Color.WHITE);
 			g2.setFont(font);

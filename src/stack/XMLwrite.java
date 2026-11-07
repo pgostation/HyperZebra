@@ -189,12 +189,14 @@ public class XMLwrite {
 				return "Could not seal the protected stack: "+e.getMessage(); //平文で書き出してしまわない
 			}
 		}
+		HomeGuard.beforeSave(file);
 		try {
 			writeAtomically(file, xml);
 		} catch (IOException e) {
 			e.printStackTrace();
 			return describe(e, file);
 		}
+		HomeGuard.saved(file);
 		//1ファイル形式のスタック(.hzb の ZIP)は作業フォルダに書いたものをファイルへ書き戻す(書けなければ未保存のまま)
 		return StackBundle.sync(file);
 	}

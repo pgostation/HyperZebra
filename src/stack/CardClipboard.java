@@ -4,7 +4,6 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
 
-import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamReader;
 import javax.xml.stream.XMLStreamWriter;
@@ -18,6 +17,8 @@ import javax.xml.stream.XMLStreamWriter;
  */
 final class CardClipboard {
 	private static String xml;
+	/** The copied card's background: the card keeps it when pasted while a background of that id still has the copied name */
+	private static String bgXml, bgName;
 	private static File sourceFolder;
 	private static OStack sourceStack;
 	/** The copied card's picture and layer files by their names in the source stack's folder. */
@@ -29,12 +30,11 @@ final class CardClipboard {
 
 	static void copy(OCard cd) throws xTalkException {
 		if(cd==null) throw new xTalkException("No card to copy");
+		OBackground bg = cd.stack==null ? null : backgroundOf(cd.stack, cd.bgid);
 		try{
-			StringWriter out = new StringWriter();
-			XMLStreamWriter writer = XMLOutputFactory.newInstance().createXMLStreamWriter(out);
-			cd.writeXML(writer);
-			writer.flush();
-			xml = XmlText.encodeControlChars(out.toString()); // binary in a field (MACBOY Organiser's cards): not valid XML 1.0
+			xml = xmlOf(cd::writeXML);
+			bgXml = bg==null ? null : xmlOf(bg::writeXML);
+			bgName = bg==null ? null : bg.name;
 		}catch(Exception e){
 			throw new xTalkException("Cannot copy card: {0}", e.getMessage());
 		}
@@ -42,8 +42,41 @@ final class CardClipboard {
 		sourceFolder = cd.stack!=null && cd.stack.file!=null ? cd.stack.file.getParentFile() : null;
 		files.clear();
 		if(sourceFolder==null) return;
+		PictureSaver.flush();
 		if(cd.bitmapName!=null && !cd.bitmapName.isEmpty()) keep(cd.bitmapName);
 		if(cd.layers!=null) for(PaintLayer l : cd.layers) if(l.fileName!=null) keep(l.fileName);
+		if(bg!=null && bg.bitmapName!=null && !bg.bitmapName.isEmpty()) keep(bg.bitmapName);
+		if(bg!=null && bg.layers!=null) for(PaintLayer l : bg.layers) if(l.fileName!=null) keep(l.fileName);
+	}
+
+	private interface XmlPart { void write(XMLStreamWriter writer) throws Exception; }
+	private static String xmlOf(XmlPart part) throws Exception {
+		StringWriter out = new StringWriter();
+		XMLStreamWriter writer = XMLOutputFactory.newInstance().createXMLStreamWriter(out);
+		part.write(writer);
+		writer.flush();
+		return XmlText.encodeControlChars(out.toString()); // binary in a field (MACBOY Organiser's cards): not valid XML 1.0
+	}
+
+	private static OBackground backgroundOf(OStack st, int id){
+		for(OBackground bg : st.bgCacheList) if(bg.id==id) return bg;
+		return null;
+	}
+
+	/** The copied background under a new id, after the one it came from: Copy Card, rename the background, Paste Card is how a
+	 *  script duplicates a background (HC J-2.3, HyperPiece++ バックグラウンドを複製する). */
+	private static OBackground pasteBackground(OStack st, OBackground from) throws Exception {
+		OBackground bg = new OBackground(st);
+		XMLStreamReader reader = XmlText.decodingReader(XmlSafe.input().createXMLStreamReader(new StringReader(bgXml)));
+		while(reader.hasNext()){
+			if(reader.next()==XMLStreamReader.START_ELEMENT && reader.getLocalName().equals("background")) break;
+		}
+		bg.readXML(reader);
+		bg.id = st.newCardOrBgId();
+		bg.name = bgName;
+		bg.changed = true;
+		st.AddNewBgAfter(bg, from.id);
+		return bg;
 	}
 
 	private static void keep(String name){
@@ -59,7 +92,7 @@ final class CardClipboard {
 		OStack st = after.stack;
 		OCard cd = new OCard(st);
 		try{
-			XMLStreamReader reader = XmlText.decodingReader(XMLInputFactory.newInstance().createXMLStreamReader(new StringReader(xml)));
+			XMLStreamReader reader = XmlText.decodingReader(XmlSafe.input().createXMLStreamReader(new StringReader(xml)));
 			while(reader.hasNext()){
 				if(reader.next()==XMLStreamReader.START_ELEMENT && reader.getLocalName().equals("card")) break;
 			}
@@ -69,9 +102,8 @@ final class CardClipboard {
 			throw new xTalkException("Cannot paste card: {0}", e.getMessage());
 		}
 		cd.id = st.newCardOrBgId();
-		boolean bgHere = false;
-		for(OBackground bg : st.bgCacheList) if(bg.id==cd.bgid) bgHere = true;
-		if(!bgHere){
+		OBackground bgHere = backgroundOf(st, cd.bgid);
+		if(bgHere==null){
 			//another stack's card: it goes on the background of the card it follows (HyperCard would copy the background too)
 			cd.bgid = after.bgid;
 			cd.bgfldList.clear();
@@ -81,6 +113,22 @@ final class CardClipboard {
 		//pictures of a protected stack are sealed with its own key: they are copied only within the same stack
 		boolean copyFiles = folder!=null && sourceFolder!=null && (sourceStack==st ||
 			(!StackProtection.sealsXml(st) && (sourceStack==null || !StackProtection.sealsXml(sourceStack))));
+		if(bgHere!=null && sourceStack==st && bgXml!=null && !java.util.Objects.equals(bgHere.name, bgName)){
+			OBackground copy;
+			try{ copy = pasteBackground(st, bgHere); }
+			catch(Exception e){ st.cdCacheList.remove(cd); throw new xTalkException("Cannot paste card: {0}", e.getMessage()); }
+			cd.bgid = copy.id;
+			copyPictures(copy, copyFiles, folder);
+			copy.changed = true;
+		}
+		copyPictures(cd, copyFiles, folder);
+		cd.changed = true;
+		st.AddNewCard(st.GetNumberof(after), cd.id);
+		return cd;
+	}
+
+	/** The picture and layer files under the new id's names. */
+	private static void copyPictures(OCardBase cd, boolean copyFiles, File folder){
 		if(cd.bitmapName!=null && !cd.bitmapName.isEmpty()){
 			String ext = cd.bitmapName.contains(".") ? cd.bitmapName.substring(cd.bitmapName.lastIndexOf('.')) : "";
 			String name = "BMAP_"+cd.id+ext;
@@ -94,9 +142,6 @@ final class CardClipboard {
 				l.fileName = copyFiles && copyFile(l.fileName, new File(folder, name)) ? name : null;
 			}
 		}
-		cd.changed = true;
-		st.AddNewCard(st.GetNumberof(after), cd.id);
-		return cd;
 	}
 
 	private static boolean copyFile(String from, File to){

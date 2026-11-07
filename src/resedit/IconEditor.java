@@ -692,9 +692,11 @@ public class IconEditor extends PCARDFrame {
 
 	//種別ごとの保存用拡張子。picture(PICT)は.pict(PNGで持っているものはsave()でPNGのまま)、
 	//ICON/cicn/cursor/crsr/PAT#/ppatはMac生データのままの.data(HCResource.readResourceDataが
-	//インポート時に使うのと同じ拡張子)、それ以外(未対応の種別)は従来通り.png。
+	//インポート時に使うのと同じ拡張子)、ColorizeHCのPdat(中身はPICT)も512バイトのヘッダ無しの.data、
+	//それ以外(未対応の種別)は従来通り.png。
 	private static String targetExtensionFor(String type){
 		if(type.equals("PICT")) return ".pict";
+		if(type.equals("Pdat")) return ".data";
 		if(type.equals("ICON") || type.equals("cicn") || type.equals("CURS") ||
 			type.equals("crsr") || type.equals("PAT#") || type.equals("ppat")) return ".data";
 		return ".png";
@@ -753,6 +755,9 @@ public class IconEditor extends PCARDFrame {
 				}
 				else if(type.equals("PICT")){
 					prefix = "PICT_";
+				}
+				else if(type.equals("Pdat")){
+					prefix = "Pdat_";
 				}
 				else if(type.equals("CURS")){
 					prefix = "CURS_";
@@ -829,7 +834,7 @@ public class IconEditor extends PCARDFrame {
 			try {
 				Rsrc.rsrcClass res = this.rsrc.getResource1(id, type);
 				boolean asPng = !type.equals("ICON") && !type.equals("cicn") && !type.equals("CURS") && !type.equals("crsr")
-					&& !type.equals("PAT#") && !type.equals("ppat") && (!type.equals("PICT") || targetExt.equalsIgnoreCase(".png"));
+					&& !type.equals("PAT#") && !type.equals("ppat") && !type.equals("Pdat") && (!type.equals("PICT") || targetExt.equalsIgnoreCase(".png"));
 				//PNGはエンコーダやメタデータで同じ絵でもバイト列が変わるので、画素で比べて変わっていなければ書かない
 				//(何も変えずに閉じただけで「保存しますか」と聞かれないように)
 				boolean unchangedPng = false;
@@ -837,6 +842,10 @@ public class IconEditor extends PCARDFrame {
 					BufferedImage beforeImg = null;
 					try { beforeImg = ImageIO.read(new java.io.ByteArrayInputStream(before)); } catch (IOException ignored) { }
 					unchangedPng = samePixels(beforeImg, this.mainImg);
+				}
+				//PICT/Pdatも書き直すと32bitの絵になるので、画素が同じなら元のバイト列(8bit等)のまま残す
+				else if((type.equals("PICT") || type.equals("Pdat")) && before!=null){
+					unchangedPng = samePixels(this.rsrc.getImage(id, type), this.mainImg);
 				}
 				if(unchangedPng){
 					//何も書かない
@@ -853,6 +862,10 @@ public class IconEditor extends PCARDFrame {
 						fos.write(new byte[512]);
 						fos.write(pictData);
 					}
+				}
+				else if(type.equals("Pdat")){
+					//ColorizeHCはPdatをGetResourceでそのままPICTとして描くので、リソースの中身そのもの(ヘッダ無し)
+					writeRawResource(filepath, HCResourceExport.pict(this.mainImg));
 				}
 				else if(type.equals("ICON")){
 					writeRawResource(filepath, HCResourceExport.monoBits(this.mainImg,32,32,false));
@@ -1172,6 +1185,7 @@ class IconGUI implements MouseListener, MouseMotionListener
     		owner.pickHotSpotAt(x, y);
     		return;
     	}
+    	TabletInput.update(e);
     	PaintTool.mouseDown(x, y);
     }
     @Override
@@ -1211,6 +1225,7 @@ class IconGUI implements MouseListener, MouseMotionListener
     		owner.pickHotSpotAt(x, y);
     		return;
     	}
+    	TabletInput.update(e);
     	PaintTool.mouseStillDown(x, y);
 		PaintTool.lastTime = System.currentTimeMillis();
 	}

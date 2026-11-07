@@ -1339,9 +1339,8 @@ final class PpcCoreFoundation {
 		String t=text.trim();
 		if(t.startsWith("<?xml")||t.startsWith("<!DOCTYPE")||t.startsWith("<plist")){
 			try{
-				javax.xml.parsers.DocumentBuilderFactory f=javax.xml.parsers.DocumentBuilderFactory.newInstance();
+				javax.xml.parsers.DocumentBuilderFactory f=XmlSafe.dom();
 				f.setValidating(false);f.setNamespaceAware(false);f.setExpandEntityReferences(false);
-				try{f.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd",false);f.setFeature("http://xml.org/sax/features/external-general-entities",false);}catch(Exception ignored){}
 				org.w3c.dom.Document doc=f.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(text)));
 				org.w3c.dom.Element root=doc.getDocumentElement();
 				if(root.getTagName().equals("plist")){for(org.w3c.dom.Node n=root.getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof org.w3c.dom.Element)return xmlValue((org.w3c.dom.Element)n);return null;}
@@ -1654,9 +1653,8 @@ final class PpcCoreFoundation {
 	}
 	/** Parses XML into a DOM (no validation, no external DTD). */
 	private static org.w3c.dom.Document parseXML(byte[] data) throws Exception {
-		javax.xml.parsers.DocumentBuilderFactory f=javax.xml.parsers.DocumentBuilderFactory.newInstance();
+		javax.xml.parsers.DocumentBuilderFactory f=XmlSafe.dom();
 		f.setValidating(false);f.setNamespaceAware(false);f.setExpandEntityReferences(true);f.setCoalescing(false);
-		try{f.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd",false);f.setFeature("http://xml.org/sax/features/external-general-entities",false);}catch(Exception ignored){}
 		return f.newDocumentBuilder().parse(new java.io.ByteArrayInputStream(data));
 	}
 	/** Walks a DOM, calling {@code visitor} for every node CF's parser reports (skipping white space when asked). */

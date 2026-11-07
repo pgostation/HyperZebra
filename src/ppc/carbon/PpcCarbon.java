@@ -142,6 +142,7 @@ final class PpcCarbon {
 		rt.toolbox("InitGraf",thePort);qdGlobals=thePort;
 		rt.toolbox("InitFonts");rt.toolbox("InitWindows");rt.toolbox("InitMenus");rt.toolbox("TEInit");rt.toolbox("InitDialogs",0);rt.toolbox("InitCursor");
 		rt.toolbox("FlushEvents",0xffff,0);
+		WacomTablet68k.available(); // the host's pen reader, for the tablet data of mouse events
 	}
 	/** The address of qd.thePort (QuickDraw's globals end there; the others are below it). */
 	private int qdGlobals;
@@ -345,6 +346,9 @@ final class PpcCarbon {
 		l.register(null,"GetDialogDefaultItem",(r,c)->ret((short)memory.readWord(arg(0)+168)));
 		l.register(null,"GetDialogCancelItem",(r,c)->ret(0));
 		// ---- controls
+		// kEventControlHit comes from TrackControl and HandleControlClick themselves, under a program's own WaitNextEvent loop too
+		// (REALbasic 5 push buttons: Barcode Automator's Agree acts on the kEventCommandProcess it leads to, nothing on TrackControl's result)
+		l.register(null,"TrackControl",(r,c)->{int control=arg(0),part=(short)rt.toolbox("TrackControl",control,arg(1),arg(2));tracked(control,part,rt.toolbox.host().modifiers());ret(part);});
 		l.register(null,"GetControlBounds",(r,c)->{memory.copy(memory.readLong(arg(0))+8,arg(1),8);ret(arg(1));});
 		l.register(null,"SetControlBounds",(r,c)->memory.copy(arg(1),memory.readLong(arg(0))+8,8));
 		l.register(null,"GetControlHilite",(r,c)->ret(memory.readByte(memory.readLong(arg(0))+17)));
@@ -418,11 +422,11 @@ final class PpcCarbon {
 		l.register(null,"DrawThemeStandaloneGrowBox",(r,c)->ret(0));
 		l.register(null,"DrawThemeTextBox",(r,c)->{ // (CFString, fontID, state, wrapToWidth, bounds, just, context)
 			String t=rt.libraries.textServices.cfText(arg(0));if(t==null){ret(-50);return;}
-			byte[] b=rt.libraries.textServices.systemBytes(t);int text=r.allocate(b.length+2,2);memory.load(text,b);
+			byte[] b=rt.libraries.textServices.systemBytes(t);
 			int saved=r.allocate(8,2);saveFont(saved);applyThemeFont(arg(1)&0xffff);
-			int rect=arg(4);if((arg(3)&0xff)==0){int w=r.allocate(8,2);memory.copy(rect,w,8);memory.writeWord(w+6,32000);rect=w;}
-			rt.toolbox("TETextBox",text,b.length,rect,(short)arg(5));
-			restoreFont(saved);memory.free(saved);memory.free(text);if(rect!=arg(4))memory.free(rect);ret(0);});
+			Toolbox68k tb=rt.toolbox;String translation=tb.translator()==null?null:tb.translated(VMTranslation.Kind.TEXT,tb.decode(b));
+			tb.textEdit.textBox(b,arg(4),(short)arg(5),translation,false,(arg(3)&0xff)!=0); // over the background, as Appearance draws theme text
+			restoreFont(saved);memory.free(saved);ret(0);});
 		l.register(null,"GetThemeTextDimensions",(r,c)->{ // (CFString, fontID, state, wrapToWidth, *ioBounds (Point: width limit in), *baseline)
 			String t=rt.libraries.textServices.cfText(arg(0));if(t==null)t="";
 			byte[] b=rt.libraries.textServices.systemBytes(t);int text=r.allocate(b.length+2,2);memory.load(text,b);
@@ -1512,11 +1516,14 @@ final class PpcCarbon {
 		}
 	}
 	private void processOneEvent(double wait) throws M68kException {
+		tabletProximity();
+		if(!queue.isEmpty()){Event e=queue.remove(0);try{send(e,DISPATCHER_TARGET);}finally{release(e);}return;}
 		int record=rt.allocate(16,4);
 		try{
-			int ticks=(int)Math.min(30,Math.ceil(wait*60));
+			int ticks=motionTicks((int)Math.min(30,Math.ceil(wait*60)));
 			boolean got=(rt.toolbox("WaitNextEvent",0xffff,record,ticks,0)&0xff)!=0;
 			if(got)dispatchClassic(memory.readBytes(record,16));
+			else{Event m=mouseMotion();if(m!=null)try{send(m,DISPATCHER_TARGET);}finally{release(m);}}
 		}finally{memory.free(record);}
 	}
 	/**
@@ -1529,12 +1536,14 @@ final class PpcCarbon {
 		int record=rt.allocate(16,4);
 		try{
 			while(true){
+				tabletProximity();
 				for(Event e:queue)if(matches(e,n,list)){if(pull)queue.remove(e);else e.references++;return e;}
 				if(quitLoop){quitLoop=false;return null;}
 				double wait=Math.min(fireTimers(),end-now());
 				if(wait<0)return null;
-				int ticks=(int)Math.max(0,Math.min(30,Math.ceil(wait*60)));
-				if((rt.toolbox("WaitNextEvent",0xffff,record,ticks,0)&0xff)!=0){
+				int ticks=motionTicks((int)Math.max(0,Math.min(30,Math.ceil(wait*60))));
+				if((rt.toolbox("WaitNextEvent",0xffff,record,ticks,0)&0xff)==0){Event m=mouseMotion();if(m!=null)enqueueMotion(m);}
+				else{
 					Event e=fromClassic(memory.readBytes(record,16));
 					if(e!=null){
 						if(e.record!=null&&(e.record[1]==6)){ // an update event repeats until BeginUpdate: queue it once
@@ -1653,6 +1662,8 @@ final class PpcCarbon {
 				e.params.put(P_MBTN,new Object[]{T_MBTN,word(1)});e.params.put(P_CCNT,new Object[]{T_UINT32,longs(Math.max(1,clickCount))});
 				if(window!=0)e.params.put(P_WINDOW,new Object[]{T_WINDOW,longs(window)});
 				e.params.put(P_WPAR,new Object[]{T_SINT16,word(part)});
+				lastMouse=where;if(what==1)dragWindow=window;
+				tabletPoint(e,where,what==1);
 				break;}
 			case 3:case 4:case 5:{ // key down, up, auto-key
 				e=newEvent(CLASS_KEYBOARD,what==3?1:what==5?2:3);
@@ -1663,13 +1674,100 @@ final class PpcCarbon {
 			case 8:e=newEvent(CLASS_WINDOW,(modifiers&1)!=0?5:6);e.params.put(P_DIRECT,new Object[]{T_WINDOW,longs(message)});break;  // kEventWindowActivated / Deactivated
 			case 15:{int kind=(message>>>24)&0xff;
 				if(kind==1)e=newEvent(CLASS_APPLICATION,(message&1)!=0?1:2);                          // resume/suspend: kEventAppActivated / Deactivated
-				else if(kind==0xfa){e=newEvent(CLASS_MOUSE,5);e.params.put(P_MLOC,new Object[]{T_POINT,longs(where)});e.params.put(P_KMOD,new Object[]{T_UINT32,longs(modifiers)});} // mouse moved
+				else if(kind==0xfa){e=newEvent(CLASS_MOUSE,5);e.params.put(P_MLOC,new Object[]{T_POINT,longs(where)});e.params.put(P_KMOD,new Object[]{T_UINT32,longs(modifiers)});tabletPoint(e,where,false);} // mouse moved
 				else return null;
 				break;}
 			case 23:e=newEvent(CLASS_APPLE_EVENT,1);e.params.put(P_EVCL,new Object[]{T_TYPE,longs(message)});e.params.put(P_EVID,new Object[]{T_TYPE,longs(where)});break; // kEventAppleEvent
 			default:return null;
 		}
 		e.record=record;e.time=(when&0xffffffffL)/60.0;
+		return e;
+	}
+
+	// ---- mouse motion and pen tablets
+
+	/** Where the pointer was last seen (Mouse $830), and the window the button went down in (kEventMouseDragged goes there). */
+	private int lastMouse=Integer.MIN_VALUE,dragWindow;
+	/** WaitNextEvent's sleep: one tick while the button is down, so a drag gives kEventMouseDragged at the tick rate. */
+	private int motionTicks(int ticks) throws M68kException {return (rt.toolbox("Button")&0xff)!=0?Math.min(ticks,1):ticks;}
+	/**
+	 * With no classic event: kEventMouseDragged (button down) or kEventMouseMoved when the pointer moved since it was last
+	 * seen, as CarbonLib made them (the classic Event Manager has no mouse-moved events here); null when it stayed.
+	 */
+	private Event mouseMotion() throws M68kException {
+		int where=memory.readLong(0x830);
+		if(where==lastMouse)return null;
+		boolean first=lastMouse==Integer.MIN_VALUE;lastMouse=where;
+		if(first)return null;
+		boolean down=(rt.toolbox("Button")&0xff)!=0;
+		Event e=newEvent(CLASS_MOUSE,down?6:5);
+		e.params.put(P_MLOC,new Object[]{T_POINT,longs(where)});e.params.put(P_KMOD,new Object[]{T_UINT32,longs(modifiers())});
+		int window=dragWindow;
+		if(down)e.params.put(P_MBTN,new Object[]{T_MBTN,word(1)});
+		else{int slot=rt.allocate(4,4);rt.toolbox("FindWindow",where,slot);window=memory.readLong(slot);memory.free(slot);}
+		if(window!=0&&windowsContain(window))e.params.put(P_WINDOW,new Object[]{T_WINDOW,longs(window)});
+		tabletPoint(e,where,down);
+		return e;
+	}
+	/** A motion event into the queue, in place of a motion event of the same kind still waiting there (mouse coalescing). */
+	private void enqueueMotion(Event m){
+		for(Event q:new ArrayList<Event>(queue))if(q.eventClass==CLASS_MOUSE&&q.kind==m.kind&&q.record==null){queue.remove(q);release(q);}
+		queue.add(m);
+	}
+
+	/**
+	 * Pen tablets, as the Wacom driver gave Carbon programs: while the pen is near, mouse events carry
+	 * kEventParamTabletEventType = kEventTabletPoint and kEventParamTabletPointRec (pressure 0..65535, tilt -32767..32767 of
+	 * full tilt, the pen tip as button 1; place = the pointer, tablet = screen); the pen coming near or leaving (and the
+	 * eraser end turned to the tablet: the pen leaves, the eraser comes) is a kEventClassTablet kEventTabletProximity event
+	 * with kEventParamTabletProximityRec. From the host's pen ({@link TabletInput}); -Dhz68k.tablet=false turns it off.
+	 */
+	static final int CLASS_TABLET=0x74626c74; // 'tblt'
+	private static final int P_TABLET_TYPE=0x74626c74,P_TABLET_POINT=0x74627263,P_TABLET_PROXIMITY=0x74627078, // 'tblt', 'tbrc', 'tbpx'
+		T_TABLET_POINT=0x74627263,T_TABLET_PROXIMITY=0x74627078,TABLET_POINT=1,TABLET_PROXIMITY=2;
+	/** NX_TABLET_POINTER_PEN / _ERASER, and the fields a TabletPointRec gives (device ID, abs X/Y, buttons, tilt X/Y, pressure). */
+	private static final int POINTER_PEN=1,POINTER_ERASER=3,CAPABILITIES=0x0001|0x0002|0x0004|0x0040|0x0080|0x0100|0x0400;
+	/** Full tilt in TabletInput's degrees ([NSEvent tilt] 1 = 60 degrees). */
+	private static final float FULL_TILT=60f;
+	/** The pen end last seen near (0: none), for kEventTabletProximity; the last pressure (a pressed pen between samples). */
+	private int tabletPointer;
+	private float tabletPressure;
+	private static boolean tabletOn(){return TabletInput.available&&!"false".equals(System.getProperty("hz68k.tablet"));}
+	/** The tablet parameters of a mouse event while the pen is near ({@code pressed}: the tip on the tablet). */
+	private void tabletPoint(Event e,int where,boolean pressed){
+		if(!tabletOn()||!TabletInput.penNear)return;
+		float p=0;
+		if(pressed){p=TabletInput.latest();if(Float.isNaN(p))p=tabletPressure;else tabletPressure=p;}
+		float[] tilt=TabletInput.latestTilt();
+		byte[] b=new byte[32];
+		System.arraycopy(longs((short)where,where>>16,0),0,b,0,12);                                      // absX, absY, absZ
+		System.arraycopy(word(pressed?1:0),0,b,12,2);                                                     // buttons: the tip
+		System.arraycopy(word(Math.round(Math.max(0f,Math.min(1f,p))*65535)),0,b,14,2);                   // pressure
+		if(tilt!=null){System.arraycopy(word(scaledTilt(tilt[0])),0,b,16,2);System.arraycopy(word(scaledTilt(-tilt[1])),0,b,18,2);} // tiltX, tiltY (positive away from the user)
+		System.arraycopy(word(1),0,b,24,2);                                                               // deviceID
+		e.params.put(P_TABLET_TYPE,new Object[]{T_UINT32,longs(TABLET_POINT)});
+		e.params.put(P_TABLET_POINT,new Object[]{T_TABLET_POINT,b});
+	}
+	private static int scaledTilt(float degrees){return Math.round(Math.max(-1f,Math.min(1f,degrees/FULL_TILT))*32767);}
+	/** The pen came near, left or turned round since the last look: kEventTabletProximity events into the queue. */
+	private void tabletProximity() throws M68kCpuException {
+		int pointer=tabletOn()&&TabletInput.penNear?TabletInput.penNearEraser?POINTER_ERASER:POINTER_PEN:0;
+		if(pointer==tabletPointer)return;
+		if(tabletPointer!=0)queue.add(proximityEvent(tabletPointer,false));
+		if(pointer!=0)queue.add(proximityEvent(pointer,true));
+		tabletPointer=pointer;
+	}
+	/** A kEventTabletProximity event: TabletProximityRec {vendorID, tabletID, pointerID, deviceID, systemTabletID, vendorPointerType, serial, uniqueID, capabilities, pointerType, entering}. */
+	private Event proximityEvent(int pointer,boolean entering) throws M68kCpuException {
+		byte[] b=new byte[30];
+		System.arraycopy(word(0x056a),0,b,0,2);                       // Wacom
+		System.arraycopy(word(1),0,b,6,2);System.arraycopy(word(1),0,b,8,2); // deviceID, systemTabletID
+		System.arraycopy(word(pointer==POINTER_ERASER?0x080a:0x0802),0,b,10,2); // vendor pointer type: a pen's tip or eraser
+		System.arraycopy(longs(1),0,b,12,4);                          // pointerSerialNumber
+		System.arraycopy(longs(CAPABILITIES),0,b,24,4);
+		b[28]=(byte)pointer;b[29]=(byte)(entering?1:0);
+		Event e=newEvent(CLASS_TABLET,TABLET_PROXIMITY);
+		e.params.put(P_TABLET_PROXIMITY,new Object[]{T_TABLET_PROXIMITY,b});
 		return e;
 	}
 
@@ -1690,7 +1788,7 @@ final class PpcCarbon {
 						if(window!=rt.toolbox("FrontWindow")&&window!=0){rt.toolbox("SelectWindow",window);break;}
 						if(windowEvent(window,37,where)||windowEvent(window,85,where))break; // kEventWindowClickContentRgn, then kEventWindowHandleContentClick
 						int local=r4(window,where);int slot2=rt.allocate(4,4);rt.toolbox("FindControl",local,window,slot2);int control=memory.readLong(slot2);memory.free(slot2); // the standard handler tracks controls
-						if(control!=0){int hit=(short)carbon("HandleControlClick",control,local,modifiers,-1);if(hit!=0)controlHit(control,hit,modifiers);}
+						if(control!=0)carbon("HandleControlClick",control,local,modifiers,-1);
 						break;}
 					case 4:{ // inDrag
 						if(windowEvent(window,32,where))break;                                       // kEventWindowClickDragRgn
@@ -1750,6 +1848,8 @@ final class PpcCarbon {
 		memory.free(ticks);
 		controlHit(button,10,modifiers);return true;
 	}
+	/** The end of TrackControl/HandleControlClick: a part hit, unless a live thumb drag only came back for the scrolling. */
+	void tracked(int control,int part,int modifiers) throws M68kException {if(part!=0&&!rt.toolbox.host().isMouseDown())controlHit(control,part,modifiers);}
 	/**
 	 * A control clicked (or pressed from the keyboard): kEventControlHit to the control, its window and the application; left
 	 * alone, a control with a command ID sends kEventCommandProcess (kHICommandFromControl) the same way.

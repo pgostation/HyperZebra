@@ -416,7 +416,8 @@ final class MenuManager68k {
 	private void appendResources(int handle,int type,int after) throws M68kCpuException {
 		Menu m=read(handle);if(m==null)return;
 		List<String> names=new ArrayList<String>();
-		if(type==0x464f4e44||type==0x464f4e54)names.addAll(Fonts68k.allNames());
+		if(type==0x464f4e44||type==0x464f4e54){names.addAll(Fonts68k.allNames()); // the classic table and the installed suitcases
+			for(String n:tb.resources.resourceNames(0x464f4e44))if(!n.startsWith(".")&&!n.startsWith("%")&&!names.contains(n))names.add(n);} // the resource chain's own: ｼｽﾃﾑｿﾌﾄｴﾃﾞｨﾀ looks its Nagahama up in its Font menu and calls a font it does not find missing
 		else if(type==0x73666e74)names.addAll(Fonts68k.outlineNames()); // 'sfnt': the System's TrueType fonts (the System file here holds none)
 		else for(String n:tb.resources.resourceNames(type))if(!n.startsWith(".")&&!n.startsWith("%"))names.add(n); // '.'/'%' names are hidden (drivers, private resources)
 		java.util.Collections.sort(names,String.CASE_INSENSITIVE_ORDER);
@@ -974,6 +975,7 @@ final class MenuManager68k {
 	}
 	/** pascal void MDEF(short message, MenuHandle theMenu, Rect *menuRect, Point hitPt, short *whichItem), in the current port. */
 	private void callMdef(int handle,int message,int rect,int hitH,int hitV,int whichItem) throws M68kCpuException {
+		tb.offscreenMdefLeft=message==M_CHOOSE&&hitH<0&&hitV<0;
 		int mdef=memory.readLong(memory.readLong(handle)+6);int entry=memory.readLong(mdef);if(entry==0)return;
 		menuBarSaveData();
 		M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();if(message==M_CHOOSE)chooseCalls++;

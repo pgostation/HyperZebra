@@ -75,7 +75,7 @@ final class StackProtection {
 				if(((b>>bit)&1)!=0) x += s;
 			}
 		}
-		if(x==0) return 0x42696C6C; //'Bill'
+		if((int)x==0) return 0x42696C6C; //'Bill' (HyperCard sums in 32 bits)
 		return (int)x;
 	}
 
@@ -333,6 +333,16 @@ final class StackProtection {
 		return ImageIO.read(new ByteArrayInputStream(data));
 	}
 
+	/** The bytes of a picture file in a stack folder: sealed when the stack has a password. */
+	static byte[] encodeImage(OStack stack, BufferedImage image, File file) throws IOException {
+		byte[] key = stack!=null ? contentKey(stack) : keyForFile(file);
+		ByteArrayOutputStream png = new ByteArrayOutputStream();
+		ImageIO.write(image, "png", png);
+		if(key==null) return png.toByteArray();
+		try { return sealContent(png.toByteArray(), key); }
+		catch(GeneralSecurityException e){ throw new IOException(e); }
+	}
+
 	/** Writes a picture into a stack folder: sealed when the stack has a password. */
 	static void writeImage(OStack stack, BufferedImage image, File file) throws IOException {
 		byte[] key = stack!=null ? contentKey(stack) : keyForFile(file);
@@ -371,6 +381,7 @@ final class StackProtection {
 	 */
 	static void resealPictures(OStack stack, byte[] key, boolean seal){
 		if(key==null) return;
+		PictureSaver.flush();
 		for(File f : pictureFiles(stack)){
 			try {
 				byte[] data = Files.readAllBytes(f.toPath());

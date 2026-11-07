@@ -1,4 +1,5 @@
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -105,7 +106,8 @@ final class CommToolbox68k {
 			for(File f:list)if(f.isFile()&&kindOf(FinderInfo68k.type(f))!=null)found.add(f);
 		}
 		found.sort((a,b)->a.getName().compareToIgnoreCase(b.getName()));
-		for(File f:found)tools.add(new Tool(kindOf(FinderInfo68k.type(f)),f.getName(),f));
+		// a tool is known by its Mac name: "Aladdin X/YMODEM Tool" is "Aladdin X:YMODEM Tool" on the host (SITcomm asks for it by name)
+		for(File f:found){String name;try{name=tb.files.fileManager.macNameOf(f);}catch(IOException e){name=f.getName();}tools.add(new Tool(kindOf(FinderInfo68k.type(f)),name,f));}
 		if(Mac68kApi.TRACE)for(Tool t:tools)System.err.println("[CTB] tool "+t.kind.prefix+" '"+t.name+"'");
 	}
 	private List<Tool> tools(Kind k){scan();List<Tool> l=new ArrayList<Tool>();for(Tool t:tools)if(t.kind==k)l.add(t);return l;}

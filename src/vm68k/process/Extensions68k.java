@@ -37,11 +37,16 @@ final class Extensions68k {
 	/** Loads extensions once; failures are logged and skipped so the application still starts. */
 	void loadAll(){
 		if(loaded)return;loaded=true;
+		int bufPtr=0,buffer=0;
+		try{bufPtr=tb.memory.readLong(0x10c);buffer=tb.memory.allocateBelow(BOOT_BUFFER,16,M68kMemory.LOW_LIMIT);tb.memory.writeLong(0x10c,buffer+BOOT_BUFFER);}
+		catch(M68kCpuException e){buffer=0;}
+		if(tb.app!=null)tb.files.fileManager.finderInfoKept=tb.app.file;
 		try{
+			held=ExtensionGuard.review(startupFiles(),owner());
 			loadFolder(new File(tb.files.systemFolder,"Extensions"),false);
 			if(CONTROL_PANEL_INITS)loadFolder(new File(tb.files.systemFolder,"Control Panels"),true);
 			loadFolder(tb.files.systemFolder,true);
-		}finally{finished=true;}
+		}finally{finished=true;tb.files.fileManager.finderInfoKept=null;if(buffer!=0)releaseBootBuffer(buffer,bufPtr);}
 		// QuickDraw 3D (and its Viewer) served natively answer Gestalt as the skipped INIT would have: 68K programs such as
 		// SimpleText check 'q3vc' at start-up, before any PowerPC code has run, and call the Viewer through the CFM
 		if(PpcQuickDraw3D.NATIVE&&tb.seesPowerPC()){
@@ -50,18 +55,30 @@ final class Extensions68k {
 			tb.gestaltValues.putIfAbsent(0x71337663,1);                      // 'q3vc': gestaltQD3DViewer
 		}
 	}
+	/**
+	 * Memory INITs take for good the way the boot did it: lower BufPtr ($10C), the top of memory, and copy code there (allShare's
+	 * DesktopInit puts its _HFSDispatch patch there). BufPtr is the stack's top here, so that code lay in the live stack and was
+	 * overwritten - the patch then ran garbage and every later extension (QuickTime) failed. While the INITs run BufPtr is the top
+	 * of a block of its own, below 16 MB like the boot's; what they took of it stays allocated, the rest is freed, and BufPtr
+	 * goes back to the value programs measure their room by (Toolbox68k.initializeLowMemory).
+	 */
+	private static final int BOOT_BUFFER=1024*1024;
+	private void releaseBootBuffer(int buffer,int bufPtr){
+		try{
+			int taken=tb.memory.readLong(0x10c)&~0xf;tb.memory.writeLong(0x10c,bufPtr);
+			if(taken>=buffer+BOOT_BUFFER||taken<buffer)tb.memory.free(buffer); // nothing taken (or BufPtr reset by someone else)
+			else if(taken>buffer&&tb.memory.splitBlock(buffer,taken)){tb.memory.free(buffer);
+				if(Mac68kApi.TRACE)System.err.printf("[68K] INITs took %d bytes below BufPtr ($%X)%n",buffer+BOOT_BUFFER-taken,taken);}
+		}catch(M68kCpuException ignored){}
+	}
 	/** Loads a folder's extensions in name order. {@code typed}: only files the Finder types as extensions ('INIT', 'appe', 'thng', 'scri')
 	 *  or control panels with INIT code - the System Folder also holds the System, the Finder, fonts and preferences. Otherwise
 	 *  untyped files load too (copies without Finder info), but files typed as something else stay closed as at boot on a Mac:
 	 *  Kaleidoscope Extension is an 'APPL' whose own WIND/wctb 128 sat in every program's resource chain, and Ultimate Spell's
 	 *  GetNewCWindow(128) took that wctb's black content colour, so its transparent CopyBits no longer dropped the white. */
 	private void loadFolder(File folder,boolean typed){
-		File[] files=folder.listFiles();
-		if(files==null)return;
-		Arrays.sort(files,Comparator.comparing(File::getName,String.CASE_INSENSITIVE_ORDER));
-		for(File file:files){
-			if(!file.isFile()||file.getName().startsWith("."))continue;
-			if(!loadsAtStartup(file,typed))continue;
+		for(File file:startupFiles(folder,typed)){
+			if(held.contains(file))continue;
 			if(tb.app!=null&&file.getAbsoluteFile().equals(tb.app.file.getAbsoluteFile()))continue; // a control panel opened as a program runs its INIT itself
 			// QuickTime and the extensions that depend on it stay out while the native Movie Toolbox is in charge (their INITs
 			// would only find "QuickTime already installed" and show their crossed-out icons).
@@ -77,6 +94,23 @@ final class Extensions68k {
 				if(tb.app!=null)tb.app.crashDump(pc);}
 		}
 	}
+	/** The files of a folder that load at start-up, in name order. */
+	private java.util.List<File> startupFiles(File folder,boolean typed){
+		java.util.List<File> found=new java.util.ArrayList<File>();
+		File[] files=folder.listFiles();
+		if(files==null)return found;
+		Arrays.sort(files,Comparator.comparing(File::getName,String.CASE_INSENSITIVE_ORDER));
+		for(File file:files)if(file.isFile()&&!file.getName().startsWith(".")&&loadsAtStartup(file,typed))found.add(file);
+		return found;
+	}
+	private java.util.List<File> startupFiles(){
+		java.util.List<File> found=startupFiles(new File(tb.files.systemFolder,"Extensions"),false);
+		if(CONTROL_PANEL_INITS)found.addAll(startupFiles(new File(tb.files.systemFolder,"Control Panels"),true));
+		found.addAll(startupFiles(tb.files.systemFolder,true));
+		return found;
+	}
+	/** What {@link ExtensionGuard} keeps out of this program. */
+	private java.util.Set<File> held=java.util.Collections.emptySet();
 	private String owner(){return tb.app!=null?tb.app.name:tb.name;}
 
 	/** Extension creators an external's VM loads when the external first asks for one, by file (an external's VM runs no INITs at its start). */
@@ -95,6 +129,7 @@ final class Extensions68k {
 			if(!file.isFile()||file.getName().startsWith("."))continue;
 			byte[] info=FinderInfo68k.read(file);
 			if(info==null||MacApp68k.u4(info,0)!=0x494e4954||MacApp68k.u4(info,4)!=creator)continue; // 'INIT' of that creator
+			if(!ExtensionGuard.review(java.util.Collections.singletonList(file),owner()).isEmpty())return false;
 			try{load(file);return true;}
 			catch(Exception e){System.err.println("[68K "+owner()+"] extension "+file.getName()+" failed: "+e.getMessage());return false;}
 		}
@@ -155,8 +190,14 @@ final class Extensions68k {
 			// when it finds that (start-up time) and answered openErr otherwise, leaving its control panel all dimmed.
 			byte[] curApName=tb.memory.readBytes(0x910,32);
 			tb.memory.fill(0x910,32,0xff);
+			// Only $914 is live under System 7: a Ptr to the name of the file being loaded (BackSplash II takes its own name from it)
+			int fileName=tb.memory.allocate(32,2);tb.writePascal(fileName,file.getName(),31);tb.memory.writeLong(0x914,fileName);
+			// The Start Manager calls an INIT with its handle in A0 and D1 and the locked code address in A1 and D0 (JSR (A1)):
+			// Power On Software's INIT 0 loaders (ACTION WYSIWYG, ACTION Menus) find their own header through A1 and jumped to $112
+			int[] d=tb.cpu.d.clone(),a=tb.cpu.a.clone();
+			tb.cpu.a[0]=h;tb.cpu.d[1]=h;tb.cpu.a[1]=entry;tb.cpu.d[0]=entry;
 			try{tb.callRoutine(entry);}
-			finally{tb.cpu.a[7]=saved;tb.resources.useResFile(savedCurrent);tb.memory.load(0x910,curApName);}
+			finally{System.arraycopy(d,0,tb.cpu.d,0,8);System.arraycopy(a,0,tb.cpu.a,0,8);tb.cpu.a[7]=saved;tb.resources.useResFile(savedCurrent);tb.memory.load(0x910,curApName);tb.memory.free(fileName);}
 		}
 	}
 
@@ -193,7 +234,9 @@ final class Extensions68k {
 	 */
 	static File install(File source) throws IOException {return install(source,QuickTimeService.systemFolder());}
 	static File install(File source,File systemFolder) throws IOException {
-		return copyInto(source,new File(systemFolder,FinderInfo68k.type(source)==CDEV?"Control Panels":"Extensions"));
+		File installed=copyInto(source,new File(systemFolder,FinderInfo68k.type(source)==CDEV?"Control Panels":"Extensions"));
+		ExtensionGuard.approve(installed);
+		return installed;
 	}
 	/** Copies a Mac file (data fork, resource fork, Finder info) into {@code folder}, made if missing; the copy keeps the name. */
 	static File copyInto(File source,File folder) throws IOException {

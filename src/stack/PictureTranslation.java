@@ -70,8 +70,11 @@ final class PictureTranslation {
 	 */
 	static String[] status(boolean again){
 		if(again)PictureOcr.reset();
-		if(PictureOcr.executable()==null)return new String[]{International.t("Tesseract is not installed, so the text in pictures is not translated. Install it - macOS: brew install tesseract tesseract-lang; Windows: the Tesseract installer of UB Mannheim; Linux: the tesseract-ocr packages - and check again."),null};
+		if(PictureOcr.executable()==null)return new String[]{TesseractInstall.canDownload()
+			?International.t("Tesseract is not installed, so the text in pictures is not translated. Download it with Download Tesseract… on the launcher's Translation page.")
+			:International.t("Tesseract is not installed, so the text in pictures is not translated. Install the tesseract-ocr packages of your system and check again."),null};
 		Set<String> langs=PictureOcr.languages();
+		if(langs.isEmpty())return new String[]{International.t("Tesseract {0} has no languages: add them with Languages… on the launcher's Translation page.",PictureOcr.version()),null};
 		StringBuilder some=new StringBuilder();
 		for(String code:new String[]{"jpn","eng","chi_sim","chi_tra","kor","deu","fra","spa","ita","por"})if(langs.contains(code))some.append(some.length()>0?", ":"").append(code);
 		return new String[]{null,International.t("Tesseract {0} reads the text in pictures: {1} languages ({2}…).",PictureOcr.version(),String.valueOf(langs.size()),some.toString())};

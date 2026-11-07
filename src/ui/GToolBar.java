@@ -367,6 +367,9 @@ class TBButtonListener implements ActionListener, MouseListener {
 			final boolean[] result = new boolean[1];
 			try {
 				SwingUtilities.invokeAndWait(() -> {
+					//lock screen, then choose brush tool: the screen that stays is the card with its parts, taken before the paint view
+					//comes (HyperPiece++'s clock: a repaint under the lock showed the card without its fields)
+					VEffect.captureBeforeChange();
 					scriptChange = true; //スクリプトの choose tool / カード移動: ユーザーの編集ではない
 					try{ result[0] = ChangeTool(cmd, ae); }finally{ scriptChange = false; }
 				});
@@ -427,13 +430,14 @@ class TBButtonListener implements ActionListener, MouseListener {
 
 	private static boolean changeTool(String cmd, ActionEvent ae) {
 		PaintTool.owner = PCARD.pc;
+		PaintTool.toolBeforeSelect = null;
 		//前のツールの終了処理
 		if(PCARD.pc.tool!=null){
 			PCARD.pc.tool.end();
 			
 			if(isNonPaintTool(cmd)){
-				//ペイントモードを抜けるときだけファイルへ保存する
-				PaintTool.saveCdPictures();
+				//ペイントモードを抜けるときだけファイルへ保存する(変わった絵だけ、別スレッドで)
+				PaintTool.saveCdPicturesLater();
 			}
 			else{
 				//ペイントツール同士の切り替えではメモリ上のピクチャへ反映するだけ
@@ -758,6 +762,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 			if(PCARD.pc.stack.curCard.bg!=null && PCARD.pc.stack.curCard.bg.pict!=null){
 				PCARD.pc.bgImg.getGraphics().drawImage(PCARD.pc.stack.curCard.bg.pict, 0, 0, PCARD.pc);
 			}
+			PaintTool.adoptPictures();
 			PCARD.pc.mainPane.repaint();
 			
 			//ペイント用リスナー

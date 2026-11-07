@@ -92,7 +92,7 @@ final class HostQuickDraw68k {
 		// with no table it read low memory (letters 0 wide, digits far too wide: every word with a digit wrapped).
 		if(trap==0x883||trap==0x884||trap==0x885||trap==0x886||trap==0x88b||trap==0x88c||trap==0x88d||trap==0x8ed)currentWidthTable();
 		switch(trap){
-			case 0x883:{int c=memory.readWord(cpu.a[7])&0xff;cpu.a[7]+=2;drawBytes(new byte[]{(byte)c});return true;}
+			case 0x883:{int c=memory.readWord(cpu.a[7])&0xff;cpu.a[7]+=2;qd.plainGlyphs=qd.isGWorld(tb.api.currentQuickDrawPort());try{drawBytes(new byte[]{(byte)c});}finally{qd.plainGlyphs=false;}return true;}
 			case 0x884:{int s=memory.readLong(cpu.a[7]);cpu.a[7]+=4;if(s!=0)drawBytes(memory.readBytes(s+1,memory.readByte(s)));return true;}
 			case 0x885:{int count=(short)memory.readWord(cpu.a[7]),first=(short)memory.readWord(cpu.a[7]+2),text=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;if(count>0)drawBytes(memory.readBytes(text+first,count));return true;}
 			case 0x882:{ // StdText(byteCount, textAddr, numer, denom): scaled text (DrawPicture into a larger frame) at the size numer.v/denom.v gives
@@ -170,8 +170,8 @@ final class HostQuickDraw68k {
 			case 0xbc2:return quickTimeMath.handle(cpu); // _QuickTimeMath (D0 = selector)
 			case 0x872:cpu.a[7]+=2;return true;
 			case 0xa49:case 0xa4a:return qd.handle(cpu,trap); // SaveEntries/RestoreEntries (procedures: nothing is returned on the stack)
-			case 0x94b:{int icon=memory.readLong(cpu.a[7]),rect=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;plotIcon(icon,rect,false);return true;}
-			case 0xa1f:{int icon=memory.readLong(cpu.a[7]),rect=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;plotIcon(icon,rect,true);return true;}
+			case 0x94b:{int icon=memory.readLong(cpu.a[7]),rect=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;qd.chargeIcon(cpu,rect);plotIcon(icon,rect,false);return true;}
+			case 0xa1f:{int icon=memory.readLong(cpu.a[7]),rect=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;qd.chargeIcon(cpu,rect);plotIcon(icon,rect,true);return true;}
 			case 0xa1e:{int id=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;memory.writeLong(cpu.a[7],getCIcon(id));return true;}
 			case 0xa25:{int h=memory.readLong(cpu.a[7]);cpu.a[7]+=4;disposeCIcon(h);return true;}
 			case 0xbc9:return iconDispatch(cpu);
@@ -389,7 +389,7 @@ final class HostQuickDraw68k {
 	}
 	void drawBytes(byte[] text) throws M68kCpuException {
 		int[] pen=qd.penLocation();int v=pen[0],h=pen[1];
-		int[] t=qd.textState();Font font=Fonts68k.font(t[0],t[3],t[1]);
+		int[] t=qd.textState();Font font=stretched(Fonts68k.font(t[0],t[3],t[1]));
 		qd.recordText(h,v,text); // an open picture gets the text too; some media windows render their title through a scaled picture
 		if(!qd.penHidden())Fonts68k.noteDrawn(t[0],text,font); // the fonts "Fix Garbled Text…" tries (Fonts68k.Substitution)
 		double[] extra=textExtra();
@@ -431,6 +431,15 @@ final class HostQuickDraw68k {
 
 	/** Picture playback is drawing its text (a picture's text is part of the image: never translated). */
 	boolean inPicture;
+	/** Width over height of the glyphs while a picture drawn at another aspect plays its text (QuickDraw68k.pictureTextStretch), else 1. */
+	double textStretch=1;
+	/** {@code font} widened or narrowed by {@link #textStretch}; a strike (the program's own bitmaps) is drawn as it is. */
+	private Font stretched(Font font){
+		if(textStretch==1||font instanceof BitmapFont68k)return font;
+		java.awt.geom.AffineTransform x=java.awt.geom.AffineTransform.getScaleInstance(textStretch,1);
+		if(font instanceof StyledFont68k){StyledFont68k s=(StyledFont68k)font;return new StyledFont68k(s.base.deriveFont(x),s.face,(int)Math.round(s.fixedAdvance*textStretch));}
+		return font.deriveFont(x);
+	}
 
 	/** The text of the run being drawn when its translation is still coming (set by translationOf), else null. */
 	private String awaiting;
@@ -625,13 +634,18 @@ final class HostQuickDraw68k {
 
 	private static BufferedImage cropLeft(BufferedImage image,int columns){
 		if(image==null||columns<=0||columns>=image.getWidth())return image;return image.getSubimage(columns,0,image.getWidth()-columns,image.getHeight());}
-	/** Draws text at baseline (h,v) in the current port; returns the advance. */
+	/** Draws text at baseline (h,v) in the current port; returns the advance. Charged to the speed throttle as a real Mac's StdText. */
 	int drawText(byte[] text,int h,int v,Font font,int mode,int face) throws M68kCpuException {
+		int advance=drawText0(text,h,v,font,mode,face);
+		qd.chargeText(tb.cpu,text.length,advance,Math.max(1,font.getSize())*5/4);
+		return advance;
+	}
+	private int drawText0(byte[] text,int h,int v,Font font,int mode,int face) throws M68kCpuException {
 		if(mode==49){ // grayishTextOr: srcOr in the colour halfway between the foreground and the background (dimmed items)
-			Object[] saved=qd.saveForeground();if(saved==null)return drawText(text,h,v,font,1,face);
+			Object[] saved=qd.saveForeground();if(saved==null)return drawText0(text,h,v,font,1,face);
 			int f=qd.foregroundRgb(),b=qd.backgroundRgb();int r=((f>>>16&255)+(b>>>16&255))/2,g=((f>>>8&255)+(b>>>8&255))/2,bl=((f&255)+(b&255))/2;
 			qd.setForegroundRgb16(r*257,g*257,bl*257);
-			try{return drawText(text,h,v,font,1,face);}finally{qd.restoreForeground(saved);}
+			try{return drawText0(text,h,v,font,1,face);}finally{qd.restoreForeground(saved);}
 		}
 		if(tb.app!=null)tb.app.textShown(text); // a program asking for a 256-colour screen is restarted at 8 bits (MacApp68k.textShown)
 		if(Mac68kApi.TRACE)System.err.println("[68K] drawText at "+h+","+v+" font "+font.getFontName()+"/"+font.getSize()+" face "+face+" mode "+mode+" port $"+Integer.toHexString(tb.api.currentQuickDrawPort())+" \""+tb.decode(text)+"\"");
@@ -642,7 +656,7 @@ final class HostQuickDraw68k {
 			// Chicago) draws them instead: the strike's own pixels are all a two-byte code ever had, so kanji stay jagged otherwise.
 			// the smooth zoom's planes take the run again at their scale: the outlines, or the bitmaps magnified (see SmoothZoom)
 			int algorithm=qd.smooth.algorithm();SmoothZoom.Text hiInside=k->strike.coverage(text,true,k,algorithm),hiText=k->strike.coverage(text,false,k,algorithm);
-			if(Fonts68k.smoothText&&qd.currentPortDepth()>1&&strike.smoothable()){
+			if(Fonts68k.smoothText&&qd.currentPortDepth()>1&&strike.smoothable()&&!qd.plainGlyphs){
 				if((mode&7)==0||(mode&7)==4)qd.fillRgb(v-strike.ascent,h,v-strike.ascent+strike.fRectHeight,h+advance,(mode&7)==4?qd.foregroundRgb():qd.backgroundRgb());
 				int coverageLeft=h-strike.coverageLeft();
 				if(clearsHollow(mode,strike.face))qd.drawCoverageMask(strike.coverage(text,true),coverageLeft,top,mode^2,null,hiInside);
@@ -657,7 +671,7 @@ final class HostQuickDraw68k {
 		if((face&TextStyle68k.SYNTHETIC)!=0)font=Fonts68k.styled(font,face);
 		if(font instanceof StyledFont68k){ // underline/outline/shadow/condense/extend on a host font: its coverage image, styled, through QuickDraw
 			StyledFont68k styled=(StyledFont68k)font;int advance=styled.width(s);
-			boolean direct=qd.directPortPixels(tb.api.currentQuickDrawPort())!=null,smooth=(direct||Fonts68k.smoothText)&&qd.currentPortDepth()>1;
+			boolean direct=qd.directPortPixels(tb.api.currentQuickDrawPort())!=null,smooth=(direct||Fonts68k.smoothText)&&qd.currentPortDepth()>1&&!qd.plainGlyphs;
 			FontMetrics m=Fonts68k.metrics(styled);int left=h-styled.maskLeft(),top=v-styled.maskAscent();
 			if((mode&7)==0||(mode&7)==4)qd.fillRgb(v-m.getAscent(),h,v+m.getDescent(),h+advance,(mode&7)==4?qd.foregroundRgb():qd.backgroundRgb()); // srcCopy / notSrcCopy: the character boxes take the background
 			SmoothZoom.Text hiInside=k->styled.coverage(s,true,k),hiText=k->styled.coverage(s,false,k);
@@ -670,7 +684,7 @@ final class HostQuickDraw68k {
 		int advance=Fonts68k.width(font,s);FontMetrics m=Fonts68k.metrics(font);
 		// change tracking covers the glyph box with room for overhang (italics, accents), not the whole clip
 		// notSrcOr/notSrcXor/notSrcBic act on the clear pixels of the character boxes: the mask path below does those
-		Graphics2D g=(mode&~3)==4&&(mode&3)!=0?null:surface(tb.api.currentQuickDrawPort(),null,new int[]{v-m.getAscent()-2,h-m.getAscent(),v+m.getDescent()+2,h+advance+m.getAscent()},false);
+		Graphics2D g=qd.plainGlyphs||(mode&~3)==4&&(mode&3)!=0?null:surface(tb.api.currentQuickDrawPort(),null,new int[]{v-m.getAscent()-2,h-m.getAscent(),v+m.getDescent()+2,h+advance+m.getAscent()},false);
 		if(g!=null){
 			try{
 				g.setFont(font);
@@ -685,7 +699,7 @@ final class HostQuickDraw68k {
 		// Non-direct port (8-bit screen port, GWorld, SetPortPix buffer) or an inverted-source mode: the glyphs go through a mask. With the
 		// "always anti-alias" preference the mask carries coverage and partial pixels blend the text colour into the
 		// destination; a 1-bit destination cannot show grey, so it keeps the binary mask.
-		boolean smooth=Fonts68k.smoothText&&qd.currentPortDepth()>1;
+		boolean smooth=Fonts68k.smoothText&&qd.currentPortDepth()>1&&!qd.plainGlyphs;
 		// The mask reaches past the advance on both sides: a glyph's ink may overhang it (the last "o" of "Taro" in Osaka 10
 		// lost its right side and read "Tarc"); the painters skip empty mask pixels, so the margin draws nothing itself.
 		final Font f=font;final int ascent=m.getAscent(),pad=Math.max(2,(m.getAscent()+m.getDescent())/4);BufferedImage mask;
@@ -971,6 +985,7 @@ final class HostQuickDraw68k {
 	private boolean fmSwapFont(M68kCpu cpu) throws M68kCpuException {
 		int input=memory.readLong(cpu.a[7]);cpu.a[7]+=4;
 		int family=(short)memory.readWord(input),size=(short)memory.readWord(input+2),face=memory.readByte(input+4);
+		if(Mac68kApi.TRACE)System.err.println("[68K] FMSwapFont family "+family+" size "+size+" face "+face+" numer "+memory.readWord(input+10)+"/"+memory.readWord(input+8)+" denom "+memory.readWord(input+14)+"/"+memory.readWord(input+12)+" fract "+memory.readByte(0xbf4)+" scaleDisable "+memory.readByte(0xa63));
 		if(fmOutput==0)fmOutput=memory.allocate(28,4);
 		Font font=Fonts68k.font(family,size,face);int[] fi=Fonts68k.fontInfo(font);
 		int synthesized=font instanceof BitmapFont68k?((BitmapFont68k)font).face:face;
@@ -1023,7 +1038,10 @@ final class HostQuickDraw68k {
 	private boolean fontDispatch(M68kCpu cpu) throws M68kCpuException {
 		int selector=cpu.d[0]&0xff,sp=cpu.a[7];
 		switch(selector){
-			case 0:cpu.a[7]+=8;tb.writeBoolean(cpu.a[7],true);return true; // IsOutline(numer, denom: Point): two Points (Word 5.1's stack was 4 bytes off after it)
+			case 0:{cpu.a[7]+=8;Font f=currentFont(); // IsOutline(numer, denom: Point): two Points (Word 5.1's stack was 4 bytes off after it)
+				// false for an installed strike of the size (the Font Manager draws the bitmap): A Smaller GIF J measured Osaka 12
+				// with OutlineMetrics, counted its Japanese text in bytes and summed the unwritten tail entries into its line breaks
+				tb.writeBoolean(cpu.a[7],!(f instanceof BitmapFont68k)||((BitmapFont68k)f).drawnFromOutlines());return true;}
 			case 1:case 0xa:cpu.a[7]+=2;return true;                        // SetOutlinePreferred, SetPreserveGlyph(Boolean)
 			case 9:case 0xb:tb.writeBoolean(cpu.a[7],true);return true;     // GetOutlinePreferred, GetPreserveGlyph
 			case 8:return outlineMetrics(cpu);
@@ -1241,31 +1259,31 @@ final class HostQuickDraw68k {
 		switch(sel){
 			case 0x00:{ // PlotIconID(rect, align, transform, id)
 				int id=(short)memory.readWord(sp),transform=memory.readWord(sp+2),align=memory.readWord(sp+4),rect=memory.readLong(sp+6);cpu.a[7]+=argBytes;
-				plotIconId(id,rect,align,transform);memory.writeWord(cpu.a[7],0);return true;}
+				qd.chargeIcon(cpu,rect);plotIconId(id,rect,align,transform);memory.writeWord(cpu.a[7],0);return true;}
 			case 0x01:{ // GetIconSuite(VAR suite, id, selector)
 				int selectorBits=memory.readLong(sp),id=(short)memory.readWord(sp+4),suitePtr=memory.readLong(sp+6);cpu.a[7]+=argBytes;
 				int suite=tb.api.createHandle(new byte[]{0,0,(byte)(id>>8),(byte)id});
 				// the ROM gets the members' Handles now, from the chain as it is now: Cyberdog links its editors file in only while
 				// it builds its suites, so looking them up again at PlotIconSuite time found nothing (blank service icons)
 				java.util.Map<Integer,Integer> members=new java.util.HashMap<Integer,Integer>();
-				for(int type:SUITE_TYPES){int h=tb.resources.detachedResourceQuietly(type,id);if(h!=0)members.put(type,h);}
+				for(int type:SUITE_TYPES){int h=tb.resources.iconSuiteMemberQuietly(type,id);if(h!=0)members.put(type,h);}
 				if(!members.isEmpty())suiteMembers.put(suite,members);
 				memory.writeLong(suitePtr,suite);memory.writeWord(cpu.a[7],0);return true;}
 			case 0x02:{ // DisposeIconSuite(theIconSuite, disposeData): the Boolean is on top, the suite below it (the suite used to be read from the Boolean's word)
 				boolean disposeData=memory.readByte(sp)!=0;int suite=memory.readLong(sp+2);cpu.a[7]+=argBytes;
-				java.util.Map<Integer,Integer> members=suiteMembers.remove(suite);if(disposeData&&members!=null)for(int h:members.values())tb.api.disposeHandleAndFree(h);
+				java.util.Map<Integer,Integer> members=suiteMembers.remove(suite);if(disposeData&&members!=null)for(int h:members.values()){tb.resources.unpinHandle(h);if(!tb.resources.release(h))tb.api.disposeHandleAndFree(h);} // resource members are released (ReleaseResource), others disposed
 				if(suite!=0)tb.api.disposeHandleAndFree(suite);memory.writeWord(cpu.a[7],0);return true;}
 			case 0x03:{ // PlotIconSuite(rect, align, transform, suite)
 				int suite=memory.readLong(sp),transform=memory.readWord(sp+4),align=memory.readWord(sp+6),rect=memory.readLong(sp+8);cpu.a[7]+=argBytes;
-				if(suite!=0&&rect!=0)plotIcons(suiteSource(suite),rect,align,transform);memory.writeWord(cpu.a[7],0);return true;}
+				if(suite!=0&&rect!=0){qd.chargeIcon(cpu,rect);plotIcons(suiteSource(suite),rect,align,transform);}memory.writeWord(cpu.a[7],0);return true;}
 			case 0x05:{ // PlotIconMethod(rect, align, transform, theMethod, yourDataPtr): the icons come from theMethod(type, yourDataPtr) : Handle
 				int data=memory.readLong(sp),method=memory.readLong(sp+4),transform=memory.readWord(sp+8),align=memory.readWord(sp+10),rect=memory.readLong(sp+12);cpu.a[7]+=argBytes;
-				plotIconMethod(cpu,rect,align,transform,method,data);
+				qd.chargeIcon(cpu,rect);plotIconMethod(cpu,rect,align,transform,method,data);
 				memory.writeWord(cpu.a[7],0);return true;}
 			case 0x04:{int data=memory.readLong(sp),method=memory.readLong(sp+4),cachePtr=memory.readLong(sp+8);cpu.a[7]+=argBytes; // MakeIconCache(VAR theHandle, makeIcon, yourDataPtr): an empty handle standing for the (method, data) pair, the icons come from the method when LoadIconCache plots
 				int cache=tb.api.createHandle(new byte[]{0,0,0,0});iconCaches.put(cache,new int[]{method,data});if(cachePtr!=0)memory.writeLong(cachePtr,cache);memory.writeWord(cpu.a[7],0);return true;}
 			case 0x06:{int cache=memory.readLong(sp),transform=memory.readWord(sp+4),align=memory.readWord(sp+6),rect=memory.readLong(sp+8);cpu.a[7]+=argBytes; // LoadIconCache(rect, align, transform, theIconCache)
-				int[] c=iconCaches.get(cache);if(c!=null)plotIconMethod(cpu,rect,align,transform,c[0],c[1]);memory.writeWord(cpu.a[7],c==null?-50:0);return true;}
+				int[] c=iconCaches.get(cache);if(c!=null)qd.chargeIcon(cpu,rect);if(c!=null)plotIconMethod(cpu,rect,align,transform,c[0],c[1]);memory.writeWord(cpu.a[7],c==null?-50:0);return true;}
 			case 0x19:case 0x1b:{int out=memory.readLong(sp),cache=memory.readLong(sp+4);cpu.a[7]+=argBytes; // GetIconCacheData(theCache, VAR theData) / GetIconCacheProc(theCache, VAR theProc)
 				int[] c=iconCaches.get(cache);if(c!=null&&out!=0)memory.writeLong(out,c[sel==0x19?1:0]);memory.writeWord(cpu.a[7],c==null?-50:0);return true;}
 			case 0x1a:case 0x1c:{int v=memory.readLong(sp),cache=memory.readLong(sp+4);cpu.a[7]+=argBytes; // SetIconCacheData(theCache, theData) / SetIconCacheProc(theCache, theProc)
@@ -1274,7 +1292,7 @@ final class HostQuickDraw68k {
 			case 0x08:{int type=memory.readLong(sp),suite=memory.readLong(sp+4),icon=memory.readLong(sp+8);cpu.a[7]+=argBytes;if(suite!=0)suiteMembers.computeIfAbsent(suite,k->new java.util.HashMap<Integer,Integer>()).put(type,icon);memory.writeWord(cpu.a[7],suite==0?-50:0);return true;} // AddIconToSuite(theIconData, suite, theType)
 			case 0x09:{int type=memory.readLong(sp),suite=memory.readLong(sp+4),iconPtr=memory.readLong(sp+8);cpu.a[7]+=argBytes;int h=suite==0?0:suiteSource(suite).handle(type);if(iconPtr!=0)memory.writeLong(iconPtr,h);memory.writeWord(cpu.a[7],h==0?-192:0);return true;} // GetIconFromSuite
 			case 0x1d:case 0x1e:case 0x1f:{ // PlotIconHandle/PlotSICNHandle/PlotCIconHandle(rect, align, transform, handle)
-				int handle=memory.readLong(sp),transform=memory.readWord(sp+4),rect=memory.readLong(sp+8);cpu.a[7]+=argBytes;
+				int handle=memory.readLong(sp),transform=memory.readWord(sp+4),rect=memory.readLong(sp+8);cpu.a[7]+=argBytes;qd.chargeIcon(cpu,rect);
 				if(sel==0x1f)plotIcon(handle,rect,true);else if(sel==0x1d)plotIcon(handle,rect,false);else if(handle!=0){int data=memory.readLong(handle);if(data!=0)drawImage(decodeIcon(data,16,16,tb.api.handleSize(handle)>=64?data+32:0),(short)memory.readWord(rect),(short)memory.readWord(rect+2),(short)memory.readWord(rect+4),(short)memory.readWord(rect+6));}
 				memory.writeWord(cpu.a[7],0);return true;}
 			case 0x0d:case 0x0e:case 0x0f:case 0x10:case 0x11:case 0x12:{ // PtInIconID/Suite/Method(testPt, iconRect, align, ...) and RectInIconID/Suite/Method(testRect, iconRect, align, ...): the icon's rectangle stands for its mask
@@ -1499,10 +1517,14 @@ final class HostQuickDraw68k {
 			tb.windows.invalidate(w,top,left,bottom,right);
 		}
 	}
-	/** AnimateEntry/AnimatePalette changed a palette's colours: a palette that is active (its window is frontmost) drives the screen's table. */
+	/** AnimateEntry/AnimatePalette changed a palette's colours: a palette that is active (its window is frontmost) drives the screen's table.
+	 *  The active palette is the front window's own or the default one, so another window with the same palette in front still shows the
+	 *  animation: Yoot Tower gives its floating Tool/Control/Message windows its tower window's palette and animates the sky and the
+	 *  daylight through the tower window - with a floater in front the tower stayed in the palette's first colours (salmon sky). */
 	private void animatePalette(int window,Palette p) throws M68kCpuException {
 		if(window==0||p.rgb.length==0)return;int front=tb.windows.frontWindow();
-		if(front==window||front!=0&&!windowPalettes.containsKey(front)&&windowPalettes.get(-1)!=null&&windowPalettes.get(-1).equals(windowPalettes.get(window)))qd.animateDeviceColors(p.rgb,p.usage);
+		Integer own=windowPalettes.get(window),active=front==0?null:windowPalettes.containsKey(front)?windowPalettes.get(front):windowPalettes.get(-1);
+		if(front==window||own!=null&&own.equals(active))qd.animateDeviceColors(p.rgb,p.usage);
 	}
 	/** SetPalette/NSetPalette. The default palette (window -1) takes effect at once for a front window that has none of its own:
 	 *  HyperCard's Terazza XFCN sets it from a picture's colour table and copies the picture by index right after, without ActivatePalette. */
@@ -1529,6 +1551,17 @@ final class HostQuickDraw68k {
 		ResourceFile68k.Resource r=tb.resources.find(0x706c7474,id);if(r==null||tb.resources.isSystem(r))return;
 		int res=tb.resources.detachedResourceQuietly(0x706c7474,id);if(res==0)return;
 		int p=paletteFromResource(res);paletteUpdates.put(p,UPDATES_FG|UPDATES_BK);setWindowPalette(window,p);
+	}
+	/**
+	 * InitPalettes (called by InitWindows): the program's 'pltt' 0, its default palette, takes effect on an indexed screen before
+	 * any window exists. Achtung Spitfire opens the CGrafPort it later points at all its buffers right after InitWindows; its
+	 * PixMap copies the screen's colour table then, and the game copies its pictures by index through it - with the palette
+	 * only loaded when the first window showed, that copy kept the standard colours and every picture was translated from them
+	 * into rainbow noise.
+	 */
+	void initPalettes(){
+		try{Integer ph=windowPalette(0);Palette p=ph==null?null:palettes.get(ph);
+			if(p!=null&&p.rgb.length!=0)qd.loadDeviceColors(p.rgb,p.usage,p.tolerance);}catch(M68kCpuException ignored){}
 	}
 	/** The window became the frontmost visible one: its palette (if any) takes effect, like the Palette Manager's activate patch. */
 	void windowActivated(int window){try{activatePalette(window);}catch(M68kCpuException ignored){}}

@@ -53,10 +53,15 @@ final class DocumentOpeners {
 	 * last, the creator's program, then every known program whose bundle claims the type (a program claiming any file
 	 * ('****') only when nothing claims the type itself). Programs that no longer exist are left out.
 	 */
-	static List<File> candidates(File document){
+	static List<File> candidates(File document){return candidates(document,typeOf(document),true);}
+	/**
+	 * {@code type}: the document's type as the programs are to see it (a ReadMe without Finder info is 'TEXT');
+	 * {@code anyType} false leaves out the programs that claim any file ('****': resource editors), which no other fits.
+	 */
+	static List<File> candidates(File document,int type,boolean anyType){
 		List<File> r=new ArrayList<File>();
 		if(document==null||!document.isFile())return r;
-		int type=typeOf(document),creator=FinderInfo68k.creator(document);
+		int creator=FinderInfo68k.creator(document);
 		int[] types=PictureFile68k.isHostImageType(type)?new int[]{type,PictureFile68k.PICT} // programs see a host picture as a PICT
 			:isBinHex(document)?new int[]{ARCHIVE_TYPES[0],type}:new int[]{type}; // the StuffIt programs decode BinHex (their bundles claim SIT!), before a text editor
 		LauncherStore store=LauncherStore.get();
@@ -65,7 +70,7 @@ final class DocumentOpeners {
 		List<File> known=knownPrograms(store);
 		if(creator!=0&&creator!=0x3F3F3F3F)for(File app:known)if(FinderIcons68k.bundleOf(app).signature==creator)add(r,app);
 		for(int t:types)if(t!=0)for(File app:known)if(FinderIcons68k.bundleOf(app).claims(t))add(r,app);
-		if(r.isEmpty())for(File app:known)if(FinderIcons68k.bundleOf(app).claims(FinderIcons68k.ANY_TYPE))add(r,app);
+		if(r.isEmpty()&&anyType)for(File app:known)if(FinderIcons68k.bundleOf(app).claims(FinderIcons68k.ANY_TYPE))add(r,app);
 		return r;
 	}
 

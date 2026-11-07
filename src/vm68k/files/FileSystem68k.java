@@ -188,6 +188,7 @@ final class FileSystem68k {
 		for(File image:images)fileManager.lockVolume(image);
 		fileManager.setBlessedFolder(systemFolder);
 		fileManager.setRequester(tb.name);
+		fileManager.setProgramReadsPng(PictureFile68k.readsPng(tb.app.file));
 		fileManager.shareReferences(tb::allocateFileReference,tb.resources::fileOf);fileManager.shareResourceFileReferences(tb.resources::openReferences);fileManager.shareResourceFileWritable(tb.resources::writableReference);
 		fileManager.shareSystemFile(tb.resources::systemRefNum,systemFile());
 		fileManager.setMoveListener(this::rebaseFSRefs);
@@ -221,6 +222,7 @@ final class FileSystem68k {
 				if(driver.equalsIgnoreCase(".Sony")&&trap>=0x02&&trap<=0x05){ // no floppy drives: every drive number is nsDrvErr; image drivers may ask .Sony whether a volume's drive is a floppy
 					if(Mac68kApi.TRACE)System.err.println("[68K] .Sony "+(trap==0x04?"Control":trap==0x05?"Status":"Prime")+" drive "+(short)memory.readWord(pb+22)+" csCode "+(short)memory.readWord(pb+26)+" -> nsDrvErr");
 					finish(cpu,pb,-56,async);return true;}
+				if(driver.equalsIgnoreCase(WacomTablet68k.NAME)&&trap>=0x04){result=trap==0x06?0:tb.wacom.call(pb,trap);finish(cpu,pb,result,async);return true;}
 				result=trap==0x06?0:trap==0x02||trap==0x03?-19:-17; // readErr/writErr/controlErr
 				finish(cpu,pb,result,async);return true;
 			}
@@ -238,7 +240,11 @@ final class FileSystem68k {
 				int onDrive=drive>0?fileManager.volumeIndexOfDrive(drive):-1;
 				if(onDrive>=0&&fileManager.volumeLocked(onDrive)){memory.writeWord(pb+22,-(onDrive+1));finish(cpu,pb,0,async);return true;}
 				finish(cpu,pb,-55,async);return true;}
-			case 0x0e:finish(cpu,cpu.a[0],-47,async);return true;   // UnmountVol: fBsyErr, the volume stays
+			case 0x0e:{ // UnmountVol: fBsyErr, the volume stays - except a zeroed program drive (AppDisk's RAM disk at quit, "files still
+				// open" otherwise) with nothing open on it: noErr; it stays listed until the program has ended
+				int pb=cpu.a[0],result=-47;
+				if(!fileManager.guestCapacities.isEmpty())try{File v=fileManager.namedVolume(memory.readWord(pb+22));if(v!=null&&fileManager.guestCapacities.containsKey(v)&&!fileManager.filesOpenOn(v))result=0;}catch(java.io.IOException e){}
+				finish(cpu,pb,result,async);return true;}
 			case 0x17:case 0x35:{ // Eject / OffLine: host volumes stay mounted, like a fixed disk; a volume or drive that does not exist is nsvErr
 				int result;try{result=fileManager.namedVolume(memory.readWord(cpu.a[0]+22))!=null?0:-35;}catch(java.io.IOException e){result=-36;}
 				finish(cpu,cpu.a[0],result,async);return true;}
@@ -275,6 +281,7 @@ final class FileSystem68k {
 		if(name.equalsIgnoreCase(".MPP")||name.equalsIgnoreCase(".ATP")||name.equalsIgnoreCase(".XPP")||name.equalsIgnoreCase(".DSP"))return tb.appleTalk.open(cpu,pb,name,async);
 		if(name.equalsIgnoreCase(".IPP"))ref=tb.macTcp.driverRefNum();
 		else if(standardDriverRef(name)!=0)ref=standardDriverRef(name);
+		else if(name.equalsIgnoreCase(WacomTablet68k.NAME)&&WacomTablet68k.available())ref=nextDriverRef--; // the host's pen tablet (WacomTablet68k)
 		else if(!isAppleDriver(name)&&!hasDriverResource(name)){
 			// nothing installed under that name and no 'DRVR' to load: dInstErr, as from the ROM. Extensions open their own
 			// driver to see whether it is already in place - QuicKeys' INIT took the old success for "engine loaded", never
@@ -365,6 +372,10 @@ final class FileSystem68k {
 					memory.writeLong(pb+34,0);memory.writeWord(pb+38,1);memory.writeWord(pb+40,drive>0?drive:1);memory.writeWord(pb+42,driverRef);memory.writeWord(pb+44,0);memory.writeByte(pb+46,0xff);memory.writeByte(pb+47,0);memory.writeWord(pb+48,0); // qLink, qType, dQDrive, dQRefNum, dQFSID, twoSideFmt, needsFlush, diskErrs
 					finish(cpu,pb,0,async);return true;}
 				if(csCode==23){memory.writeLong(pb+28,info);finish(cpu,pb,0,async);return true;}
+				// WhoIsThere: the SCSI IDs of the CD-ROM drives as a bit map - the one CD drive, empty or holding an image, at ID 5:
+				// a SCSI driver sits in unit 32 + ID, so programs then call refNum -(33 + ID), the CD driver's -38. Audiodeck 1.0.5
+				// asks it first and stopped at "Unable to locate the CD-ROM player" on statusErr.
+				if(optical&&csCode==97){memory.writeWord(pb+28,1<<(-FileManager68k.CD_DRIVER_REF-33));finish(cpu,pb,0,async);return true;}
 				if(csCode==43){ // DriverGestalt: csParam = selector, csParam+4 = response (Civilization II asks which drive is its CD)
 					int selector=memory.readLong(pb+28),answer;
 					switch(selector){
@@ -382,9 +393,48 @@ final class FileSystem68k {
 				if(csCode==23){memory.writeLong(pb+28,info);finish(cpu,pb,0,async);return true;} // kDriveInfo: csParam = the drive's type and attributes
 				if(csCode>=100&&csCode<=127){finish(cpu,pb,-17,async);return true;} // the AppleCD audio calls on a hard disk: controlErr (Apple's CD Audio Toolkit took a disk for a playing CD)
 				finish(cpu,pb,0,async);return true;
-			case 0x02:case 0x03:finish(cpu,pb,-19,async);return true; // raw block access is not offered
+			case 0x02:case 0x03:finish(cpu,pb,optical?-19:bootBlockAccess(pb,trap==0x03),async);return true; // raw blocks: only the boot blocks
 			default:finish(cpu,pb,0,async);return true;
 		}
+	}
+
+	/**
+	 * Driver Read/Write of a fixed disk's boot blocks (the first 1024 bytes): the startup volume's are System 7's, with the
+	 * names of the System, the startup application (bbShellName) and the rest; other volumes' are zeros, as on a disk that
+	 * cannot start up. At Ease's control panel reads them to see whether the Finder or At Ease starts (an error otherwise: "error
+	 * reading the At Ease Preferences file") and writes its own name there; such writes are kept for this run of HyperZebra.
+	 * Raw access to any other block is not offered (readErr / writErr).
+	 */
+	private int bootBlockAccess(int pb,boolean write) throws M68kCpuException {
+		int index=fileManager.volumeIndexOfDrive((short)memory.readWord(pb+22));
+		long offset=memory.readLong(pb+46)&0xffffffffL;int count=memory.readLong(pb+36),buffer=memory.readLong(pb+32);
+		memory.writeLong(pb+40,0);
+		if(index<0)return -56; // nsDrvErr
+		if(count<0||offset+count>BOOT_BLOCKS_SIZE)return write?-20:-19;
+		if(write&&fileManager.volumeLocked(index))return -44; // wPrErr
+		String key;try{key=fileManager.volumes.get(index).getCanonicalPath();}catch(java.io.IOException e){key=fileManager.volumes.get(index).getAbsolutePath();}
+		byte[] blocks=BOOT_BLOCKS.computeIfAbsent(key,k->index==0?startupBootBlocks():new byte[BOOT_BLOCKS_SIZE]);
+		synchronized(blocks){
+			if(write)for(int i=0;i<count;i++)blocks[(int)offset+i]=(byte)memory.readByte(buffer+i);
+			else memory.load(buffer,java.util.Arrays.copyOfRange(blocks,(int)offset,(int)offset+count));
+		}
+		memory.writeLong(pb+40,count);memory.writeLong(pb+46,(int)(offset+count));
+		return 0;
+	}
+	private static final int BOOT_BLOCKS_SIZE=1024;
+	private static void putLong(byte[] b,int at,int v){b[at]=(byte)(v>>>24);b[at+1]=(byte)(v>>>16);b[at+2]=(byte)(v>>>8);b[at+3]=(byte)v;}
+	/** Boot blocks written by programs, by volume folder: one Mac for every program of this run. */
+	private static final java.util.Map<String,byte[]> BOOT_BLOCKS=new java.util.concurrent.ConcurrentHashMap<String,byte[]>();
+	/** System 7's boot block header (IM Files: BootBlkHdr) with no boot code after it. */
+	private static byte[] startupBootBlocks(){
+		byte[] b=new byte[BOOT_BLOCKS_SIZE];
+		b[0]='L';b[1]='K';b[2]=0x60;b[3]=0;b[4]=0;b[5]=(byte)0x86; // bbID, bbEntry (BRA.W to the boot code)
+		b[6]=0x44;b[7]=0x18; // bbVersion: System 7 boot blocks (bit 14: bbSysHeapExtra/bbSysHeapFract are used)
+		String[] names={"System","Finder","MacsBug","Disassembler","StartUpScreen","Finder","Clipboard File"}; // bbSysName ... bbScrapName
+		for(int i=0;i<names.length;i++){byte[] n=names[i].getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);b[10+16*i]=(byte)n.length;System.arraycopy(n,0,b,11+16*i,n.length);}
+		b[123]=40;b[125]=20; // bbCntFCBs, bbCntEvts
+		putLong(b,126,0x00004300);putLong(b,130,0x00008000);putLong(b,134,0x00020000);putLong(b,140,0x00004000);putLong(b,144,0x00000300); // heap sizes, bbSysHeapExtra, bbSysHeapFract
+		return b;
 	}
 
 	/**
@@ -472,6 +522,8 @@ final class FileSystem68k {
 		if(app==null){boolean[] settled={true};app=java.util.Optional.ofNullable(fileManager.findBundleOwner(creator,settled));if(settled[0]||app.isPresent())applications.put(creator,app);}
 		return app.orElse(null);
 	}
+	/** The program whose bundle claims {@code creator} on the volumes (the desktop database's answer), or null. */
+	File applicationForCreator(int creator){return applicationFor(creator);}
 	/** HyperZebra's own program: the .app bundle of a packaged HyperZebra, else the jar or the classes folder it runs from; null when unknown. */
 	static File hyperZebraProgram(){
 		String launcher=System.getProperty("jpackage.app-path");
@@ -651,7 +703,7 @@ final class FileSystem68k {
 	private void writeCatalogInfo(int p,File f,int whichInfo) throws IOException,M68kCpuException {
 		if(p==0||whichInfo==0)return;
 		FileManager68k fm=fileManager;boolean dir=f.isDirectory();FileManager68k.Metadata m=fm.metadataOf(f);
-		if((whichInfo&0x0002)!=0)memory.writeWord(p,(dir?0x10:0)|(m.locked||!f.canWrite()?1:0));      // nodeFlags: kFSNodeIsDirectoryMask, kFSNodeLockedMask
+		if((whichInfo&0x0002)!=0)memory.writeWord(p,(dir?0x10:0)|(m.locked||(dir?!f.canWrite():HostFileAttributes68k.locked(f))?1:0));      // nodeFlags: kFSNodeIsDirectoryMask, kFSNodeLockedMask
 		if((whichInfo&0x0004)!=0)memory.writeWord(p+2,fm.volumeRefNumFor(f));
 		if((whichInfo&0x0008)!=0)memory.writeLong(p+4,fm.parentIdOf(f));
 		if((whichInfo&0x0010)!=0)memory.writeLong(p+8,dir?fm.directoryIdFor(f):m.fileNumber);
@@ -939,7 +991,7 @@ final class FileSystem68k {
 			if(actualPtr!=0)memory.writeWord(actualPtr,vRef);
 			if(info!=0&&whichInfo!=0){
 				java.nio.file.attribute.BasicFileAttributes attributes=java.nio.file.Files.readAttributes(root.toPath(),java.nio.file.attribute.BasicFileAttributes.class);
-				long total=fileManager.volumeTotalSpace(root),free=fileManager.volumeLocked(index)?0:root.getUsableSpace();
+				long total=fileManager.volumeTotalSpace(root),free=fileManager.volumeLocked(index)?0:fileManager.volumeFreeSpace(root);
 				if((whichInfo&0x0001)!=0)writeUtc(info,fileManager.volumeCreationDateFor(root));
 				if((whichInfo&0x0002)!=0)writeUtc(info+8,FileManager68k.macDate(attributes.lastModifiedTime().toMillis()));
 				if((whichInfo&0x0004)!=0)writeUtc(info+16,0);
@@ -1092,6 +1144,7 @@ final class FileSystem68k {
 		try{return "("+(short)memory.readWord(spec)+", "+memory.readLong(spec+2)+", \""+tb.readPascal(spec+6)+"\")";}catch(M68kCpuException e){return "(unreadable FSSpec)";}
 	}
 	File fileFor(int vRef,int dirId,String name) throws IOException {
+		if(dirId==1){File volume=fileManager.volumeAtRootParent(name,vRef);if(volume!=null)return volume;} // fsRtParID + a volume's name: that volume (StuffIt InstallerMaker's "Install into" a volume chosen at the desktop level)
 		File base=fileManager.directoryForId(dirId,vRef);
 		if(base==null)return null;
 		if(name==null||name.isEmpty())return base;
@@ -1105,12 +1158,23 @@ final class FileSystem68k {
 	/**
 	 * The "poor man's search path" of the classic File Manager: an open by a bare name (no colon) on the default directory that
 	 * finds nothing there tries the blessed System Folder next. MacinTalk 1 is installed by dropping its driver file into the
-	 * System Folder, and its glue does OpenResFile("MacinTalk") (MacinTalk Stack, HyperMacintalk).
+	 * System Folder, and its glue does OpenResFile("MacinTalk") (MacinTalk Stack, HyperMacintalk). A game that came on its own boot
+	 * disk counted on that disk's System Folder being the blessed one (The Ancient Art of War at Sea keeps its 'sres' file there and
+	 * asks for a second disk otherwise), so the System Folder of the program's disk comes after the real one.
 	 */
 	File searchSystemFolder(String name,File found){
 		if(found!=null&&found.exists())return found;
 		if(name==null||name.isEmpty()||name.indexOf(':')>=0||systemFolder==null)return found;
 		try{File f=fileManager.resolveClassicPath(systemFolder,name);if(f!=null&&f.exists())return f;}catch(IOException|SecurityException e){}
+		try{
+			for(File dir=fileManager.directoryForId(0,0);dir!=null;dir=dir.getParentFile()){
+				File bootDisk=new File(dir,"System Folder");
+				if(bootDisk.isDirectory()){
+					try{File f=fileManager.resolveClassicPath(bootDisk,name);if(f!=null&&f.exists())return f;}catch(IOException|SecurityException e){}
+				}
+				if(fileManager.volumeRoot(dir))break;
+			}
+		}catch(IOException|SecurityException e){}
 		return found;
 	}
 	void writeFileSpec(int spec,File file) throws IOException,M68kCpuException {
@@ -1284,7 +1348,16 @@ final class FileSystem68k {
 			putShort(out,2);putShort(out,pathBytes.length);out.write(pathBytes);if((pathBytes.length&1)!=0)out.write(0);
 			byte[] host=f.getPath().getBytes(StandardCharsets.UTF_8);putShort(out,ALIAS_HOST_PATH_RECORD);putShort(out,host.length);out.write(host);if((host.length&1)!=0)out.write(0);
 			putShort(out,-1);putShort(out,0);       // end of the information records
-		}catch(Exception e){out.reset();byte[] host=file.getAbsolutePath().getBytes(StandardCharsets.UTF_8);out.write(new byte[0x96],0,0x96);putShort(out,ALIAS_HOST_PATH_RECORD);putShort(out,host.length);out.write(host,0,host.length);if((host.length&1)!=0)out.write(0);putShort(out,-1);putShort(out,0);}
+		}catch(Exception e){return hostPathAlias(file);}
+		byte[] alias=out.toByteArray();alias[4]=(byte)(alias.length>>>8);alias[5]=(byte)alias.length;
+		return alias;
+	}
+	/** The least alias that resolves: an empty fixed part and the private host path record; no running program's file ids needed. */
+	static byte[] hostPathAlias(File file){
+		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+		byte[] host=file.getAbsolutePath().getBytes(StandardCharsets.UTF_8);
+		out.write(new byte[0x96],0,0x96);putShort(out,ALIAS_HOST_PATH_RECORD);putShort(out,host.length);out.write(host,0,host.length);if((host.length&1)!=0)out.write(0);
+		putShort(out,-1);putShort(out,0);
 		byte[] alias=out.toByteArray();alias[4]=(byte)(alias.length>>>8);alias[5]=(byte)alias.length;
 		return alias;
 	}
@@ -1313,6 +1386,13 @@ final class FileSystem68k {
 		if(host!=null){File h=new File(host);if(h.getParentFile()!=null&&h.getParentFile().isDirectory())return h;}
 		try{int parentId=MacApp68k.u4(alias,0x2e);String name=tb.encoding.decode(java.util.Arrays.copyOfRange(alias,0x33,0x33+(alias[0x32]&0xff)));
 			File dir=fileManager.directoryForId(parentId,0);if(dir!=null&&dir.isDirectory()&&!name.isEmpty())return new File(dir,name);}catch(Exception ignored){}
+		return null;
+	}
+	/** The host path an alias made here records (its private 'HZ' record), or null for an alias from elsewhere. */
+	String aliasHostPath(byte[] alias){
+		if(alias==null||alias.length<0x96)return null;
+		for(int at=0x96;at+4<=alias.length;){int type=(short)MacApp68k.u2(alias,at),length=MacApp68k.u2(alias,at+2);at+=4;if(type==-1||at+length>alias.length)break;
+			if(type==ALIAS_HOST_PATH_RECORD)return new String(alias,at,length,StandardCharsets.UTF_8);at+=length+(length&1);}
 		return null;
 	}
 	/** Whether the folder an alias's target should be in is missing (ResolveAlias: dirNFErr, not fnfErr). */
@@ -1408,7 +1488,7 @@ final class FileSystem68k {
 		// the VCBs' every second and rebuilds a volume that "changed" (closing all its windows)
 		try{memory.writeLong(vcb+10,fileManager.volumeCreationDateFor(volume));memory.writeLong(vcb+14,FileManager68k.macDate(volume.lastModified()));}catch(java.io.IOException ignored){}
 		memory.writeWord(vcb+18,locked?0x0080:0);                    // vcbAtrb: a mounted disk image is locked (by "hardware", as a CD)
-		long total=fileManager.volumeTotalSpace(volume),free=locked?0:volume.getFreeSpace();int blockSize=FileManager68k.volumeBlockSize(total);
+		long total=fileManager.volumeTotalSpace(volume),free=locked?0:fileManager.volumeFreeSpace(volume);int blockSize=FileManager68k.volumeBlockSize(total);
 		memory.writeWord(vcb+26,FileManager68k.volumeBlocks(total,blockSize)); // vcbNmAlBlks
 		memory.writeLong(vcb+28,blockSize);memory.writeLong(vcb+32,blockSize); // vcbAlBlkSiz, vcbClpSiz
 		memory.writeLong(vcb+38,100);                                // vcbNxtCNID
@@ -1595,6 +1675,25 @@ final class FileSystem68k {
 		}
 		if(Mac68kApi.TRACE)System.err.println("[68K] DIZero drive "+drive+": \""+tb.decode(name)+"\", "+format.allocationBlocks+" allocation blocks of "+format.allocationBlockSize+(backing==null?"":" (also "+backing.getName()+")"));
 		return 0;
+	}
+
+	/**
+	 * DIZero leaves the volume it wrote mounted: AppDisk 1.5 zeroes its RAM disk, then SetVol/Create on the drive number and
+	 * GetVolInfo of it without a MountVol, and quit at once ("files on the AppDisk still open") when that was nsvErr. The volume
+	 * is an empty writable folder as big as the drive - what the program writes stays there, not in its driver's sectors.
+	 * Nothing happens when the drive has a volume mounted already.
+	 */
+	void mountZeroedDrive(int drive,byte[] name) throws M68kCpuException {
+		for(int[] d:fileManager.guestDrives.values())if(d[0]==drive)return;
+		int element=addedDrives.get(drive),refNum=(short)memory.readWord(element+8);
+		DiskImages.Mounted volume=DiskImages.emptyDrive("drive "+drive,tb.decode(name),driveBlocks(element)*512);
+		int index=fileManager.mountVolume(volume.folder,volume.name,false);
+		if(index<0){DiskImages.release(volume);return;}
+		fileManager.guestDrives.put(index,new int[]{drive,refNum});guestCopies.add(volume);
+		try{fileManager.guestCapacities.put(volume.folder.getCanonicalFile(),volume.capacity);}catch(IOException e){fileManager.guestCapacities.put(volume.folder.getAbsoluteFile(),volume.capacity);}
+		appendVolumeControlBlock(index);
+		if(memory.readLong(0x352)==0)memory.writeLong(0x352,volumeControlBlocks[0]);
+		if(Mac68kApi.TRACE)System.err.println("[68K] DIZero drive "+drive+": mounted \""+volume.name+"\" as volume "+(-(index+1)));
 	}
 
 	/**

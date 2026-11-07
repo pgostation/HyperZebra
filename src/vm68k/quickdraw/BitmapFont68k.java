@@ -92,8 +92,32 @@ final class BitmapFont68k extends Font {
 			ascent=Math.max(1,Math.round(lm.getAscent()));descent=Math.max(0,Math.round(lm.getDescent()));leading=Math.max(0,Math.round(lm.getLeading()));
 			int max=Fonts68k.metrics(outlines).getMaxAdvance();widMax=max>0?max:Math.max(1,size);fRectHeight=ascent+descent;
 		}
-		encoding=sfnt!=null&&sfnt.hasTwoByteCodes()?StackTextEncoding.JAPANESE:StackTextEncoding.ROMAN;
+		encoding=sfnt!=null&&sfnt.hasTwoByteCodes()||scriptKanji()?StackTextEncoding.JAPANESE:StackTextEncoding.ROMAN;
 	}
+	/**
+	 * A family of the Japanese script (its number says so, FontToScript) that holds only one-byte glyphs: its kanji are the script
+	 * system font's. ｼｽﾃﾑｿﾌﾄｴﾃﾞｨﾀ's documents are set in Nagahama, an NFNT-only FOND 16638 in the program: read as Roman bytes every
+	 * kanji came out as half-width kana and the strike's black missing-character box.
+	 */
+	private boolean scriptKanji(){return family>=Fonts68k.JAPANESE_SYSTEM_FONT&&family<Fonts68k.JAPANESE_SYSTEM_FONT+512&&(sfnt==null||!sfnt.hasTwoByteCodes());}
+	/** A two-byte glyph of {@link #scriptKanji}: from the installed Osaka, else a host Japanese face, a full-width cell either way. */
+	private SfntBitmaps68k.Glyph scriptKanjiGlyph(int code){
+		BitmapFont68k osaka=family==Fonts68k.JAPANESE_SYSTEM_FONT?null:InstalledFonts68k.strike(Fonts68k.JAPANESE_SYSTEM_FONT,size,0);
+		if(osaka!=null&&osaka.twoByte())return osaka.glyphOf(code);
+		String s=encoding.decode(new byte[]{(byte)(code>>8),(byte)code});int em=Math.max(1,size);
+		Font host=new Font(Fonts68k.japaneseFamily(false),Font.PLAIN,em);
+		if(s.isEmpty()||!host.canDisplay(s.charAt(0)))return null;
+		// from grey coverage, not Java's 1-bit fill: a stroke thinner than a pixel between two rows is lost there (日 came out as 口 at 12)
+		int w=em+2,h=em+em/3+1;BufferedImage img=new BufferedImage(w,h,BufferedImage.TYPE_BYTE_GRAY);java.awt.Graphics2D g=img.createGraphics();
+		g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+		g.setRenderingHint(java.awt.RenderingHints.KEY_FRACTIONALMETRICS,java.awt.RenderingHints.VALUE_FRACTIONALMETRICS_OFF);
+		g.setColor(java.awt.Color.WHITE);g.drawGlyphVector(host.createGlyphVector(new FontRenderContext(null,true,false),s.substring(0,1)),1,em);g.dispose();
+		byte[] pixels=new byte[w*h];
+		for(int y=0;y<h;y++)for(int x=0;x<w;x++)if((img.getRaster().getSample(x,y,0))>=KANJI_INK)pixels[y*w+x]=1;
+		return new SfntBitmaps68k.Glyph(w,h,-1,em,em,pixels);
+	}
+	/** The grey level (0-255) counted as ink in {@link #scriptKanjiGlyph}. */
+	private static final int KANJI_INK=100;
 	private static int scale(int v,int numer,int denom){return (int)Math.round((double)v*numer/denom);}
 
 	/** Parses a 'FONT'/'NFNT' resource; null when the data is not a usable strike. */
@@ -130,6 +154,8 @@ final class BitmapFont68k extends Font {
 	boolean twoByte(){return encoding==StackTextEncoding.JAPANESE;}
 	/** RealFont's answer: the size exists as a strike or from outlines, rather than scaled from another size. */
 	boolean real(){return scaledFrom==null;}
+	/** IsOutline's answer: the glyphs come from the family's outlines only (no strike of this size, nothing scaled). */
+	boolean drawnFromOutlines(){return scaledFrom==null&&nfnt==null&&sbit==null&&outlines!=null;}
 	/** Character codes of a byte run: single bytes, or lead+trail pairs (lead in the high byte) for a two-byte family. */
 	int[] codes(byte[] text){
 		int[] codes=new int[text.length];int n=0;
@@ -146,6 +172,7 @@ final class BitmapFont68k extends Font {
 		return g;
 	}
 	private SfntBitmaps68k.Glyph loadGlyph(int code){
+		if(code>=256&&scriptKanji())return scriptKanjiGlyph(code);
 		if(scaledFrom!=null){
 			SfntBitmaps68k.Glyph s=scaledFrom.glyphOf(code);if(s==null)return null;int from=Math.max(1,scaledFrom.size);
 			if(unscaledGlyphs)return new SfntBitmaps68k.Glyph(s.width,s.height,s.bearingX,s.bearingY,scale(s.advance,size,from),s.bits);

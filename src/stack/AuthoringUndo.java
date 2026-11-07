@@ -261,7 +261,7 @@ final class AuthoringUndo {
                 field.set(target, live(value));
                 if (field.getName().equals("scriptList")) {
                     OObject part = (OObject) target;
-                    part.handlerList = null; part.handlerLineList = null;
+                    part.handlerList = null; part.handlerLineList = null; part.jit = null; TalkJit.scriptEpoch++;
                     part.stringList = null; part.typeList = null;
                 }
             } catch (IllegalAccessException e) { throw new IllegalStateException(e); }

@@ -249,7 +249,7 @@ msgctxt "menu"
 msgid "Cut Selection"
 msgstr "剪切所选内容"
 
-#: SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "Volume"
 msgstr "音量"
@@ -349,7 +349,7 @@ msgctxt "menu"
 msgid "Paste Picture"
 msgstr "粘贴图片"
 
-#: GMenu.java
+#: GMenu.java TTalk.java
 msgctxt "menu"
 msgid "Go"
 msgstr "转到"
@@ -449,7 +449,7 @@ msgctxt "menu"
 msgid "Objects"
 msgstr "对象"
 
-#: GFontDialog.java HyperCardResources68k.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java ShapeInfoPanel.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Font"
 msgstr "字体"
@@ -1651,6 +1651,12 @@ msgid "Runs at the speed of a 68040 Mac / an iMac G3. Off: some games run too fa
 msgstr "运行速度为68040 Mac / iMac G3的速度。关闭：一些游戏运行太快。"
 
 #: GPreferencesDialog.java
+msgid "HyperTalk JIT compiler"
+msgstr "HyperTalk JIT 编译器"
+
+msgid "Runs scripts faster. Off: the interpreter only."
+msgstr "让脚本运行得更快。关闭：仅使用解释器。"
+
 msgid "PowerPC JIT compiler"
 msgstr "PowerPC JIT 编译器"
 
@@ -1904,6 +1910,10 @@ msgstr "删除此程序的翻译资源？下次启动时它将使用自身的资
 #: GTranslationSettingsDialog.java
 msgid "(deleted; Resource Translation… makes them again)"
 msgstr "（已删除；“资源翻译…”可重新生成）"
+
+#: GTranslationSettingsDialog.java
+msgid "(deleted; Resource Translation with AI Chat… makes them again)"
+msgstr "（已删除；“用 AI 聊天进行资源翻译…”可重新生成）"
 
 #: MacAppHost.java
 msgid "Translates its menus and dialogs into a copy of its resources."
@@ -2246,7 +2256,7 @@ msgstr "Option"
 msgid "Shift"
 msgstr "Shift"
 
-#: FileSystem68k.java GamepadHost.java PpcLibraries.java
+#: FileSystem68k.java GamepadHost.java PpcLibraries.java WacomTablet68k.java
 msgid "Control"
 msgstr "Control"
 
@@ -2434,17 +2444,21 @@ msgstr "正在运行的程序信息…"
 msgid "Running Programs"
 msgstr "正在运行的程序"
 
-#: GAppInfoWindow.java MacApp68k.java
+#: GAppInfoWindow.java GLauncher.java MacApp68k.java
 msgid "Force Quit"
 msgstr "强制退出"
 
-#: GAppInfoWindow.java GLauncher.java QuitSequence.java
+#: GAppInfoWindow.java GLauncher.java PCARD.java QuitSequence.java
 msgid "Force Quit…"
 msgstr "强制退出…"
 
 #: GAppInfoWindow.java
 msgid "Force \"%s\" to quit? Changes it has not saved are lost."
 msgstr "强制“%s”退出吗？它未保存的更改将会丢失。"
+
+#: GLauncher.java
+msgid "Force \"%s\" to quit? Its running handlers stop at once and it closes without its close messages; its changes are kept."
+msgstr "强制“%s”退出吗？正在运行的处理程序会立即停止，堆栈关闭时不发送关闭消息；其更改会保留。"
 
 #: GAppInfoWindow.java
 msgid "No Mac program is running."
@@ -2570,7 +2584,7 @@ msgstr "SIZE 资源"
 msgid "preferred"
 msgstr "首选"
 
-#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
+#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
 msgid "none"
 msgstr "无"
 
@@ -2781,7 +2795,7 @@ msgstr "“{0}”的设置…"
 msgid "Colors, screen size and speed for one program"
 msgstr "一个程序的颜色、屏幕尺寸和速度"
 
-#: GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java TTalk.java
 msgid "Other…"
 msgstr "其他…"
 
@@ -3497,7 +3511,7 @@ msgstr "宽度："
 msgid "Height:"
 msgstr "高度："
 
-#: GColorDialog.java GMenu.java GPaintDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java TTalk.java
+#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java TTalk.java
 msgid "Cancel"
 msgstr "取消"
 
@@ -4107,6 +4121,16 @@ msgstr "抖动修正"
 
 #: GToolOptions.java
 msgctxt "menu"
+msgid "Pen Pressure"
+msgstr "压感"
+
+#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+msgctxt "menu"
+msgid "Size"
+msgstr "大小"
+
+#: GToolOptions.java
+msgctxt "menu"
 msgid "Line Size"
 msgstr "线条大小"
 
@@ -4275,6 +4299,65 @@ msgctxt "menu"
 msgid "Text Color"
 msgstr "文本颜色"
 
+#: FieldTextMenus.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Plain"
+msgstr "普通"
+
+#: FieldTextMenus.java GFontDialog.java PpcAtsui.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Bold"
+msgstr "粗体"
+
+#: FieldTextMenus.java GFontDialog.java PpcAtsui.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Italic"
+msgstr "斜体"
+
+#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Underline"
+msgstr "下划线"
+
+#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Outline"
+msgstr "轮廓"
+
+#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Shadow"
+msgstr "阴影"
+
+#: FieldTextMenus.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Condense"
+msgstr "紧缩"
+
+#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+msgctxt "menu"
+msgid "Extend"
+msgstr "扩展"
+
+#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java Q3.java TTalk.java
+msgctxt "menu"
+msgid "Group"
+msgstr "组"
+
+#: FieldTextMenus.java GLauncher.java TTalk.java
+msgctxt "menu"
+msgid "Other…"
+msgstr "其他…"
+
+#: FieldTextMenus.java
+msgctxt "menu"
+msgid "Text Color…"
+msgstr "文字颜色…"
+
+#: FieldTextMenus.java
+msgid "Text size:"
+msgstr "文字大小："
+
 #: PaintFilter.java
 msgid "Filter"
 msgstr "滤镜"
@@ -4442,11 +4525,11 @@ msgstr "Alpha 通道"
 msgid "Font"
 msgstr "字体"
 
-#: ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgid "Size"
 msgstr "大小"
 
-#: GMenu.java HyperCardResources68k.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
+#: FieldTextMenus.java GMenu.java HyperCardResources68k.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
 msgid "Style"
 msgstr "样式"
 
@@ -4689,7 +4772,7 @@ msgstr "这种磁盘映像暂时还不能打开。"
 msgid "Mounting the disk image"
 msgstr "正在装载磁盘映像"
 
-#: DiskImages.java
+#: TTalk.java
 msgid "Can't mount the disk image."
 msgstr "无法装载磁盘映像。"
 
@@ -5010,11 +5093,11 @@ msgstr "详细信息"
 msgid "The screen (%d pixels wide) is wider than any Mac of the time, which may be the cause. Setting this program's resolution to 640×480 or 1024×768 in its settings in the launcher may make it work."
 msgstr "屏幕（%d像素宽）比当时任何Mac都宽，这可能是原因。将此程序的分辨率设置为640×480或1024×768，并在启动器中的设置中设置，可能会使其正常工作。"
 
-#: VMTranslation.java
+#: TesseractInstall.java VMTranslation.java
 msgid "Chinese (Traditional)"
 msgstr "中文（繁体）"
 
-#: VMTranslation.java
+#: TesseractInstall.java VMTranslation.java
 msgid "Chinese (Simplified)"
 msgstr "中文（简体）"
 
@@ -5581,7 +5664,7 @@ msgid ""
 "\n"
 "Drawing and text tools\n"
 "  Pencil — draws one-pixel lines; clicking a foreground-coloured pixel draws with the background colour.\n"
-"  Brush — paints soft or hard strokes with adjustable size, opacity, spacing and stabilisation.\n"
+"  Brush — paints soft or hard strokes with adjustable size, opacity, spacing and stabilisation; with a pen tablet, pressure can change its size and opacity, and the pen's eraser end erases.\n"
 "  Eraser — erases to transparency or reveals the background picture.\n"
 "  Line — draws a straight line; Shift constrains its angle.\n"
 "  Spray — sprays foreground or background colour with an adjustable radius.\n"
@@ -5612,7 +5695,7 @@ msgstr ""
 "\n"
 "绘制和文本工具\n"
 "  铅笔 — 绘制一像素宽的线条；点按前景色的像素时会用背景色绘制。\n"
-"  画笔 — 以可调的大小、不透明度、间距和防抖绘制柔和或硬朗的笔画。\n"
+"  画笔 — 以可调的大小、不透明度、间距和防抖绘制柔和或硬朗的笔画。使用数位板时，压感可改变大小和不透明度，笔的橡皮擦端可以擦除。\n"
 "  橡皮擦 — 擦除为透明，或露出背景图片。\n"
 "  直线 — 绘制直线；按住 Shift 可约束其角度。\n"
 "  喷枪 — 以可调的半径喷出前景色或背景色。\n"
@@ -7262,7 +7345,7 @@ msgctxt "reference"
 msgid "Loops"
 msgstr "循环"
 
-#: SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
 msgctxt "reference"
 msgid "Volume"
 msgstr "音量"
@@ -7702,6 +7785,14 @@ msgstr "画笔大小（1–256）、硬度（0–100）、不透明度（1–100
 msgctxt "reference"
 msgid "Stroke smoothing (0–98)"
 msgstr "笔触平滑（0–98）"
+
+msgctxt "reference"
+msgid "What pen tablet pressure changes for the brush: size, opacity, both or none"
+msgstr "数位板压感改变画笔的哪一项：size、opacity、both 或 none"
+
+msgctxt "reference"
+msgid "The pen tablet's pressure now (0–100; empty when no pen is in use)"
+msgstr "数位板笔当前的压力（0–100；未使用笔时为空）"
 
 msgctxt "reference"
 msgid "Zoom (25–3200 %) and the card point at the top-left (x,y)"
@@ -8600,6 +8691,9 @@ msgstr "找不到end repeat"
 #: TTalk.java
 msgid "Cannot understand the arguments to repeat with"
 msgstr "无法理解 repeat with 的参数"
+
+msgid "Cannot understand the arguments of {0}"
+msgstr "无法理解 {0} 的参数"
 
 #: TTalk.java
 msgid "repeat with requires a start value and to"
@@ -10307,6 +10401,14 @@ msgid "brushSpacing must be between 1 and 200"
 msgstr "brushSpacing必须在1到200之间"
 
 #: TUtil.java
+msgid "brushPressure must be size, opacity, both or none"
+msgstr "brushPressure 必须是 size、opacity、both 或 none"
+
+#: TUtil.java
+msgid "Can't set the penPressure"
+msgstr "无法设置 penPressure"
+
+#: TUtil.java
 msgid "{0} must be between 0 and 98"
 msgstr "{0}必须在0到98之间"
 
@@ -10699,7 +10801,7 @@ msgstr "打开堆栈"
 msgid "Open stack in new window"
 msgstr "在新窗口中打开堆栈"
 
-#: GPaintDialog.java MacAppHost.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
+#: GPaintDialog.java GTesseractLanguagesDialog.java MacAppHost.java PaintFilter.java PanelDataDialog.java ResEditIndex.java TTalk.java
 msgid "OK"
 msgstr "确定"
 
@@ -10937,6 +11039,10 @@ msgid "The program runs with translated copies of its menus, dialogs and strings
 msgstr "程序使用由“资源翻译…”生成的菜单、对话框和字符串的翻译副本运行；程序文件从不更改。"
 
 #: GTranslationSettingsDialog.java
+msgid "The program runs with translated copies of its menus, dialogs and strings, made by Resource Translation with AI Chat…; the program file is never changed."
+msgstr "程序使用由“用 AI 聊天进行资源翻译…”生成的菜单、对话框和字符串的翻译副本运行；程序文件从不更改。"
+
+#: GTranslationSettingsDialog.java
 msgid "Show translation:"
 msgstr "显示翻译："
 
@@ -10959,9 +11065,17 @@ msgstr "遵循翻译设置"
 msgid "None yet: Resource Translation… makes them."
 msgstr "尚无：可用“资源翻译…”生成。"
 
+#: GTranslationSettingsDialog.java
+msgid "None yet: Resource Translation with AI Chat… makes them."
+msgstr "尚无：可用“用 AI 聊天进行资源翻译…”生成。"
+
 #: GTranslationForm.java
 msgid "Programs are translated by Resource Translation… (their menus, dialogs and strings); stacks show their button names and fields translated (File > Translation Settings…). These are the defaults; a program or stack can have its own."
 msgstr "程序通过“资源翻译…”翻译（菜单、对话框和字符串）；堆栈以翻译后的形式显示按钮名称和字段（“文件”>“翻译设置…”）。这里是默认值；每个程序或堆栈也可以单独设置。"
+
+#: GTranslationForm.java
+msgid "Programs are translated by Resource Translation with AI Chat… (their menus, dialogs and strings); stacks show their button names and fields translated (File > Translation Settings…). These are the defaults; a program or stack can have its own."
+msgstr "程序通过“用 AI 聊天进行资源翻译…”翻译（菜单、对话框和字符串）；堆栈以翻译后的形式显示按钮名称和字段（“文件”>“翻译设置…”）。这里是默认值；每个程序或堆栈也可以单独设置。"
 
 #: GLauncher.java
 msgid "Language and engine for one program or stack"
@@ -11071,6 +11185,14 @@ msgstr "已将 Kaleidoscope 方案安装到 Apple Menu Items/Kaleidoscope Scheme
 #: PCARD.java
 msgid "Can't install the Kaleidoscope scheme."
 msgstr "无法安装 Kaleidoscope 方案。"
+
+#: PCARD.java
+msgid "Can't switch the Kaleidoscope scheme."
+msgstr "无法切换 Kaleidoscope 方案。"
+
+#: PCARD.java
+msgid "Switched the Kaleidoscope scheme to:"
+msgstr "已将 Kaleidoscope 方案切换为:"
 
 #: PCARD.java
 msgid "Choose one with Select Scheme... in the Kaleidoscope control panel."
@@ -11522,6 +11644,10 @@ msgid "Dock"
 msgstr "Dock"
 
 #: GLauncher.java
+msgid "{0} More in the Launcher…"
+msgstr "启动器中还有 {0} 项…"
+
+#: GLauncher.java
 msgid "New Tab"
 msgstr "新标签页"
 
@@ -11617,7 +11743,6 @@ msgstr "不翻译"
 msgid "(the pictures stay as they are: a translated copy is shown)"
 msgstr "（图片本身不变：显示翻译后的副本）"
 
-#: PictureTranslation.java
 msgid "Tesseract is not installed, so the text in pictures is not translated. Install it - macOS: brew install tesseract tesseract-lang; Windows: the Tesseract installer of UB Mannheim; Linux: the tesseract-ocr packages - and check again."
 msgstr "未安装 Tesseract，因此图片中的文字不会被翻译。请先安装（macOS：brew install tesseract tesseract-lang；Windows：UB Mannheim 提供的 Tesseract 安装程序；Linux：tesseract-ocr 软件包），然后重新检查。"
 
@@ -11625,7 +11750,639 @@ msgstr "未安装 Tesseract，因此图片中的文字不会被翻译。请先�
 msgid "Tesseract {0} reads the text in pictures: {1} languages ({2}…)."
 msgstr "Tesseract {0} 读取图片中的文字：{1} 种语言（{2}…）。"
 
+#: GTesseractLanguagesDialog.java
+msgid "Add Files…"
+msgstr "添加文件…"
+
+#: GTesseractLanguagesDialog.java
+msgid "Languages for Text in Pictures"
+msgstr "图片中文字的语言"
+
+#: GTesseractLanguagesDialog.java
+msgid "Tick the languages of the pictures to read. They are downloaded from Tesseract's tessdata_fast models (Apache License 2.0) into HyperZebra's state folder."
+msgstr "勾选要读取的图片语言。它们会从 Tesseract 的 tessdata_fast 模型（Apache License 2.0）下载到 HyperZebra 的状态文件夹。"
+
+#: GTesseractLanguagesDialog.java
+msgid "Where"
+msgstr "位置"
+
+#: GTesseractLanguagesDialog.java
+msgid "Tesseract's own"
+msgstr "Tesseract 自带"
+
+#: GTesseractLanguagesDialog.java
+msgid "Added"
+msgstr "已添加"
+
+#: GTesseractLanguagesDialog.java
+msgid "Download"
+msgstr "下载"
+
+#: GTesseractLanguagesDialog.java
+msgid "Tesseract language files (.traineddata)"
+msgstr "Tesseract 语言文件（.traineddata）"
+
+#: GTranslationForm.java
+msgid "Download Tesseract…"
+msgstr "下载 Tesseract…"
+
+#: GTranslationForm.java
+msgid "Languages…"
+msgstr "语言…"
+
+#: GTranslationForm.java
+msgid "The Tesseract OCR installer of UB Mannheim (Apache License 2.0, {0}) is downloaded from GitHub and opened. Then English and Japanese language data are downloaded."
+msgstr "将从 GitHub 下载并打开 UB Mannheim 的 Tesseract OCR 安装程序（Apache License 2.0，{0}）。之后会下载英语和日语的语言数据。"
+
+#: GTranslationForm.java
+msgid "Tesseract OCR {0} (Apache License 2.0; built by HyperZebra from the unmodified sources, {1}) is downloaded from GitHub into HyperZebra's state folder, with English and Japanese language data."
+msgstr "将从 GitHub 下载 Tesseract OCR {0}（Apache License 2.0；由 HyperZebra 用未修改的源代码构建，{1}）及英语和日语的语言数据，放到 HyperZebra 的状态文件夹。"
+
+#: PictureTranslation.java
+msgid "Tesseract is not installed, so the text in pictures is not translated. Download it with Download Tesseract… on the launcher's Translation page."
+msgstr "未安装 Tesseract，因此不会翻译图片中的文字。请在启动器的“翻译”页面用“下载 Tesseract…”安装。"
+
+#: PictureTranslation.java
+msgid "Tesseract is not installed, so the text in pictures is not translated. Install the tesseract-ocr packages of your system and check again."
+msgstr "未安装 Tesseract，因此不会翻译图片中的文字。请安装系统的 tesseract-ocr 软件包，然后再检查一次。"
+
+#: PictureTranslation.java
+msgid "Tesseract {0} has no languages: add them with Languages… on the launcher's Translation page."
+msgstr "Tesseract {0} 没有任何语言：请在启动器的“翻译”页面用“语言…”添加。"
+
+#: TesseractInstall.java
+msgid "Downloading Tesseract…"
+msgstr "正在下载 Tesseract…"
+
+#: TesseractInstall.java
+msgid "The downloaded Tesseract is damaged (its checksum differs)."
+msgstr "下载的 Tesseract 已损坏（校验和不同）。"
+
+#: TesseractInstall.java
+msgid "The download has no tesseract program."
+msgstr "下载内容中没有 tesseract 程序。"
+
+#: TesseractInstall.java
+msgid "Looking for the Tesseract installer…"
+msgstr "正在查找 Tesseract 安装程序…"
+
+#: TesseractInstall.java
+msgid "The Tesseract installer was not found."
+msgstr "未找到 Tesseract 安装程序。"
+
+#: TesseractInstall.java
+msgid "Cancelled."
+msgstr "已取消。"
+
+#: TesseractInstall.java
+msgid "The Tesseract installer is open: install it, then come back."
+msgstr "Tesseract 安装程序已打开：安装完成后请回到这里。"
+
+#: TesseractInstall.java
+msgid "Install the tesseract-ocr packages of your system."
+msgstr "请安装系统的 tesseract-ocr 软件包。"
+
+#: TesseractInstall.java
+msgid "Downloading failed: {0}"
+msgstr "下载失败：{0}"
+
+#: TesseractInstall.java
+msgid "Downloading {0} ({1}/{2})…"
+msgstr "正在下载{0}（{1}/{2}）…"
+
+#: TesseractInstall.java
+msgid "{0} is not a Tesseract language file (.traineddata)."
+msgstr "{0} 不是 Tesseract 语言文件（.traineddata）。"
+
+#: TesseractInstall.java
+msgid "German (Fraktur)"
+msgstr "德语（尖角体）"
+
+#: TesseractInstall.java
+msgid "Middle English"
+msgstr "中古英语"
+
+#: TesseractInstall.java
+msgid "Middle French"
+msgstr "中古法语"
+
+#: TesseractInstall.java
+msgid "Ancient Greek"
+msgstr "古希腊语"
+
+#: TesseractInstall.java
+msgid "(vertical)"
+msgstr "（竖排）"
+
+#: TesseractInstall.java
+msgid "(old)"
+msgstr "（旧拼写）"
+
+#: TesseractInstall.java
+msgid "(Cyrillic)"
+msgstr "（西里尔字母）"
+
+#: TesseractInstall.java
+msgid "(Latin)"
+msgstr "（拉丁字母）"
+
+#: TesseractInstall.java
+msgid "Kurdish (Kurmanji)"
+msgstr "库尔德语（库尔曼吉）"
+
+#: GTesseractLanguagesDialog.java
+msgid "Language (code)"
+msgstr "语言（代码）"
+
 #: GTranslationSettingsDialog.java
 msgid "(its PICT resources, by Resource Translation…; the program file is never changed)"
 msgstr "（通过“资源翻译…”翻译其 PICT 资源；程序文件不会被更改）"
 
+#: GTranslationSettingsDialog.java
+msgid "(its PICT resources, by Resource Translation with AI Chat…; the program file is never changed)"
+msgstr "（通过“用 AI 聊天进行资源翻译…”翻译其 PICT 资源；程序文件不会被更改）"
+
+#: GTextDocumentWindow.java
+msgid "Text Encoding:"
+msgstr "文本编码："
+
+#: GTextDocumentWindow.java
+msgid "Wrap lines"
+msgstr "自动换行"
+
+#: GTextDocumentWindow.java
+msgid "Fixed-width font"
+msgstr "等宽字体"
+
+#: GTextDocumentWindow.java
+msgid "Smaller text"
+msgstr "缩小文字"
+
+#: GTextDocumentWindow.java
+msgid "Larger text"
+msgstr "放大文字"
+
+#: GTextDocumentWindow.java
+msgid "Save as UTF-8…"
+msgstr "存储为 UTF-8…"
+
+#: GTextDocumentWindow.java
+msgid "Smaller"
+msgstr "缩小"
+
+#: GTextDocumentWindow.java
+msgid "Larger"
+msgstr "放大"
+
+#: GTextDocumentWindow.java
+msgid "Save as PNG…"
+msgstr "存储为 PNG…"
+
+#: GTextDocumentWindow.java
+msgid "The picture can't be read."
+msgstr "无法读取图片。"
+
+#: GLauncher.java
+msgid "Copy URL"
+msgstr "拷贝 URL"
+
+#: GLauncher.java
+msgid "Internet location \"%s\""
+msgstr "互联网位置“%s”"
+
+#: GLauncher.java
+msgid "Can't open the URL."
+msgstr "无法打开 URL。"
+
+#: GTextDocumentWindow.java
+msgid "Save a copy the host's editors read"
+msgstr "存储一份现在的编辑器能读的副本"
+
+#: GMediaPlayerWindow.java GTextDocumentWindow.java
+msgid "Choose another name: the original stays as it is."
+msgstr "请换一个名称：原文件保持不变。"
+
+#: GMediaPlayerWindow.java GTextDocumentWindow.java
+msgid "Can't save the file."
+msgstr "无法存储文件。"
+
+#: GLauncher.java
+msgid "HyperZebra text viewer"
+msgstr "HyperZebra 文本查看器"
+
+#: GLauncher.java
+msgid "HyperZebra media player"
+msgstr "HyperZebra 媒体播放器"
+
+#: GMediaPlayerWindow.java
+msgid "This is no sound or movie file."
+msgstr "这不是声音或影片文件。"
+
+#: GMediaPlayerWindow.java
+msgid "Loop"
+msgstr "循环"
+
+#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+msgid "Volume"
+msgstr "音量"
+
+#: GMediaPlayerWindow.java
+msgid "Save as WAVE…"
+msgstr "存储为 WAVE…"
+
+#: GMediaPlayerWindow.java
+msgid "Save as MIDI…"
+msgstr "存储为 MIDI…"
+
+#: GMediaPlayerWindow.java
+msgid "Copy Frame"
+msgstr "拷贝画面"
+
+#: GMediaPlayerWindow.java
+msgid "Play / Pause (Space)"
+msgstr "播放 / 暂停（空格键）"
+
+#: GMediaPlayerWindow.java
+msgid "Save a copy the host's programs play"
+msgstr "存储一份主机程序能播放的拷贝"
+
+#: GMediaPlayerWindow.java
+msgid "Save the music as a Standard MIDI File"
+msgstr "将音乐存储为标准 MIDI 文件"
+
+#: MediaDocument.java
+msgid "Sound:"
+msgstr "声音："
+
+#: GMediaPlayerWindow.java
+msgid "Loading…"
+msgstr "正在载入…"
+
+#: GMediaPlayerWindow.java
+msgid "The video can't be decoded"
+msgstr "无法解码视频"
+
+#: GMediaPlayerWindow.java
+msgid "The sound can't be decoded"
+msgstr "无法解码声音"
+
+#: GMediaPlayerWindow.java
+msgid "Can't play the file."
+msgstr "无法播放该文件。"
+
+#: GMediaPlayerWindow.java
+msgid "Nothing in the file can be played."
+msgstr "该文件中没有可播放的内容。"
+
+#: GLauncher.java
+msgid "Can't open the file."
+msgstr "无法打开文件。"
+
+#: StackTextEncoding.java TextDocument.java
+msgid "Japanese (Shift-JIS)"
+msgstr "日语 (Shift-JIS)"
+
+#: TextDocument.java
+msgid "Japanese (EUC-JP)"
+msgstr "日语 (EUC-JP)"
+
+#: TextDocument.java
+msgid "Japanese (ISO-2022-JP)"
+msgstr "日语 (ISO-2022-JP)"
+
+#: PpcCoreFoundation.java TextDocument.java
+msgid "Unicode (UTF-8)"
+msgstr "Unicode (UTF-8)"
+
+#: PpcCoreFoundation.java TextDocument.java
+msgid "Unicode (UTF-16)"
+msgstr "Unicode (UTF-16)"
+
+#: TextDocument.java
+msgid "Unicode (UTF-16 Little-Endian)"
+msgstr "Unicode (UTF-16 小端)"
+
+#: PpcCoreFoundation.java StackTextEncoding.java
+msgid "Western (Mac OS Roman)"
+msgstr "西欧 (Mac OS Roman)"
+
+#: StackTextEncoding.java
+msgid "Central European (Mac OS)"
+msgstr "中欧 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Croatian (Mac OS)"
+msgstr "克罗地亚语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Cyrillic (Mac OS)"
+msgstr "西里尔文 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Greek (Mac OS)"
+msgstr "希腊语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Hebrew (Mac OS)"
+msgstr "希伯来语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Icelandic (Mac OS)"
+msgstr "冰岛语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Romanian (Mac OS)"
+msgstr "罗马尼亚语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Thai (Mac OS)"
+msgstr "泰语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Turkish (Mac OS)"
+msgstr "土耳其语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Ukrainian (Mac OS)"
+msgstr "乌克兰语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Arabic (Mac OS)"
+msgstr "阿拉伯语 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Chinese Simplified (Mac OS)"
+msgstr "简体中文 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Chinese Traditional (Mac OS)"
+msgstr "繁体中文 (Mac OS)"
+
+#: StackTextEncoding.java
+msgid "Korean (Mac OS)"
+msgstr "韩语 (Mac OS)"
+
+#: MediaDocument.java
+msgid "Music:"
+msgstr "音乐："
+
+#: MediaDocument.java
+msgid "Standard MIDI File (format {0})"
+msgstr "标准 MIDI 文件（格式 {0}）"
+
+#: MediaDocument.java
+msgid "{0} tracks"
+msgstr "{0} 个音轨"
+
+#: MediaDocument.java
+msgid "{0}-bit uncompressed"
+msgstr "{0} 位未压缩"
+
+#: MediaDocument.java
+msgid "{0} fps"
+msgstr "{0} fps"
+
+#: MediaDocument.java
+msgid "Video:"
+msgstr "视频："
+
+#: MediaDocument.java
+msgid "QuickTime Music"
+msgstr "QuickTime 音乐"
+
+#: MediaDocument.java
+msgid "Other tracks:"
+msgstr "其他轨道："
+
+#: MediaDocument.java
+msgid "{0}-bit gray"
+msgstr "{0} 位灰度"
+
+#: MediaDocument.java
+msgid "{0}-bit float"
+msgstr "{0} 位浮点"
+
+#: MediaDocument.java
+msgid "joint stereo"
+msgstr "联合立体声"
+
+#: MediaDocument.java
+msgid "dual channel"
+msgstr "双声道"
+
+#: MediaDocument.java
+msgid "mono"
+msgstr "单声道"
+
+#: MediaDocument.java
+msgid "stereo"
+msgstr "立体声"
+
+#: MediaDocument.java
+msgid "{0} channels"
+msgstr "{0} 声道"
+
+#: MediaDocument.java
+msgid "1 track"
+msgstr "1 个音轨"
+
+#: EditionDialogs.java
+msgid "Sound"
+msgstr "声音"
+
+#: EditionDialogs.java
+msgid "Editions"
+msgstr "版本"
+
+#: EditionDialogs.java
+msgid "Publish"
+msgstr "发布"
+
+#: EditionDialogs.java
+msgid "“{0}” already exists. Replace it with the new edition?"
+msgstr "“{0}”已存在。要用新版本替换它吗？"
+
+#: EditionDialogs.java
+msgid "Subscribe To"
+msgstr "订阅"
+
+#: EditionDialogs.java
+msgid "Subscribe"
+msgstr "订阅"
+
+#: EditionDialogs.java
+msgid "Publisher Options"
+msgstr "发布者选项"
+
+#: EditionDialogs.java
+msgid "Subscriber Options"
+msgstr "订阅者选项"
+
+#: EditionDialogs.java
+msgid "Publisher to:"
+msgstr "发布到："
+
+#: EditionDialogs.java
+msgid "Subscriber to:"
+msgstr "订阅自："
+
+#: EditionDialogs.java
+msgid "(edition not found)"
+msgstr "（找不到版本）"
+
+#: EditionDialogs.java
+msgid "Send Editions:"
+msgstr "发送版本："
+
+#: EditionDialogs.java
+msgid "Get Editions:"
+msgstr "获取版本："
+
+#: EditionDialogs.java
+msgid "On Save"
+msgstr "存储时"
+
+#: EditionDialogs.java
+msgid "Automatically"
+msgstr "自动"
+
+#: EditionDialogs.java
+msgid "Manually"
+msgstr "手动"
+
+#: EditionDialogs.java
+msgid "Send Edition Now"
+msgstr "立即发送版本"
+
+#: EditionDialogs.java
+msgid "Get Edition Now"
+msgstr "立即获取版本"
+
+#: EditionDialogs.java
+msgid "Latest Edition:"
+msgstr "最新版本："
+
+#: EditionDialogs.java
+msgid "Cancel Publisher"
+msgstr "取消发布"
+
+#: EditionDialogs.java
+msgid "Cancel Subscriber"
+msgstr "取消订阅"
+
+#: EditionDialogs.java
+msgid "Open Publisher"
+msgstr "打开发布者"
+
+#: EditionDialogs.java
+msgid "Cancel this publisher? The document stops sending editions."
+msgstr "要取消此发布吗？文稿将不再发送版本。"
+
+#: EditionDialogs.java
+msgid "Cancel this subscriber? The document stops getting editions."
+msgstr "要取消此订阅吗？文稿将不再获取版本。"
+
+msgid "Stationery Pad"
+msgstr "信纸"
+
+msgid "\"{0}\" is a stationery pad: a new document is made from it and opened."
+msgstr "“{0}”是信纸:将由它创建并打开一个新文稿。"
+
+msgid "Name of the new document:"
+msgstr "新文稿的名称:"
+
+msgid "{0} copy"
+msgstr "{0} 副本"
+
+msgid "\"{0}\" already exists. Choose another name."
+msgstr "“{0}”已存在。请选择其他名称。"
+
+msgid "The new document could not be made: {0}"
+msgstr "无法创建新文稿:{0}"
+
+msgid "Home Stack Changed"
+msgstr "Home 堆栈已更改"
+
+msgid "Something outside HyperZebra changed the Home stack's file while it was open. HyperZebra's own copy has been saved over that change."
+msgstr "HyperZebra 之外的程序在 Home 堆栈打开时更改了它的文件。已用 HyperZebra 自己的内容覆盖保存。"
+
+msgid "The Home stack's scripts were changed outside HyperZebra. Scripts in Home run in every stack."
+msgstr "Home 堆栈的脚本在 HyperZebra 之外被更改。Home 中的脚本会在每个堆栈中运行。"
+
+msgid "Keep Home As It Is"
+msgstr "保持 Home 不变"
+
+msgid "Restore the Last Copy"
+msgstr "恢复最后的副本"
+
+msgid "Handlers added or changed: {0}"
+msgstr "添加或更改的处理程序:{0}"
+
+msgid "Virus Found"
+msgstr "发现病毒"
+
+msgid "The stack \"{0}\" carries the MerryXmas virus, which copies itself into the Home stack and into every stack you open."
+msgstr "堆栈“{0}”带有 MerryXmas 病毒,它会把自身复制到 Home 堆栈和您打开的每个堆栈中。"
+
+msgid "Remove the Virus"
+msgstr "移除病毒"
+
+msgid "Open As Is"
+msgstr "按原样打开"
+
+msgid "wants to change the scripts of the stack:"
+msgstr "想要更改堆栈的脚本:"
+
+msgid "wants to change the protection of the stack:"
+msgstr "想要更改堆栈的保护设置:"
+
+msgid "wants to paste into the stack:"
+msgstr "想要粘贴到堆栈:"
+
+msgid "The Home stack's scripts run in every stack. Old stacks spread viruses this way: allow this only for an installation you started yourself."
+msgstr "Home 堆栈的脚本会在每个堆栈中运行。旧堆栈中的病毒就是这样传播的:仅在您自己启动安装时才允许。"
+
+msgid "Old stacks spread viruses by writing into other stacks: allow this only for an installation you started yourself."
+msgstr "旧堆栈中的病毒通过写入其他堆栈传播:仅在您自己启动安装时才允许。"
+
+msgid "wants to change the program code of:"
+msgstr "想要更改程序代码："
+
+msgid "would load extensions that are new or have changed:"
+msgstr "将载入新的或已更改的扩展："
+
+msgid "is an extension infected with the virus:"
+msgstr "是感染了以下病毒的扩展："
+
+msgid "Viruses of the classic Mac spread by adding their code to programs. Allow this only for an installation or update you started yourself."
+msgstr "经典 Mac 的病毒通过把自身代码加入程序来传播。请仅在您自己启动的安装或更新时允许。"
+
+msgid "An extension runs inside every program, and viruses of the classic Mac stayed resident this way. Allow this if you installed them yourself; otherwise they stay out for now."
+msgstr "扩展在每个程序内运行，经典 Mac 的病毒就是这样常驻的。如果是您自己安装的，请允许；否则暂不载入。"
+
+msgid "It stays out unless you allow it."
+msgstr "除非您允许，否则不会载入。"
+
+msgid "It holds a virus and was not opened."
+msgstr "其中含有病毒，未打开。"
+
+msgid "\"{0}\" is infected with the virus {1}."
+msgstr "“{0}”感染了病毒 {1}。"
+
+msgid "Repairing puts the program back as it was; the infected file is kept in Deleted Files."
+msgstr "修复后程序将恢复原状；受感染的文件保留在 Deleted Files 中。"
+
+msgid "HyperZebra cannot repair this file. If you open it anyway, changes it tries to make to other programs are still refused."
+msgstr "HyperZebra 无法修复此文件。如果仍要打开，它尝试更改其他程序时仍会询问您。"
+
+msgid "Don't Open"
+msgstr "不打开"
+
+msgid "Repair and Open"
+msgstr "修复并打开"
+
+msgid "Open Anyway"
+msgstr "仍然打开"
+
+msgid "Not a scrolling field."
+msgstr "这不是可滚动字段。"

@@ -497,6 +497,8 @@ final class Xcmd68k {
 
 	/** Whether any external keeps windows open (the script thread then pumps their events more often). */
 	static boolean hasSessions(){synchronized(sessions){return !sessions.isEmpty();}}
+	/** {@link #hasSessions} without the lock, for compiled HyperTalk's statements: a session just made may be seen a little later. */
+	static boolean hasSessionsHint(){return !sessions.isEmpty();}
 	/** {@link #hasSessions}, or this thread is inside the first call of a VM not kept yet (see {@link #liveSessions}). */
 	static boolean hasWindowSessions(){if(hasSessions())return true;for(Session s:calling)if(Thread.holdsLock(s))return true;return false;}
 	private static volatile long lastPumpNanos;

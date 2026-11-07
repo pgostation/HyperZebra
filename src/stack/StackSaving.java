@@ -310,6 +310,7 @@ final class StackSaving {
 
 	/** Copies the stack folder's files (not the stack file itself, which is written afresh, nor unfinished temporary files). */
 	static void copyBundle(Path from, Path to, String stackFileName) throws IOException {
+		PictureSaver.flush();
 		Files.createDirectories(to);
 		try(Stream<Path> all = Files.walk(from)){
 			for(Path p: (Iterable<Path>)all::iterator){

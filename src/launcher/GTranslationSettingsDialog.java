@@ -46,6 +46,7 @@ final class GTranslationSettingsDialog extends JDialog {
 		this.file = file; this.current = current;
 		stack = StackTranslation.isStackFile(file) || !MacApp68k.isApplication(file);
 		String unavailable = VMTranslation.unavailableReason();
+		boolean mac = VMTranslation.osHasTranslators(); // elsewhere the engine and Resource Translation… are not shown at all
 		getContentPane().setLayout(new BorderLayout());
 		JPanel grid = new JPanel(new GridBagLayout());
 		grid.setBorder(BorderFactory.createEmptyBorder(16, 16, 8, 16));
@@ -55,7 +56,8 @@ final class GTranslationSettingsDialog extends JDialog {
 
 		JLabel intro = new JLabel(GPreferencesDialog.wrap(GPreferencesDialog.dialogText(stack
 			? "The stack's button names and fields are shown translated; what scripts read and what is saved stays as it is."
-			: "The program runs with translated copies of its menus, dialogs and strings, made by Resource Translation…; the program file is never changed.")));
+			: mac ? "The program runs with translated copies of its menus, dialogs and strings, made by Resource Translation…; the program file is never changed."
+			: "The program runs with translated copies of its menus, dialogs and strings, made by Resource Translation with AI Chat…; the program file is never changed.")));
 		c.gridwidth = 2; grid.add(intro, c); c.gridwidth = 1; c.gridy++;
 
 		if(stack){
@@ -73,7 +75,7 @@ final class GTranslationSettingsDialog extends JDialog {
 			Thread t = new Thread(() -> {
 				String[] s = PictureTranslation.status(false);
 				javax.swing.SwingUtilities.invokeLater(() -> {
-					pictureNote.setText(GPreferencesDialog.wrap(s[0]!=null ? s[0] : International.t(stack ? "(the pictures stay as they are: a translated copy is shown)" : "(its PICT resources, by Resource Translation…; the program file is never changed)")));
+					pictureNote.setText(GPreferencesDialog.wrap(s[0]!=null ? s[0] : International.t(stack ? "(the pictures stay as they are: a translated copy is shown)" : mac ? "(its PICT resources, by Resource Translation…; the program file is never changed)" : "(its PICT resources, by Resource Translation with AI Chat…; the program file is never changed)")));
 					if(s[0]!=null) pictureNote.setForeground(new java.awt.Color(0xb0, 0x40, 0x00));
 					Dimension p = getPreferredSize();
 					setSize(Math.max(getWidth(), p.width), Math.max(getHeight(), p.height));
@@ -94,8 +96,9 @@ final class GTranslationSettingsDialog extends JDialog {
 		for(int k=0; k<engineNames.length; k++) engineNames[k] = VMTranslation.engineLabel(VMTranslation.ENGINES[k]);
 		engineCombo = GAppSettingsDialog.followCombo(FOLLOW_TRANSLATION, engineNames, VMTranslation.engineLabel(PCARD.translateEngine68k),
 			current.translateEngine==null ? -1 : engines.indexOf(current.translateEngine));
-		GAppSettingsDialog.addRow(grid, c, "Engine:", engineCombo, null);
-		if(unavailable==null){
+		if(mac) GAppSettingsDialog.addRow(grid, c, "Engine:", engineCombo, null);
+		if(!mac) engineCombo.setEnabled(false); // not stored
+		else if(unavailable==null){
 			//選んだ方式(「翻訳設定に従う」ならその方式)をいつ選ぶか
 			JLabel engineHelp = GAppSettingsDialog.note("");
 			Runnable showHelp = () -> { int k = engineCombo.getSelectedIndex();
@@ -129,10 +132,10 @@ final class GTranslationSettingsDialog extends JDialog {
 					if(answer!=javax.swing.JOptionPane.OK_OPTION) return;
 					ResourceTranslation.delete(file);
 					resourcesCombo.setEnabled(false); delete.setEnabled(false);
-					n.setText(GPreferencesDialog.dialogText("(deleted; Resource Translation… makes them again)"));
+					n.setText(GPreferencesDialog.dialogText(mac ? "(deleted; Resource Translation… makes them again)" : "(deleted; Resource Translation with AI Chat… makes them again)"));
 				});
 			}else{
-				JLabel none = new JLabel(GPreferencesDialog.dialogText("None yet: Resource Translation… makes them."));
+				JLabel none = new JLabel(GPreferencesDialog.dialogText(mac ? "None yet: Resource Translation… makes them." : "None yet: Resource Translation with AI Chat… makes them."));
 				GAppSettingsDialog.addRow(grid, c, "Translated resources:", none, null);
 			}
 		}
@@ -147,7 +150,7 @@ final class GTranslationSettingsDialog extends JDialog {
 		chatButton.setToolTipText(International.t("Resource Translation with AI Chat…")+" "+International.t("Copy a request into ChatGPT or another AI chat and paste its answer back."));
 		chatButton.setEnabled(file.exists());
 		chatButton.addActionListener(e -> { ok = true; chat = true; dispose(); });
-		JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0)); left.add(aheadButton); left.add(chatButton);
+		JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0)); if(mac) left.add(aheadButton); left.add(chatButton);
 		if(owner instanceof Frame || owner==null) bottom.add(left, BorderLayout.WEST); // not over the Application Settings: its window would block the progress window
 		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
 		JButton cancelBtn = new JButton("Cancel"), okBtn = new JButton("OK");

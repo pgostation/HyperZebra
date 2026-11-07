@@ -87,6 +87,14 @@ final class VMTranslation {
 		return unavailable;
 	}
 
+	/** Whether this OS can have macOS's translators at all (macOS, or a given helper): elsewhere the settings and items that
+	 *  need them are not shown, instead of saying they are not available. */
+	static boolean osHasTranslators(){
+		String p=System.getProperty("hz.translate.helper");
+		if(p!=null&&!"none".equals(p))return true;
+		return System.getProperty("os.name","").toLowerCase(Locale.ROOT).contains("mac");
+	}
+
 	static int macMajor(){
 		String v=System.getProperty("os.version","0");
 		try{return Integer.parseInt(v.split("\\.")[0]);}catch(NumberFormatException e){return 0;}

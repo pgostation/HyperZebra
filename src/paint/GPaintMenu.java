@@ -38,11 +38,20 @@ class GMenuPaint implements ActionListener {
 		boolean result = doMenu(cmd);
 		if(result==false){
 			try {
-				GMenuBrowse.doMenu(cmd);
+				//the Tools menu's Select is the tool, the Paint menu's the command
+				if(fromToolsMenu(e.getSource()) && "Select".equalsIgnoreCase(PCARD.pc.intl.getEngText(cmd))) TTalk.doScriptforMenu("choose select tool");
+				else GMenuBrowse.doMenu(cmd);
 			} catch (xTalkException e1) {
 				e1.printStackTrace();
 			}
 		}
+	}
+
+	private static boolean fromToolsMenu(Object source){
+		if(!(source instanceof javax.swing.JMenuItem)) return false;
+		java.awt.Container parent = ((javax.swing.JMenuItem)source).getParent();
+		return parent instanceof javax.swing.JPopupMenu && ((javax.swing.JPopupMenu)parent).getInvoker() instanceof javax.swing.JMenu &&
+			PCARD.pc.intl.getText("Tool").equals(((javax.swing.JMenu)((javax.swing.JPopupMenu)parent).getInvoker()).getText());
 	}
 
 	//サーフェース全体をafで変換した同じ大きさの新しい画像
@@ -202,6 +211,7 @@ class GMenuPaint implements ActionListener {
 		OCardBase base = card==null ? null : bg ? card.bg : card;
 		if(base==null || base.bitmapName==null || base.bitmapName.isEmpty() || stack.file==null) return null;
 		java.io.File file = new java.io.File(stack.file.getParent(), base.bitmapName);
+		PictureSaver.flush();
 		if(!file.isFile()) return null;
 		try{ return StackProtection.readImage(file); }
 		catch(IOException e){ return null; }
@@ -276,6 +286,7 @@ class GMenuPaint implements ActionListener {
 			//浮動選択を捨てる(持ち上げた跡は空いたまま)
 			PaintTool.discardFloating();
 			PaintTool.owner.tool.clear();
+			PaintTool.backToToolBeforeSelect();
 			PaintTool.owner.mainPane.repaint();
 		}
 		else if(cmd.equalsIgnoreCase("Cut Picture")){
@@ -284,6 +295,7 @@ class GMenuPaint implements ActionListener {
 				setClipboardImage(scrapImage(f), f.width(), f.height());
 				copiedFrom = f.bounds(); copiedBy = ImageSelection.current;
 				PaintTool.discardFloating();
+				PaintTool.backToToolBeforeSelect();
 			}
 			else System.out.println("Error");
 			PaintTool.owner.mainPane.repaint();
@@ -306,14 +318,18 @@ class GMenuPaint implements ActionListener {
 				if(!TBButtonListener.ChangeTool("Select", null)) return false;
 			}
 			Rectangle from = copiedFrom;
-			if(from!=null && pasted!=null && pasted.getWidth(null)==from.width && pasted.getHeight(null)==from.height)
+			if(from!=null && pasted!=null && pasted.getWidth(null)==from.width && pasted.getHeight(null)==from.height){
 				PaintTool.pasteAsSelection(pasted, from.x, from.y);
+				if(PaintTool.floating()!=null) PaintTool.floating().keepShape();
+			}
 			else PaintTool.pasteAsSelection(pasted);
 			PaintTool.owner.mainPane.repaint();
 		}
 		else if(cmd.equalsIgnoreCase("Select All")){
 			PaintTool.owner.tool.end();
 			BufferedImage surface = PaintTool.owner.getSurface();
+			//the select tool while the selection lasts, then the tool in use comes back (HC J-2.3)
+			if(PaintTool.owner==PCARD.pc && PaintTool.toolBeforeSelect==null && !(PaintTool.owner.tool instanceof SelectTool)) PaintTool.toolBeforeSelect = TBButtonListener.lastcmd;
 			//サーフェース全体を浮動選択へ移す
 			PaintTool.owner.tool = new SelectTool();
 			PaintTool.liftRect(new Rectangle(0, 0, surface.getWidth(), surface.getHeight()));

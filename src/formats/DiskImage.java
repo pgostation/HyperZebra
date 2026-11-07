@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A classic Macintosh disk image, read without a Mac: the container is taken off (Disk Copy 4.2, Disk Copy 6 / NDIF, UDIF,
+ * A classic Macintosh disk image, read without a Mac: the container is taken off (Disk Copy 4.2, Disk Copy 6 / NDIF, UDIF, DART,
  * a MacBinary wrapper, an Apple partition map, a GUID or MBR partition table, or none - a raw volume as .dsk/.hfv/.toast and many .img files are) and the volume inside is read
  * as HFS, HFS Plus or MFS ({@link HfsVolume}) or ISO 9660 ({@link IsoVolume}), read-only. What comes out is a tree of {@link Entry} with both forks and the Finder
  * information, which {@link DiskImages} writes into a host folder the 68K VM mounts as a disk.
@@ -125,11 +125,11 @@ final class DiskImage implements Closeable {
 	}
 
 	/**
-	 * A disk kept as chunks of sectors - zeros, stored, or compressed (ADC, zlib, bzip2) - in a data fork: Disk Copy 6 (NDIF)
-	 * and UDIF (.dmg) images. Chunks are decompressed on demand and the last few kept.
+	 * A disk kept as chunks of sectors - zeros, stored, or compressed (ADC, zlib, bzip2, DART's two) - in a data fork: Disk Copy 6
+	 * (NDIF), UDIF (.dmg) and DART images. Chunks are decompressed on demand and the last few kept.
 	 */
 	static class ChunkSource implements Source {
-		static final int ZERO=0,RAW=1,ADC=2,ZLIB=3,BZIP2=4;
+		static final int ZERO=0,RAW=1,ADC=2,ZLIB=3,BZIP2=4,DART_RLE=5,DART_LZH=6;
 		private final Source data;private final long length;
 		/** Per chunk, sorted by sector: first sector, sector count, kind, data offset, stored length. */
 		private final long[][] chunks;
@@ -166,6 +166,8 @@ final class DiskImage implements Closeable {
 				case ADC:plain=adc(stored,size);break;
 				case ZLIB:plain=inflate(stored,size);break;
 				case BZIP2:plain=Bzip2.decompress(stored,size);break;
+				case DART_RLE:plain=dartRle(stored,size);break;
+				case DART_LZH:plain=DartLzh.decompress(stored,size);break;
 				default:plain=new byte[size];
 			}
 			cache.put(index,plain);return plain;
@@ -201,7 +203,82 @@ final class DiskImage implements Closeable {
 			if(kind<0)throw new UnsupportedImageException("Disk Copy 6 (NDIF) chunk type $"+Integer.toHexString(type));
 			list.add(new long[]{start,next-start,kind,u4(bcem,at+4)&0xffffffffL,u4(bcem,at+8)&0xffffffffL});
 		}
+		long shift=ndifLeadingBytes(data,list);
+		if(shift>0)for(long[] c:list)if(c[2]!=ChunkSource.ZERO)c[3]+=shift;
 		return new ChunkSource(data,list,sectors);
+	}
+
+	/**
+	 * Stray bytes in front of an NDIF data fork: the fork is longer than the chunks by less than a sector and the volume
+	 * header (sector 2) is found only that far in. "ArtPad 243 en-de.img" (Macintosh Garden) carries 2 such bytes in its
+	 * own archive; Disk Copy itself would refuse it. 0 for a regular image.
+	 */
+	private static long ndifLeadingBytes(Source data,List<long[]> chunks) throws IOException {
+		long end=0;
+		for(long[] c:chunks)if(c[2]!=ChunkSource.ZERO)end=Math.max(end,c[3]+c[4]);
+		long surplus=data.length()-end;
+		if(surplus<=0||surplus>=512)return 0;
+		for(long[] c:chunks){
+			if(c[2]!=ChunkSource.RAW||c[0]>2||c[0]+c[1]<=2)continue;
+			long at=c[3]+(2-c[0])*512;
+			return !volumeSignature(data,at)&&volumeSignature(data,at+surplus)?surplus:0;
+		}
+		return 0;
+	}
+	private static boolean volumeSignature(Source data,long at) throws IOException {
+		if(at+2>data.length())return false;
+		byte[] b=data.read(at,2);int sig=(b[0]&0xff)<<8|b[1]&0xff;
+		return sig==0x4244||sig==0xD2D7||sig==0x482B||sig==0x4858;
+	}
+
+	/**
+	 * A DART image (Disk Archive/Retrieval Tool, Apple's floppy duplicator; creator 'DART', types 'DMd1' to 'DMd7'), as described
+	 * in the CiderPress II format notes. There is no signature: a compression byte (0 RLE, 1 LZH, 2 none), a disk type, the size
+	 * in KB, then a word per chunk with its stored length - 40 entries up to 800 KB, else 72, zero past the end of the disk -
+	 * and the chunks. A chunk is 40 sectors of 512 bytes followed by their 12-byte tags, which nothing here needs; its length
+	 * counts words under RLE and bytes under LZH, and $FFFF means it is stored after all.
+	 */
+	static final class DartSource extends ChunkSource {
+		private static final int CHUNK_SECTORS=40,CHUNK_BYTES=20960;
+		private final int diskType;
+		private DartSource(Source data,List<long[]> chunks,long sectors,int diskType){super(data,chunks,sectors);this.diskType=diskType;}
+		/** The chunks of {@code s} when its header fits its length exactly (bar some padding under a sector), else null. */
+		static DartSource of(Source s) throws IOException {
+			if(s.length()<84)return null;
+			byte[] h=s.read(0,148);
+			int compression=h[0]&0xff,type=h[1]&0xff,kilobytes=u2(h,2);
+			if(compression>2||!knownDisk(type,kilobytes))return null;
+			int slots=kilobytes<=800?40:72,used=kilobytes/20;
+			long at=4+2*slots;
+			List<long[]> chunks=new ArrayList<long[]>();
+			for(int i=0;i<slots;i++){
+				int length=u2(h,4+2*i);
+				if(i>=used){if(length!=0)return null;continue;}
+				boolean stored=length==0xffff||compression==2;
+				if(length==0||compression==2&&length!=0xffff&&length!=CHUNK_BYTES)return null;
+				long bytes=stored?CHUNK_BYTES:compression==0?2L*length:length;
+				chunks.add(new long[]{(long)i*CHUNK_SECTORS,CHUNK_SECTORS,stored?RAW:compression==0?DART_RLE:DART_LZH,at,bytes});
+				at+=bytes;
+			}
+			long padding=s.length()-at;
+			return padding<0||padding>=512?null:new DartSource(s,chunks,kilobytes*2L,type);
+		}
+		private static boolean knownDisk(int type,int kilobytes){
+			switch(type){
+				case 1:case 2:case 3:return kilobytes==400||kilobytes==800; // Macintosh, Lisa, Apple II
+				case 16:case 17:case 18:return kilobytes==720||kilobytes==1440; // high-density Macintosh, MS-DOS
+				default:return false;
+			}
+		}
+		/** What the disk is, for one with no Macintosh volume on it. */
+		String kind(){
+			switch(diskType){
+				case 2:return "Lisa disk in a DART image";
+				case 3:return "Apple II disk in a DART image";
+				case 17:case 18:return "MS-DOS disk in a DART image";
+				default:return "DART image without a Macintosh volume";
+			}
+		}
 	}
 
 	/** The 512-byte UDIF trailer ('koly') at the end of {@code s}, or null. */
@@ -286,12 +363,36 @@ final class DiskImage implements Closeable {
 		return out;
 	}
 
+	/**
+	 * DART's "fast" compression, in big-endian words: a count n, then n words as they are; or a negative count -n and a word
+	 * that comes n times.
+	 */
+	static byte[] dartRle(byte[] in,int size) throws IOException {
+		byte[] out=new byte[size];int o=0,i=0;
+		while(o<size){
+			if(i+4>in.length)throw new IOException("DART chunk ends early");
+			int n=(short)u2(in,i);i+=2;
+			if(n==0)throw new IOException("damaged DART chunk");
+			if(n>0){
+				if(i+2*n>in.length)throw new IOException("DART chunk ends early");
+				int bytes=Math.min(2*n,size-o);System.arraycopy(in,i,out,o,bytes);i+=2*n;o+=bytes;
+			}else{
+				for(int k=0;k<2*-n&&o<size;k++)out[o++]=in[i+(k&1)];
+				i+=2;
+			}
+		}
+		return out;
+	}
+
 	/** One file or folder on the volume. Names are the Mac's bytes; dates are Mac dates (local seconds since 1904). */
 	static final class Entry {
 		byte[] name=new byte[0];
 		/** The name in Unicode when the volume keeps it so (HFS Plus); null for names in a Mac encoding. */
 		String unicodeName;
 		boolean folder,locked;
+		/** ioFlAttrib bits the volume keeps for the file beside its lock: bit 6, copy-protected (MFS flFlags, HFS filFlags) - the
+		 *  Finder would not copy such a file, and Airborne! (1984) takes a disk without it for a pirated one. */
+		int attributes;
 		/** FInfo / DInfo and FXInfo / DXInfo, 16 bytes each. */
 		final byte[] finderInfo=new byte[16],extendedInfo=new byte[16];
 		int created,modified;
@@ -357,6 +458,7 @@ final class DiskImage implements Closeable {
 			else if(koly!=null){image=udif(image,koly,file);container="UDIF";}
 			long[] dc42=bcem!=null||koly!=null?null:diskCopy42(image);
 			if(dc42!=null){image=new Slice(image,84,dc42[0]);container="Disk Copy 4.2";}
+			else if(bcem==null&&koly==null){Source dart=DartSource.of(image);if(dart!=null){image=dart;container="DART";}}
 			Object[] found=findVolume(image);
 			if(found==null){
 				String kind=unsupportedKind(file,image);
@@ -382,9 +484,10 @@ final class DiskImage implements Closeable {
 	 */
 	static boolean recognizes(File file){
 		file=cueTarget(file);
-		if(file==null||!file.isFile()||file.length()<1536)return false;
+		if(file==null||!file.isFile()||file.length()<84)return false;
 		try(RandomAccessFile raf=new RandomAccessFile(file,"r")){
 			Source image=new FileSource(raf,0,raf.length());
+			if(file.length()<1536){Source dart=DartSource.of(image);return dart!=null&&findVolume(dart,false)!=null;} // RLE makes a nearly blank disk this small
 			long[] macBinary=macBinaryDataFork(image);
 			if(macBinary!=null)image=new Slice(image,128,macBinary[0]);
 			else{Source cd=RawCdSource.of(image);if(cd!=null)return findVolume(cd,false)!=null;}
@@ -394,6 +497,7 @@ final class DiskImage implements Closeable {
 			else if(koly!=null)image=udif(image,koly,file);
 			long[] dc42=bcem!=null||koly!=null?null:diskCopy42(image);
 			if(dc42!=null)image=new Slice(image,84,dc42[0]);
+			else if(bcem==null&&koly==null){Source dart=DartSource.of(image);if(dart!=null)image=dart;}
 			return findVolume(image,false)!=null;
 		}catch(IOException|RuntimeException e){return false;}
 	}
@@ -413,6 +517,7 @@ final class DiskImage implements Closeable {
 			}catch(UnsupportedImageException e){return e.kind;}
 			long[] dc42=bcem!=null||koly!=null?null:diskCopy42(image);
 			if(dc42!=null)image=new Slice(image,84,dc42[0]);
+			else if(bcem==null&&koly==null){Source dart=DartSource.of(image);if(dart!=null)image=dart;}
 			if(findVolume(image,false)!=null)return null;
 			return unsupportedKind(file,image);
 		}catch(IOException|RuntimeException e){return null;}
@@ -424,7 +529,11 @@ final class DiskImage implements Closeable {
 		byte[] fork=null;
 		if(info==null||info[0]==0){try{byte[] stored=FinderInfo68k.stored(file);if(stored!=null)info=stored;}catch(RuntimeException ignored){}}
 		String type=info==null?"":new String(info,0,4,"ISO-8859-1"),creator=info==null?"":new String(info,4,4,"ISO-8859-1");
+		if(proDosVolume(image))return "Apple II (ProDOS) disk";
+		if(image instanceof DartSource)return ((DartSource)image).kind();
+		if(fatBootSector(image))return "MS-DOS (FAT) disk";
 		if(type.equals("rohd")||type.equals("dImg")||creator.equals("dCpy")||creator.equals("ddsk"))return "Disk Copy 6 (NDIF)";
+		if(creator.equals("DART")&&type.startsWith("DMd")&&!type.equals("DMd0"))return "damaged DART image"; // DMd0: its settings file
 		if(creator.equals("oneb")&&type.equals("APPL"))return "self-mounting image (.smi)";
 		String name=file.getName().toLowerCase(java.util.Locale.ROOT);
 		if(name.endsWith(".smi")||name.endsWith(".smi.bin"))return "self-mounting image (.smi)";
@@ -434,6 +543,24 @@ final class DiskImage implements Closeable {
 			if(fork!=null&&fork.length>0&&new String(fork,"ISO-8859-1").contains("bcem"))return "Disk Copy 6 (NDIF)";
 		}
 		return null;
+	}
+
+	/** An Apple II disk (Disk Copy 4.2 and DART keep those too): the ProDOS volume directory in block 2 - no previous block, the next one, a volume header entry whose name is upper-case ASCII, 39-byte entries. */
+	private static boolean proDosVolume(Source image) throws IOException {
+		if(image.length()<0x600)return false;
+		byte[] b=image.read(0x400,0x200);
+		if(b[0]!=0||b[1]!=0||(b[2]&0xFF)!=3||b[3]!=0||(b[4]&0xF0)!=0xF0||(b[4]&0x0F)==0||(b[0x23]&0xFF)!=0x27)return false;
+		for(int i=0;i<(b[4]&0x0F);i++){int c=b[5+i]&0xFF;if(!(c>='A'&&c<='Z'||c>='0'&&c<='9'||c=='.'))return false;}
+		return true;
+	}
+
+	/** A PC floppy/disk: x86 jump + $55AA boot signature + a FAT BIOS parameter block (Disk Copy 4.2 keeps PC floppies too). */
+	private static boolean fatBootSector(Source image) throws IOException {
+		if(image.length()<512)return false;
+		byte[] b=image.read(0,512);
+		if((b[510]&0xFF)!=0x55||(b[511]&0xFF)!=0xAA||((b[0]&0xFF)!=0xEB&&(b[0]&0xFF)!=0xE9))return false;
+		int bytesPerSector=(b[11]&0xFF)|(b[12]&0xFF)<<8;
+		return bytesPerSector==512||bytesPerSector==1024||bytesPerSector==2048||bytesPerSector==4096;
 	}
 
 	/** The 'bcem' resource (128, else the first) of a Disk Copy 6 image or self-mounting image, from any fork storage (MacBinary too), or null. */

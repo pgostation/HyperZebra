@@ -84,6 +84,13 @@ final class HelpManager68k {
 			case 0x13:{int p=memory.readLong(sp);if(p!=0)memory.writeWord(p,dialogResId);break;}   // HMGetDialogResID
 			case 0x14:{int p=memory.readLong(sp),menuId=(short)memory.readWord(sp+4);Integer id=menuResIds.get(menuId);if(p!=0)memory.writeWord(p,id==null?-1:id);if(id==null)result=PARAM_ERR;break;} // HMGetMenuResID
 			case 0x15:{int p=memory.readLong(sp);if(p!=0)memory.writeLong(p,0);break;}             // HMGetBalloonWindow: the balloon is a host window
+			case 0x12:{ // $0512 (undocumented; Apple's At Ease control panel): (VAR text: Str255; param: Str255; key: CHAR): OSErr - "^key" in text becomes param
+				int key=memory.readWord(sp)&0xff,param=memory.readLong(sp+2),text=memory.readLong(sp+6);
+				if(text==0||param==0){result=PARAM_ERR;break;}
+				byte[] s=java.util.Arrays.copyOfRange(tb.readPascalBytes(text),1,1+memory.readByte(text)),p=java.util.Arrays.copyOfRange(tb.readPascalBytes(param),1,1+memory.readByte(param));java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+				for(int i=0;i<s.length;i++){if(s[i]=='^'&&i+1<s.length&&(s[i+1]&0xff)==key){out.write(p,0,p.length);i++;}else out.write(s[i]);}
+				byte[] r=out.toByteArray();int length=Math.min(255,r.length);memory.writeByte(text,length);for(int i=0;i<length;i++)memory.writeByte(text+1+i,r[i]&0xff);
+				break;}
 			default:break;
 		}
 		cpu.a[7]+=args;memory.writeWord(cpu.a[7],result);return true;

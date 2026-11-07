@@ -111,7 +111,16 @@ final class ScrapManager68k {
 		if(text!=null)flavors.add(new Flavor(TEXT,text));
 		if(image!=null){byte[] picture=pictureOf(image);if(picture!=null){Flavor flavor=new Flavor(PICT,picture);flavor.image=image;flavors.add(flavor);}}
 		if(Mac68kApi.TRACE)System.err.println("[68K] scrap <- host clipboard"+(text!=null?" TEXT "+text.length+" bytes":"")+(image!=null?" PICT "+image.getWidth()+"x"+image.getHeight():""));
-		inMemory=true;scrapCount=(short)(scrapCount+1);syncScrap();
+		inMemory=true;scrapCount=(short)(scrapCount+1);syncScrap();adoptions++;
+	}
+	/** How often the scrap took the host clipboard over, and that count when the program was last suspended (-1: not suspended). */
+	private int adoptions,adoptionsAtSuspend=-1;
+	/** The program got a suspend event: what it puts in the scrap from now on (ClarisWorks' own clipboard) is its own change. */
+	void suspended(){adoptionsAtSuspend=adoptions;}
+	/** At the resume event: whether another program or host application changed the clipboard since the suspend (convertClipboard). */
+	boolean changedSinceSuspend() throws M68kCpuException {
+		if(adoptionsAtSuspend<0)return false;
+		lastPull=0;pullFromHost();boolean changed=adoptions!=adoptionsAtSuspend;adoptionsAtSuspend=-1;return changed;
 	}
 	/** A host image as a version 2 picture (32-bit DirectBitsRect), scaled down when it would not fit the program's heap. */
 	private byte[] pictureOf(BufferedImage image){

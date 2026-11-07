@@ -118,7 +118,9 @@ final class ControlManager68k {
 			case 0x955:{int h=pop(cpu);dispose(h,true);return true;}
 			case 0x956:{int w=pop(cpu);killControls(w);return true;}
 			case 0x957:{int h=pop(cpu);int d=data(h);if(d!=0){memory.writeByte(d+16,0xff);draw(h);}return true;}
-			case 0x958:{int h=pop(cpu);int d=data(h);if(d!=0){memory.writeByte(d+16,0);erase(h);}return true;}
+			// HideControl of a control that is already invisible does nothing (the ROM tests contrlVis first): Chips & Dips Info
+			// hides its invisible CNTL 257 at 0,0,150,16 before moving it out as the scroll bar - the erase cut the first letters of its text
+			case 0x958:{int h=pop(cpu);int d=data(h);if(d!=0&&memory.readByte(d+16)!=0){memory.writeByte(d+16,0);erase(h);}return true;}
 			case 0x95d:{int part=(short)memory.readWord(cpu.a[7]),h=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;int d=data(h);if(d!=0){memory.writeByte(d+17,part);draw(h);}return true;}
 			case 0x969:{int w=pop(cpu);drawAll(w);return true;}
 			case 0x953:{int rgn=memory.readLong(cpu.a[7]),w=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;drawAll(w);return true;}
@@ -534,7 +536,11 @@ final class ControlManager68k {
 
 	void setValue(int handle,int value) throws M68kCpuException {
 		int d=data(handle);if(d==0)return;
-		int clamped=clamp(value,(short)memory.readWord(d+20),(short)memory.readWord(d+22));
+		// pinned as the ROM does - raised to the minimum, then lowered to the maximum - so with max < min the maximum wins:
+		// REALbasic sets a new PopupMenu's ListIndex to 0 (value 1) before it has rows (min 1, max 0); the value stays 0 and
+		// ListIndex -1, and Text answers "" (Art Directors Toolkit 3 read Text of an empty pop-up: "Failed Assertion array.cpp:73")
+		int min=(short)memory.readWord(d+20),max=(short)memory.readWord(d+22);
+		int clamped=Math.min(Math.max(value,min),max);
 		memory.writeWord(d+18,clamped);
 		// the ROM redraws a value change as drawCntl part 129 (indicator only): a check box or radio button gets its box drawn
 		// again, not its whole rectangle - Resorcerer draws attribute icons beside title-less check boxes, which a full redraw erased
@@ -671,6 +677,12 @@ final class ControlManager68k {
 
 	/** Tracks the mouse in a control until the button is released; returns the part code hit. */
 	int track(int handle,int startH,int startV,int action) throws M68kException {
+		int part=trackPart(handle,startH,startV,action);
+		// the ROM's tracking ends in WaitMouseUp, which takes the mouse-up out of the queue (a live thumb drag returns with the button still down)
+		if(!tb.host().isMouseDown())tb.events.mouseUpTracked();
+		return part;
+	}
+	private int trackPart(int handle,int startH,int startV,int action) throws M68kException {
 		int d=data(handle);Control c=controls.get(handle);if(d==0||c==null)return 0;
 		int startPart=partAt(handle,startH,startV);
 		// a start point that hits no part: the caller passed the mouse-down's GLOBAL point (MacWeb's form check boxes, radio
@@ -866,6 +878,9 @@ final class ControlManager68k {
 			if(translation!=null){ // a host font has the translation's characters; smaller sizes until it fits the control
 				int room=kind==0&&base==0?right-left-8:kind==0&&(base==1||base==2)?right-left-18:kind==1008?Math.max(8,right-left-24):right-left-4;
 				font=fitFont((procId&8)!=0?memory.readWord(window+68):0,font.getSize(),translation,room);title=translation;}
+			// a check box or radio button no wider than its box: the CDEF clips the title to the rectangle, so none of it shows -
+			// allShare's cdev labels such 16-pixel radio buttons with static texts beside them (the titles came out over the labels)
+			if(titleClipped(kind,base,left,right))title="";
 			g.setFont(font);FontMetrics fm=Fonts68k.metrics(font); // an installed Chicago strike measures and draws itself (Fonts68k.drawString)
 			KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);
 			if(scheme!=null&&kind==0&&base==0&&scheme.element(KaleidoscopeScheme68k.PUSH)!=null){
@@ -942,6 +957,8 @@ final class ControlManager68k {
 		if(tb.windows.isWindow(window))tb.windows.invalidate(window,top-m,left-m,bottom+m,right+m);
 	}
 
+	/** Whether a standard check box or radio button (kind 0, base 1/2) is too narrow to show any of its title: the title starts 19 pixels in. */
+	static boolean titleClipped(int kind,int base,int left,int right){return kind==0&&(base==1||base==2)&&right-left<=19;}
 	static void drawButton(Graphics2D g,int left,int top,int right,int bottom,String title,boolean pressed,boolean disabled,FontMetrics fm){
 		int w=right-left,h=bottom-top;int arc=Math.min(h,16);
 		g.setColor(pressed?SHADE:FILL);g.fillRoundRect(left,top,w-1,h-1,arc,arc);

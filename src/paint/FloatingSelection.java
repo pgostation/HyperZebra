@@ -57,6 +57,17 @@ class FloatingSelection {
 	Rectangle originBounds(){ return new Rectangle(originX, originY, width(), height()); }
 	boolean isRectangular(){ return mask==null; }
 
+	/** A picture copied from a selection in the shape of what it holds is that shape again when pasted: Fill and Invert stay inside
+	 *  it, and a drag from anywhere in its box moves it (HC J-2.3: エンボス加工 drags it from the white between two bars) */
+	void keepShape(){
+		if(mask!=null) return;
+		int[] ip = pixels(image);
+		for(int i=0; i<width()*height(); i++){
+			if((ip[i]>>>24)==0){ mask = alphaMask(image); outline = null; pastedShape = true; return; }
+		}
+	}
+	private boolean pastedShape;
+
 	static BufferedImage toArgb(BufferedImage img){
 		if(img.getType()==BufferedImage.TYPE_INT_ARGB && PaintTool.directPixels(img)!=null) return img;
 		BufferedImage out = PaintTool.newArgb(img.getWidth(), img.getHeight());
@@ -180,7 +191,7 @@ class FloatingSelection {
 	boolean contains(int sx, int sy){
 		int lx = sx-x, ly = sy-y;
 		if(lx<0 || ly<0 || lx>=width() || ly>=height()) return false;
-		if(mask==null) return true;
+		if(mask==null || pastedShape) return true;
 		return (mask.getRGB(lx, ly)&0xFF000000)!=0;
 	}
 
@@ -468,7 +479,7 @@ class FloatingSelection {
 	}
 
 	void invert(){
-		eachInside(c -> (c&0xFF000000) | (~c&0x00FFFFFF));
+		eachInside(PaintTool::invertedPixel);
 	}
 
 	private static int clamp(int v){ return v<0 ? 0 : (v>255 ? 255 : v); }

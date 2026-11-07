@@ -137,7 +137,7 @@ final class KaleidoscopeScheme68k {
 			if(!system.equals(cachedSystemFolder)||now-checkedAt>=2000){checkedAt=now;cachedSystemFolder=system;cachedPanel=controlPanel(system);}
 			try{
 				File panelFile=cachedPanel;
-				File prefs=new File(new File(system,"Preferences"),"Kaleidoscope Preferences");
+				File prefs=preferences(system);
 				if(panelFile==null||!prefs.isFile()){cached=null;cachedKey="";return null;}
 				String stamp=prefs.lastModified()+"|"+forkLength(prefs);
 				if(liveAccent>=0&&!stamp.equals(liveAccentPrefs))liveAccent=-1; // written since: the file says
@@ -168,11 +168,12 @@ final class KaleidoscopeScheme68k {
 		if(menuId!=ACCENT_MENU||!ENABLED||tb==null||tb.files==null||tb.app==null||tb.files.systemFolder==null)return;
 		File system=tb.files.systemFolder,panelFile=controlPanel(system);
 		if(panelFile==null||!panelFile.equals(tb.app.file))return;
-		File prefs=new File(new File(system,"Preferences"),"Kaleidoscope Preferences");
+		File prefs=preferences(system);
 		synchronized(KaleidoscopeScheme68k.class){liveAccent=item-1;liveAccentPrefs=prefs.lastModified()+"|"+forkLength(prefs);cachedKey="";}
 	}
 	static final int ACCENT_MENU=-14334;
 	private static long forkLength(File f){File fork=new File(f,"..namedfork/rsrc");return fork.length()+f.length();}
+	private static File preferences(File system){return new File(new File(system,"Preferences"),"Kaleidoscope Preferences");}
 	/** The Kaleidoscope control panel (type 'cdev', creator 'Acid') in Control Panels, which loads its INIT at start-up. */
 	static File controlPanel(File system){
 		File[] files=new File(system,"Control Panels").listFiles();if(files==null)return null;
@@ -212,6 +213,39 @@ final class KaleidoscopeScheme68k {
 	/** Copies a scheme into the virtual System Folder's {@link #schemesFolder}; returns the installed file. */
 	static File install(File source) throws IOException {return install(source,QuickTimeService.systemFolder());}
 	static File install(File source,File system) throws IOException {return Extensions68k.copyInto(source,schemesFolder(system));}
+	/** The file to use for a scheme the user opened: one already on the startup disk stays where it is, others are installed. */
+	static File installed(File source) throws IOException {
+		File boot=FileSystem68k.bootVolumeDirectory().getCanonicalFile();
+		for(File f=source.getCanonicalFile();f!=null;f=f.getParentFile())if(f.equals(boot))return source;
+		return install(source);
+	}
+	/** The panel of a running process keeps its choice in memory and writes it on closing: what was opened meanwhile is written again then. */
+	private static volatile File chosenWhilePanelOpen;
+	/**
+	 * Makes {@code scheme} the current scheme, as the panel's Select Scheme... does: the preferences' 'alis' 128 names it
+	 * (the other settings stay). {@link #active} reads the preferences on every call.
+	 */
+	static void select(File scheme) throws IOException {
+		File system=QuickTimeService.systemFolder(),panel=controlPanel(system);
+		chosenWhilePanelOpen=panel!=null&&MacApp68k.runningFrom(panel)!=null?scheme:null;
+		select(scheme,system);
+	}
+	static void select(File scheme,File system) throws IOException {
+		File prefs=preferences(system);
+		if(!prefs.isFile()){
+			prefs.getParentFile().mkdirs();java.nio.file.Files.write(prefs.toPath(),new byte[0]);
+			byte[] info=new byte[16];System.arraycopy("prefAcid".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1),0,info,0,8);FinderInfo68k.write(prefs,info);
+		}
+		ResourceFile68k p=ResourceFile68k.open(prefs);
+		p.add(new ResourceFile68k.Resource(ALIS,128,null,0,FileSystem68k.hostPathAlias(scheme.getAbsoluteFile())));
+		p.write();
+	}
+	/** The control panel {@code file} closed (and wrote its preferences). */
+	static void panelClosed(File file,File system) throws IOException {
+		File chosen=chosenWhilePanelOpen;
+		if(chosen==null||!file.equals(controlPanel(system)))return;
+		chosenWhilePanelOpen=null;select(chosen,system);
+	}
 
 	// ------------------------------------------------------------------ elements
 
@@ -900,24 +934,28 @@ final class KaleidoscopeScheme68k {
 
 	// ------------------------------------------------------------------ dialog and alert backgrounds
 
-	static final int DIALOG_BACKGROUND=-9776,DIALOG_BACKGROUND_INACTIVE=-9775;
+	static final int DIALOG_BACKGROUND=-9776,DIALOG_BACKGROUND_INACTIVE=-9775,ALERT_BACKGROUND=-9774;
+	/** The background element of a dialog or an alert: an alert without its own has the dialog's. */
+	private int backgroundId(boolean alert){return alert&&element(ALERT_BACKGROUND,false)!=null?ALERT_BACKGROUND:DIALOG_BACKGROUND;}
 	/** The colour a dialog or alert window's content gets (its 'cinf' background pixel), or -1 when the scheme has none. */
-	int dialogBackground(){
-		Img img=element(DIALOG_BACKGROUND,false);if(img==null)return -1;
-		Cinf c=cinf(DIALOG_BACKGROUND,new Cinf(0,0,false,0,0,1,1,0,0,0,0));
+	int dialogBackground(){return dialogBackground(false);}
+	int dialogBackground(boolean alert){
+		int id=backgroundId(alert);Img img=element(id,false);if(img==null)return -1;
+		Cinf c=cinf(id,new Cinf(0,0,false,0,0,1,1,0,0,0,0));
 		int p=img.pixel(Math.max(0,c.bgY),Math.max(0,c.bgX));if((p>>>24)==0)p=img.pixel(img.h/2,img.w/2);
 		return (p>>>24)==0?-1:p&0xffffff;
 	}
 	/** The 'ppat' that fills a dialog's content (Aqua III's pin stripes), raw, or null. */
-	byte[] dialogBackgroundPattern(){
-		Cinf c=cinf(DIALOG_BACKGROUND,null);int id=c!=null&&c.pattern!=0?c.pattern:DIALOG_BACKGROUND;
+	byte[] dialogBackgroundPattern(){return dialogBackgroundPattern(false);}
+	byte[] dialogBackgroundPattern(boolean alert){
+		int bg=backgroundId(alert);Cinf c=cinf(bg,null);int id=c!=null&&c.pattern!=0?c.pattern:bg;
 		ResourceFile68k.Resource r=scheme.get(PPAT,id);return r==null?null:r.data();
 	}
 
 	// ---- document windows: programs' own windows (WindowManager68k.themedWdef) and the frame round a full-screen program's
 	// screen (MacAppHost.updateScreenBar, ScreenWindowFrame)
 
-	private static final int WND=0x776e6423,CLUT=0x636c7574;
+	private static final int WND=0x776e6423,CLUT=0x636c7574,DCTB=0x64637462;
 	/** K2 windows: the frame cicns (-14335 active, -14336 inactive) cut by 'wnd#' -14336, the widgets' pressed looks side by side
 	 *  in -14330 and the grow box -14333 / -14334. K1 windows: a 16x16 miniature window (-14332 active, -14336 inactive) with
 	 *  racing stripes -14331 and the grow box -14330 / -14334. */
@@ -930,9 +968,11 @@ final class KaleidoscopeScheme68k {
 	static final class FrameLayout {
 		final int contentWidth,contentHeight,width,height,widgets;final int[] outsets;
 		/** The widgets' boxes {top, left, bottom, right}, a scheme may give a window several of each. */
-		final java.util.List<int[]> close=new java.util.ArrayList<int[]>(),zoom=new java.util.ArrayList<int[]>();
+		final java.util.List<int[]> close=new java.util.ArrayList<int[]>(),zoom=new java.util.ArrayList<int[]>(),collapse=new java.util.ArrayList<int[]>();
 		/** Where the title is written {top, left, bottom, right}, or null without a title. */
 		int[] title;
+		/** The window's content colour (ARGB): a K1 dialog's margin while active. */
+		int background=0xffffffff;
 		FrameLayout(int[] outsets,int w,int h,int widgets){this.outsets=outsets.clone();contentWidth=w;contentHeight=h;width=w+outsets[1]+outsets[3];height=h+outsets[0]+outsets[2];this.widgets=widgets;}
 		int[] content(){return new int[]{outsets[0],outsets[1],outsets[0]+contentHeight,outsets[1]+contentWidth};}
 	}
@@ -956,6 +996,26 @@ final class KaleidoscopeScheme68k {
 		return documentWindow;
 	}
 
+	/** Dialog frame kinds ({@link #dialogWindow}): the modal dialog, the alert, the movable modal dialog, the movable alert. */
+	static final int MODAL=0,ALERT=1,MOVABLE=2,MOVABLE_ALERT=3;
+	/** K2 dialog frames: 'wnd#' -14328 + 2*kind cutting cicns of that ID (inactive) and the next (active); the movable modal
+	 *  dialog's grow box -14309 / -14310. K1: miniature windows -14326 / -14328 (dialogs) and -14322 / -14324 (alerts). */
+	static final int DIALOG_FRAMES=-14328,MOVABLE_GROW_ACTIVE=-14309,MOVABLE_GROW_INACTIVE=-14310,
+		K1_DIALOG_ACTIVE=-14326,K1_DIALOG_INACTIVE=-14328,K1_ALERT_ACTIVE=-14322,K1_ALERT_INACTIVE=-14324;
+	private final WindowFrame[] dialogWindows=new WindowFrame[4];private final boolean[] dialogWindowsRead=new boolean[4];
+	/** The scheme's frame for a dialog of {@code kind}, or null: an alert without its own frame takes the dialog's, as the engine does. */
+	synchronized WindowFrame dialogWindow(int kind){
+		if(kind<0||kind>3)return null;
+		if(!dialogWindowsRead[kind]){dialogWindowsRead[kind]=true;
+			int id=DIALOG_FRAMES+2*kind;ResourceFile68k.Resource wnd=scheme.get(WND,id);
+			if(wnd!=null&&element(id+1,false)!=null){Wnd layout=Wnd.parse(wnd.data());
+				if(layout!=null)dialogWindows[kind]=new K2Window(layout,id+1,id,kind==MOVABLE?MOVABLE_GROW_ACTIVE:0,MOVABLE_GROW_INACTIVE,0);}
+			if(dialogWindows[kind]==null&&(kind&1)!=0&&scheme.get(WND,DIALOG_FRAMES+2*(kind&~1))!=null)dialogWindows[kind]=dialogWindow(kind&~1);
+			if(dialogWindows[kind]==null&&scheme.get(WND,DIALOG_FRAMES)==null&&element(K1_DIALOG_ACTIVE)!=null&&documentWindow() instanceof K1Window)dialogWindows[kind]=new K1Dialog(kind);
+		}
+		return dialogWindows[kind];
+	}
+
 	/** A 'wnd#' (the scheme's own template, TMPL 1240): rectangles by part (0 content, 1 close, 2 zoom, 3 collapse, 4 title),
 	 *  then for the top, bottom, left and right sides a list of sections, each a part code and the coordinate it ends at. */
 	static final class Wnd {
@@ -969,10 +1029,12 @@ final class KaleidoscopeScheme68k {
 			}catch(RuntimeException e){return null;}
 		}
 		int[] rect(int part){for(int[] r:rects)if(r[0]==part)return r;return null;}
+		/** The last rectangle of a part: afo-buttons' movable dialogs list stray title rectangles before the one the engine uses. */
+		int[] lastRect(int part){int[] found=null;for(int[] r:rects)if(r[0]==part)found=r;return found;}
 	}
 	/** Section part codes: 0 not drawn, 1 as it is, 5 the title, 6 beside the title, 8 stretched (tiled when wider than a
 	 *  pixel), 18 scaled; 2/3/4 the close, zoom and collapse box sections and 15/16/17 the ones for a window without them. */
-	private static final int SEC_NULL=0,SEC_TITLE=5,SEC_STRETCH=8,SEC_STRETCH_ALT=13,SEC_SCALE=18;
+	private static final int SEC_NULL=0,SEC_TITLE=5,SEC_STRETCH=8,SEC_ALWAYS=10,SEC_STRETCH_ALT=13,SEC_SCALE=18;
 	private static boolean stretches(int code){return code==SEC_STRETCH||code==SEC_STRETCH_ALT||code==SEC_SCALE;}
 	/** The widget a section code is for (with it: 2/3/4, without it: 15/16/17), else 0. */
 	private static int widgetWith(int code){return code==2?CLOSE:code==3?ZOOM:code==4?COLLAPSE:0;}
@@ -1005,7 +1067,9 @@ final class KaleidoscopeScheme68k {
 			int leftCount=0,leftFixed=0;
 			if(titleAt>=0)for(int i=0;i<titleAt;i++){if(parts.get(i)[3]==1)leftCount++;else if(parts.get(i)[3]==0)leftFixed+=parts.get(i)[2]-parts.get(i)[1];}
 			int rightCount=stretchCount-leftCount;
-			int leftExtra=titleAt<0?extra:leftCount==0?0:rightCount==0?extra:Math.max(0,Math.min(extra,(length-title)/2-leftFixed));
+			int leftExtra=titleAt<0?extra:leftCount==0?0:rightCount==0?extra:Math.max(0,Math.min(extra/2,(length-title)/2-leftFixed));
+			// the room left split evenly between the two sides of the title, but not past the window's centre (the engine's,
+			// measured on System 7, AquaTech, Aqua III)
 			int rightExtra=extra-leftExtra;
 			int li=0,ri=0;
 			for(int i=0;i<parts.size();i++){if(parts.get(i)[3]!=1)continue;
@@ -1035,6 +1099,7 @@ final class KaleidoscopeScheme68k {
 			if(b>a){boolean keep;
 				if(widgetWith(code)!=0)keep=(widgets&widgetWith(code))!=0;
 				else if(widgetWithout(code)!=0)keep=(widgets&widgetWithout(code))==0;
+				else if(code==SEC_ALWAYS&&widgets!=0)keep=true; // drawn whatever widgets the window has (System 7's collapse box, Aqua III's right-hand button)
 				else{int held=0;if(horizontal)for(int[] r:rects)if(widgetOfRect(r[0])!=0&&r[2]>=a&&r[4]<=b)held|=widgetOfRect(r[0]);keep=held==0||(held&widgets)!=0;}
 				if(keep)out.add(new int[]{code,a-lo,b-lo});}
 			from=to;}
@@ -1057,28 +1122,52 @@ final class KaleidoscopeScheme68k {
 		g.setColor(new Color(ink,true));Fonts68k.drawString(g,font,title,tx,base);
 		g.setClip(clip);
 	}
+	/** A K2 window's title as the engine writes it: from the left of its place, the baseline a pixel above the descent at the bottom of the title rectangle. */
+	private static void drawK2Title(Graphics2D g,Font font,String title,int[] r,int ink){
+		if(title.isEmpty()||r[3]<=r[1])return;
+		FontMetrics fm=Fonts68k.metrics(font);
+		Shape clip=g.getClip();g.clipRect(r[1],r[0],r[3]-r[1],r[2]-r[0]);
+		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,Fonts68k.textAntialiasHint());
+		g.setColor(new Color(ink,true));Fonts68k.drawString(g,font,title,r[1],r[2]-fm.getDescent()-1);
+		g.setClip(clip);
+	}
+	/** An active title's colour ('clut' -14336 entry 2), or white or black when it would hardly show on the frame under the
+	 *  title (AquaTech's dark title pill: the engine writes it in white though the scheme's colour is black). An inactive
+	 *  title is grey: the engine's is 0x888888 on System 7 and AquaTech (not 'clut' -14335's), tinted on some schemes. */
+	private static int readableInk(int ink,BufferedImage frame,int[] r){
+		int x=Math.max(0,Math.min(frame.getWidth()-1,(r[1]+r[3])/2)),y=Math.max(0,Math.min(frame.getHeight()-1,(r[0]+r[2])/2));
+		int bg=frame.getRGB(x,y),lb=luminance(bg),li=luminance(ink);
+		if(Math.abs(lb-li)>=125)return ink;
+		return lb<128?0xffffffff:0xff000000;
+	}
+	private static int luminance(int argb){return ((argb>>16&255)*299+(argb>>8&255)*587+(argb&255)*114)/1000;}
 	private static int titleWidth(Font font,String title){return title.isEmpty()?0:Fonts68k.width(font,title)+2;}
 
 	/** A K2 document window: the frame cicn laid out by the scheme's 'wnd#'; widgets as the cicn shows them in their sections. */
 	private final class K2Window implements WindowFrame {
 		final Wnd wnd;final int[] content;final int[] outsets;
-		K2Window(Wnd wnd){this.wnd=wnd;Img a=element(WINDOW_ACTIVE,false);int[] c=wnd.rect(0);
+		/** The frame's cicns (active, inactive), its grow boxes (active, inactive; 0 = none) and the widgets' pressed looks. */
+		final int activeId,inactiveId,growActive,growInactive,pressedId;
+		K2Window(Wnd wnd){this(wnd,WINDOW_ACTIVE,WINDOW_INACTIVE,GROW_ACTIVE,GROW_INACTIVE,WIDGETS_PRESSED);}
+		K2Window(Wnd wnd,int activeId,int inactiveId,int growActive,int growInactive,int pressedId){
+			this.wnd=wnd;this.activeId=activeId;this.inactiveId=inactiveId;this.growActive=growActive;this.growInactive=growInactive;this.pressedId=pressedId;
+			Img a=element(activeId,false);int[] c=wnd.rect(0);
 			content=new int[]{c[1],c[2],c[3],c[4]};outsets=new int[]{c[1],c[2],a.h-c[3],a.w-c[4]};}
 		@Override public int[] outsets(){return outsets.clone();}
-		private Img image(boolean active){Img img=active?element(WINDOW_ACTIVE,false):element(WINDOW_INACTIVE,false);return img!=null?img:element(WINDOW_ACTIVE,false);}
+		private Img image(boolean active){Img img=active?element(activeId,false):element(inactiveId,false);return img!=null?img:element(activeId,false);}
 		/** The top side's x map of the last layout (cached with it). */
 		private FrameLayout lastLayout;private int[] lastTopX;
 		@Override public synchronized FrameLayout layout(int w,int h,String title,int widgets,Font font){
 			Img img=image(true);FrameLayout l=new FrameLayout(outsets,w,h,widgets);
 			java.util.List<int[]> top=sections(wnd.sides[0],0,img.w,wnd.rects,true,widgets);
 			int[] span={-1,-1},starts=new int[top.size()];
-			lastTopX=layoutSections(top,l.width,titleWidth(font,title),span,starts);lastLayout=l;
+			lastTopX=layoutSections(top,l.width,title.isEmpty()?0:Fonts68k.width(font,title),span,starts);lastLayout=l;
 			for(int i=0;i<top.size();i++){int[] s=top.get(i);
 				for(int[] r:wnd.rects){int kind=widgetOfRect(r[0]);if(kind==0||(widgets&kind)==0||r[2]<s[1]||r[4]>s[2])continue;
 					int x=starts[i]+r[2]-s[1];int[] box={r[1],x,r[3],x+r[4]-r[2]};
 					if(kind==CLOSE)l.close.add(box);else if(kind==ZOOM)l.zoom.add(box);}}
-			int[] tr=wnd.rect(4);
-			if(span[1]>span[0])l.title=new int[]{tr==null?0:tr[1],span[0],tr==null?outsets[0]:tr[3],span[1]};
+			int[] tr=wnd.lastRect(4);
+			if(span[1]>span[0])l.title=new int[]{tr==null?0:tr[1],span[0],tr==null?outsets[0]:tr[3],span[1]}; // the text exactly as wide as the title section
 			else if(tr!=null&&!title.isEmpty()){ // no title section (afo-buttons): the title starts at its rectangle, up to the next widget
 				int x=-1;for(int i=0;i<top.size()&&x<0;i++){int[] s=top.get(i);if(tr[2]>=s[1]&&tr[2]<s[2])x=starts[i]+tr[2]-s[1];}
 				if(x>=0){int end=l.width-outsets[3];for(int[] b:l.close)if(b[1]>x)end=Math.min(end,b[1]-4);for(int[] b:l.zoom)if(b[1]>x)end=Math.min(end,b[1]-4);
@@ -1092,44 +1181,132 @@ final class KaleidoscopeScheme68k {
 			int[] topX;synchronized(this){topX=lastLayout==l?lastTopX:null;}
 			if(topX==null){FrameLayout again=layout(w,h,title,l.widgets,font);synchronized(this){topX=lastTopX;}l.close.clear();l.close.addAll(again.close);l.zoom.clear();l.zoom.addAll(again.zoom);l.title=again.title;}
 			int[] bottomX=layoutSections(sections(wnd.sides[1],0,img.w,wnd.rects,true,l.widgets),W,-1,null);
-			int[] leftY=layoutSections(sections(wnd.sides[2],content[0],content[2],wnd.rects,false,l.widgets),h,-1,null);
-			int[] rightY=layoutSections(sections(wnd.sides[3],content[0],content[2],wnd.rects,false,l.widgets),h,-1,null);
+			// the left and right sides are laid out along the whole height (BeBox's dialog sides run from the cicn's top past
+			// its content rows; most schemes start them with a null section as tall as the top), the top and bottom go over them
+			int[] leftY=layoutSections(sections(wnd.sides[2],0,img.h,wnd.rects,false,l.widgets),H,-1,null);
+			int[] rightY=layoutSections(sections(wnd.sides[3],0,img.h,wnd.rects,false,l.widgets),H,-1,null);
+			for(int y=0;y<H;y++){int sy=leftY[y];if(sy>=0)for(int x=0;x<L;x++)px[y*W+x]=img.pixel(sy,x);
+				sy=rightY[y];if(sy>=0)for(int x=0;x<R;x++)px[y*W+L+w+x]=img.pixel(sy,content[3]+x);}
 			for(int y=0;y<T;y++)for(int x=0;x<W;x++)if(topX[x]>=0)px[y*W+x]=img.pixel(y,topX[x]);
 			for(int y=0;y<B;y++)for(int x=0;x<W;x++)if(bottomX[x]>=0)px[(H-B+y)*W+x]=img.pixel(content[2]+y,bottomX[x]);
-			for(int y=0;y<h;y++){int sy=leftY[y];if(sy>=0)for(int x=0;x<L;x++)px[(T+y)*W+x]=img.pixel(content[0]+sy,x);
-				sy=rightY[y];if(sy>=0)for(int x=0;x<R;x++)px[(T+y)*W+L+w+x]=img.pixel(content[0]+sy,content[3]+x);}
 			// a pressed widget: its cell of the pressed-widgets strip (close, zoom, collapse side by side) over each of its boxes
-			Img down=pressed!=0&&active?element(WIDGETS_PRESSED,false):null;
+			Img down=pressed!=0&&active&&pressedId!=0?element(pressedId,false):null;
 			if(down!=null){int cell=pressed==CLOSE?0:pressed==ZOOM?1:2;
 				for(int[] box:pressed==CLOSE?l.close:l.zoom){int bw=box[3]-box[1],bh=box[2]-box[0],cw=Math.max(1,down.w/3);
 					for(int y=0;y<bh&&y<down.h;y++)for(int x=0;x<bw&&x<cw;x++){int p=down.pixel(y,cell*cw+x);int dx=box[1]+x,dy=box[0]+y;if((p>>>24)!=0&&dx>=0&&dy>=0&&dx<W&&dy<H)px[dy*W+dx]=p;}}}
 			out.setRGB(0,0,W,H,px,0,W);
 			if(l.title!=null){Graphics2D g=out.createGraphics();
-				try{drawTitle(g,font,title,l.title[1],l.title[0],l.title[2],l.title[3]-l.title[1],clutColour(active?-14336:-14335,2,active?0xff000000:0xff888888),0);}finally{g.dispose();}}
+				try{drawK2Title(g,font,title,l.title,active?readableInk(clutColour(-14336,2,0xff000000),out,l.title):0xff888888);}finally{g.dispose();}}
 			return out;
 		}
-		@Override public Img growBox(boolean active){Img g=element(active?GROW_ACTIVE:GROW_INACTIVE,false);return g!=null?g:element(GROW_ACTIVE,false);}
+		@Override public Img growBox(boolean active){if(growActive==0)return null;Img g=element(active?growActive:growInactive,false);return g!=null?g:element(growActive,false);}
 	}
 
-	/** A K1 document window: the 16x16 miniature window stretched round the content - six pixels of frame on the left, right
-	 *  and bottom, the top band drawn out to the Platinum title bar (22 pixels) by repeating its title text row - and the
-	 *  racing stripes stretched along the title bar between the title and the widgets. The title takes the colour of the two
-	 *  text pixels in that row, embossed with the pixel after them when it differs from the row's background; the widgets are
-	 *  Platinum boxes in the window's own colours. */
-	private final class K1Window implements WindowFrame {
-		static final int BORDER=6,TITLE_BAR=22;
-		@Override public int[] outsets(){return new int[]{TITLE_BAR,BORDER,BORDER,BORDER};}
-		private int attributes(int widgets){return ((widgets&CLOSE)!=0?0x20:0)|((widgets&ZOOM)!=0?0x18:0);}
+	/** Racing stripes over [from, to): both ends as they are, the middle column stretched; holes in the mask show the pattern. */
+	private static void stripePiece(BufferedImage out,Img s,Img pat,int from,int to,int top){
+		int len=to-from,half=s.w/2;if(len<=0)return;
+		for(int y=0;y<s.h&&top+y<out.getHeight();y++)for(int i=0;i<len;i++){
+			int sx=i<half?i:i>=len-(s.w-half-1)?s.w-(len-i):half;if(sx<0||sx>=s.w)continue;
+			int p=s.pixel(y,sx);
+			if((p>>>24)==0&&pat!=null)p=pat.pixel(y%pat.h,i%pat.w);
+			if((p>>>24)!=0&&from+i>=0&&from+i<out.getWidth())out.setRGB(from+i,top+y,p);
+		}
+	}
+
+	/**
+	 * A K1 dialog or alert, as the engine draws it (measured on Sherbet, Onyx, Ice, Al-Azul): the Platinum modal frame in the
+	 * colours of the miniature window's small square - its outline (and a shadow 1 pixel down and right, from 2 pixels in),
+	 * then two rings: the square's 4x4 inside is a miniature of them (rows/columns 6 and 9 the outer ring, 7 and 8 the inner,
+	 * corners included) - and for a dialog 3 pixels of margin before the content (the content's colour while active,
+	 * the scheme's dialog colour when not); an alert has none. A movable one has a 21-row title band on top: the miniature's rows above its
+	 * text row, the text row drawn out, its row above the bottom edge last, with the dialog's own racing stripes either
+	 * side of the title while active.
+	 */
+	private final class K1Dialog implements WindowFrame {
+		static final int TITLE=21,BORDER=6;
+		final int activeId,inactiveId,stripesId;final boolean movable;final int margin;
+		K1Dialog(int kind){boolean alert=(kind&1)!=0;movable=kind>=MOVABLE;margin=alert?0:3;
+			activeId=alert?K1_ALERT_ACTIVE:K1_DIALOG_ACTIVE;inactiveId=alert?K1_ALERT_INACTIVE:K1_DIALOG_INACTIVE;stripesId=alert?-14321:-14325;}
+		@Override public int[] outsets(){int t=3+margin,b=4+margin;return new int[]{(movable?TITLE:0)+t,t,b,b};}
 		@Override public FrameLayout layout(int w,int h,String title,int widgets,Font font){
-			FrameLayout l=new FrameLayout(outsets(),w,h,widgets&(CLOSE|ZOOM));int[] c=l.content();int attr=attributes(widgets);
-			int[] close=AppearanceManager68k.Platinum.widget(0,c,attr,0),zoom=AppearanceManager68k.Platinum.widget(0,c,attr,1);
-			if(close!=null)l.close.add(close);if(zoom!=null)l.zoom.add(zoom);
-			if(!title.isEmpty()){FontMetrics fm=Fonts68k.metrics(font);l.title=AppearanceManager68k.Platinum.titleText(0,c,attr,titleWidth(font,title),fm.getAscent()+fm.getDescent());}
+			FrameLayout l=new FrameLayout(outsets(),w,h,0);
+			if(movable&&!title.isEmpty()){int tw=Math.min(Fonts68k.width(font,title),Math.max(0,l.width-2-2*BORDER)),x=(l.width-2-tw)/2;l.title=new int[]{1,x-1,TITLE-1,x+tw+1};}
+			return l;
+		}
+		private void fill(Graphics2D g,int argb,int x,int y,int w,int h){if(w<=0||h<=0)return;g.setColor(new Color(argb,true));g.fillRect(x,y,w,h);}
+		private Img image(boolean active){Img img=element(active?activeId:inactiveId);return img!=null?img:element(activeId);}
+		@Override public BufferedImage paint(FrameLayout l,String title,boolean active,int pressed,Font font){
+			Img img=image(active);int W=l.width,H=l.height,top=movable?TITLE:0;
+			BufferedImage out=new BufferedImage(W,H,BufferedImage.TYPE_INT_ARGB);
+			if(img==null)return out;
+			Graphics2D g=out.createGraphics();
+			try{
+				int[] c=l.content();
+				fill(g,active?l.background:inactiveMargin(img),3,top+3,W-7,H-top-7); // the margin: the content's colour (white in the engine's own windows), the scheme's dialog colour when inactive
+				g.setComposite(java.awt.AlphaComposite.Src);g.setColor(new Color(0,true));g.fillRect(c[1],c[0],c[3]-c[1],c[2]-c[0]);
+				g.setColor(new Color(img.pixel(5,5),true));g.drawRect(0,top,W-2,H-top-2);
+				fill(g,img.pixel(0,0),W-1,2,1,H-2);fill(g,img.pixel(0,0),2,H-1,W-2,1); // the shadow, in the miniature's own outline colour
+				// Img.pixel(y, x): the square's cell at column x, row y stands for the frame's pixels in that place
+				fill(g,img.pixel(6,6),1,top+1,W-4,1);fill(g,img.pixel(6,6),1,top+1,1,H-top-4);fill(g,img.pixel(9,6),1,H-3,1,1); // outer ring
+				fill(g,img.pixel(9,9),W-3,top+2,1,H-top-4);fill(g,img.pixel(9,9),2,H-3,W-4,1);fill(g,img.pixel(6,9),W-3,top+1,1,1);
+				fill(g,img.pixel(7,7),2,top+2,W-6,1);fill(g,img.pixel(7,7),2,top+2,1,H-top-6);fill(g,img.pixel(7,8),W-4,top+2,1,1); // inner ring
+				fill(g,img.pixel(8,8),W-4,top+3,1,H-top-6);fill(g,img.pixel(8,8),3,H-4,W-6,1);fill(g,img.pixel(8,7),2,H-4,1,1);
+				if(movable)band(out,img,W-1,l,title,font);
+			}finally{g.dispose();}
+			return out;
+		}
+		/** The movable dialog's title band: the miniature's top rows, its text row drawn out, over {@code width} columns. */
+		private void band(BufferedImage out,Img img,int width,FrameLayout l,String title,Font font){
+			int iw=img.w,ih=img.h,mid=Math.min(BORDER,iw-1);boolean active=img==element(activeId);
+			int textRow=3,textX=-1;
+			for(int y=1;y<BORDER-1&&textX<0;y++)for(int x=BORDER+1;x<iw-BORDER;x++)if(img.pixel(y,x)!=img.pixel(y,mid)){textRow=y;textX=x;break;}
+			int bg=img.pixel(textRow,mid),ink=textX<0?0xff000000:img.pixel(textRow,textX),emboss=textX<0?0:img.pixel(textRow,textX+2);
+			if(emboss==bg)emboss=0;
+			for(int y=0;y<TITLE;y++){int sy=y<textRow?y:y<TITLE-2?textRow:ih-1-(TITLE-y);
+				for(int x=0;x<width;x++){int sx=x<BORDER?x:x>=width-BORDER?iw-(width-x):mid;
+					out.setRGB(x,y,sy==textRow&&sx>=BORDER&&sx<iw-BORDER?bg:img.pixel(sy,sx));}}
+			Img stripes=active?element(stripesId):null;
+			if(stripes!=null){Img pat=pattern(stripesId);int sy=1+(TITLE-1-stripes.h)/2;
+				if(l.title!=null){stripePiece(out,stripes,pat,BORDER-1,l.title[1]-2,sy);stripePiece(out,stripes,pat,l.title[3]+2,width-BORDER+1,sy);}
+				else stripePiece(out,stripes,pat,BORDER-1,width-BORDER+1,sy);}
+			if(l.title!=null){Graphics2D g=out.createGraphics();
+				try{drawTitle(g,font,title,l.title[1],1,TITLE-1,l.title[3]-l.title[1],ink,emboss);}finally{g.dispose();}}
+		}
+		@Override public Img growBox(boolean active){return null;}
+		/** An inactive dialog's margin: the scheme's dialog colour ('dctb' -14336 part 0, the content colour), else the miniature's. */
+		private int inactiveMargin(Img img){
+			ResourceFile68k.Resource r=scheme.get(DCTB,-14336);byte[] d=r==null?null:r.data();
+			if(d!=null&&d.length>=8){int n=s16(d,6)+1;for(int i=0;i<n&&8+i*8+8<=d.length;i++){int o=8+i*8;if(u16(d,o)==0)return 0xff000000|(u16(d,o+2)>>8)<<16|(u16(d,o+4)>>8)<<8|(u16(d,o+6)>>8);}}
+			return img.pixel(2,2);
+		}
+	}
+
+	/** K1 title bar widgets ('ics8' + 'ics#', 13x13 in a 16x16 icon), the scheme's or the control panel's: close, collapse and
+	 *  zoom boxes, then their pressed looks in the order close, collapse, zoom. */
+	static final int K1_CLOSE_BOX=-14336,K1_COLLAPSE_BOX=-14335,K1_ZOOM_BOX=-14334,K1_CLOSE_PRESSED=-14333,K1_COLLAPSE_PRESSED=-14332,K1_ZOOM_PRESSED=-14331;
+	private Img k1Widget(int id){Img img=icon(scheme,id);if(img==null&&panel!=null)img=icon(panel,id);return img;}
+
+	/** A K1 document window, as the engine draws it (measured on Sherbet, Onyx, Ice, Al-Azul): the 16x16 miniature window
+	 *  stretched round the content - six pixels of frame on the left, right and bottom, the top band drawn out to 22 rows by
+	 *  repeating its title text row - and a shadow 1 pixel down and right (from 2 pixels in) in the miniature's outline
+	 *  colour. While active: the scheme's widget pictures, the close box at (4,4), the collapse box 17 pixels in from the
+	 *  frame's right edge and the zoom box 16 left of it, and the racing stripes from 4 pixels after the left widget to 4
+	 *  before the right ones, broken round the title as on a movable dialog. The title takes the colour of the two text
+	 *  pixels in that row, embossed with the pixel after them when it differs from the row's background. */
+	private final class K1Window implements WindowFrame {
+		static final int BORDER=6,TITLE_BAR=22,BOX=13;
+		@Override public int[] outsets(){return new int[]{TITLE_BAR,BORDER,BORDER+1,BORDER+1};}
+		@Override public FrameLayout layout(int w,int h,String title,int widgets,Font font){
+			FrameLayout l=new FrameLayout(outsets(),w,h,widgets&(CLOSE|ZOOM|COLLAPSE));int F=l.width-1;
+			if((widgets&CLOSE)!=0)l.close.add(new int[]{4,4,4+BOX,4+BOX});
+			if((widgets&COLLAPSE)!=0)l.collapse.add(new int[]{4,F-17,4+BOX,F-17+BOX});
+			if((widgets&ZOOM)!=0){int x=(widgets&COLLAPSE)!=0?F-33:F-17;l.zoom.add(new int[]{4,x,4+BOX,x+BOX});}
+			if(!title.isEmpty()){int tw=Math.min(Fonts68k.width(font,title),Math.max(0,l.width-2-2*BORDER)),x=(l.width-2-tw)/2;l.title=new int[]{1,x-1,TITLE_BAR-2,x+tw+1};}
 			return l;
 		}
 		@Override public BufferedImage paint(FrameLayout l,String title,boolean active,int pressed,Font font){
 			Img img=active?element(K1_WINDOW_ACTIVE):element(WINDOW_INACTIVE);if(img==null)img=element(K1_WINDOW_ACTIVE);
-			int W=l.width,H=l.height,iw=img.w,ih=img.h,mid=Math.min(BORDER,iw-1);
+			int W=l.width,H=l.height,F=W-1,FH=H-1,iw=img.w,ih=img.h,mid=Math.min(BORDER,iw-1);
 			// the text row: the first one under the top edge with pixels unlike its background between the borders
 			int textRow=3,textX=-1;
 			for(int y=1;y<BORDER-1&&textX<0;y++)for(int x=BORDER+1;x<iw-BORDER;x++)if(img.pixel(y,x)!=img.pixel(y,mid)){textRow=y;textX=x;break;}
@@ -1137,52 +1314,45 @@ final class KaleidoscopeScheme68k {
 			if(emboss==bg)emboss=0;
 			int below=BORDER-1-textRow; // rows of the top band after the text row
 			BufferedImage out=new BufferedImage(W,H,BufferedImage.TYPE_INT_ARGB);int[] px=new int[W*H];
-			for(int y=0;y<H;y++){
-				int sy=y<textRow?y:y<TITLE_BAR-below?textRow:y<TITLE_BAR?BORDER-(TITLE_BAR-y):y<H-BORDER?BORDER:ih-(H-y);
-				boolean contentRow=y>=TITLE_BAR&&y<H-BORDER;
-				for(int x=0;x<W;x++){
-					if(contentRow&&x>=BORDER&&x<W-BORDER)continue;
-					int sx=x<BORDER?x:x>=W-BORDER?iw-(W-x):mid;
+			for(int y=0;y<FH;y++){
+				int sy=y<textRow?y:y<TITLE_BAR-below?textRow:y<TITLE_BAR?BORDER-(TITLE_BAR-y):y<FH-BORDER?BORDER:ih-(FH-y);
+				boolean contentRow=y>=TITLE_BAR&&y<FH-BORDER;
+				for(int x=0;x<F;x++){
+					if(contentRow&&x>=BORDER&&x<F-BORDER)continue;
+					int sx=x<BORDER?x:x>=F-BORDER?iw-(F-x):mid;
 					px[y*W+x]=sy==textRow&&sx>=BORDER&&sx<iw-BORDER?bg:img.pixel(sy,sx);
 				}
 			}
+			int shade=img.pixel(0,0);for(int y=2;y<H;y++)px[y*W+F]=shade;for(int x=2;x<W;x++)px[FH*W+x]=shade;
 			out.setRGB(0,0,W,H,px,0,W);
 			Img stripes=active?element(K1_STRIPES):null;
 			if(stripes!=null){Img pat=pattern(K1_STRIPES);int sy=1+(TITLE_BAR-2-stripes.h)/2;
-				// the stripes run between the title and the widgets, each piece with its own ends
-				java.util.List<int[]> gaps=new java.util.ArrayList<int[]>();
-				if(l.title!=null)gaps.add(new int[]{l.title[1]-6,l.title[3]+6});
-				for(int[] b:l.close)gaps.add(new int[]{b[1]-3,b[3]+3});for(int[] b:l.zoom)gaps.add(new int[]{b[1]-3,b[3]+3});
-				gaps.sort((a,b)->Integer.compare(a[0],b[0]));
-				int from=BORDER-2;for(int[] gap:gaps){stripePiece(out,stripes,pat,from,gap[0],sy);from=Math.max(from,gap[1]);}
-				stripePiece(out,stripes,pat,from,W-(BORDER-2),sy);}
+				int from=BORDER-1,to=F-BORDER+1;
+				for(int[] b:l.close)from=Math.max(from,b[3]+4);
+				for(int[] b:l.zoom)to=Math.min(to,b[1]-4);for(int[] b:l.collapse)to=Math.min(to,b[1]-4);
+				if(l.title!=null){stripePiece(out,stripes,pat,from,l.title[1]-2,sy);stripePiece(out,stripes,pat,l.title[3]+2,to,sy);}
+				else stripePiece(out,stripes,pat,from,to,sy);}
 			Graphics2D g=out.createGraphics();
 			try{
 				if(active){int outline=img.pixel(0,0),light=img.pixel(1,1),shadow=img.pixel(ih-2,iw-2);
-					for(int[] b:l.close)widget(g,b,0,pressed==CLOSE,outline,bg,light,shadow);
-					for(int[] b:l.zoom)widget(g,b,1,pressed==ZOOM,outline,bg,light,shadow);}
-				if(l.title!=null)drawTitle(g,font,title,l.title[1],1,TITLE_BAR-2,l.title[3]-l.title[1],active?ink:0xff888888,active?emboss:0);
+					for(int[] b:l.close)widget(g,b,pressed==CLOSE?K1_CLOSE_PRESSED:K1_CLOSE_BOX,0,pressed==CLOSE,outline,bg,light,shadow);
+					for(int[] b:l.zoom)widget(g,b,pressed==ZOOM?K1_ZOOM_PRESSED:K1_ZOOM_BOX,1,pressed==ZOOM,outline,bg,light,shadow);
+					for(int[] b:l.collapse)widget(g,b,pressed==COLLAPSE?K1_COLLAPSE_PRESSED:K1_COLLAPSE_BOX,2,pressed==COLLAPSE,outline,bg,light,shadow);}
+				if(l.title!=null)drawTitle(g,font,title,l.title[1],1,TITLE_BAR-2,l.title[3]-l.title[1],ink,emboss);
 			}finally{g.dispose();}
 			return out;
 		}
-		/** A Platinum widget box in the window's colours: outline, face, bevel (inverted and darkened when pressed) and glyph. */
-		private void widget(Graphics2D g,int[] r,int kind,boolean pressed,int outline,int face,int light,int shadow){
+		/** A widget: the scheme's picture, else a Platinum box in the window's colours (outline, face, bevel inverted and darkened when pressed, glyph). */
+		private void widget(Graphics2D g,int[] r,int id,int kind,boolean pressed,int outline,int face,int light,int shadow){
+			Img icon=k1Widget(id);
+			if(icon!=null){g.drawImage(icon.image,r[1],r[0],null);return;}
 			int t=r[0],l=r[1],b=r[2],ri=r[3],s=ri-l;
 			g.setColor(new Color(pressed?shadow:face,true));g.fillRect(l,t,s,b-t);
 			g.setColor(new Color(outline,true));g.drawRect(l,t,s-1,b-t-1);
 			g.setColor(new Color(pressed?shadow:light,true));g.drawLine(l+1,t+1,ri-3,t+1);g.drawLine(l+1,t+1,l+1,b-3);
 			g.setColor(new Color(pressed?light:shadow,true));g.drawLine(l+2,b-2,ri-2,b-2);g.drawLine(ri-2,t+2,ri-2,b-2);
 			if(kind==1){g.setColor(new Color(outline,true));g.drawRect(l+2,t+2,s/2,s/2);}
-		}
-		/** The stripes over [from, to): both ends as they are, the middle column stretched; holes in the mask show the pattern. */
-		private void stripePiece(BufferedImage out,Img s,Img pat,int from,int to,int top){
-			int len=to-from,half=s.w/2;if(len<=0)return;
-			for(int y=0;y<s.h&&top+y<out.getHeight();y++)for(int i=0;i<len;i++){
-				int sx=i<half?i:i>=len-(s.w-half-1)?s.w-(len-i):half;if(sx<0||sx>=s.w)continue;
-				int p=s.pixel(y,sx);
-				if((p>>>24)==0&&pat!=null)p=pat.pixel(y%pat.h,i%pat.w);
-				if((p>>>24)!=0&&from+i>=0&&from+i<out.getWidth())out.setRGB(from+i,top+y,p);
-			}
+			else if(kind==2){g.setColor(new Color(outline,true));g.drawLine(l+2,t+s/2-1,ri-3,t+s/2-1);g.drawLine(l+2,t+s/2+1,ri-3,t+s/2+1);}
 		}
 		@Override public Img growBox(boolean active){Img g=element(active?K1_GROW_ACTIVE:GROW_INACTIVE);return g!=null?g:element(K1_GROW_ACTIVE);}
 	}

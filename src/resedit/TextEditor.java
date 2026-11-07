@@ -243,7 +243,7 @@ class TEMenuListener implements ActionListener {
 			OField.TextStyleSpec current = field.textStyleAt(start);
 			new GFontDialog(PCARD.pc, current.font, current.size, current.style, -1);
 			field.applyTextStyle(start, end, GFontDialog.selectedFont,
-				GFontDialog.selectedSize, GFontDialog.selectedStyle);
+				GFontDialog.selectedSize, GFontDialog.selectedStyle, current.color);
 		}
 	}
 }

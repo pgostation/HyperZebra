@@ -36,7 +36,18 @@ final class TextFile68k {
 		String newline=newlineOf(host);
 		if(newline==null)newline=utf8?"\n":"\r"; // no line end yet: a UTF-8 file gets today's, a legacy file the Mac's
 		if(!utf8&&newline.equals("\r"))return null;
+		if(!utf8&&mostlyNotText(host))return null;
 		return new Form(utf8,bom,newline);
+	}
+
+	/**
+	 * Data in a file typed 'TEXT': control bytes in more than one byte of a hundred (ESC and ^Z do not count: ISO-2022-JP text, DOS
+	 * ends). Al Unser Jr. keeps its pictures in TEXT files; two without a NUL got their $0A pixels turned into $0D.
+	 */
+	private static boolean mostlyNotText(byte[] b){
+		int control=0;
+		for(byte x:b){int c=x&0xff;if(c<0x20&&c!='\t'&&c!='\n'&&c!='\r'&&c!=0x0c&&c!=0x1a&&c!=0x1b)control++;}
+		return control>b.length/100;
 	}
 
 	/** Well-formed UTF-8 containing at least one multi-byte sequence (MacJapanese or Mac OS Roman text is practically never that). */
@@ -90,10 +101,12 @@ final class TextFile68k {
 	/**
 	 * A file the program created, as UTF-8 with LF line ends; null when the bytes are not text worth converting, or when
 	 * the program would not read its own bytes back: \u4F55\u304Bon\u6797\u6A8E decrypts its dictionaries into a TEXT temp file with CRLF
-	 * line ends and parses what it reads back - CR-only lines made every entry lookup fail.
+	 * line ends and parses what it reads back - CR-only lines made every entry lookup fail. Japanese text a Roman program
+	 * writes (an English expander unpacking a Japanese ReadMe) is no Mac OS Roman text either: it keeps its Shift-JIS bytes.
 	 */
 	static byte[] toHostNew(byte[] program,StackTextEncoding encoding){
 		if(!looksLikeText(program))return null;
+		if(encoding==StackTextEncoding.ROMAN&&StackEncodingDetector.fromText(java.util.Collections.singletonList(program))==StackTextEncoding.JAPANESE)return null;
 		String text=encoding.decode(program);
 		if(text.indexOf('\uFFFD')>=0)return null;
 		byte[] host=text.replace("\r\n","\n").replace('\r','\n').getBytes(StandardCharsets.UTF_8);

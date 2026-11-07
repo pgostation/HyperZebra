@@ -351,7 +351,10 @@ public class ScriptEditor extends JFrame {
 	/** 見つかった箇所をエディタで開き、その文字列を選択する */
 	static void showMatch(StackMatch m){
 		if(m==null || PCARD.pc==null) return;
-		openScriptEditor(PCARD.pc, m.object, m.line);
+		//検索ウインドウが出ているならエディタは前に出すだけでアクティブにしない。エディタと検索ウインドウを
+		//続けてアクティブにすると、macOSでは2つのウインドウが交互にアクティブになり続けることがある
+		FindInStackDialog shown = PCARD.pc.stack==null || PCARD.pc.stack.scriptEditor==null ? null : PCARD.pc.stack.scriptEditor.findInStackDialog;
+		openScriptEditor1(PCARD.pc, m.object, m.line, shown==null || !shown.isVisible());
 		SwingUtilities.invokeLater(new Runnable() {
 			public void run() {
 				ScriptArea area = areaFor(m.object);
@@ -364,8 +367,8 @@ public class ScriptEditor extends JFrame {
 				int to = Math.min(from + m.length, area.getText().length());
 				area.setSelectionStart(from);
 				area.setSelectionEnd(to);
-				//openScriptEditorがエディタをtoFrontするので検索ウインドウが隠れる。結果を続けて辿れるよう
-				//検索ウインドウを前に戻し、フォーカスを失ってもエディタの選択範囲は見えたままにする
+				//前に出したエディタが検索ウインドウに重なるので、結果を続けて辿れるよう検索ウインドウを前に戻す
+				//(キーウインドウのままなので並べ替えだけ)。フォーカスが無くてもエディタの選択範囲は見えたままにする
 				FindInStackDialog dialog = PCARD.pc.stack==null || PCARD.pc.stack.scriptEditor==null ? null : PCARD.pc.stack.scriptEditor.findInStackDialog;
 				if(dialog!=null && dialog.isVisible()){
 					dialog.toFront();
@@ -378,6 +381,18 @@ public class ScriptEditor extends JFrame {
 				}
 			}
 		});
+	}
+
+	/** 見せて前に出すがアクティブにはしない(autoRequestFocus を切っている間の setVisible/toFront はキーウインドウを変えない) */
+	void raiseQuietly(){
+		boolean auto = isAutoRequestFocus();
+		setAutoRequestFocus(false);
+		try{
+			setVisible(true);
+			toFront();
+		} finally {
+			setAutoRequestFocus(auto);
+		}
 	}
 
 	public static void openScriptEditor(Frame owner, OObject obj) {
@@ -401,6 +416,11 @@ public class ScriptEditor extends JFrame {
 	}
 	
 	private static void openScriptEditor1(Frame owner, OObject obj, int line) {
+		openScriptEditor1(owner, obj, line, true);
+	}
+
+	/** activate: false はエディタを前に出して見せるだけで、フォーカスは今のウインドウ(検索ウインドウ)に残す */
+	private static void openScriptEditor1(Frame owner, OObject obj, int line, boolean activate) {
 		//System.out.println("openScriptEditor");
 		
 		ArrayList<String> scriptList = obj.scriptList;
@@ -453,6 +473,10 @@ public class ScriptEditor extends JFrame {
 					scrPane.setVisible(true);
 					area.setVisible(true);
 
+					if(!activate){
+						PCARD.pc.stack.scriptEditor.raiseQuietly();
+						return;
+					}
 					PCARD.pc.stack.scriptEditor.setVisible(true);
 					PCARD.pc.stack.scriptEditor.toFront();
 					area.requestFocus();
@@ -538,6 +562,10 @@ public class ScriptEditor extends JFrame {
 		//addTab時点ではまだScriptAreaが無かったのでここで作り直す
 		PCARD.pc.stack.scriptEditor.refreshHandlerPopup();
 
+		if(!activate){
+			PCARD.pc.stack.scriptEditor.raiseQuietly();
+			return;
+		}
 		PCARD.pc.stack.scriptEditor.toFront();
 
 		try{
@@ -2792,9 +2820,10 @@ class ScriptArea extends JTextPane {
 						continue;
 					}
 					else if(i>=1 && typeList.get(i-1)==TTalk.wordType.CMD_SUB && str!="the" &&
-							(command=="put" || command=="add" || command=="subtract" || command=="divide" || command=="multiply") )
+							(command=="put" || command=="add" || command=="subtract") )
 					{
 						//変数("put x into the selection" の the は変数ではない)
+						//multiply/divide の by の後ろは式で、変数の宣言にならない(HC J-2.3 probe TKV ByOf: multiply n by abs of -2)
 						typeList.set(i, TTalk.wordType.VARIABLE);
 						varSet.add(str);
 						continue;

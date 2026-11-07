@@ -1037,6 +1037,7 @@ public class Rsrc {
 				else if("crsr".equals(type)) bi = HCResource.decodeCrsr(b);
 				else if("PAT#".equals(type)) bi = HCResource.decodePAT(b);
 				else if("ppat".equals(type)) bi = HCResource.decodePpat(b);
+				else if("Pdat".equals(type)) bi = PictureFile.loadPICT(b); //ColorizeHC's pictures: PICT data without the 512-byte file header
 				if(bi!=null) return bi;
 				//未知の型で.data拡張子の場合はここで諦めず、念のため下の
 				//通常の画像読み込みも試す(下のtry内で失敗してもnullを返すだけ)

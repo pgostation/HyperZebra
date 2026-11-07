@@ -249,16 +249,18 @@ final class M68kMemory {
 		// the 68020 tolerates odd word accesses (the 68000 does not); programs compiled for 68020+ rely on it
 		if(Integer.compareUnsigned(address-lowEnd,span2)>0)return readOutside(address,2);
 		if(address<ioEnd&&address+2>ioStart)return ioRead(address,2);
-		return (bytes[address] & 0xff) << 8 | bytes[address + 1] & 0xff;
+		return (short)BIG_SHORT.get(bytes,address) & 0xffff;
 	}
 
 	int readLong(int address) throws M68kCpuException {
 		address = normalize(address);
 		if(Integer.compareUnsigned(address-lowEnd,span4)>0)return readOutside(address,4);
 		if(address<ioEnd&&address+4>ioStart)return ioRead(address,4);
-		return (bytes[address] & 0xff) << 24 | (bytes[address + 1] & 0xff) << 16 |
-			(bytes[address + 2] & 0xff) << 8 | bytes[address + 3] & 0xff;
+		return (int)BIG_INT.get(bytes,address);
 	}
+	/** Big-endian words and longs of the byte array: one host load or store each (with a byte swap) where HotSpot compiles them. */
+	private static final java.lang.invoke.VarHandle BIG_SHORT=java.lang.invoke.MethodHandles.byteArrayViewVarHandle(short[].class,java.nio.ByteOrder.BIG_ENDIAN),
+		BIG_INT=java.lang.invoke.MethodHandles.byteArrayViewVarHandle(int[].class,java.nio.ByteOrder.BIG_ENDIAN);
 
 	/** Debug (-Dhz68k.writeprobe=LO,HI hex PC range): reports the address range of guest writes made by code in that range. */
 	static final int[] WRITE_PROBE=parseProbe(System.getProperty("hz68k.writeprobe"));
@@ -296,8 +298,7 @@ final class M68kMemory {
 	void writeWord(int address, int value) throws M68kCpuException {
 		address = normalize(address);if(WRITE_PROBE!=null)probe(address);if(ADDR_PROBE!=null)addrProbe(address,2,value);
 		if(Integer.compareUnsigned(address-lowEnd,span2)>0){writeOutside(address,2,value);return;}
-		bytes[address] = (byte)(value >>> 8);
-		bytes[address + 1] = (byte)value;
+		BIG_SHORT.set(bytes,address,(short)value);
 		byte[] code=codeMarks;if(code!=null&&code[address>>>CODE_SHIFT]!=0)codeWritten(address,2); // a line is marked from 3 bytes before its code
 		if(address<trackEnd&&address+2>trackStart&&chunkTracked[address>>>CHUNK_SHIFT]!=0)touched(address,2);
 		if(address<watchEnd&&address+2>watchStart)watched(address,2);
@@ -307,10 +308,7 @@ final class M68kMemory {
 	void writeLong(int address, int value) throws M68kCpuException {
 		address = normalize(address);if(WRITE_PROBE!=null)probe(address);if(ADDR_PROBE!=null)addrProbe(address,4,value);
 		if(Integer.compareUnsigned(address-lowEnd,span4)>0){writeOutside(address,4,value);return;}
-		bytes[address] = (byte)(value >>> 24);
-		bytes[address + 1] = (byte)(value >>> 16);
-		bytes[address + 2] = (byte)(value >>> 8);
-		bytes[address + 3] = (byte)value;
+		BIG_INT.set(bytes,address,value);
 		byte[] code=codeMarks;if(code!=null&&code[address>>>CODE_SHIFT]!=0)codeWritten(address,4);
 		if(address<trackEnd&&address+4>trackStart&&chunkTracked[address>>>CHUNK_SHIFT]!=0)touched(address,4);
 		if(address<watchEnd&&address+4>watchStart)watched(address,4);
@@ -624,10 +622,25 @@ final class M68kMemory {
 		blockHandles.put(block,handle);requested.put(block,Math.max(0,size));tagAt(block);
 	}
 	private void tagBlocks(int address,int size){
-		if(!(blockTags||blockHeaders||blockHeaders24)||address<=0)return;
+		if(address<=0)return;
 		Integer length=allocated.get(address);if(length==null)return;
 		requested.put(address,Math.max(0,size));
+		if(!(blockTags||blockHeaders||blockHeaders24))return;
 		tagAt(address);if(allocated.containsKey(address+length))tagAt(address+length); // this block's zero fill cleared the next one's tag
+	}
+	/**
+	 * A new nonrelocatable block: the byte before it is the low byte of the zone in a real block header, never 0 in practice.
+	 * Before I Go - Final Wishes (Notebook) reads a Ptr as a Pascal string from one byte before it and cuts
+	 * it to the length it wants: with a 0 there the string came out empty and it said "Not enough memory available". The byte
+	 * lies in the spare bytes after the previous block; a reallocated block (no spare bytes) or a block with real headers is left alone.
+	 */
+	synchronized void notePointerBlock(int address){
+		if(blockHeaders||blockHeaders24||address<=0)return;
+		address&=mask;int at=address-1;
+		Integer previous=endsAt.get(address);
+		if(previous!=null){Integer used=requested.get(previous);if(used==null||previous+used>at)return;}
+		else{Map.Entry<Integer,Integer> free=freeByAddress.floorEntry(at);if(free==null||at>=free.getKey()+free.getValue())return;}
+		bytes[at]=(byte)0xFC;
 	}
 	/** The tag byte of the block at {@code address}: in the previous block's trailer or free space (never another block's data). */
 	private void tagAt(int address){

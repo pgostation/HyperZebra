@@ -27,6 +27,12 @@ final class ResourceManager68k {
 	private int applicationRefNum,systemRefNum;
 	final ResourceFile68k system;
 	private boolean loadResources=true;
+	/** The ResLoad word ($A5E) as SetResLoad last wrote it (0 before: low memory is zero until the process sets it up). */
+	private int resLoadWritten;
+	/** Whether resources load: SetResLoad's setting, or the low-memory byte when the program has written ResLoad itself, which
+	 *  the ROM reads directly - Apple File Exchange's translator code sets it with ST ResLoad after a SetResLoad(FALSE) and
+	 *  jumped through the empty handle GetResource gave it. */
+	private boolean loadResources() throws M68kCpuException {int now=memory.readWord(0xa5e);return now==resLoadWritten?loadResources:(now>>>8)!=0;}
 	private int error;
 
 	ResourceManager68k(Toolbox68k tb){
@@ -116,6 +122,7 @@ final class ResourceManager68k {
 	void pin(int ref){pinnedFiles.add(ref);}
 	boolean isPinned(int ref){return pinnedFiles.contains(ref);}
 	void pinHandle(int handle){pinnedHandles.add(handle);}
+	void unpinHandle(int handle){pinnedHandles.remove(handle);}
 	private int open(ResourceFile68k file){int ref=tb.allocateFileReference();file.refNum=ref;files.put(ref,file);syncMap(file);relinkMaps();describe(file);return ref;}
 	private void describe(ResourceFile68k f){long eof=0;if(f.file!=null&&f.file.isFile())eof=f.file.length();tb.describeFileControlBlock(f.refNum,f.file,true,f.writable,eof);}
 	/** Fills the FCB entries of the files opened before the volume control blocks existed. */
@@ -196,14 +203,16 @@ final class ResourceManager68k {
 		for(int i=0;i<ours.size()&&same;i++)same=ours.get(i)==top.get(top.size()-1-i);
 		if(same)return;
 		List<Map.Entry<Integer,ResourceFile68k>> entries=new ArrayList<Map.Entry<Integer,ResourceFile68k>>(files.entrySet());
-		files.clear();boolean aboveApplication=false;belowApplication.clear();
+		files.clear();boolean aboveApplication=false,aboveSystem=false;belowApplication.clear();belowSystem.clear();
 		for(Map.Entry<Integer,ResourceFile68k> e:entries)if(out.contains(e.getKey()))files.put(e.getKey(),e.getValue()); // detached: out of the search anyway
 		for(int i=top.size()-1;i>=0;i--){ResourceFile68k f=top.get(i);
 			for(Map.Entry<Integer,ResourceFile68k> e:entries)if(e.getValue()==f){files.put(e.getKey(),f);
 				if(e.getKey()==applicationRefNum)aboveApplication=true;
-				else if(!aboveApplication&&e.getKey()!=systemRefNum){belowApplication.add(e.getKey());raisedByProgram.remove(e.getKey());}
+				else if(e.getKey()==systemRefNum)aboveSystem=true;
+				else if(!aboveSystem)belowSystem.add(e.getKey());
+				else if(!aboveApplication){belowApplication.add(e.getKey());raisedByProgram.remove(e.getKey());}
 				break;}}
-		if(Mac68kApi.TRACE)System.err.println("[res] adopted the program's map chain order");
+		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder();for(ResourceFile68k f:top)sb.append(f.refNum).append(' ');System.err.println("[res] adopted the program's map chain order: "+sb+"sysMap "+memory.readLong(SYS_MAP_HNDL)+" system "+systemRefNum);}
 	}
 	/** The map Handles along the guest chain at the last adoptGuestChain, their count and the number of open files then. */
 	private int[] seenChain=new int[0];private int seenCount=-1,seenFiles=-1;
@@ -293,12 +302,14 @@ final class ResourceManager68k {
 		switch(trap){
 			// SetResLoad: Boolean in the high-order byte. ResErr stays as it was: Rinaldi's FullResList/FullResChange call OpenRFPerm,
 			// then SetResLoad(true), then ResError - a cleared error made them list (and renumber) the stack instead of the file
-			case 0x99b:loadResources=memory.readByte(cpu.a[7])!=0;cpu.a[7]+=2;return true;
+			// The state is kept in the ResLoad word too, both bytes: FreeHand 3.11 saves the byte at $A5F around its SetResLoad(false)
+			// scan of the CODE resources and restores it - a 0 there left loading off, and its segment loader spun for ever.
+			case 0x99b:loadResources=memory.readByte(cpu.a[7])!=0;resLoadWritten=loadResources?0xffff:0;memory.writeWord(0xa5e,resLoadWritten);cpu.a[7]+=2;return true;
 			case 0x99c:case 0x80d:{int type=memory.readLong(cpu.a[7]);cpu.a[7]+=4;memory.writeWord(cpu.a[7],entries(type,trap==0x80d).size());setError(NO_ERR);return true;}
 			case 0x99d:case 0x80e:{int index=(short)memory.readWord(cpu.a[7]),type=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;List<ResourceFile68k.Resource> list=entries(type,trap==0x80e);
 				if(list.isEmpty()&&type==DNRP&&trap==0x80e)list=system==null?list:system.ofType(type); // see DNRP
 				memory.writeLong(cpu.a[7],handleFor(index>=1&&index<=list.size()?list.get(index-1):null));return true;}
-			case 0x9a0:case 0x81f:{int id=(short)memory.readWord(cpu.a[7]),type=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;ResourceFile68k.Resource r=find(type,id,trap==0x81f);int h=getResource(r);if(h==0&&Mac68kApi.TRACE)System.err.println("[68K] GetResource "+ResourceFile68k.typeName(type)+" "+id+" failed: "+(r==null?"not found":"ResErr "+(short)memory.readWord(0xa60)));
+			case 0x9a0:case 0x81f:{int id=(short)memory.readWord(cpu.a[7]),type=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;ResourceFile68k.Resource r=find(type,id,trap==0x81f);int h=getResource(r);if(h==0&&Mac68kApi.TRACE)System.err.println("[68K] GetResource "+ResourceFile68k.typeName(type)+" "+id+" failed: "+(r==null?"not found":"ResErr "+(short)memory.readWord(0xa60))+" chain "+chainRefNums());
 				else if(Mac68kApi.TRACE)System.err.println("[68K] GetResource "+ResourceFile68k.typeName(type)+" "+id+" -> $"+Integer.toHexString(h)+" data $"+Integer.toHexString(memory.readLong(h))+" size "+tb.api.handleSize(h)+" current "+current);
 				memory.writeLong(cpu.a[7],h);return true;}
 			case 0x80c:{int id=(short)memory.readWord(cpu.a[7]),type=memory.readLong(cpu.a[7]+2);cpu.a[7]+=6;memory.writeLong(cpu.a[7],getResource(find(type,id,false)));return true;}
@@ -384,13 +395,17 @@ final class ResourceManager68k {
 	 *  loading (a program can open the Speech Manager for its 'ttvd' voices; with the extension's copy current the whole
 	 *  chain above it - the program's own DLOGs and STR#s - was out of reach). CloseResFile puts them back below. */
 	private final java.util.Set<Integer> raisedByProgram=new java.util.HashSet<Integer>();
+	/** Files whose maps the program linked in under the System file's (Kaleidoscope's INIT hangs its copy of the scheme's map
+	 *  there): searched after the System file, so the scheme engine finds its cicns and 'wnd#'s with UseResFile(0). */
+	private final java.util.Set<Integer> belowSystem=new java.util.HashSet<Integer>();
 	/** Every open file from the bottom of the search chain to the top: the files opened outside the chain (extensions the
 	 *  loader opened after the application file) sit below the application, as on a real Mac where INITs load before it. */
 	private List<ResourceFile68k> ordered(){
 		List<ResourceFile68k> all=new ArrayList<ResourceFile68k>(files.size()),below=new ArrayList<ResourceFile68k>();
-		for(Map.Entry<Integer,ResourceFile68k> e:files.entrySet())if(e.getKey()!=systemRefNum&&e.getKey()!=applicationRefNum&&belowApplication.contains(e.getKey()))below.add(e.getValue());
+		if(!belowSystem.isEmpty())for(Map.Entry<Integer,ResourceFile68k> e:files.entrySet())if(e.getKey()!=systemRefNum&&e.getKey()!=applicationRefNum&&belowSystem.contains(e.getKey()))all.add(e.getValue());
+		for(Map.Entry<Integer,ResourceFile68k> e:files.entrySet())if(e.getKey()!=systemRefNum&&e.getKey()!=applicationRefNum&&belowApplication.contains(e.getKey())&&!belowSystem.contains(e.getKey()))below.add(e.getValue());
 		boolean placed=false;
-		for(Map.Entry<Integer,ResourceFile68k> e:files.entrySet()){if(below.contains(e.getValue()))continue;if(e.getKey()==applicationRefNum){all.addAll(below);placed=true;}all.add(e.getValue());}
+		for(Map.Entry<Integer,ResourceFile68k> e:files.entrySet()){if(below.contains(e.getValue())||all.contains(e.getValue()))continue;if(e.getKey()==applicationRefNum){all.addAll(below);placed=true;}all.add(e.getValue());}
 		if(!placed)all.addAll(below); // no application file: they keep their place
 		return all;
 	}
@@ -418,6 +433,8 @@ final class ResourceManager68k {
 	int insertResourceFile(int ref,int where) throws M68kCpuException {
 		if(!files.containsKey(ref)||ref==systemRefNum||ref==applicationRefNum)return RES_FILE_NOT_FOUND;
 		detached.remove(ref);
+		belowSystem.remove(ref);
+		if(where==0)belowSystem.add(ref);
 		if(where<=1){belowApplication.add(ref);raisedByProgram.remove(ref);}else{belowApplication.remove(ref);toTop(ref);}
 		relinkMaps();return NO_ERR;
 	}
@@ -445,7 +462,7 @@ final class ResourceManager68k {
 			for(ResourceFile68k f:files.values())if(f.storage==ResourceFile68k.Storage.DATA&&f.file!=null&&f.file.getCanonicalPath().equals(path)){setCurrent(f.refNum);setError(NO_ERR);return f.refNum;}
 			if(file.length()==0){setError(EOF_ERR);return -1;}
 			ResourceFile68k rf=ResourceFile68k.openDataFork(file);
-			rf.writable=permission!=FS_RD_PERM&&file.canWrite();
+			rf.writable=permission!=FS_RD_PERM&&HostFileAttributes68k.mayBecomeWritable(file);
 			int ref=open(rf);setCurrent(ref);setError(NO_ERR);return ref;
 		}catch(IOException e){setError(MAP_READ_ERR);return -1;}
 	}
@@ -468,6 +485,7 @@ final class ResourceManager68k {
 		return result;
 	}
 
+	private String chainRefNums(){StringBuilder sb=new StringBuilder();for(ResourceFile68k f:chain(false))sb.append(f.refNum).append(' ');return sb.toString().trim();}
 	private static boolean inAny(List<ResourceFile68k> files,int type,int id){for(ResourceFile68k f:files)if(f.get(type,id)!=null)return true;return false;}
 	ResourceFile68k.Resource find(int type,int id,boolean currentOnly){for(ResourceFile68k f:chain(currentOnly)){ResourceFile68k.Resource r=f.get(type,id);if(r!=null)return r;}return null;}
 	ResourceFile68k.Resource find(int type,int id){return find(type,id,false);}
@@ -591,13 +609,14 @@ final class ResourceManager68k {
 		if(r==null){setError(RES_NOT_FOUND);return 0;}
 		if(r.handle!=0&&byHandle.get(r.handle)==r){
 			// a Handle left empty by an earlier SetResLoad(false) lookup is filled in now that loading is on
-			if(loadResources&&memory.readLong(r.handle)==0){try{tb.api.loadHandle(r.handle,data(r));}catch(M68kCpuException e){setError(MEM_FULL_ERR);return 0;}}
+			if(loadResources()&&memory.readLong(r.handle)==0){try{tb.api.loadHandle(r.handle,data(r));}catch(M68kCpuException e){setError(MEM_FULL_ERR);return 0;}}
 			if(Mac68kApi.TRACE&&r.type==0x434f4445)System.err.println("[68K] CODE "+r.id+" data at $"+Integer.toHexString(memory.readLong(r.handle)));
 			setError(NO_ERR);return r.handle;}
 		try{
-			int h=loadResources?tb.api.createHandle(data(r)):tb.api.createEmptyHandle(r.length());
+			int h=loadResources()?tb.api.createHandle(data(r)):tb.api.createEmptyHandle(r.length());
 			tb.api.setHandleState(h,0x20|((r.attributes&ResourceFile68k.RES_LOCKED)!=0?0x80:0)|((r.attributes&ResourceFile68k.RES_PURGEABLE)!=0?0x40:0));
 			r.handle=h;byHandle.put(h,r);patchMapEntry(r);setError(NO_ERR);
+			if(r.type==0x47436463)tb.clockBeforeGcsExpiry(); // 'GCdc': GCS's decompressor, whose archives expire in March 2020
 			if(Mac68kApi.TRACE&&r.type==0x434f4445)System.err.println("[68K] CODE "+r.id+" data at $"+Integer.toHexString(memory.readLong(h)));
 			return h;
 		}catch(M68kCpuException e){setError(MEM_FULL_ERR);return 0;}
@@ -628,6 +647,15 @@ final class ResourceManager68k {
 	/** A private copy of a resource (for records the program owns, such as windows and menus). */
 	/** The same for the Toolbox's own lookups, which leave the program's ResError alone (Sargo Noidz checks ResError after
 	 *  GetNewDialog/DisposeDialog, and the Palette Manager's search for 'pltt' 0 had left resNotFound there). */
+	/** A GetIconSuite member: the resource's own (shared) Handle, as the ROM keeps it - AutoCat 2.0 detaches the 'ICN#' it gets
+	 *  from its suite and adds it to a folder's Icon file (a copy made DetachResource fail with resNotFound, "error reading from
+	 *  the AutoCat Preferences file: -192"). Pinned, so closing its file leaves it to the suite (Cyberdog builds its suites while
+	 *  its editors file is in the chain only). ResError is left alone. */
+	int iconSuiteMemberQuietly(int type,int id) throws M68kCpuException {
+		int saved=error;
+		try{ResourceFile68k.Resource r=find(type,id,false);if(r==null)return 0;int h=handleFor(r);if(h!=0)pinHandle(h);return h;}
+		finally{setError(saved);}
+	}
 	int detachedResourceQuietly(int type,int id) throws M68kCpuException {
 		int saved=error;try{return detachedResource(type,id);}finally{setError(saved);}
 	}
@@ -729,9 +757,16 @@ final class ResourceManager68k {
 			else if(trap==0x9c4){perm=memory.readByte(cpu.a[7]);int vRef=(short)memory.readWord(cpu.a[7]+2),name=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;asked=tb.readPascal(name);file=tb.files.fileFor(vRef,0,asked);if(vRef==0)file=tb.files.searchSystemFolder(asked,file);} // name 4 + vRefNum 2 + permission byte (a word on the stack) = 8; popping 10 shifted the caller's saved registers (Speedometer's GDHandle came back <<16)
 			else{perm=memory.readByte(cpu.a[7]);int name=memory.readLong(cpu.a[7]+2),dirId=memory.readLong(cpu.a[7]+6),vRef=(short)memory.readWord(cpu.a[7]+10);cpu.a[7]+=12;asked=tb.readPascal(name)+" in "+vRef+"/"+dirId;file=tb.files.fileFor(vRef,dirId,tb.readPascal(name));}
 		}catch(IOException e){file=null;}
-		int ref=openFile(file,perm);
+		int ref=(file==null||!file.isFile())&&SystemResources68k.PRINTER_NAME.equals(asked)?openPrinterFile():openFile(file,perm);
 		if(Mac68kApi.TRACE)System.err.println("[res] "+name(trap)+" -> "+(file==null?"(unresolved)":file.getPath())+(asked!=null?" '"+asked+"'":"")+" refNum "+ref+" err "+error);
 		memory.writeWord(cpu.a[7],ref);return true;
+	}
+
+	/** The chosen printer's resource file the PrLink glue opens by name (PrintManager68k.printerFile), a fresh one each time it is not open. */
+	private int openPrinterFile() throws M68kCpuException {
+		for(ResourceFile68k f:files.values())if(f.printer){setCurrent(f.refNum);setError(NO_ERR);return f.refNum;}
+		ResourceFile68k rf=tb.print.printerFile();rf.printer=true;rf.writable=false;
+		int ref=open(rf);setCurrent(ref);setError(NO_ERR);return ref;
 	}
 
 	static final int FS_CUR_PERM=0,FS_RD_PERM=1;
@@ -774,7 +809,7 @@ final class ResourceManager68k {
 				setCurrent(f.refNum);setError(NO_ERR);return f.refNum;}
 			ResourceFile68k rf=ResourceFile68k.open(file);
 			if(rf.storage==ResourceFile68k.Storage.NONE&&rf.ordered.isEmpty()){setError(EOF_ERR);return -1;}
-			rf.writable=file.canWrite();
+			rf.writable=HostFileAttributes68k.mayBecomeWritable(file); // a read-only copy from a CD is made writable at the first write (flush)
 			int ref=open(rf);if(permission==FS_RD_PERM)readOnlyRefs.add(ref);setCurrent(ref);setError(NO_ERR);return ref;
 		}catch(IOException e){setError(MAP_READ_ERR);return -1;}
 	}
@@ -810,7 +845,7 @@ final class ResourceManager68k {
 	 * Manager reopens its extension file for each voice; left in its old place (just above the application) its close made
 	 * the application current, and Ultima III's pictures in "Ultima Graphics" were out of reach (-192).
 	 */
-	private void toTop(int ref){ResourceFile68k f=files.remove(ref);if(f!=null)files.put(ref,f);}
+	private void toTop(int ref){belowSystem.remove(ref);ResourceFile68k f=files.remove(ref);if(f!=null)files.put(ref,f);}
 
 	void closeResFile(int ref) throws M68kCpuException {
 		followGuest();
@@ -821,7 +856,7 @@ final class ResourceManager68k {
 		int next=applicationRefNum;if(current==ref){List<ResourceFile68k> c=chain(false);if(c.size()>1)for(Map.Entry<Integer,ResourceFile68k> e:files.entrySet())if(e.getValue()==c.get(1)){next=e.getKey();break;}}
 		if(raisedByProgram.remove(ref)&&files.containsKey(ref)){belowApplication.add(ref);backToLoader(ref);if(current==ref)setCurrent(next);relinkMaps();setError(NO_ERR);return;} // the loader's file stays open for its owner
 		if(pinnedFiles.contains(ref)){backToLoader(ref);if(current==ref)setCurrent(next);setError(NO_ERR);return;} // an extension's file never closes, but the program's current file moves on
-		ResourceFile68k f=files.remove(ref);belowApplication.remove(ref);detached.remove(ref);closedByLoader.remove(ref);reopenedFromLoader.remove(ref);
+		ResourceFile68k f=files.remove(ref);belowApplication.remove(ref);belowSystem.remove(ref);detached.remove(ref);closedByLoader.remove(ref);reopenedFromLoader.remove(ref);
 		if(f==null){setError(RES_FILE_NOT_FOUND);return;}
 		if(f.dirty)try{flush(f);}catch(IOException e){}
 		readOnlyRefs.remove(ref);if(tb.files!=null)tb.files.fileManager.resourceFileClosed(ref);
@@ -848,7 +883,7 @@ final class ResourceManager68k {
 		if(file.isDirectory()){setError(-1302);return;} // notAFileErr
 		if(!Sandbox.allowFile(file,Sandbox.Access.WRITE,tb.name)){setError(PERM_ERR);return;}
 		try{
-			if(!file.exists())java.nio.file.Files.write(file.toPath(),new byte[0]);
+			if(!file.exists()){java.nio.file.Files.write(file.toPath(),new byte[0]);Sandbox.created(tb.name,file);}
 			byte[] existing=ResourceFile68k.readForkBytes(file,null);
 			// a fork that holds a map already is left alone with dupFNErr (Inside Macintosh: More Toolbox, CreateResFile): Disk Copy 6.3
 			// calls HCreateResFile on its prefs file at every start and took noErr for "new prefs" - licence again, settings lost
@@ -875,13 +910,22 @@ final class ResourceManager68k {
 		// into the System: ChangedResource/UpdateResFile answering permErr ended it with "a serious problem")
 		if(f==system){setError(NO_ERR);return;}
 		if(!f.writable){setError(PERM_ERR);return;}
-		try{flush(f);setError(NO_ERR);}catch(IOException e){setError(OP_WR_ERR);}
+		try{flush(f);setError(codeRefused?PERM_ERR:NO_ERR);}catch(IOException e){setError(OP_WR_ERR);}
 		// the map in memory describes the fork as just written: THINK C 5 puts offsets of its own into it before
 		// UpdateResFile and reads the lengths of unloaded resources from the fork at the map's offsets afterwards
 		syncMap(f);relinkMaps();
 	}
-	private void flush(ResourceFile68k f) throws IOException {if(f.stack!=null){storeInStack(f);return;}if(f.file==null||!f.writable)return;if(!Sandbox.allowFile(f.file,Sandbox.Access.WRITE,tb.name))throw new IOException("write not allowed");f.write();tb.files.fileManager.resourceForkRewritten(f.file);}
-	void flushAll(){for(ResourceFile68k f:files.values()){if(f.stack!=null){storeInStack(f);continue;}if(f.dirty&&f.writable&&f.file!=null&&Sandbox.allowFile(f.file,Sandbox.Access.WRITE,tb.name))try{for(ResourceFile68k.Resource r:f.ordered)if(r.changed)captureHandle(r);f.write();}catch(Exception ignored){}}}
+	/** Whether the last {@link #guardCode} took code changes back: UpdateResFile answers permErr. */
+	private boolean codeRefused;
+	/** Code about to go into a file is asked for ({@link ProgramGuard68k}); refused, it stays out and the rest of what the program wrote goes on. */
+	private void guardCode(ResourceFile68k f){
+		codeRefused=false;
+		ProgramGuard68k.Changes changes=ProgramGuard68k.changes(f);
+		if(changes==null||changes.empty()||Sandbox.allowProgramChange(f.file,tb.name))return;
+		changes.revert(f,byHandle);codeRefused=true;
+	}
+	private void flush(ResourceFile68k f) throws IOException {if(f.stack!=null){storeInStack(f);return;}if(f.file==null||!f.writable)return;guardCode(f);if(!Sandbox.allowFile(f.file,Sandbox.Access.WRITE,tb.name))throw new IOException("write not allowed");if(!HostFileAttributes68k.makeWritable(f.file))throw new IOException("read-only");f.write();tb.files.fileManager.resourceForkRewritten(f.file);}
+	void flushAll(){for(ResourceFile68k f:files.values()){if(f.stack!=null){storeInStack(f);continue;}if(f.dirty&&f.writable&&f.file!=null)try{for(ResourceFile68k.Resource r:f.ordered)if(r.changed)captureHandle(r);guardCode(f);if(Sandbox.allowFile(f.file,Sandbox.Access.WRITE,tb.name)&&HostFileAttributes68k.makeWritable(f.file))f.write();}catch(Exception ignored){}}}
 	/** XCMD mode, after each external call: what it added to or changed in a stack's resource file goes into the stack, as
 	 *  HyperCard's open stack has it at once (an external need not call UpdateResFile: MtMakeIcon's ICON is a button icon next). */
 	void storeStackFiles(){

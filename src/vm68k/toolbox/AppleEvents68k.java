@@ -63,6 +63,8 @@ final class AppleEvents68k {
 	/** The handler table of the code running now: a program this process runs on a task of its own has its own, as in a process of its
 	 *  own (Ray Dream Studio's extensions each install a 'quit' handler; the program's own was replaced and its Quit did nothing). */
 	private Map<Long,int[]> handlers(){Map<Long,int[]> own=tb.threads.programHandlers();return own!=null?own:handlers;}
+	/** Events whose handler was installed in the system table (AEInstallEventHandler isSysHandler): a scripting addition's. */
+	private final java.util.Set<Long> systemHandlers=new java.util.HashSet<Long>();
 	private final Map<Long,int[]> coercions=new HashMap<Long,int[]>(); // (fromType<<32|toType) -> {proc, refcon, fromTypeIsDesc}
 	private EventManager68k.Event current;
 	private int returnId=1;
@@ -235,7 +237,7 @@ final class AppleEvents68k {
 			cpu.a[1]=dispatcherGate();cpu.pushLong(cpu.pc);cpu.pc=selectProc;return true;}
 		if(osl){Integer r=objects.pack8(cpu,selector,sp);if(r!=null){flushDirty();cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],r);return true;}}
 		switch(selector){
-			case 0x091f:{int isSys=memory.readWord(sp),refcon=memory.readLong(sp+2),handler=memory.readLong(sp+6),id=memory.readLong(sp+10),cls=memory.readLong(sp+14);handlers().put(key(cls,id),new int[]{handler,refcon});result=0;break;}
+			case 0x091f:{int isSys=memory.readWord(sp),refcon=memory.readLong(sp+2),handler=memory.readLong(sp+6),id=memory.readLong(sp+10),cls=memory.readLong(sp+14);handlers().put(key(cls,id),new int[]{handler,refcon});if((isSys&0xff00)!=0)systemHandlers.add(key(cls,id));else systemHandlers.remove(key(cls,id));result=0;break;}
 			case 0x0720:{int id=memory.readLong(sp+6),cls=memory.readLong(sp+10);result=handlers().remove(key(cls,id))==null?ERR_HANDLER_NOT_FOUND:0;break;}
 			case 0x0921:{int refconPtr=memory.readLong(sp+2),handlerPtr=memory.readLong(sp+6),id=memory.readLong(sp+10),cls=memory.readLong(sp+14);int[] h=handlers().get(key(cls,id));if(h==null)result=ERR_HANDLER_NOT_FOUND;else{if(handlerPtr!=0)memory.writeLong(handlerPtr,h[0]);if(refconPtr!=0)memory.writeLong(refconPtr,h[1]);result=0;}break;}
 			case 0x021b:{int eventPtr=memory.readLong(sp);cpu.a[7]+=argBytes;result=processAppleEvent(eventPtr);flushDirty();memory.writeWord(cpu.a[7],result);return true;}
@@ -813,6 +815,8 @@ final class AppleEvents68k {
 	/** userCanceledErr: a 'quit' handler's answer when the user cancelled in its "Save changes?" dialog. */
 	static final int USER_CANCELED=-128;
 
+	/** Whether the program installed an 'aevt' handler for {@code id} (or for every 'aevt' event). */
+	boolean hasCoreHandler(int id){Map<Long,int[]> handlers=handlers();return handlers.containsKey(key(TYPE_AEVT,id))||handlers.containsKey(key(TYPE_AEVT,TYPE_WILD));}
 	/** Whether the program installed a handler that would take (class, id). */
 	boolean hasHandler(int cls,int id){Map<Long,int[]> handlers=handlers();return handlers.containsKey(key(cls,id))||handlers.containsKey(key(cls,TYPE_WILD))||handlers.containsKey(key(TYPE_WILD,id))||handlers.containsKey(key(TYPE_WILD,TYPE_WILD));}
 	/**
@@ -963,6 +967,14 @@ final class AppleEvents68k {
 			try{Thread.sleep(20);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}}
 	}
 
+	/** An object specifier for property 'vers' of the application itself (container null). */
+	private static boolean isFinderVersionRequest(Portable object){
+		if(object==null||!object.isRecord)return false;
+		Portable form=object.items.get(0x666f726d),selector=object.items.get(0x73656c64),from=object.items.get(0x66726f6d);
+		return form!=null&&form.data!=null&&form.data.length>=4&&MacApp68k.u4(form.data,0)==0x70726f70
+			&&selector!=null&&selector.data!=null&&selector.data.length>=4&&MacApp68k.u4(selector.data,0)==0x76657273
+			&&(from==null||from.type==TYPE_NULL);
+	}
 	private int send(int event,int replyDesc,int sendMode,int timeout) throws M68kException {
 		Record r=record(event);if(r==null)return ERR_DESC_NOT_FOUND;
 		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder("[ae] AESend "+fourcc(r.eventClass)+"/"+fourcc(r.eventId)+" params");
@@ -1001,6 +1013,10 @@ final class AppleEvents68k {
 				else{target=session!=0?MacApp68k.bySerial(session):null;
 					if(target==null)for(MacApp68k app:MacApp68k.runningApplications())if(app.toolbox!=null&&(creator!=0&&app.toolbox.files.fileCreator(app.file)==creator||name.equalsIgnoreCase(app.name))){target=app;break;}
 					if(target==null&&(session==Toolbox68k.FINDER_SERIAL||creator==0x4d414353||name.equalsIgnoreCase("Finder")))finderStandIn=true;}}}
+		// A scripting addition's event (display dialog, current date, beep...: a system handler) told to the Finder: a real Finder loads
+		// the osax and puts the dialog up, so the sender's own process handles it (an applet's `tell application "Finder" to display
+		// dialog` showed nothing and the script then failed on the missing result: マックからの手紙, ナンバーズ3)
+		if(finderStandIn&&Toolbox68k.finderStandInPresent()&&(systemHandlers.contains(key(r.eventClass,r.eventId))||r.eventClass==0x7379736f)){finderStandIn=false;self=true;}
 		// The Finder stand-in GetNextProcess lists has no event queue: the event is accepted and ignored, with an empty reply. The Apple
 		// Software Installer (iMovie 1.0 "Install iMovie") sends it 'quit' before installing and stopped with "not able to quit application".
 		if(finderStandIn){
@@ -1024,6 +1040,13 @@ final class AppleEvents68k {
 			if(r.eventClass==0x666e6472&&(r.eventId==0x72657374||r.eventId==0x73687574)&&tb.app!=null&&tb.events!=null){
 				if(Mac68kApi.TRACE)System.err.println("[68K] AESend fndr/"+fourcc(r.eventId)+" -> Finder: "+tb.app.name+" is told to quit");
 				tb.events.postQuit();}
+			// `version of application "Finder"` (core/getd of property 'vers' of the application): installers check the OS this way
+			// and coerce the text to a number ("このインストーラはMAC OS 8.0J 以降対応です"); the Finder of the System the program
+			// sees, as "major.minor" (Finder 7.6, 8.5, 9.2 name themselves so)
+			if(r.eventClass==0x636f7265&&r.eventId==0x67657464&&replyDesc!=0&&isFinderVersionRequest(export(new int[]{TYPE_AEVT,memory.readLong(event+4)}).items.get(KEY_DIRECT))){
+				int v=tb.systemVersion();String version=((v>>8)&0xff)+"."+((v>>4)&0xf);
+				Record answer=new Record();answer.isRecord=true;answer.items.put(KEY_DIRECT,new int[]{TYPE_TEXT,tb.api.createHandle(version.getBytes(java.nio.charset.StandardCharsets.US_ASCII))});
+				writeDesc(replyDesc,TYPE_AEVT,register(answer));flushDirty();return 0;}
 			if(replyDesc!=0)writeDesc(replyDesc,TYPE_NULL,0);return 0;}
 		if(!self&&target!=null)awaitStart(target);
 		if(!self&&(target==null||target.toolbox==null||target.finished))return -600; // procNotFound

@@ -176,6 +176,7 @@ public class OField extends OObject implements Cloneable {
 	public void setTopLeft(int h, int v) {
 		final int oldLeft=left;
 		final int oldTop=top;
+		if(h==oldLeft && v==oldTop) StackSpeed.unchanged(); //HyperCard draws nothing for it (speed limit)
 		left=h;
 		top=v;
 		if(fld!=null){
@@ -258,6 +259,7 @@ public class OField extends OObject implements Cloneable {
 	private static final ThreadLocal<int[]> exactChange = new ThreadLocal<int[]>();
 	static void changeForNextText(int[] change){ if(change==null) exactChange.remove(); else exactChange.set(change); }
 	public void setText(String in) {
+		GUI.dropSelectedRange();
 		TTalk.putIntoField(this); //a script's put closes this field if it is open
 		Integer edit = putEdit.get();
 		putEdit.remove();
@@ -646,6 +648,8 @@ public class OField extends OObject implements Cloneable {
 	static int textTopMargin(double scale, boolean wide) {
 		return (int)Math.round((wide ? 5 : 1)*Math.max(1, scale));
 	}
+	/** Lines are picked by clicking, no text is selected: the global selectedText, selectedChunk… do not see the line (HC J-2.3). */
+	boolean isListField() {return enabled && autoSelect && dontWrap;}
 	/** A fixedLineHeight field's line height: textHeight, at least textSize (HyperCard J-2.3 raises a smaller textHeight to it). */
 	int fixedRowHeight() {return Math.max(1, Math.max(textHeight, textSize));}
 	/** The baseline below a fixed line's top: HyperCard J-2.3 gives TextEdit textHeight - textHeight div 4 (20 -> 15, 13 -> 10, 25 -> 19). */
@@ -701,6 +705,8 @@ public class OField extends OObject implements Cloneable {
 		String font;
 		int size;
 		int style;
+		/** the run's own text colour (0xRRGGBB), -1 for the field's */
+		int color = -1;
 		TextStyleSpec(String font, int size, int style){
 			this.font=font; this.size=size; this.style=style;
 		}
@@ -726,12 +732,18 @@ public class OField extends OObject implements Cloneable {
 			}
 			if(entry.size!=-1) result.size=entry.displaySize();
 			if(entry.style!=-1) result.style=entry.style;
+			result.color = entry.color;
 			break;
 		}
 		return result;
 	}
 
 	void applyTextStyle(int start, int end, String font, int size, int style) {
+		applyTextStyle(start, end, font, size, style, -1);
+	}
+	/** color: the run's text colour 0xRRGGBB, -1 for the field's */
+	void applyTextStyle(int start, int end, String font, int size, int style, int color) {
+		GUI.dropSelectedRange();
 		String text = getText();
 		start = Math.max(0, Math.min(start, text.length()));
 		end = Math.max(start, Math.min(end, text.length()));
@@ -742,9 +754,9 @@ public class OField extends OObject implements Cloneable {
 		if(styleList==null) styleList = new ArrayList<styleClass>();
 		styleList.removeIf(run -> run.textPosition>=startOffset && run.textPosition<=endOffset);
 		styleList.add(new styleClass(startOffset,
-			card.stack.addCompleteTextStyle(font, size, style)));
+			card.stack.addCompleteTextStyle(font, size, style, color)));
 		if(end<text.length()) styleList.add(new styleClass(endOffset,
-			card.stack.addCompleteTextStyle(after.font, after.size, after.style)));
+			card.stack.addCompleteTextStyle(after.font, after.size, after.style, after.color)));
 		styleList.sort((a,b) -> Integer.compare(a.textPosition, b.textPosition));
 		//非共有bgフィールドなら、カード側のスタイルも差し替える
 		//(上でstyleListを新しく作った場合、以前の参照共有では追従しない)
@@ -753,6 +765,32 @@ public class OField extends OObject implements Cloneable {
 		useMyDraw = true;
 		if(fld!=null) fld.repaint();
 		if(parent instanceof OCardBase) ((OCardBase)parent).changed = true;
+	}
+
+	/** The characters [start, end) restyled run by run (the Font and Style menus): change gets each run's style and changes
+	 *  what it sets, the run keeps the rest (Bold over a selection of two fonts keeps both fonts). */
+	void restyleText(int start, int end, java.util.function.Consumer<TextStyleSpec> change) {
+		String text = getText();
+		start = Math.max(0, Math.min(start, text.length()));
+		end = Math.max(start, Math.min(end, text.length()));
+		if(end<=start) return;
+		ArrayList<int[]> runs = new ArrayList<int[]>();
+		ArrayList<TextStyleSpec> specs = new ArrayList<TextStyleSpec>();
+		int runStart = start;
+		TextStyleSpec current = textStyleAt(start);
+		for(int pos=start+1; pos<=end; pos++){
+			TextStyleSpec spec = pos<end ? textStyleAt(pos) : null;
+			if(spec==null || !java.util.Objects.equals(spec.font, current.font) || spec.size!=current.size ||
+					spec.style!=current.style || spec.color!=current.color){
+				runs.add(new int[]{runStart, pos}); specs.add(current);
+				runStart = pos; current = spec;
+			}
+		}
+		for(int i=0; i<runs.size(); i++){
+			TextStyleSpec spec = specs.get(i);
+			change.accept(spec);
+			applyTextStyle(runs.get(i)[0], runs.get(i)[1], spec.font, spec.size, spec.style, spec.color);
+		}
 	}
 
 	/** Field-level set of textFont/textSize/textStyle: the chunk runs stop overriding that attribute
@@ -768,8 +806,8 @@ public class OField extends OObject implements Cloneable {
 			if(which.equals("font")) font = -1;
 			else if(which.equals("size")) size = -1;
 			else style = -1;
-			if(font==-1 && size==-1 && style==-1) continue;
-			updated.add(new styleClass(run.textPosition, card.stack.addRawTextStyle(style, font, size)));
+			if(font==-1 && size==-1 && style==-1 && entry.color==-1) continue;
+			updated.add(new styleClass(run.textPosition, card.stack.addRawTextStyle(style, font, size, entry.color)));
 		}
 		styleList = updated.isEmpty() ? null : updated;
 		OBgFieldData data = cardFieldData(false);
@@ -1789,7 +1827,10 @@ public class OField extends OObject implements Cloneable {
     	String now = field.fld.getText();
     	if(field.fld.hitBoxesText==null || !field.fld.hitBoxesText.equals(now)) field.fld.refreshHitBoxes();
     	java.util.ArrayList<int[]> boxes = field.fld.hitBoxes;
-    	if(boxes==null || boxes.isEmpty()) return r;
+    	if(boxes==null) return r;
+    	//clickLine() on the script thread while the event thread repaints the field (音を出す１: ConcurrentModificationException)
+    	synchronized(boxes){
+    	if(boxes.isEmpty()) return r;
     	long bestScore = Long.MAX_VALUE;
     	for(int[] b : boxes){
     		int x=b[1], y=b[2], w=b[3], h=b[4];
@@ -1807,6 +1848,7 @@ public class OField extends OObject implements Cloneable {
     			r[1] = localX>=x+w ? 1 : 0;
     			r[2] = localY>=y+h && h>0 ? (localY-(y+h))/h+1 : 0;
     		}
+    	}
     	}
     	return r;
     }
@@ -2335,7 +2377,21 @@ class MyTextArea extends JTextArea {
 		super(str);
 		this.setDoubleBuffered(PCARD.useDoubleBuffer);
 		//拡大した下描き(magnifiesUnscaledPaint)のキャレットはSwingのキャレットとは位置が違うので、動いたら全体を描き直す
-		addCaretListener(e -> { if(magnifiesUnscaledPaint()) repaint(); });
+		addCaretListener(e -> {
+			if(magnifiesUnscaledPaint()) repaint();
+			else if(fldData!=null && fldData.card!=null && ownDrawn()){
+				ownCaretOn = true;
+				repaint();
+				//Swing scrolls to the caret as its one-font layout places it: after that, to the caret as drawn (a scrolling
+				//field whose big runs make its lines taller than Swing's)
+				if(isFocusOwner() && getParent() instanceof JViewport) javax.swing.SwingUtilities.invokeLater(() -> javax.swing.SwingUtilities.invokeLater(this::scrollToOwnCaret));
+			}
+		});
+		//the own drawing shows the caret and the selection only while the field has the focus
+		addFocusListener(new java.awt.event.FocusListener(){
+			public void focusGained(java.awt.event.FocusEvent e){ ownCaretOn = true; if(ownDrawn()) repaint(); }
+			public void focusLost(java.awt.event.FocusEvent e){ if(ownCaretBlink!=null) ownCaretBlink.stop(); repaint(); }
+		});
 	}
 
 	@Override
@@ -2354,6 +2410,12 @@ class MyTextArea extends JTextArea {
 			try{ getUI().getPreferredSize(this); }catch(RuntimeException ex){ /* the press goes on as before */ }
 		}
 		super.processMouseEvent(e);
+		if(e.getID()==MouseEvent.MOUSE_PRESSED || (e.getID()==MouseEvent.MOUSE_CLICKED && e.getClickCount()>=2)) placeCaretByOwnDrawing(e);
+	}
+	@Override
+	protected void processMouseMotionEvent(MouseEvent e){
+		super.processMouseMotionEvent(e);
+		if(e.getID()==MouseEvent.MOUSE_DRAGGED) placeCaretByOwnDrawing(e);
 	}
 
 	//カード上へ直接配置されているフィールドには論理座標が渡される。一方、
@@ -2537,6 +2599,122 @@ class MyTextArea extends JTextArea {
 		}
 		g2.dispose();
 	}
+	/** Whether the caret the own drawing shows is in the on phase of its blink */
+	private boolean ownCaretOn = true;
+	private javax.swing.Timer ownCaretBlink;
+	/** The caret drawn last by paintOwnSelection, in component pixels {x, top, width, height} (null: none) */
+	private int[] ownCaretRect;
+	/**
+	 * A field the own drawing shows while it is typed into (a styled one, {@link #ownDrawn}): Swing paints neither its caret nor
+	 * its selection, which it would place by its one-font layout. They are drawn here at the characters as drawn (hitBoxes),
+	 * the selection as Swing's colour over the letters, the caret blinking at the caret's own rate.
+	 */
+	private void paintOwnSelection(Graphics g){
+		int selStart = getSelectionStart(), selEnd = getSelectionEnd();
+		Graphics2D g2 = (Graphics2D)g.create();
+		try{
+			//the input method's text not yet committed (Japanese being converted) is underlined, as Swing's area shows it
+			javax.swing.text.Element root = getDocument().getDefaultRootElement();
+			for(int i=0; i<root.getElementCount(); i++){
+				javax.swing.text.Element line = root.getElement(i);
+				for(int j=0; j<line.getElementCount(); j++){
+					javax.swing.text.Element run = line.getElement(j);
+					if(!run.getAttributes().isDefined(StyleConstants.ComposedTextAttribute)) continue;
+					g2.setColor(fldData.color!=null ? fldData.color : Color.BLACK);
+					int thick = Math.max(1, drawScale());
+					for(int[] b : hitBoxes) if(b[0]>=run.getStartOffset() && b[0]<run.getEndOffset()) g2.fillRect(b[1], b[2]+b[4]-thick, b[3], thick);
+				}
+			}
+			if(selEnd>selStart){
+				ownCaretRect = null;
+				g2.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.4f));
+				g2.setColor(getSelectionColor());
+				for(int[] b : hitBoxes) if(b[0]>=selStart && b[0]<selEnd) g2.fillRect(b[1], b[2], b[3], b[4]);
+				return;
+			}
+			int[] at = caretBox(getCaretPosition());
+			if(at==null){ ownCaretRect = null; return; }
+			double t = paintTransform; //the own drawing at a fractional zoom paints in card pixels
+			int w = Math.max(1, drawScale());
+			ownCaretRect = new int[]{(int)Math.floor(at[0]*t)-1, (int)Math.floor(at[1]*t)-1, (int)Math.ceil(w*t)+2, (int)Math.ceil(at[2]*t)+2};
+			if(isEditable() && ownCaretOn){
+				g2.setColor(getCaretColor()!=null ? getCaretColor() : fldData.color);
+				g2.fillRect(at[0], at[1], w, at[2]);
+			}
+			int rate = getCaret()!=null ? getCaret().getBlinkRate() : 0;
+			if(isEditable() && rate>0){
+				if(ownCaretBlink==null){
+					ownCaretBlink = new javax.swing.Timer(rate, e -> {
+						if(!isFocusOwner() || !ownDrawn() || getSelectionEnd()>getSelectionStart()){ ownCaretBlink.stop(); return; }
+						ownCaretOn = !ownCaretOn;
+						int[] r = ownCaretRect;
+						if(r!=null) repaint(r[0], r[1], r[2], r[3]); else repaint();
+					});
+				}
+				if(!ownCaretBlink.isRunning()) ownCaretBlink.start();
+			}
+		}finally{ g2.dispose(); }
+	}
+
+	/** The caret place for a click at (x, y) in component pixels, by the characters as drawn: before the character clicked,
+	 *  after it in its right half, and on a row's empty place (an empty line) that place; -1 when nothing is drawn. */
+	int ownCaretIndexAt(int x, int y){
+		String now = getText();
+		if(hitBoxesText==null || !hitBoxesText.equals(now)) refreshHitBoxes();
+		int[] best = null;
+		long bestScore = Long.MAX_VALUE;
+		for(int[] b : hitBoxes){
+			int dx = x<b[1] ? b[1]-x : x>=b[1]+b[3] ? x-(b[1]+b[3])+1 : 0;
+			int dy = y<b[2] ? b[2]-y : y>=b[2]+b[4] ? y-(b[2]+b[4])+1 : 0;
+			long score = ((long)(dy==0?0:1)<<40) + ((long)dy<<24) + (long)dx*dx;
+			if(score<bestScore){ bestScore = score; best = b; }
+		}
+		if(best==null) return -1;
+		int index = best[0];
+		if(best[3]>1 && x>=best[1]+best[3]/2) index++;
+		return Math.max(0, Math.min(index, now.length()));
+	}
+	/** Swing's caret has just placed a press or a drag by its one-font layout: in a field the own drawing shows while it is
+	 *  edited, the caret goes where the click is in the text as drawn (a double click takes the word, a triple one the line) */
+	private void placeCaretByOwnDrawing(MouseEvent e){
+		if(fldData==null || fldData.card==null || !isEditable() || !ownDrawnWhenFocused() || !javax.swing.SwingUtilities.isLeftMouseButton(e)) return;
+		int index = ownCaretIndexAt(e.getX(), e.getY());
+		if(index<0) return;
+		String text = getText();
+		try{
+			if(e.getID()==MouseEvent.MOUSE_DRAGGED){ if(ownWordDrag) return; moveCaretPosition(index); return; }
+			ownWordDrag = false;
+			if(e.getClickCount()==2){
+				int start = javax.swing.text.Utilities.getWordStart(this, Math.min(index, Math.max(0, text.length()-1)));
+				int end = javax.swing.text.Utilities.getWordEnd(this, Math.min(index, Math.max(0, text.length()-1)));
+				setCaretPosition(start); moveCaretPosition(end);
+				ownWordDrag = true;
+			}else if(e.getClickCount()>=3){
+				int start = index;
+				while(start>0 && text.charAt(start-1)!='\n' && text.charAt(start-1)!='\r') start--;
+				int end = index;
+				while(end<text.length() && text.charAt(end)!='\n' && text.charAt(end)!='\r') end++;
+				setCaretPosition(start); moveCaretPosition(end);
+				ownWordDrag = true;
+			}else if(e.isShiftDown()) moveCaretPosition(index);
+			else setCaretPosition(index);
+		}catch(IllegalArgumentException | javax.swing.text.BadLocationException ex){ /* Swing's place stays */ }
+	}
+	/** Scrolls a scrolling field's text so that the caret as drawn by the own drawing is in view */
+	private void scrollToOwnCaret(){
+		if(!isFocusOwner() || !ownDrawn() || !(getParent() instanceof JViewport)) return;
+		String now = getText();
+		if(hitBoxesText==null || !hitBoxesText.equals(now)) refreshHitBoxes();
+		int[] at = caretBox(getSelectionEnd()>getSelectionStart() ? getCaret().getDot() : getCaretPosition());
+		if(at!=null) scrollRectToVisible(new Rectangle(at[0], at[1], 1, at[2]));
+	}
+	/** A double or triple click's word or line is kept while the button is held (no character-wise drag from it) */
+	private boolean ownWordDrag;
+	/** Whether the field is drawn by the own drawing once it has the focus (a press gives it the focus only after this event) */
+	private boolean ownDrawnWhenFocused(){
+		return fldData.useMyDraw || editsStyledText();
+	}
+
 	/** 文字位置dotのキャレット{x, 上端, 高さ}: その文字の左端、無ければ直前の文字の右端 */
 	private int[] caretBox(int dot){
 		int[] before = null;
@@ -2561,7 +2739,17 @@ class MyTextArea extends JTextArea {
 	private boolean paintsTransformed(){
 		if(fixedScale>0 || paintTransform!=1 || fldData==null) return false;
 		if(DisplayZoom.whole(PCARD.scale())) return false;
-		return !isFocusOwner() || fldData.useMyDraw;
+		return ownDrawn();
+	}
+	/** Whether the field is drawn by its own drawing: always but while Swing's text area edits a field without style runs.
+	 *  A field with runs is drawn as it is also while it is typed into (Swing's area shows one font: the runs seemed gone). */
+	boolean ownDrawn(){
+		return !isFocusOwner() || fldData.useMyDraw || editsStyledText();
+	}
+	/** A card's field with style runs (the paint text tool's area has no card and its own caret) */
+	private boolean editsStyledText(){
+		java.util.ArrayList<styleClass> runs = fldData!=null && fldData.card!=null ? fldData.styleList : null;
+		return runs!=null && !runs.isEmpty();
 	}
 	/** The own drawing at 1x, magnified by the card's fractional scale; hit boxes are then given in window pixels. */
 	private void paintTransformed(Graphics2D g){
@@ -2581,6 +2769,10 @@ class MyTextArea extends JTextArea {
 
 	@Override
     protected void paintComponent(Graphics g) {
+    	synchronized(hitBoxes){ paintField(g); } //hitTestClick reads the boxes from the script thread
+    }
+
+    private void paintField(Graphics g) {
 		if(!isVisible()) return;
 		if(magnifiesUnscaledPaint() && g instanceof Graphics2D){ paintUnscaledThenMagnify(g); return; }
 		if(paintsTransformed() && g instanceof Graphics2D){ paintTransformed((Graphics2D)g); return; }
@@ -2614,7 +2806,7 @@ class MyTextArea extends JTextArea {
         //super.paintComponent(g);
     	if(fldData!=null){
     		//通常フィールド
-    		if(isFocusOwner()==false || fldData.useMyDraw){
+    		if(ownDrawn()){
     			if(!measuringFit) fitTranslation(g, translated);
     			if(textAntialias!=null && g instanceof Graphics2D){
     				((Graphics2D)g).setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
@@ -2850,7 +3042,10 @@ class MyTextArea extends JTextArea {
 							if(inked && fldData.style!=5 && lineTop+textHeight>(fldData.height+2)*drawScale && (readingStr.length()>0 || inkAfter(displayText, i+1)))
 								fitPastBottom(hardLine, firstRow);
 						}else if(inked && translated==null && !StackStrikeFont.isStackFont(g.getFont()) && PCARD.pc.stack.createdByVersion!=null && PCARD.pc.stack.createdByVersion.length()>0 && PCARD.pc.stack.createdByVersion.charAt(0)=='2' &&
-								fldData.style!=5 && !smallfont && top+textHeight>(fldData.height+4)*drawScale && inkAfter(displayText, i+1)){
+								fldData.style!=5 && !smallfont && lineTop+textHeight>(fldData.height+4)*drawScale && inkAfter(displayText, i+1)){
+							//the next row's box (lineTop), not its baseline (top): a two-line Osaka 12 field 33 high whose second row
+							//ends on the bottom (記憶！直感！神経衰弱！'s score line) shrank to 11 and its space-padded labels slid
+							//under the number fields; HyperCard J-2.3 draws it at 12
 							smallfont = true;
 							repaint();
 						}
@@ -2872,6 +3067,7 @@ class MyTextArea extends JTextArea {
 						textStyle = baseStyle;
 						textSize = baseSize;
 						textHeight = baseHeight;
+						textColor = fldData.color;
 						for(int j=0; j<fieldStack().styleList.size(); j++){
 							OStack.styleClass styleClass = fieldStack().styleList.get(j);
 							if(styleClass.id==styleId){
@@ -2892,7 +3088,7 @@ class MyTextArea extends JTextArea {
 									if(fitRatio<1) size = Math.max(4, (int)Math.round(size*fitRatio));
 									textSize = size*drawScale;
 								}
-								//Color textColor = styleClass;
+								if(styleClass.color!=-1) textColor = new Color(styleClass.color);
 								break;
 							}
 						}
@@ -2938,7 +3134,7 @@ class MyTextArea extends JTextArea {
     				int contentHeight = (int)Math.ceil(measuredScrollContentHeight(top, initialFontAscent, topMargin)*paintTransform);
     				//the own drawing (not being edited by Swing) scrolls exactly over the lines it laid out, as HyperCard does
     				//(Break Name's Monaco 9 runs in a Palatino 12 field: Swing's height made the scroll range 1139, HC's is 611)
-    				boolean own = !isFocusOwner() || fldData.useMyDraw;
+    				boolean own = ownDrawn();
     				if(contentHeight!=measuredContentHeight || own!=measuredOwnHeight){
     					measuredContentHeight = contentHeight;
     					measuredOwnHeight = own;
@@ -2987,6 +3183,7 @@ class MyTextArea extends JTextArea {
     			
     			//訳を描いたときのクリック位置は、元のテキストの同じ行の中の位置に直す(the clickLine / the clickChunk)
     			if(translated!=null) for(int[] b : hitBoxes) b[0] = translated.original(b[0]);
+    			if(!measuringFit && !measuringHitBoxes && !paintingUnscaled && fldData.card!=null && isFocusOwner()) paintOwnSelection(g);
     			if(!measuringFit && AuthTool.tool!=null && FieldGUI.gui.target == this){
     				FieldGUI.drawSelectBorder(this);
     			}

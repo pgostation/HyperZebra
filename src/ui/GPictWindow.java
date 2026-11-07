@@ -161,12 +161,15 @@ public class GPictWindow extends JDialog {
 
 	/** Sends a Picture XCMD message (openPicture / closePicture <window name>) to the current card: at once when the script
 	 *  thread is the one opening or closing the window (HyperCard J-2.3: the handler has run before the next statement),
-	 *  else queued. A message no handler takes ends quietly (TUtil system messages). */
+	 *  else queued. A message no handler takes ends quietly (TUtil system messages), and so does a script error in its handlers
+	 *  (TTalk.quietErrors). */
 	static void sendPictureMessage(String message, String windowName) {
 		if(PCARD.pc==null || PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return;
 		if(Thread.currentThread()==TTalk.talk){
+			TTalk.quietErrors++;
 			try{ TTalk.runExternalStatement(message+" "+TTalk.quoteLiteral(windowName), PCARD.pc.stack.curCard); }
 			catch(xTalkException e){ System.out.println(message+": "+e.getMessage()); }
+			finally{ TTalk.quietErrors--; }
 		}
 		else TTalk.CallMessage(message, new String[]{windowName}, PCARD.pc.stack.curCard);
 	}

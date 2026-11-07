@@ -39,6 +39,16 @@ final class DiskImages {
 	interface Progress{void update(int done,int total,String name);}
 
 	private static final List<Mounted> mounted=Collections.synchronizedList(new ArrayList<Mounted>());
+	/** The extracted files of locked volumes whose entry carried {@link DiskImage.Entry#attributes}: canonical path -> bits. */
+	private static final java.util.Map<String,Integer> fileAttributes=new java.util.concurrent.ConcurrentHashMap<String,Integer>();
+	/** The ioFlAttrib bits besides the lock and the open forks that {@code file} of a mounted image has on its volume (0 for any other file). */
+	static int attributesOf(File file){if(fileAttributes.isEmpty()||file==null)return 0;Integer bits=fileAttributes.get(canonical(file).getPath());return bits==null?0:bits;}
+	/** The file numbers (catalog node IDs) the extracted files of mounted images had on their volume: canonical path -> ID. */
+	private static final java.util.Map<String,Integer> fileIds=new java.util.concurrent.ConcurrentHashMap<String,Integer>();
+	/** The file number {@code file} of a mounted image has on its volume, or 0 (any other file): a master disk is told from a
+	 *  copy by it - Autoscore's installer keeps its own file number, parent ID and the volume's date ("not a valid copy of your
+	 *  Autoscore master disk" with the session's numbers). */
+	static int fileIdOf(File file){if(fileIds.isEmpty()||file==null)return 0;Integer id=fileIds.get(canonical(file).getPath());return id==null?0:id;}
 	private static boolean purged;
 
 	/** The images mounted now, in mounting order. */
@@ -99,6 +109,14 @@ final class DiskImages {
 			catch(IOException|RuntimeException e){deleteTree(slot);throw e;}
 			return new Mounted(new File(slot,label),folder,name,image.container+" / "+image.volume.kind,image.volume.root.fileCount(),disk.length());
 		}
+	}
+	/** An empty, writable folder for a volume a program has just zeroed on its own drive (DIZero on its RAM disk); {@link #release} as for {@link #extractDrive}. */
+	static Mounted emptyDrive(String label,String name,long capacity){
+		File root=processFolder();
+		installCleanup();
+		File slot;synchronized(DiskImages.class){root.mkdirs();int n=1;do{slot=new File(root,"drive"+n++);}while(slot.exists());slot.mkdirs();}
+		File folder=new File(slot,hostName(name));folder.mkdirs();
+		return new Mounted(new File(slot,label),folder,name,"zeroed drive",0,capacity);
 	}
 	/** Gives up a copy made by {@link #extractDrive}: deleted once no running program has it as a volume. */
 	static void release(Mounted m){
@@ -162,7 +180,7 @@ final class DiskImages {
 	}
 	/** Bytes the extracted copies take now (all of them: mounted, waiting for a program to quit, left over). */
 	static long extractedBytes(){return sizeOf(cacheRoot());}
-	private static long sizeOf(File f){
+	static long sizeOf(File f){
 		if(!f.exists())return 0;
 		if(f.isFile()){long n=f.length();if(ResourceFile68k.nativeForks())n+=ResourceFile68k.nativeForkLength(f);return n;}
 		long n=0;File[] children=f.listFiles();if(children!=null)for(File c:children)if(!Files.isSymbolicLink(c.toPath()))n+=sizeOf(c);return n;
@@ -323,6 +341,8 @@ final class DiskImages {
 			writeMacInfo(target,fork,e.finderInfo);
 			setDates(target,e.created,e.modified);
 			if(readOnly)target.setWritable(false,false);
+			if(readOnly&&e.attributes!=0)fileAttributes.put(canonical(target).getPath(),e.attributes);
+			if(e.id>0)fileIds.put(canonical(target).getPath(),e.id);
 			done[0]++;
 		}
 	}
@@ -352,6 +372,8 @@ final class DiskImages {
 	/** Removes a folder and everything in it (read-only files included). */
 	static void deleteTree(File f){
 		if(f==null||!f.exists())return;
+		if(!fileAttributes.isEmpty()){String prefix=canonical(f).getPath();fileAttributes.keySet().removeIf(k->k.equals(prefix)||k.startsWith(prefix+File.separator));}
+		if(!fileIds.isEmpty()){String prefix=canonical(f).getPath();fileIds.keySet().removeIf(k->k.equals(prefix)||k.startsWith(prefix+File.separator));}
 		if(f.isDirectory()&&!Files.isSymbolicLink(f.toPath())){File[] children=f.listFiles();if(children!=null)for(File c:children)deleteTree(c);}
 		f.setWritable(true);f.delete();
 	}
@@ -368,7 +390,7 @@ final class DiskImages {
 	static boolean openFromUser(final File file){
 		if(file==null||!file.isFile())return false;
 		final Mounted already=mountedFrom(file);
-		if(already!=null){javax.swing.SwingUtilities.invokeLater(()->showMounted(already,false));return true;}
+		if(already!=null){javax.swing.SwingUtilities.invokeLater(()->{if(!TTalk.offerMountedDisk(already.folder))showMounted(already,false);});return true;}
 		if(!recognizes(file)){
 			final String kind=unsupportedKind(file);
 			if(kind==null)return false;
@@ -381,7 +403,7 @@ final class DiskImages {
 			long[] last={0};
 			try{
 				Mounted m=mount(file,(done,total,name)->{long now=System.currentTimeMillis();if(now-last[0]<200)return;last[0]=now;GLauncher.showStatus(title+"… "+done+"/"+total);});
-				javax.swing.SwingUtilities.invokeLater(()->{GLauncher.showStatus("");showMounted(m,true);});
+				javax.swing.SwingUtilities.invokeLater(()->{GLauncher.showStatus("");if(!TTalk.offerMountedDisk(m.folder))showMounted(m,true);}); // "Where is …?" open: the disk goes there
 			}catch(IOException|RuntimeException e){
 				javax.swing.SwingUtilities.invokeLater(()->{GLauncher.showStatus("");new GDialog(owner(),text("Can't mount the disk image.")+"\n"+file.getName()+"\n"+e.getMessage(),null,"OK",null,null);});
 			}

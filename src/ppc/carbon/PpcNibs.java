@@ -54,7 +54,7 @@ final class PpcNibs {
 		if(xib==null)return CANT_FIND_NIB;
 		Nib n=new Nib();
 		try{
-			Document doc=javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xib);
+			Document doc=XmlSafe.dom().newDocumentBuilder().parse(xib);
 			NodeList all=doc.getElementsByTagName("object");
 			for(int i=0;i<all.getLength();i++){Element e=(Element)all.item(i);if(!e.getAttribute("id").isEmpty())n.objects.put(e.getAttribute("id"),e);}
 			NodeList dicts=doc.getElementsByTagName("dictionary");

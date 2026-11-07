@@ -606,7 +606,7 @@ public class OBackground extends OCardBase {
 				}
 				if(new File(path).exists() && !new File(path).isDirectory()){
 					try {
-						bg.pict = PictureCache.read(new File(path), "imageio", StackProtection::readImage);
+						bg.pict = PictureCache.readShared(new File(path), "imageio", StackProtection::readImage);
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
@@ -626,11 +626,11 @@ public class OBackground extends OCardBase {
 		PCARD.pc.mainPane.add(bg.label);
 		try {
 			if(file.exists()) {
-				bg.pict = PictureCache.read(file, "imageio", StackProtection::readImage);
+				bg.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
 				//bg.showPict = true;
 			} else {
 				file=new File(bg.stack.file.getParent()+"/resource/bgp"+bg.id+".jpeg");
-				bg.pict = PictureCache.read(file, "imageio", StackProtection::readImage);
+				bg.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
 				//bg.showPict = true;
 			}
 		} catch (Exception err1) {

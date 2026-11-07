@@ -1249,6 +1249,7 @@ public class TXcmd {
 				String[] btns = params[1].split(",");
 				for(int i=0; i<btns.length; i++) btns[i] = btns[i].trim();
 				new GUxAnswer(PCARD.pc, new StackTranslation.Dialog(null), str, null, null, 0, 0, btns);
+				if(TTalk.stop) throw new xTalkException("user abort.");
 				TTalk.setVariable(memData, "it", GUxAnswer.clicked);
 				result.theResult = "";
 				result.ret = 0;
@@ -1284,6 +1285,7 @@ public class TXcmd {
 			
 			if(Buttons.length==0 && time==0) Buttons = new String[]{"OK"}; //ボタンも時間も無いと閉じられない
 			new GUxAnswer(PCARD.pc, new StackTranslation.Dialog(null), str, null, icon, iconwait, time, Buttons);
+			if(TTalk.stop) throw new xTalkException("user abort.");
 			TTalk.setVariable(memData, "it", GUxAnswer.clicked);
 			
 			result.theResult = "";
@@ -1988,29 +1990,32 @@ public class TXcmd {
 			BufferedImage add = PCARD.pc.stack==null ? null : PCARD.pc.stack.addColor;
 			if(add==null) return;
 			int scale = PCARD.scalePercent();
-			DataBuffer offdb = off.getRaster().getDataBuffer();
-			DataBuffer adddb = add.getRaster().getDataBuffer();
+			int[] offPixels = ((java.awt.image.DataBufferInt)off.getRaster().getDataBuffer()).getData(); //off: TYPE_INT_ARGB of w x h
+			int[] addPixels = add.getRaster().getDataBuffer() instanceof java.awt.image.DataBufferInt d ? d.getData() : null;
 			int addWidth = add.getWidth(), addHeight = add.getHeight();
 			java.util.BitSet opaque;
 			synchronized(AddColor.class){ opaque = add==opaqueOf ? (java.util.BitSet)AddColor.opaque.clone() : new java.util.BitSet(); }
+			int[] column = new int[w];
+			for(int xx=0; xx<w; xx++) column[xx] = DisplayZoom.unscale(x+xx, scale);
 			for(int yy=0; yy<h; yy++){
 				int ay = DisplayZoom.unscale(y+yy, scale);
 				if(ay<0 || ay>=addHeight) continue;
+				int addRow = ay*addWidth, offRow = yy*w;
 				for(int xx=0; xx<w; xx++){
-					int ax = DisplayZoom.unscale(x+xx, scale);
+					int ax = column[xx];
 					if(ax<0 || ax>=addWidth) continue;
-					int a = offdb.getElem(0, yy*w+xx);
-					int b = adddb.getElem(0, ay*addWidth+ax);
+					int a = offPixels[offRow+xx];
+					int b = addPixels!=null ? addPixels[addRow+ax] : add.getRaster().getDataBuffer().getElem(0, addRow+ax);
 					if((b>>>24)==0) continue; //絵の無いところは部品がそのまま見える
 					if((a>>>24)==0) a = 0xFFFFFFFF; //まだ描かれていない(透明)画素は白と同じ
-					if(a==0xFFFFFFFF || opaque.get(ay*addWidth+ax)) offdb.setElem(0, yy*w+xx, b);
+					if(a==0xFFFFFFFF || opaque.get(addRow+ax)) offPixels[offRow+xx] = b;
 					else{
 						//透明モードの PICT を白黒のカードに srcOr で重ねた見え方: 白→絵の色、黒→黒、中間→暗くした色(乗算)
 						//(以前の式は演算子の優先順位が崩れていて、黒だけたまたま残っていた)
 						int pr = (((a>>16)&0xFF) * ((b>>16)&0xFF)) / 255;
 						int pg = (((a>>8)&0xFF) * ((b>>8)&0xFF)) / 255;
 						int pb = ((a&0xFF) * (b&0xFF)) / 255;
-						offdb.setElem(0, yy*w+xx, 0xFF000000 | (pr<<16) | (pg<<8) | pb);
+						offPixels[offRow+xx] = 0xFF000000 | (pr<<16) | (pg<<8) | pb;
 					}
 				}
 			}

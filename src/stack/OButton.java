@@ -451,6 +451,7 @@ public class OButton extends OObject implements Cloneable {
 	public void setTopLeft(int h, int v) {
 		final int oldLeft=left;
 		final int oldTop=top;
+		if(h==oldLeft && v==oldTop) StackSpeed.unchanged(); //HyperCard draws nothing for it (speed limit)
 		left=h;
 		top=v;
 		if(getComponent()!=null){
@@ -693,15 +694,20 @@ public class OButton extends OObject implements Cloneable {
 		return hilite;
 	}
 	public int getSelectedLine() {
-		if(style==8 && popup!=null){
+		//a pop-up with no text keeps its number (HC J-2.3: line 4 of an empty pop-up)
+		if(style==8 && popup!=null && !getText().isEmpty()){
 			int index = popup.getSelectedIndex()+1;
 			return index;
 		}
 		return selectedLine;
 	}
 	public void setSelectedLine(int line) {
-		if(style==8 && popup!=null){
-			popup.setSelectedIndex(line-1);
+		if(style==8 && popup!=null && line<=popup.getItemCount()){
+			MyPopup p = popup;
+			boolean was = p.settingSelection;
+			p.settingSelection = true;
+			try{ p.setSelectedIndex(line-1); }
+			finally{ p.settingSelection = was; }
 		}
 		if(style==8) selectedLine = line;
 		((OCardBase)parent).changed = true;
@@ -1686,9 +1692,6 @@ public class OButton extends OObject implements Cloneable {
 			//popup.setFocusPainted(false);
 			obtn.popup.setForeground(obtn.color);
 			obtn.popup.setBackground(obtn.bgColor);
-			if(obtn.height>=19 && obtn.height<=20){
-				obtn.height = 20; //hcのデフォルトでは上が消えてしまう
-			}
 			obtn.popup.setBounds(obtn.left, obtn.top, obtn.width, obtn.height);
 			obtn.popup.setEnabled(obtn.enabled);
 			//popup(autoHilite);
@@ -2861,6 +2864,8 @@ class MyPopup extends JComboBox {
 	 */
 	private static final long serialVersionUID = 1L;
 	OButton btnData=null;
+	/** true while HyperZebra itself changes the selection (OButton.setSelectedLine): GPopup ignores the action it fires */
+	volatile boolean settingSelection;
 	
 	@SuppressWarnings("unchecked")
 	public MyPopup(OButton btn, String[] text){
@@ -2960,6 +2965,7 @@ class MyPopup extends JComboBox {
 	//(このJComboBox自身)は残りの右側だけを使う。
 	@Override
 	public void setBounds(int x, int y, int width, int height){
+		if(height==19) height = 20; //hcのデフォルトでは上が消えてしまう(描くときだけ: the rect stays the button's)
 		double scale = PCARD.scale();
 		int nameWidth = OButton.popupNameWidthFor(btnData, width);
 		if(nameWidth>0){

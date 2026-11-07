@@ -52,14 +52,16 @@ final class ToolUtils68k {
 	}
 
 	/** PStr2Dec/CStr2Dec(s, VAR index, VAR d: Decimal, VAR validPrefix): scans a decimal number (sign, digits, point,
-	 *  exponent) from s starting at index (1-based for Pascal strings, 0-based for C strings) and leaves index after it.
-	 *  HyperCard reads numbers out of text with this. */
+	 *  exponent) from s starting at index and leaves index after it. HyperCard reads numbers out of text with this. A Pascal
+	 *  string is scanned by byte position, the length byte being position 0: FreeHand 3.11 hands its C strings to Str2Dec
+	 *  with index 0, so the scan starts at the length byte - the first digit ("6" of the Snap-to-grid field) - and stops at
+	 *  the NUL; skipping it read "Value out of range" for every Document setup value. */
 	private boolean stringToDecimal(M68kCpu cpu,boolean pascal) throws M68kCpuException {
 		int sp=cpu.a[7],validPtr=memory.readLong(sp),decimal=memory.readLong(sp+4),indexPtr=memory.readLong(sp+8),text=memory.readLong(sp+12);cpu.a[7]+=16;
 		int index=(short)memory.readWord(indexPtr);StringBuilder str=new StringBuilder();
-		if(pascal){int n=memory.readByte(text);for(int i=0;i<n;i++)str.append((char)memory.readByte(text+1+i));}
+		if(pascal){int n=memory.readByte(text);for(int i=0;i<=n;i++)str.append((char)memory.readByte(text+i));}
 		else{for(int i=0;i<255;i++){int c=memory.readByte(text+i);if(c==0)break;str.append((char)c);}}
-		int i=pascal?Math.max(0,index-1):Math.max(0,index),n=str.length();
+		int i=Math.max(0,index),n=str.length();
 		while(i<n&&(str.charAt(i)==' '||str.charAt(i)=='\t'))i++;
 		boolean negative=false;if(i<n&&(str.charAt(i)=='+'||str.charAt(i)=='-')){negative=str.charAt(i)=='-';i++;}
 		StringBuilder digits=new StringBuilder();int exp=0,intDigits=0,fracDigits=0;
@@ -73,11 +75,11 @@ final class ToolUtils68k {
 		if(sig.length()>19){exp+=sig.length()-19;sig=sig.substring(0,19);}
 		memory.writeByte(decimal,negative?1:0);memory.writeByte(decimal+1,0);memory.writeWord(decimal+2,exp);
 		memory.writeByte(decimal+4,sig.length());for(int k=0;k<sig.length();k++)memory.writeByte(decimal+5+k,sig.charAt(k));
-		memory.writeWord(indexPtr,pascal?i+1:i);
+		memory.writeWord(indexPtr,i);
 		memory.writeByte(validPtr,any&&i>=n?1:0);
+		if(Mac68kApi.TRACE)System.err.println("[68K] "+(pascal?"PStr2Dec":"CStr2Dec")+" index "+index+" -> sig "+sig+" exp "+exp+" index "+i+" validPrefix "+(any&&i>=n));
 		return true;
 	}
-
 	/** Dec2Str(f: DecForm; d: Decimal; VAR s: DecStr): fixed notation with f.digits fraction digits, or floating
 	 *  notation with f.digits significant digits ("1.25e+3"). */
 	private boolean decimalToString(M68kCpu cpu) throws M68kCpuException {

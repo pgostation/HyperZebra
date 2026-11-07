@@ -272,6 +272,8 @@ public class OStack extends OObject {
 
 	//スクリプトの「go forth」用。beginGoBackの逆方向
 	int beginGoForward(){
+		//Recent is a ring: past the newest card comes the oldest (HC J-2.3: go forth, up arrow)
+		if(backIndex<=0 && recentCards.size()>1) backIndex = recentCards.size();
 		if(backIndex<=0) return -1;
 		int targetIndex = recentCards.size()-backIndex;
 		if(targetIndex<0 || targetIndex>=recentCards.size()) return -1;
@@ -807,11 +809,14 @@ public class OStack extends OObject {
 	static boolean launch68kApplication(String path) {
 		File file = MacApp68k.programOf(new File(path)); // a Mac OS 9 package ("X.app" folder) runs the program inside
 		if(!file.isFile()) return false;
+		if(MacApp68k.isControlPanel(file)) return false; // a 'cdev' file with CODE of its own opens as a control panel, as from the Finder
 		boolean accessory = false;
 		File openDoc = MacApp68k.isOpenDocDocument(file) ? MacApp68k.openDocProgram() : null;
 		if(openDoc!=null){ // an OpenDoc document opens in OpenDoc™ as the Finder does it (that runs the document's own process)
+			java.util.List<File> docs = StationeryPads.documentsFor(PCARD.pc, openDoc, java.util.Collections.singletonList(file)); // a stationery pad: a new document from it
+			if(docs.isEmpty()) return true;
 			try {
-				MacApp68k.launch(openDoc, new java.util.ArrayList<File>(java.util.Collections.singletonList(file))); // the launcher lists it as OpenDoc™'s document
+				MacApp68k.launch(openDoc, new java.util.ArrayList<File>(docs)); // the launcher lists it as OpenDoc™'s document
 			} catch (IOException e) {
 				new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("Can't launch the Mac application.")+"\n"+e.getMessage(), null,"OK",null,null);
 			}
@@ -1173,6 +1178,7 @@ public class OStack extends OObject {
 	
 	public XMLStreamReader readStyleXML(XMLStreamReader reader) throws Exception {
 		String idStr = "-1", sizeStr = "-1", fontStr = "-1", textStyle = "";
+		int color = -1;
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
@@ -1183,6 +1189,10 @@ public class OStack extends OObject {
 	            	else if(elm.equals("id")){ idStr = reader.getElementText(); }
 	            	else if(elm.equals("font")){ fontStr = reader.getElementText(); }
 	            	else if(elm.equals("size")){ sizeStr = reader.getElementText(); }
+	            	else if(elm.equals("color")){
+	            		String c = reader.getElementText().trim();
+	            		try{ color = Integer.parseInt(c.startsWith("#") ? c.substring(1) : c, 16)&0xFFFFFF; }catch(NumberFormatException e){ /* the field's colour */ }
+	            	}
 	            	else{
 	            		System.out.println("Local Name: " + reader.getLocalName());
 	            		System.out.println("Element Text: " + reader.getElementText());
@@ -1194,7 +1204,9 @@ public class OStack extends OObject {
 	            		break;
 	            	}
 	            	if(elm.equals("styleentry")){
-	            		styleList.add(new styleClass(idStr, textStyle, fontStr, sizeStr));
+	            		styleClass entry = new styleClass(idStr, textStyle, fontStr, sizeStr);
+	            		entry.color = color;
+	            		styleList.add(entry);
 	            		break;
 	            	}
 	            }
@@ -1210,6 +1222,8 @@ public class OStack extends OObject {
 		int style;//-1ならチェンジしない
 		int font;//-1ならチェンジしない
 		int size;//-1ならチェンジしない
+		/** HyperZebra's own: the run's text colour (0xRRGGBB), -1 for the field's (HyperCard's style table has none) */
+		int color = -1;
 		public styleClass(String id, String style, String font, String size){
 			this.id = Integer.valueOf(id);
 			this.style=0;
@@ -1227,10 +1241,14 @@ public class OStack extends OObject {
 			this.size = Integer.valueOf(size);
 		}
 		styleClass(int id, int style, int font, int size){
+			this(id, style, font, size, -1);
+		}
+		styleClass(int id, int style, int font, int size, int color){
 			this.id=id;
 			this.style=style;
 			this.font=font;
 			this.size=size;
+			this.color=color;
 		}
 		/** 表示に使う文字サイズ(-1は継承)。STBLのサイズ0はQuickDrawの「システムフォントの
 		 *  大きさ」(12)。他のアプリからペーストされたTextEditのスタイルがそのまま残った
@@ -1252,19 +1270,26 @@ public class OStack extends OObject {
 
 	/** A style-table entry from raw values (-1 = the attribute is not overridden). */
 	int addRawTextStyle(int style, int font, int size){
-		for(styleClass entry : styleList) if(entry.style==style && entry.font==font && entry.size==size) return entry.id;
+		return addRawTextStyle(style, font, size, -1);
+	}
+	int addRawTextStyle(int style, int font, int size, int color){
+		for(styleClass entry : styleList) if(entry.style==style && entry.font==font && entry.size==size && entry.color==color) return entry.id;
 		int id = Math.max(1, nextStyleID);
 		for(styleClass entry : styleList) id = Math.max(id, entry.id+1);
 		nextStyleID = id+1;
-		styleList.add(new styleClass(id, style, font, size));
+		styleList.add(new styleClass(id, style, font, size, color));
 		return id;
 	}
 
 	int addCompleteTextStyle(String fontName, int size, int style){
+		return addCompleteTextStyle(fontName, size, style, -1);
+	}
+	/** color: 0xRRGGBB, or -1 for the field's text colour */
+	int addCompleteTextStyle(String fontName, int size, int style, int color){
 		int id = Math.max(1, nextStyleID);
 		for(styleClass entry : styleList) id = Math.max(id, entry.id+1);
 		nextStyleID = id+1;
-		styleList.add(new styleClass(id, style, ensureFontForStyle(fontName), size));
+		styleList.add(new styleClass(id, style, ensureFontForStyle(fontName), size, color));
 		return id;
 	}
 
@@ -1534,6 +1559,13 @@ public class OStack extends OObject {
 			        		}
 			        	}
 		        	}
+		        }
+
+		        if(styleList.get(i).color!=-1){
+			        writer.writeStartElement("color");
+			        writer.writeCharacters(String.format("#%06X", styleList.get(i).color&0xFFFFFF));
+			        writer.writeEndElement();
+			        writer.writeCharacters("\n\t");
 		        }
 	        }
 	        writer.writeEndElement();

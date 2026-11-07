@@ -199,6 +199,11 @@ final class MacAppHost {
 		int menuBarVersion=-1;
 		/** The menu bar laid over the classic menu-bar band of a backdrop (EDT only; see {@link #overlaysMenuBar}), else null. */
 		JMenuBar overlayBar;
+		/** Rows of the title bar at the top of a frame the host draws in the buffer (a Kaleidoscope scheme's document window),
+		 *  else 0: where the menu bar sits inside the window, it goes under them ({@link MacAppHost#setTitleBand}). */
+		volatile int titleBand;
+		/** The title bar shown above the in-window menu bar (EDT only), else null; a press in it is followed with the shift. */
+		TitleStrip titleStrip;volatile boolean titleStripPressed;
 		/** Host-side copy of the window pixels as packed RGB (EDT only): rows are re-converted from VM memory only when
 		 *  their 256-byte chunks (or the device PixMap tiles under them) were written after {@link #displaySerial}. */
 		BufferedImage display;int[] displayPixels;long displaySerial;int[] displayClut;boolean displayComposite;
@@ -255,7 +260,13 @@ final class MacAppHost {
 		Canvas(HostWindow owner){this.owner=owner;setOpaque(true);setFocusable(true);setBackground(Color.WHITE);enableInputMethods(true);}
 		/** An active input-method client: composed text is shown by {@link #showComposition}, committed text typed into the program. */
 		@Override public InputMethodRequests getInputMethodRequests(){return inputMethodRequests;}
-		@Override protected void paintComponent(Graphics g){
+		@Override protected void paintComponent(Graphics g){paintWindow(g);}
+		/** The title rows shown above the menu bar ({@link TitleStrip}) are repainted with the canvas rows they show. */
+		@Override public void repaint(long tm,int x,int y,int width,int height){
+			super.repaint(tm,x,y,width,height);TitleStrip strip=owner==null?null:owner.titleStrip;
+			if(strip!=null&&strip.isVisible()&&y<strip.getHeight())strip.repaint(tm,x,y,width,Math.min(height,strip.getHeight()-y));
+		}
+		void paintWindow(Graphics g){
 			BufferedImage image=owner.image;int depth=owner.imageDepth;
 			if(image==null&&depth==32){g.setColor(Color.WHITE);g.fillRect(0,0,getWidth(),getHeight());return;}
 			// The display copy is kept up to date by the refresh timer (refreshDisplay); an expose only blits it.
@@ -278,6 +289,81 @@ final class MacAppHost {
 			if(cut!=null){d.width=Math.min(d.width,cut.width);d.height=Math.min(d.height,cut.height);}
 			return d;
 		}
+	}
+	/**
+	 * The title bar of a frame drawn in the buffer, shown above the in-window menu bar (Windows, Linux): a window in a Kaleidoscope
+	 * scheme's frame had its menus over the title bar, a native frame has them under it. The strip shows the canvas's first rows
+	 * (the canvas keeps its place, those rows under the strip and the bar); the pointer over it is the program's one bar height
+	 * further down, where the rows it shows are ({@link #pastTitleBand}).
+	 */
+	final class TitleStrip extends JComponent {
+		private static final long serialVersionUID=1L;
+		final HostWindow owner;
+		TitleStrip(HostWindow owner){this.owner=owner;setOpaque(true);setFocusable(false);
+			MouseAdapter forward=new MouseAdapter(){
+				@Override public void mousePressed(MouseEvent e){owner.titleStripPressed=true;forward(e);}
+				@Override public void mouseReleased(MouseEvent e){forward(e);owner.titleStripPressed=false;}
+				@Override public void mouseMoved(MouseEvent e){forward(e);}
+				@Override public void mouseDragged(MouseEvent e){forward(e);}
+			};
+			addMouseListener(forward);addMouseMotionListener(forward);
+		}
+		/** The event as the canvas's, at the canvas row shown under the pointer (on the screen: one bar height further down). */
+		private void forward(MouseEvent e){Canvas canvas=owner.canvas;if(canvas==null)return;
+			canvas.dispatchEvent(new MouseEvent(canvas,e.getID(),e.getWhen(),e.getModifiersEx(),e.getX(),e.getY(),e.getXOnScreen(),e.getYOnScreen()+canvas.getY()-getY(),e.getClickCount(),e.isPopupTrigger(),e.getButton()));}
+		@Override protected void paintComponent(Graphics g){Canvas canvas=owner.canvas;if(canvas!=null)canvas.paintWindow(g);}
+	}
+	/** The root pane's own layout, then the menu bar moved under the title rows of a frame drawn in the window ({@link TitleStrip}). */
+	private final class TitleBandLayout implements java.awt.LayoutManager2 {
+		final HostWindow hw;final java.awt.LayoutManager2 base;
+		TitleBandLayout(HostWindow hw,java.awt.LayoutManager2 base){this.hw=hw;this.base=base;}
+		@Override public void layoutContainer(java.awt.Container parent){base.layoutContainer(parent);placeTitleBand(hw);}
+		@Override public void addLayoutComponent(String name,java.awt.Component comp){base.addLayoutComponent(name,comp);}
+		@Override public void addLayoutComponent(java.awt.Component comp,Object constraints){base.addLayoutComponent(comp,constraints);}
+		@Override public void removeLayoutComponent(java.awt.Component comp){base.removeLayoutComponent(comp);}
+		@Override public Dimension preferredLayoutSize(java.awt.Container parent){return base.preferredLayoutSize(parent);}
+		@Override public Dimension minimumLayoutSize(java.awt.Container parent){return base.minimumLayoutSize(parent);}
+		@Override public Dimension maximumLayoutSize(java.awt.Container target){return base.maximumLayoutSize(target);}
+		@Override public float getLayoutAlignmentX(java.awt.Container target){return base.getLayoutAlignmentX(target);}
+		@Override public float getLayoutAlignmentY(java.awt.Container target){return base.getLayoutAlignmentY(target);}
+		@Override public void invalidateLayout(java.awt.Container target){base.invalidateLayout(target);}
+	}
+	/** Some window shows its title rows above its menu bar ({@link TitleStrip}). */
+	private volatile boolean anyTitleBand;
+	/**
+	 * The rows of the title bar at the top of a window whose frame the host draws in its buffer (a Kaleidoscope scheme's document
+	 * window; 0: none). On platforms without a screen menu bar they are shown above the in-window menu bar, as a native title bar is.
+	 */
+	void setTitleBand(final int record,final int rows){
+		final HostWindow hw=window(record);if(hw==null||headless||GMenu.isMacOSX()||hw.titleBand==rows)return;
+		hw.titleBand=rows;
+		runOnEdt(new Runnable(){@Override public void run(){if(!(hw.window instanceof javax.swing.RootPaneContainer))return;((javax.swing.RootPaneContainer)hw.window).getRootPane().invalidate();hw.window.validate();if(needsShape(hw))applyShape(hw);}},false);
+	}
+	/** Lays out the title strip and the bar under it after the root pane's layout (EDT). */
+	private void placeTitleBand(HostWindow hw){
+		if(!(hw.window instanceof javax.swing.RootPaneContainer))return;
+		javax.swing.JRootPane root=((javax.swing.RootPaneContainer)hw.window).getRootPane();JMenuBar bar=root.getJMenuBar();
+		Canvas canvas=hw.canvas;int band=canvas==null?0:Math.min(hostLen(hw.titleBand),canvas.getHeight());
+		if(band<=0||bar==null||!bar.isVisible()||bar.getParent()!=root.getLayeredPane()){if(hw.titleStrip!=null&&hw.titleStrip.isVisible())hw.titleStrip.setVisible(false);return;}
+		JLayeredPane layers=root.getLayeredPane();
+		if(hw.titleStrip==null)hw.titleStrip=new TitleStrip(hw);
+		if(hw.titleStrip.getParent()!=layers)layers.add(hw.titleStrip,JLayeredPane.PALETTE_LAYER);
+		if(layers.getLayer(bar)!=JLayeredPane.PALETTE_LAYER)layers.setLayer(bar,JLayeredPane.PALETTE_LAYER); // over the canvas's title rows
+		Rectangle b=bar.getBounds();bar.setLocation(b.x,b.y+band);
+		hw.titleStrip.setBounds(b.x,b.y,canvas.getWidth(),band);
+		if(!hw.titleStrip.isVisible())hw.titleStrip.setVisible(true);
+		anyTitleBand=true;
+	}
+	/** The title strip showing in the window, else null (EDT). */
+	private static TitleStrip shownTitleStrip(HostWindow hw){TitleStrip s=hw.titleStrip;return s!=null&&s.isVisible()&&s.getParent()!=null?s:null;}
+	/** A host point over a title strip (or anywhere while the button pressed there is held) moved down onto the canvas rows that
+	 *  strip shows: where the program sees them. */
+	private Point pastTitleBand(Point host){
+		for(HostWindow hw:windowsFrontToBack()){TitleStrip s=hw.titleStrip;Canvas canvas=hw.canvas;java.awt.Window win=hw.window;
+			if(s==null||canvas==null||win==null||!s.isShowing())continue;
+			try{Point at=s.getLocationOnScreen();int shift=canvas.getY()-s.getY();
+				if(hw.titleStripPressed&&mouseDown||host.x>=at.x&&host.y>=at.y&&host.x<at.x+s.getWidth()&&host.y<at.y+s.getHeight())return new Point(host.x,host.y+shift);}catch(Exception ignored){}}
+		return host;
 	}
 
 	/**
@@ -893,6 +979,7 @@ final class MacAppHost {
 				if(me.getID()==MouseEvent.MOUSE_DRAGGED||me.getID()==MouseEvent.MOUSE_MOVED||me.getID()==MouseEvent.MOUSE_RELEASED||me.getID()==MouseEvent.MOUSE_PRESSED){
 					try{Point p=toGuest(me.getLocationOnScreen());mouseGlobalH=p.x;mouseGlobalV=p.y;}catch(Exception ignored){}
 					modifierState=hostModifiers(me.getModifiersEx());
+					TabletInput.observe(me); // pen or mouse: the VM's ".Wacom" driver reads it (WacomTablet68k)
 				}
 			}
 			if(event instanceof KeyEvent){KeyEvent ke=(KeyEvent)event;boolean press=ke.getID()==KeyEvent.KEY_PRESSED;
@@ -1354,6 +1441,7 @@ final class MacAppHost {
 	private volatile boolean anyDisplaced;
 	/** A host screen point as the program's global point: over a displaced window, shifted back into that window. */
 	Point toGuest(Point host){
+		if(anyTitleBand)host=pastTitleBand(host);
 		Point p=toVirtual(host);if(!anyDisplaced)return p;
 		for(HostWindow hw:windowsFrontToBack()){if(hw.canvas==null||!hw.canvas.isShowing())continue;
 			try{Point c=hw.canvas.getLocationOnScreen();if(host.x>=c.x&&host.y>=c.y&&host.x<c.x+hw.canvas.getWidth()&&host.y<c.y+hw.canvas.getHeight())return new Point(p.x-hw.dispX,p.y-hw.dispY);}catch(Exception ignored){}}
@@ -1399,7 +1487,7 @@ final class MacAppHost {
 	 *  user ({@link #userDragArea}), which may go beyond a game screen as native frames do. */
 	Point unpinnedMouseLocation(){
 		if(headless||injectedMouse!=null||screenRect==null)return mouseLocation();
-		try{PointerInfo info=MouseInfo.getPointerInfo();if(info!=null)return toVirtual(info.getLocation());}catch(Exception ignored){}
+		try{PointerInfo info=MouseInfo.getPointerInfo();if(info!=null)return toVirtual(anyTitleBand?pastTitleBand(info.getLocation()):info.getLocation());}catch(Exception ignored){}
 		return mouseLocation();
 	}
 	private Point pointerLocation(){
@@ -1543,6 +1631,9 @@ final class MacAppHost {
 		// A frame a custom WDEF draws is all the program's: no macOS drop shadow, whose rim showed as a grey outline around
 		// Bryce 2's dialogs (they draw their own shadow over the screen pixels the window took up). Read when the peer is made.
 		if(hw.customFrame&&hw.window instanceof javax.swing.RootPaneContainer)((javax.swing.RootPaneContainer)hw.window).getRootPane().putClientProperty("Window.shadow",Boolean.FALSE);
+		if(hw.customFrame&&!GMenu.isMacOSX()&&hw.window instanceof javax.swing.RootPaneContainer){ // its title rows may go above the in-window menu bar
+			javax.swing.JRootPane root=((javax.swing.RootPaneContainer)hw.window).getRootPane();
+			if(root.getLayout() instanceof java.awt.LayoutManager2)root.setLayout(new TitleBandLayout(hw,(java.awt.LayoutManager2)root.getLayout()));}
 		updateScreenCut(hw);
 		hw.window.pack();
 		if(applicationIcon!=null)hw.window.setIconImage(applicationIcon);
@@ -1575,10 +1666,11 @@ final class MacAppHost {
 	 * The part of a backdrop on an external's screen round the card window ({@link #limitedExternal}) when it reaches past that
 	 * screen's right or bottom edge, host pixels from the content's top-left; else null. A Mac shows nothing beyond its screen,
 	 * and this screen is not the display: UxBack sizes its cover by HyperCard's "the screenRect" (the display), and its grey went
-	 * on past the frame down to the display's bottom-right corner (Saint Nicholas Society's "hide the desktop").
+	 * on past the frame down to the display's bottom-right corner (Saint Nicholas Society's "hide the desktop"). The same for a
+	 * program's own screen: Amorphium's 2048x2048 backdrop on its 800x600 screen covered the display far past the screen.
 	 */
 	private Dimension screenCut(HostWindow hw){
-		if(!limitedExternal||!hw.backdrop||screenRect==null)return null;
+		if(!hw.backdrop||screenRect==null)return null;
 		int w=screenRect.x+screenRect.width-hostX(hw.contentLeft+hw.dispX),h=screenRect.y+screenRect.height-hostY(hw.contentTop+hw.dispY);
 		if(w>=hostLen(hw.width)&&h>=hostLen(hw.height))return null;
 		return new Dimension(Math.max(1,w),Math.max(1,h));
@@ -1677,11 +1769,19 @@ final class MacAppHost {
 	 * entirely beyond it neither drew nor took clicks). Returns whether the program's position changed.
 	 */
 	private boolean placeForProgram(HostWindow hw,int shownX,int shownY){
-		int x=shownX,y=shownY;
-		if(screenRect!=null&&!hw.backdrop){x=onScreenAxis(shownX,hw.width,screenWidth);y=onScreenAxis(shownY,hw.height,screenHeight);}
+		int[] at=programPlace(hw,shownX,shownY);int x=at[0],y=at[1];
 		hw.dispX=shownX-x;hw.dispY=shownY-y;if(hw.dispX!=0||hw.dispY!=0)anyDisplaced=true;
 		boolean changed=x!=hw.contentLeft||y!=hw.contentTop;hw.contentLeft=x;hw.contentTop=y;return changed;
 	}
+	/** Where the program keeps a window shown at {@code shownX},{@code shownY}: the same place, or the nearest on its screen. */
+	private int[] programPlace(HostWindow hw,int shownX,int shownY){
+		if(screenRect==null||hw.backdrop)return new int[]{shownX,shownY};
+		return new int[]{onScreenAxis(shownX,hw.width,screenWidth),onScreenAxis(shownY,hw.height,screenHeight)};
+	}
+	/** {@link #programPlace(HostWindow,int,int)} for the Window Manager, which drags the frames drawn in windows itself. */
+	int[] programPlace(int record,int shownX,int shownY){HostWindow hw=window(record);return hw==null?new int[]{shownX,shownY}:programPlace(hw,shownX,shownY);}
+	/** How far from the program's position the window is shown, {h, v}. */
+	int[] displacement(int record){HostWindow hw=window(record);return hw==null?new int[2]:new int[]{hw.dispX,hw.dispY};}
 	/** A window's start on one axis moved the least to lie within 0..{@code screen} (one larger than the screen: to cover it). */
 	private static int onScreenAxis(int at,int length,int screen){return length>=screen?Math.max(screen-length,Math.min(0,at)):Math.max(0,Math.min(screen-length,at));}
 	/** A bare window off the display right of or below the screen, no farther than a big classic Mac screen reaches: a position the
@@ -1967,7 +2067,7 @@ final class MacAppHost {
 	/** Debug aid (commands.txt `activate <recordHex>`): activates a window as a click on it would in the real Finder. */
 	void injectActivate(int record){HostWindow hw=window(record);if(hw!=null)activateHost(hw);}
 	/** Debug aid (commands.txt `deactivate <recordHex>`): the deactivate event another application coming to the front posts. */
-	void injectDeactivate(int record){HostWindow hw=window(record);if(hw!=null)deactivateHost(hw);}
+	void injectDeactivate(int record){HostWindow hw=window(record);if(hw!=null){deactivateHost(hw);runOnEdt(new Runnable(){@Override public void run(){setProgramActive(false);}},true);}}
 	/** Debug aid (commands.txt `movewin <recordHex> <dx> <dy>`): drags the native frame by that many host pixels, as the user moving it does. */
 	void injectWindowMove(int record,final int dx,final int dy){
 		final HostWindow hw=window(record);if(hw==null||hw.window==null)return;
@@ -1977,7 +2077,7 @@ final class MacAppHost {
 	 *  activated first, then the press and release reach its canvas (window-local coordinates). */
 	void injectOsClick(int record,int x,int y){
 		final HostWindow hw=window(record);if(hw==null||hw.canvas==null||!hw.canvas.isShowing())return;
-		runOnEdt(new Runnable(){@Override public void run(){hw.window.toFront();osActivated(hw);}},true);
+		runOnEdt(new Runnable(){@Override public void run(){hw.window.toFront();setProgramActive(true);osActivated(hw);}},true);
 		Point p=canvasOrigin(hw);int sx=p.x+x,sy=p.y+y;
 		injectAwtMouse(MouseEvent.MOUSE_PRESSED,sx,sy);injectAwtMouse(MouseEvent.MOUSE_RELEASED,sx,sy);
 	}
@@ -2292,6 +2392,7 @@ final class MacAppHost {
 	 */
 	void setProgramActive(boolean active){
 		if(programActive==active)return;programActive=active;
+		listener.postSuspendResume(active); // the Process Manager's suspend/resume (programs that asked for them)
 		if(GMenu.isMacOSX()||headless)return;
 		for(HostWindow hw:windowsFrontToBack())if(hw.window!=null&&!hw.decorated)applyShape(hw);
 	}
@@ -2313,14 +2414,23 @@ final class MacAppHost {
 			// moves down with the canvas, and the bar stays showing above it (Kingyo2's bowl was cut one bar height too high) while
 			// the program is in front (see setProgramActive).
 			JMenuBar bar=hw.frame!=null?hw.frame.getJMenuBar():hw.dialog!=null?hw.dialog.getJMenuBar():null;
-			hw.window.validate();Point at=SwingUtilities.convertPoint(hw.canvas,0,0,hw.window);
-			if(at.x!=0||at.y!=0||bar!=null){
+			hw.window.validate();Point at=SwingUtilities.convertPoint(hw.canvas,0,0,hw.window);TitleStrip strip=shownTitleStrip(hw);
+			if(strip!=null){ // the title rows above the bar, the rest below it, the bar between them in the background too (it is the window's own, as a native frame's)
+				int band=strip.getHeight();Point st=SwingUtilities.convertPoint(strip,0,0,hw.window);
+				java.awt.geom.Area top=new java.awt.geom.Area(shape),rest=new java.awt.geom.Area(shape);
+				top.intersect(new java.awt.geom.Area(new Rectangle(-1<<20,-1<<20,1<<21,(1<<20)+band)));rest.intersect(new java.awt.geom.Area(new Rectangle(-1<<20,band,1<<21,1<<20)));
+				java.awt.geom.Area area=new java.awt.geom.Area(java.awt.geom.AffineTransform.getTranslateInstance(st.x,st.y).createTransformedShape(top));
+				area.add(new java.awt.geom.Area(java.awt.geom.AffineTransform.getTranslateInstance(at.x,at.y).createTransformedShape(rest)));
+				area.add(new java.awt.geom.Area(SwingUtilities.convertRectangle(bar.getParent(),bar.getBounds(),hw.window)));
+				shape=area;
+			}
+			else if(at.x!=0||at.y!=0||bar!=null){
 				java.awt.geom.Area area=new java.awt.geom.Area(java.awt.geom.AffineTransform.getTranslateInstance(at.x,at.y).createTransformedShape(shape));
 				if(bar!=null&&bar.isVisible()&&bar.getParent()!=null&&programActive)area.add(new java.awt.geom.Area(SwingUtilities.convertRectangle(bar.getParent(),bar.getBounds(),hw.window)));
 				shape=area;
 			}
 		}
-		else if(!programActive&&hw.canvas!=null&&inWindowMenuBar(hw)!=null){ // a rectangular bare window in the background: the content only
+		else if(!programActive&&hw.canvas!=null&&inWindowMenuBar(hw)!=null&&shownTitleStrip(hw)==null){ // a rectangular bare window in the background: the content only
 			hw.window.validate();shape=SwingUtilities.convertRectangle(hw.canvas.getParent(),hw.canvas.getBounds(),hw.window);
 		}
 		try{hw.window.setShape(shape);}catch(RuntimeException e){if(HOST_TRACE)System.err.println("[host] setShape failed: "+e);}
@@ -2632,12 +2742,16 @@ final class MacAppHost {
 	 */
 	void moveWindow(final int record,final int left,final int top){moveWindow(record,left,top,false);}
 	/** {@code byUser}: the user drags the window (DragWindow of a frame drawn in the window), see {@link HostWindow#userPlaced}. */
-	void moveWindow(final int record,final int left,final int top,boolean byUser){
+	void moveWindow(final int record,final int left,final int top,boolean byUser){moveWindow(record,left,top,byUser,0,0);}
+	/** The frame the Window Manager re-placed, not moved (it was rebuilt or resized): where the user dragged it, it stays. */
+	void moveFrame(int record,int left,int top){HostWindow hw=window(record);if(hw!=null&&hw.userPlaced)moveWindow(record,left,top,true,hw.dispX,hw.dispY);else moveWindow(record,left,top,false);}
+	/** {@code dispX},{@code dispY}: for a window the user drags, how far from {@code left},{@code top} its frame is shown ({@link #placeForProgram}). */
+	void moveWindow(final int record,final int left,final int top,boolean byUser,int dispX,int dispY){
 		final HostWindow hw=window(record);if(hw==null)return;hw.userPlaced=byUser;
-		// The frame the user drags is where the program now has the window: no displacement from before is added to it. A stale
-		// native move report had made JumpStart's 643x505 Kaleidoscope-framed window (wider than the 640x480 screen) displaced,
-		// and every further step of the drag added that displacement again - the window ran ahead of the pointer.
-		if(byUser){hw.dispX=hw.dispY=0;hw.userDragUntil=System.nanoTime()+SCREEN_MOVE_QUIET_NANOS;}
+		// The frame the user drags goes exactly there: no displacement from before is added to it. A stale native move report had
+		// made JumpStart's 643x505 Kaleidoscope-framed window (wider than the 640x480 screen) displaced, and every further step
+		// of the drag added that displacement again - the window ran ahead of the pointer.
+		if(byUser){hw.dispX=dispX;hw.dispY=dispY;if(dispX!=0||dispY!=0)anyDisplaced=true;hw.userDragUntil=System.nanoTime()+SCREEN_MOVE_QUIET_NANOS;}
 		int[] kept=hw.keptFrom;hw.keptFrom=null;
 		hw.insisted=!byUser&&(hw.insisted&&left==hw.contentLeft&&top==hw.contentTop||kept!=null&&left==kept[0]&&top==kept[1]);
 		if((left!=hw.contentLeft||top!=hw.contentTop)&&hw.visible)adoptDeviceWrites(hw);
@@ -3245,15 +3359,24 @@ final class MacAppHost {
 					javax.swing.event.MenuEvent e=new javax.swing.event.MenuEvent(m);long start=System.nanoTime();
 					for(javax.swing.event.MenuListener l:m.getMenuListeners())l.menuSelected(e);
 					out.append((System.nanoTime()-start)/1_000_000).append(" ms: ");
-					for(int k=0;k<m.getItemCount();k++){JMenuItem it=m.getItem(k);out.append(it==null?"-":it.getText()+(it.isEnabled()?"":"(off)"));
-						if(it instanceof JMenu){out.append(" [");for(int j=0;j<((JMenu)it).getItemCount();j++){JMenuItem si=((JMenu)it).getItem(j);out.append(j>0?", ":"").append(si==null?"-":si.getText()+(si.isEnabled()?"":"(off)"));}out.append("]");}
-						out.append(" | ");}
+					for(int k=0;k<m.getItemCount();k++){debugMenuItem(out,m.getItem(k));out.append(" | ");}
 					for(javax.swing.event.MenuListener l:m.getMenuListeners())l.menuDeselected(e);
 					return;}
 			}
 			out.append("no host menu ").append(id);}});}
 		catch(Exception e){out.append(e);}
 		return out.toString();
+	}
+	/** One item of {@link #debugOpenMenu}: a submenu is opened too and its items follow in [..]. */
+	private static void debugMenuItem(StringBuilder out,JMenuItem it){
+		out.append(it==null?"-":it.getText()+(it.isEnabled()?"":"(off)"));
+		if(!(it instanceof JMenu))return;
+		JMenu sub=(JMenu)it;javax.swing.event.MenuEvent e=new javax.swing.event.MenuEvent(sub);
+		for(javax.swing.event.MenuListener l:sub.getMenuListeners())l.menuSelected(e);
+		out.append(" [");
+		for(int j=0;j<sub.getItemCount();j++){out.append(j>0?", ":"");debugMenuItem(out,sub.getItem(j));}
+		out.append("]");
+		for(javax.swing.event.MenuListener l:sub.getMenuListeners())l.menuDeselected(e);
 	}
 	private void menuClosed(){
 		if(openMenus>0)openMenus--;
@@ -3303,8 +3426,8 @@ final class MacAppHost {
 	/** Whether the Apple menu gets HyperZebra's own items: a program launched in the VM (not a HyperCard external, a service VM or a test). */
 	private boolean hasHostAppleItems(){MacApp68k app=owner;return !headless&&!external&&app!=null&&!app.service&&app.file!=null;}
 	/**
-	 * HyperZebra's own items under the program's Apple menu, as the launcher's dock menu has them: the documents the program
-	 * opened (handed to it as Open Documents events; disabled for a program that takes none while it runs), its Application
+	 * HyperZebra's own items under the program's Apple menu, as the launcher's dock menu has them: the dock, the documents the
+	 * program opened (handed to it as Open Documents events; disabled for a program that takes none while it runs), its Application
 	 * Settings and Resource Translation (when this Mac can translate). They act host-side: the program never sees them.
 	 */
 	private void addHostAppleItems(final JMenu menu,boolean separator){
@@ -3313,6 +3436,7 @@ final class MacAppHost {
 		int before=menu.getMenuComponentCount();
 		if(separator&&!(before>0&&menu.getMenuComponent(before-1) instanceof JSeparator))menu.add(new JSeparator()); // the program's list may end in one (no desk accessories after it)
 		JMenuItem mi;
+		if(GLauncher.enabled())menu.add(GLauncher.instance.dockMenu());
 		if(LauncherStore.enabled){
 			final JMenu docs=new JMenu(International.t("Recent Documents"));
 			fillRecentDocuments(docs,app);
@@ -3515,7 +3639,12 @@ final class MacAppHost {
 				if(Mac68kApi.TRACE)System.err.println("[host] pop-up over "+(hw==null?"?":Integer.toHexString(hw.record))+" root "+(root==null?null:root.getSize())+" menu "+pd+" at "+px+","+py+" lightweight "+popup.isLightWeightPopupEnabled()+" showing "+popup.isShowing());}
 			else{synchronized(lock){done[0]=true;lock.notifyAll();}}
 		}},false);
-		synchronized(lock){while(!done[0]){try{lock.wait(100);}catch(InterruptedException e){break;}}}
+		// interrupt-time work goes on while the menu is up, as on a Mac (VocalWriter's music stopped under its Quantize pop-up)
+		MacApp68k app=owner;Toolbox68k tb=app==null?null:app.toolbox;
+		for(;;){
+			synchronized(lock){if(done[0])break;try{lock.wait(tb==null?100:5);}catch(InterruptedException e){break;}if(done[0])break;}
+			if(tb!=null)tb.serviceWhileBlocked();
+		}
 		// the action listener fires after the popup hides; give it a moment
 		try{Thread.sleep(30);}catch(InterruptedException ignored){}
 		return result.get();

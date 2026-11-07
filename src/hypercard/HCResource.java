@@ -349,9 +349,10 @@ public class HCResource {
 		if(r!=null) r.attributes = attributes;
 	}
 
-	/** The type a resource of this Mac type is kept as in the stack ('snd ' as "SND", 'pict' as "PICT", ...). */
+	/** The type a resource of this Mac type is kept as in the stack ('snd ' as "SND", 'pict' as "PICT", ...). ColorizeHC's 'Pdat'
+	 *  pictures stay 'Pdat': the XCMD loads them by that type (GetNamedResource 'Pdat'), and kept as PICT they were not found. */
 	static String storedType(String type){
-		if(type.equals("PICT") || type.equals("pict") || type.equals("Pdat")) return "PICT";
+		if(type.equals("PICT") || type.equals("pict")) return "PICT";
 		if(type.equals("snd ")) return "SND";
 		if(type.equals("FONT") || type.equals("NFNT")) return "font";
 		return type;
@@ -377,7 +378,7 @@ public class HCResource {
 			filename = convertRsrc2file(b, "cicn", parentPath, id, name);
 			mytype = "cicn";
 		}
-		else if(type.equals("PICT") || type.equals("pict") || type.equals("Pdat") ){
+		else if(type.equals("PICT") || type.equals("pict") ){
 			filename = convertPICT2PICTfile(b, parentPath, id);
 			mytype = "PICT";
 		}

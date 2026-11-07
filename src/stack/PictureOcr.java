@@ -12,10 +12,12 @@ import java.util.regex.Pattern;
 
 /**
  * Reading the text in a picture with Tesseract (PictureTranslation): the tesseract program installed on the machine
- * (Homebrew/MacPorts on macOS, the UB Mannheim installer on Windows, the distribution's package on Linux), run as a
- * separate process on a PNG of the picture - nothing leaves the machine. Which one: -Dhz.tesseract=path, then a
- * "tesseract" folder beside HyperZebra, then the usual places and the PATH (the newest version found). Its languages are
- * its own traineddata files; a "tessdata" folder in HyperZebra's state folder adds more (Tesseract 4 and later).
+ * (downloaded from the launcher's Translation page - TesseractInstall -, Homebrew/MacPorts on macOS, the UB Mannheim
+ * installer on Windows, the distribution's package on Linux), run as a separate process on a PNG of the picture -
+ * nothing leaves the machine. Which one: -Dhz.tesseract=path, then the downloaded one, a "tesseract" folder beside
+ * HyperZebra, the usual places and the PATH (the newest version found). Its languages are its own traineddata files and
+ * those of the "tessdata" folder in HyperZebra's state folder (downloaded or added there, Tesseract 4 and later); the
+ * downloaded tesseract has only the latter.
  * <p>
  * Old Mac pictures have small bitmap text (9-12 pixels), black or coloured, on white, colour panels or drawings: the
  * picture becomes ink on white by each pixel's difference from the background around it (flatten), its lines are found
@@ -53,6 +55,9 @@ final class PictureOcr {
 	private static File executable;
 	private static String version;
 	private static Set<String> languages;
+	/** The languages of tesseract's own tessdata folder, and that folder when it says (Tesseract 4 and later). */
+	private static Set<String> ownLanguages;
+	private static File ownTessdata;
 	private static boolean searched;
 
 	/** Why pictures cannot be read here (no tesseract found), or null. */
@@ -69,6 +74,8 @@ final class PictureOcr {
 		if(forced!=null){if(forced.equals("none"))return null;candidates.add(new File(forced));}
 		boolean windows=System.getProperty("os.name","").toLowerCase(Locale.ROOT).startsWith("windows");
 		String exe=windows?"tesseract.exe":"tesseract";
+		File downloaded=TesseractInstall.executable();
+		if(downloaded!=null)candidates.add(downloaded);
 		File dist=AppPaths.distributionDirectory();
 		if(dist!=null){candidates.add(new File(new File(dist,"tesseract"),exe));candidates.add(new File(new File(new File(dist,"tesseract"),"bin"),exe));}
 		if(windows){
@@ -119,41 +126,73 @@ final class PictureOcr {
 	}
 	private static int compare(int[] a,int[] b){for(int i=0;i<3;i++)if(a[i]!=b[i])return Integer.compare(a[i],b[i]);return 0;}
 
-	/** HyperZebra's own folder of extra traineddata files (used when it has any, Tesseract 4 and later). */
+	/** HyperZebra's own folder of traineddata files, downloaded or added (Tesseract 4 and later): <state>/tessdata. */
 	static File extraTessdata(){return new File(AppPaths.stateDirectory(),"tessdata");}
-	private static boolean useExtra(){
-		File[] f=extraTessdata().listFiles((d,n)->n.endsWith(".traineddata"));
-		return f!=null&&f.length>0&&modern();
+	/** The languages in that folder. */
+	private static Set<String> extraLanguages(){
+		return modern()?TesseractInstall.added():Collections.<String>emptySet();
 	}
 
-	/** The languages tesseract can read ("eng", "jpn", …). */
+	/** The languages tesseract can read ("eng", "jpn", …): its own and those of the state folder's tessdata. */
 	static synchronized Set<String> languages(){
 		if(languages!=null)return languages;
-		Set<String> out=new TreeSet<String>();
+		Set<String> out=new TreeSet<String>(), own=new TreeSet<String>();
 		File exe=executable();
 		if(exe!=null){
-			List<String> cmd=new ArrayList<String>(Arrays.asList(exe.getPath()));
-			if(useExtra()){cmd.add("--tessdata-dir");cmd.add(extraTessdata().getPath());}
-			cmd.add("--list-langs");
-			String list=run(cmd,15);
-			if(list!=null){
-				boolean after=false;
-				for(String line:list.split("\\R")){
-					line=line.trim();
-					if(line.toLowerCase(Locale.ROOT).startsWith("list of available languages")){after=true;continue;}
-					if(after&&line.matches("[A-Za-z_]+(?:/[A-Za-z_]+)?")&&!line.equals("osd")&&!line.equals("equ"))out.add(line);
+			if(!TesseractInstall.downloaded(exe)){ // the downloaded one has no folder of its own
+				String list=run(Arrays.asList(exe.getPath(),"--list-langs"),15);
+				if(list!=null){
+					boolean after=false;
+					for(String line:list.split("\\R")){
+						line=line.trim();
+						if(line.toLowerCase(Locale.ROOT).startsWith("list of available languages")){
+							after=true;
+							Matcher m=Pattern.compile("\"(.+?)[/\\\\]?\"").matcher(line); // List of available languages in "/opt/homebrew/share/tessdata/" (3):
+							if(m.find()&&new File(m.group(1)).isDirectory())ownTessdata=new File(m.group(1));
+							continue;
+						}
+						if(after&&line.matches("[A-Za-z_]+(?:/[A-Za-z_]+)?")&&!line.equals("osd")&&!line.equals("equ"))own.add(line);
+					}
+				}
+			}
+			out.addAll(own);
+			for(String l:extraLanguages())if(!l.equals("osd")&&!l.equals("equ"))out.add(l);
+		}
+		ownLanguages=Collections.unmodifiableSet(own);
+		languages=Collections.unmodifiableSet(out);
+		return languages;
+	}
+
+	/** The languages of tesseract's own tessdata folder (not removable from HyperZebra). */
+	static synchronized Set<String> ownLanguages(){languages();return ownLanguages;}
+
+	/**
+	 * The tessdata folder to read {@code langs} ("jpn+eng") from: null for tesseract's own when it has them all, else the
+	 * state folder's - with the missing ones copied there from tesseract's own folder (one folder at a time).
+	 */
+	private static synchronized File tessdataFor(String langs){
+		languages();
+		List<String> need=Arrays.asList(langs.split("\\+"));
+		if(!TesseractInstall.downloaded(executable())&&ownLanguages.containsAll(need))return null;
+		File extra=extraTessdata();
+		Set<String> have=extraLanguages();
+		if(!have.containsAll(need)&&ownTessdata!=null){
+			extra.mkdirs();
+			for(String l:need){
+				File from=new File(ownTessdata,l+".traineddata");
+				if(!have.contains(l)&&from.isFile()){
+					try{java.nio.file.Files.copy(from.toPath(),new File(extra,l+".traineddata").toPath());}catch(IOException ignored){}
 				}
 			}
 		}
-		languages=Collections.unmodifiableSet(out);
-		return languages;
+		return extra;
 	}
 
 	/** Whether tesseract and its languages were looked for already (asking does not wait). */
 	static synchronized boolean known(){return searched&&(executable==null||languages!=null);}
 
 	/** Forgets what was found (the settings page looks again after the user installed tesseract or languages). */
-	static synchronized void reset(){searched=false;executable=null;version=null;languages=null;}
+	static synchronized void reset(){searched=false;executable=null;version=null;languages=null;ownLanguages=null;ownTessdata=null;}
 
 	/** Tesseract's language for a language code of the translation ("ja" → "jpn"), or null when it has none. */
 	static String tesseractLanguage(String code){
@@ -224,11 +263,12 @@ final class PictureOcr {
 			File listFile=new File(dir,"lines.txt");
 			java.nio.file.Files.write(listFile.toPath(),list.toString().getBytes(StandardCharsets.UTF_8));
 			List<String> cmd=new ArrayList<String>(Arrays.asList(exe.getPath(),listFile.getPath(),new File(dir,"out").getPath()));
-			if(useExtra()){cmd.add("--tessdata-dir");cmd.add(extraTessdata().getPath());}
+			File tessdata=modern()?tessdataFor(langs):null;
+			if(tessdata!=null){cmd.add("--tessdata-dir");cmd.add(tessdata.getPath());}
 			cmd.add("-l");cmd.add(langs);
 			cmd.add(modern()?"--psm":"-psm");cmd.add("7"); // one line of text
 			if(langs.startsWith("jpn")||langs.startsWith("chi")||langs.startsWith("kor")){cmd.add("-c");cmd.add("preserve_interword_spaces=1");}
-			cmd.add("hocr");
+			cmd.add("-c");cmd.add("tessedit_create_hocr=1"); // not the "hocr" config file: a tessdata folder of HyperZebra's has no configs
 			if(run(cmd,300)==null)throw new IOException("Tesseract failed.");
 			File out=new File(dir,"out.hocr");
 			if(!out.isFile())out=new File(dir,"out.html"); // Tesseract 3.02 and older

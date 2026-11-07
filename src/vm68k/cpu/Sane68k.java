@@ -15,7 +15,7 @@ final class Sane68k {
 			int destination=memory.readLong(sp+2),source=memory.readLong(sp+6);boolean binary=operation<=0x0c||operation==0x10||operation==0x18||operation==0x1c||operation==0x0e;
 			String before=describe(destination,operation==0x1c?FORMAT_I:FORMAT_X)+(binary?" src "+describe(source,operation==0x10||operation==0x1c?FORMAT_X:operation==0x18?FORMAT_I:format):"");
 			boolean handled=dispatch(cpu,operation,format);
-			System.err.println("[68K] FP68K op $"+Integer.toHexString(opword)+" dst "+before+" -> "+describe(destination,operation==0x10?format:FORMAT_X));
+			System.err.println("[68K] FP68K op $"+Integer.toHexString(opword)+" dst "+before+" -> "+describe(destination,operation==0x10||operation==0x09?format:FORMAT_X));
 			return handled;
 		}
 		return dispatch(cpu,operation,format);
@@ -90,6 +90,7 @@ final class Sane68k {
 		int sign=memory.readByte(decimal),exp=(short)memory.readWord(decimal+2),n=memory.readByte(decimal+4);
 		StringBuilder sig=new StringBuilder();for(int i=0;i<n;i++)sig.append((char)memory.readByte(decimal+5+i));
 		double value;String digits=sig.toString();
+		if(Mac68kApi.TRACE)System.err.println("[68K] FD2B decimal sgn "+sign+" exp "+exp+" sig \""+digits+"\" ("+n+")");
 		if(digits.startsWith("N"))value=Double.NaN;else if(digits.startsWith("I"))value=Double.POSITIVE_INFINITY;
 		else{try{value=digits.isEmpty()?0:new java.math.BigDecimal(new java.math.BigInteger(digits),-exp).doubleValue();}catch(NumberFormatException e){value=Double.NaN;}}
 		write(destination,format,sign!=0?-value:value);return true;

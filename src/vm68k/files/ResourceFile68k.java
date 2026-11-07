@@ -122,8 +122,12 @@ final class ResourceFile68k {
 	final List<Resource> ordered=new ArrayList<Resource>();
 	int attributes;
 	boolean dirty;
+	/** A code resource was taken out since the file was last written ({@link ProgramGuard68k}). */
+	boolean codeRemoved;
 	int refNum;
 	boolean writable=true;
+	/** The in-memory printer resource file of the PrLink glue (ResourceManager68k.openPrinterFile). */
+	boolean printer;
 	/** XCMD mode: the HyperZebra stack this file shows its externals (Mac68kResourceManager.forStack), whose resources take what
 	 *  they write here instead of {@link #file}; null for a real resource file. */
 	OStack stack;
@@ -221,7 +225,7 @@ final class ResourceFile68k {
 	/** Every resource in file order. */
 	List<Resource> all(){return new ArrayList<Resource>(ordered);}
 	List<Integer> types(){List<Integer> result=new ArrayList<Integer>();for(Resource r:ordered)if(!result.contains(r.type))result.add(r.type);return result;}
-	void remove(Resource resource){byKey.remove(resource.key());ordered.remove(resource);dirty=true;}
+	void remove(Resource resource){byKey.remove(resource.key());ordered.remove(resource);dirty=true;if(ProgramGuard68k.isCode(resource.type))codeRemoved=true;}
 	Resource byHandle(int handle){if(handle==0)return null;for(Resource r:ordered)if(r.handle==handle)return r;return null;}
 	int uniqueId(int type){
 		int id=128;
@@ -254,7 +258,7 @@ final class ResourceFile68k {
 		boolean fileLayout=forkHeader!=null;
 		Map<Resource,Integer> appended=new java.util.HashMap<Resource,Integer>();int dataEnd=fileLayout?u4(forkHeader,8):0;
 		if(fileLayout)for(Resource r:ordered)if(!inFileLayout(r)){appended.put(r,dataEnd);
-			int length=r.storedLength();dataEnd+=4+length+(length&1);}
+			dataEnd+=4+r.storedLength();}
 		for(Map.Entry<Integer,List<Resource>> entry:byType.entrySet()){
 			writeInt(typeList,entry.getKey());writeShort(typeList,entry.getValue().size()-1);writeShort(typeList,refOffset);
 			for(Resource r:entry.getValue()){
@@ -266,7 +270,7 @@ final class ResourceFile68k {
 				int length=r.storedLength();
 				refLists.write(r.mapAttributes()&0xff);refLists.write(offset>>>16);refLists.write(offset>>>8);refLists.write(offset);
 				writeInt(refLists,r.handle);
-				dataSize+=4+length+(length&1);refOffset+=12;
+				dataSize+=4+length;refOffset+=12;
 			}
 		}
 		ByteArrayOutputStream map=new ByteArrayOutputStream();
@@ -290,8 +294,7 @@ final class ResourceFile68k {
 		for(List<Resource> list:byType.values())for(Resource r:list){
 			dataOffsets[index++]=data.size();
 			byte[] bytes=r.fileData();lastLayout.put(r,new int[]{data.size(),bytes.length});
-			writeInt(data,bytes.length);data.write(bytes,0,bytes.length);
-			if((bytes.length&1)!=0)data.write(0);
+			writeInt(data,bytes.length);data.write(bytes,0,bytes.length); // no padding: the Resource Manager packs them, odd offsets included (Black & Bleu checks its key file's fork size to the byte)
 		}
 		ByteArrayOutputStream names=new ByteArrayOutputStream();
 		ByteArrayOutputStream refLists=new ByteArrayOutputStream();
@@ -335,7 +338,7 @@ final class ResourceFile68k {
 		for(Resource r:ordered){int[] at=lastLayout.get(r);if(at!=null){r.fileOffset=at[0];r.fileLength=at[1];}else r.fileOffset=-1;r.storedCompressed=false;}
 		if(storage==Storage.NONE)storage=detectStorage();
 		for(Resource r:ordered)r.changed=false;
-		dirty=false;
+		dirty=false;codeRemoved=false;
 	}
 
 	private Storage detectStorage(){

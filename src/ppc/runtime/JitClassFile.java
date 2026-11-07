@@ -41,6 +41,23 @@ final class JitClassFile {
 	}
 	int utf8(String s){return entry("U"+s,1,p->{p.u1(1);byte[] u=s.getBytes(java.nio.charset.StandardCharsets.UTF_8);p.u2(u.length);for(byte x:u)p.u1(x);});} // ASCII names only
 	int classRef(String internalName){int name=utf8(internalName);return entry("C"+internalName,1,p->{p.u1(7);p.u2(name);});}
+	/** A String constant (any text; the class file's modified UTF-8), or -1 when it does not fit (65535 bytes). */
+	int string(String s){
+		byte[] u=modifiedUtf8(s);if(u==null)return -1;
+		int text=entry("T"+s,1,p->{p.u1(1);p.u2(u.length);for(byte x:u)p.u1(x);});
+		return entry("S"+s,1,p->{p.u1(8);p.u2(text);});
+	}
+	private static byte[] modifiedUtf8(String s){
+		Bytes b=new Bytes();
+		for(int i=0;i<s.length();i++){
+			char c=s.charAt(i);
+			if(c>=1&&c<=0x7f)b.u1(c);
+			else if(c<=0x7ff){b.u1(0xc0|c>>6);b.u1(0x80|c&0x3f);}
+			else{b.u1(0xe0|c>>12);b.u1(0x80|c>>6&0x3f);b.u1(0x80|c&0x3f);}
+			if(b.n>65535)return null;
+		}
+		return b.toArray();
+	}
 	int integer(int v){return entry("I"+v,1,p->{p.u1(3);p.u4(v);});}
 	int longConst(long v){return entry("J"+v,2,p->{p.u1(5);p.u8(v);});}
 	int doubleConst(double v){long bits=Double.doubleToRawLongBits(v);return entry("D"+bits,2,p->{p.u1(6);p.u8(bits);});}
@@ -108,6 +125,7 @@ final class JitClassFile {
 		/** Local slots: their verification type (T_INT, T_LONG, T_DOUBLE, or OBJECT + a class constant index) by slot;
 		 *  the second slot of a long or double holds 0. */
 		private final List<Integer> locals=new ArrayList<Integer>();
+		private int scratch;
 		/** Frame offsets: false = empty stack, true = exception handler (the caught exception on the stack). */
 		private final TreeMap<Integer,Boolean> frames=new TreeMap<Integer,Boolean>();
 		private int handlerType;
@@ -125,12 +143,15 @@ final class JitClassFile {
 		int intLocal(){int slot=locals.size();locals.add(T_INT);return slot;}
 		int longLocal(){int slot=locals.size();locals.add(T_LONG);locals.add(0);return slot;}
 		int doubleLocal(){int slot=locals.size();locals.add(T_DOUBLE);locals.add(0);return slot;}
-		int maxLocals(){return locals.size();}
+		/** Keeps {@code slots} slots above the declared locals for values that do not live across a label: no frame mentions them.
+		 *  Gives the first one; every local is declared by then. */
+		int scratchLocals(int slots){scratch=slots;return locals.size();}
+		int maxLocals(){return locals.size()+scratch;}
 
 		// ---- emission
 		int pos(){return out.n;}
 		private void live(){if(dead){frames.putIfAbsent(out.n,Boolean.FALSE);dead=false;}}
-		void op(int opcode){live();out.u1(opcode);if(opcode==GOTO||opcode==IRETURN||opcode==RETURN||opcode==ATHROW)dead=true;}
+		void op(int opcode){live();out.u1(opcode);if(opcode==GOTO||opcode==IRETURN||opcode==ARETURN||opcode==RETURN||opcode==ATHROW)dead=true;}
 		void op1(int opcode,int v){live();out.u1(opcode);out.u1(v);}
 		void op2(int opcode,int v){live();out.u1(opcode);out.u2(v);}
 		/** iload/istore/lload/... of {@code slot} (wide above 255). */
@@ -154,7 +175,7 @@ final class JitClassFile {
 		}
 		void lconst(long v){if(v==0)op(LCONST_0);else if(v==1)op(LCONST_1);else op2(LDC2_W,cf.longConst(v));}
 		void dconst(double v){if(Double.doubleToRawLongBits(v)==0)op(DCONST_0);else if(v==1.0)op(DCONST_1);else op2(LDC2_W,cf.doubleConst(v));}
-		private void ldc(int index){if(index<=255)op1(LDC,index);else op2(LDC_W,index);}
+		void ldc(int index){if(index<=255)op1(LDC,index);else op2(LDC_W,index);}
 		void getfield(String owner,String name,String descriptor){op2(GETFIELD,cf.field(owner,name,descriptor));}
 		void putfield(String owner,String name,String descriptor){op2(PUTFIELD,cf.field(owner,name,descriptor));}
 		void invokevirtual(String owner,String name,String descriptor){op2(INVOKEVIRTUAL,cf.method(owner,name,descriptor));}
@@ -224,16 +245,16 @@ final class JitClassFile {
 
 	// ------------------------------------------------------------------ opcodes
 
-	static final int NOP=0x00,ICONST_0=0x03,LCONST_0=0x09,LCONST_1=0x0a,DCONST_0=0x0e,DCONST_1=0x0f,BIPUSH=0x10,SIPUSH=0x11,LDC=0x12,LDC_W=0x13,LDC2_W=0x14,
+	static final int NOP=0x00,ACONST_NULL=0x01,ICONST_0=0x03,LCONST_0=0x09,LCONST_1=0x0a,DCONST_0=0x0e,DCONST_1=0x0f,BIPUSH=0x10,SIPUSH=0x11,LDC=0x12,LDC_W=0x13,LDC2_W=0x14,
 		ILOAD=0x15,LLOAD=0x16,FLOAD=0x17,DLOAD=0x18,ALOAD=0x19,IALOAD=0x2e,LALOAD=0x2f,
 		ISTORE=0x36,LSTORE=0x37,FSTORE=0x38,DSTORE=0x39,ASTORE=0x3a,IASTORE=0x4f,LASTORE=0x50,
 		POP=0x57,POP2=0x58,DUP=0x59,DUP2=0x5c,SWAP=0x5f,
 		IADD=0x60,LADD=0x61,DADD=0x63,ISUB=0x64,LSUB=0x65,DSUB=0x67,IMUL=0x68,LMUL=0x69,DMUL=0x6b,DDIV=0x6f,INEG=0x74,DNEG=0x77,
 		ISHL=0x78,LSHL=0x79,ISHR=0x7a,LSHR=0x7b,IUSHR=0x7c,LUSHR=0x7d,IAND=0x7e,LAND=0x7f,IOR=0x80,LOR=0x81,IXOR=0x82,LXOR=0x83,IINC=0x84,
 		I2L=0x85,I2D=0x87,L2I=0x88,F2D=0x8d,D2F=0x90,I2B=0x91,I2S=0x93,DCMPL=0x97,DCMPG=0x98,
-		IFEQ=0x99,IFNE=0x9a,IFLT=0x9b,IFGE=0x9c,IFGT=0x9d,IFLE=0x9e,IF_ICMPEQ=0x9f,IF_ICMPNE=0xa0,IF_ICMPLT=0xa1,IF_ICMPGE=0xa2,IF_ICMPGT=0xa3,IF_ICMPLE=0xa4,
-		GOTO=0xa7,LOOKUPSWITCH=0xab,IRETURN=0xac,RETURN=0xb1,GETFIELD=0xb4,PUTFIELD=0xb5,INVOKEVIRTUAL=0xb6,INVOKESPECIAL=0xb7,INVOKESTATIC=0xb8,
-		ATHROW=0xbf,WIDE=0xc4;
+		IFEQ=0x99,IFNE=0x9a,IFLT=0x9b,IFGE=0x9c,IFGT=0x9d,IFLE=0x9e,IF_ICMPEQ=0x9f,IF_ICMPNE=0xa0,IF_ICMPLT=0xa1,IF_ICMPGE=0xa2,IF_ICMPGT=0xa3,IF_ICMPLE=0xa4,IF_ACMPEQ=0xa5,IF_ACMPNE=0xa6,IFNULL=0xc6,IFNONNULL=0xc7,
+		GOTO=0xa7,LOOKUPSWITCH=0xab,IRETURN=0xac,ARETURN=0xb0,RETURN=0xb1,GETFIELD=0xb4,PUTFIELD=0xb5,INVOKEVIRTUAL=0xb6,INVOKESPECIAL=0xb7,INVOKESTATIC=0xb8,
+		ANEWARRAY=0xbd,ATHROW=0xbf,WIDE=0xc4,AASTORE=0x53;
 	/** The opposite condition of an if opcode (IFEQ..IF_ICMPLE). */
 	static int negate(int opcode){return opcode>=IFEQ&&opcode<=IF_ICMPLE?((opcode-IFEQ)^1)+IFEQ:opcode;}
 }

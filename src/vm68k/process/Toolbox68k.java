@@ -137,8 +137,11 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	final CommToolbox68k ctb;
 	final ResourceManager68k resources;
 	final HostQuickDraw68k quickDraw;
+	/** The ".Wacom" tablet driver: the host's pen pressure for tablet-aware programs (Painter) */
+	final WacomTablet68k wacom=new WacomTablet68k(this);
 	final AppleEvents68k appleEvents;
 	final StandardFile68k standardFile;
+	final EditionManager68k editions;
 	final FileSystem68k files;
 	/** The classic Sound Driver (.Sound, refNum -4) behind StartSound/StopSound/SoundDone. */
 	final SoundDriver68k soundDriver;
@@ -317,7 +320,107 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				at+=14+length+(length&1);
 			}
 		}
-		return configured;
+		return japaneseProgram(resources)?StackTextEncoding.JAPANESE:configured;
+	}
+
+	/** Clues besides dialog text, for programs whose dialogs are English or absent (REALbasic keeps its texts in code, an AppleScript
+	 *  applet in its compiled script): a 'vers' 1 region of Japan (14); Japanese menu/string/window-title texts making up a fair
+	 *  share of all of them (multilingual programs carry a few: Disk Copy's Japanese licence, a localiser's messages); kana in a
+	 *  'scpt'; or a Japanese file name (a Shift-JIS Mac name means it was named on a KanjiTalk Mac: 占い, へぇボタン, 水戸黄門). */
+	private static boolean japaneseProgram(ResourceFile68k resources){
+		for(ResourceFile68k.Resource vers:resources.ofType(ResourceFile68k.fourcc("vers"))){
+			byte[] data=vers.data();
+			if(vers.id==1&&data.length>=6&&((data[4]&255)<<8|(data[5]&255))==14)return true;
+		}
+		int japanese=0,roman=0;
+		for(String type:new String[]{"MENU","STR#","STR ","WIND","DLOG"}){
+			for(ResourceFile68k.Resource r:resources.ofType(ResourceFile68k.fourcc(type))){
+				if(type.equals("STR#")&&r.id>=5000&&r.id<6000)continue; // software licence texts, one per region
+				byte[] data=r.data();
+				int at=type.equals("MENU")?14:type.equals("STR#")?2:type.equals("WIND")?18:type.equals("DLOG")?20:0;
+				int strings=type.equals("STR#")&&data.length>=2?((data[0]&255)<<8|(data[1]&255)):type.equals("MENU")?Integer.MAX_VALUE:1;
+				for(int i=0;i<strings&&at<data.length;i++){
+					int length=data[at]&255;
+					if(type.equals("MENU")&&i>0&&length==0)break; // end of the item list
+					if(at+1+length>data.length)break;
+					int kind=textKind(data,at+1,length);
+					if(kind>0)japanese++;else if(kind<0)roman++;
+					at+=1+length+(type.equals("MENU")&&i>0?4:0); // a menu item: icon, key, mark, style
+				}
+			}
+		}
+		if(japanese>0&&japanese*3>=roman)return true;
+		int kanaRuns=0;
+		for(ResourceFile68k.Resource script:resources.ofType(ResourceFile68k.fourcc("scpt"))){
+			byte[] data=script.data();
+			for(int i=0,run=0;i+1<data.length;){
+				int lead=data[i]&255,trail=data[i+1]&255;
+				if((lead==0x82&&trail>=0x9f&&trail<=0xf1)||(lead==0x83&&trail>=0x40&&trail<=0x96)){if(++run==3)kanaRuns++;i+=2;}
+				else{run=0;i++;}
+			}
+		}
+		if(kanaRuns>=2)return true;
+		File file=resources.file;
+		if(file!=null&&!resources.ofType(ResourceFile68k.fourcc("RUNT")).isEmpty()&&japaneseDataFork(file))return true;
+		if(file!=null){
+			int han=0;
+			for(char c:file.getName().toCharArray()){
+				Character.UnicodeScript script=Character.UnicodeScript.of(c);
+				if((script==Character.UnicodeScript.HIRAGANA||script==Character.UnicodeScript.KATAKANA)&&c<0xff00)return true; // not half-width katakana: "Juliaﾕs" is a Roman ’ read as Shift-JIS
+				if(script==Character.UnicodeScript.HAN||(c>=0xff01&&c<=0xff5e))han++;
+			}
+			if(han>=2)return true;
+		}
+		return false;
+	}
+
+	/** A SuperCard standalone ('RUNT') keeps its project - every card text - in the data fork, and its resources are the English
+	 *  runtime's: MazeBrew's Help field drew its Shift-JIS as Mac Roman under a U.S. System. Japanese prose there shows as runs of
+	 *  four or more Shift-JIS characters with three different ones and three hiragana; pictures and 8-bit sounds near $80 make
+	 *  kanji-like pairs but hardly ever hiragana ones (MazeBrew 494 runs, English data forks 0-2). */
+	private static boolean japaneseDataFork(File file){
+		int runs=0;
+		try(java.io.InputStream in=new java.io.BufferedInputStream(new java.io.FileInputStream(file),1<<16)){
+			int[] run=new int[8];int length=0,hiragana=0,distinct=0,pending=-1;long read=0;
+			while(read<(32L<<20)){
+				int c=pending;pending=-1;if(c<0){c=in.read();read++;}
+				if(c<0)break;
+				int t=-1;
+				if((c>=0x81&&c<=0x83)||(c>=0x88&&c<=0x9f)){t=in.read();read++;}
+				boolean pair=t>=0&&((c==0x82&&t>=0x9f&&t<=0xf1)||(c==0x83&&t>=0x40&&t<=0x96)||(c>=0x88&&t>=0x40&&t<=0xfc&&t!=0x7f)||(c==0x81&&t>=0x40&&t<=0x49));
+				if(pair){
+					int code=c<<8|t;boolean seen=false;
+					for(int i=0;i<distinct;i++)if(run[i]==code)seen=true;
+					if(!seen&&distinct<run.length)run[distinct++]=code;
+					length++;if(c==0x82&&t>=0x9f)hiragana++;
+					continue;
+				}
+				if(length>=4&&distinct>=3&&hiragana>=3&&++runs>=8)return true;
+				length=hiragana=distinct=0;
+				if(t>=0)pending=t; // the second byte may start the next pair
+			}
+		}catch(java.io.IOException e){return false;}
+		return false;
+	}
+
+	/** 1 for Japanese text (only valid Shift-JIS, two pairs or more with a trail byte of $80 or more: an accented Roman letter and a
+	 *  plain one, "é" + "t", also read as a pair), -1 for Roman text (three letters, no pairs), 0 otherwise. Control characters or
+	 *  undefined lead bytes mean data kept in a string resource (installers keep compressed bytes in 'STR#'). */
+	private static int textKind(byte[] data,int start,int length){
+		int pairs=0,strong=0,letters=0;
+		for(int i=start,end=start+length;i<end;i++){
+			int c=data[i]&255;
+			if(c<0x20||c==0x7f)return 0;
+			if((c>=0x81&&c<=0x9f)||(c>=0xe0&&c<=0xfc)){
+				if(c==0x85||c==0x86||c==0x87||c>=0xeb||i+1>=end)return 0;
+				int trail=data[++i]&255;
+				if(trail<0x40||trail>0xfc||trail==0x7f)return 0;
+				pairs++;
+				if(trail>=0x80)strong++;
+			}
+			else if(c>='A'&&c<='z')letters++;
+		}
+		return pairs>=2&&strong>=2?1:pairs==0&&letters>=3?-1:0;
 	}
 
 	/** Require several complete Shift-JIS pairs in a text item, so an accented Roman label cannot switch the VM. */
@@ -358,6 +461,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		soundDriver=new SoundDriver68k(this);
 		appleEvents=new AppleEvents68k(this);
 		standardFile=new StandardFile68k(this);
+		editions=new EditionManager68k(this);
 		listManager=new ListManager68k(this);
 		macTcp=new MacTCP68k(this);
 		appleTalk=new AppleTalk68k(this);
@@ -537,12 +641,12 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	}
 
 	@Override public void romTrap(M68kCpu cpu,int trapWord) throws M68kException {
-		cpu.charge(TRAP_COST);if(observable(trapWord))lastObservable=cpu.instructions+cpu.charged;
+		cpu.charge(trapCost(cpu,trapWord));if(observable(trapWord))lastObservable=cpu.instructions+cpu.charged;
 		if(!api.handle(cpu,trapWord,cpu.pc))throw new M68kMacApiException(cpu.pc,trapWord,api.name(trapWord));
 	}
 	/** A trap called in place (the usual way: the trap word in the program's code) is as visible as one through its ROM address:
 	 *  only these counted, so a program polling Button or drawing ran paced for {@link #QUIET_MILLIS} and then at host speed. */
-	@Override public void inlineTrap(M68kCpu cpu,int trapWord){if(observable(trapWord))lastObservable=cpu.instructions+cpu.charged;}
+	@Override public void inlineTrap(M68kCpu cpu,int trapWord){cpu.charge(trapCost(cpu,trapWord));if(observable(trapWord))lastObservable=cpu.instructions+cpu.charged;}
 
 	// ------------------------------------------------------------------ speed
 
@@ -551,12 +655,92 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	 * fast 68LC040 (33/66 MHz, a little above it): the interpreter runs an order of magnitude faster than that on a
 	 * modern host, which broke programs paced by their own loops (animations flashed by and click handling
 	 * window after an animated card transition closed at once). {@code -Dhz68k.mips=N} overrides the preference
-	 * (PCARD.realSpeed68k, the "68K CPU speed" setting) for the whole session.
+	 * (PCARD.realSpeed68k, the "68K CPU speed" setting) for the whole session. It is a machine's nominal rate: the VM runs
+	 * {@link #WEIGHT} times fewer of its own instructions in that time (since Nov 2026).
 	 */
 	static final int DEFAULT_MIPS=32;
 	static volatile int mips=Integer.getInteger("hz68k.mips",DEFAULT_MIPS);
 	/** Instruction equivalents charged per trap: the dispatcher plus a typical routine body, which the native Toolbox runs for free. */
 	static final int TRAP_COST=Integer.getInteger("hz68k.trapcost",150);
+	/**
+	 * What a trap's ROM or System routine took on a real 68K Mac, in instructions: the native Toolbox here runs it for free.
+	 * Before Nov 2026 only traps reached through a ROM address paid {@link #TRAP_COST}; the usual inline A-line traps paid
+	 * nothing, and HyperCard ran several times faster than on the machines its scripts were timed on. State traps (ports,
+	 * handle flags, rectangle arithmetic, text settings) are cheap; allocation, the Resource and File Managers, TextEdit's
+	 * layout and SANE's software floating point (HyperTalk's arithmetic: a Mac without an FPU ran it as 68K code) are dear.
+	 * Drawing is charged on top by QuickDraw68k (DRAW_COST).
+	 */
+	static long trapCost(M68kCpu cpu,int trapWord){
+		int t=trapWord&0x0fff;
+		if((trapWord&0x0800)==0){ // OS traps
+			t=trapWord&0xff;
+			switch(t){
+				case 0x29:case 0x2a:case 0x49:case 0x4a:case 0x69:case 0x6a:case 0x25:case 0x21:case 0x65:case 0x62:case 0x66:case 0x63:return 40; // HLock HUnlock HPurge HNoPurge HGetState HSetState GetHandleSize GetPtrSize StackSpace PurgeSpace HandleZone RecoverHandle
+				case 0x22:case 0x1e:return 300; // NewHandle, NewPtr
+				case 0x23:case 0x1f:return 150; // DisposeHandle, DisposePtr
+				case 0x24:case 0x20:case 0x27:return 300; // SetHandleSize, SetPtrSize, ReallocHandle
+				case 0x2e:return 30+Math.max(0,cpu.d[0])/4; // BlockMove: a long word a move; a negative count moves nothing (Bartender's Friend's LDEF passes -1: 70 s asleep in the throttle)
+				case 0x02:case 0x03:{ // Read, Write: the call, the cache and a copy of the bytes
+					long count=0;try{count=Math.max(0,cpu.memory.readLong(cpu.a[0]+36));}catch(Exception e){}
+					return 800+count/2;}
+				case 0x00:case 0x01:case 0x08:case 0x09:case 0x0c:case 0x0d:case 0x60:return 2000; // Open, Close, Create, Delete, GetFileInfo, SetFileInfo, HFSDispatch
+				default:return TRAP_COST;
+			}
+		}
+		switch(t){
+			case 0x975:case 0x873:case 0x874:case 0x887:case 0x888:case 0x889:case 0x88a:case 0x89e:case 0x893:case 0x894:case 0x89a:
+			case 0x8a7:case 0x8a8:case 0x8a9:case 0x8aa:case 0x8ab:case 0x8ac:case 0x8ad:case 0x8ae:case 0x8a6:case 0x862:case 0x863:case 0x864:
+				return 40; // TickCount, SetPort/GetPort, TextFont/Face/Mode/Size, PenNormal, MoveTo/Move, GetPen, rectangle arithmetic, colours
+			case 0x9a0:case 0x81f:case 0x9a1:case 0x820:case 0x9bb:case 0x9bc:case 0x9b9:case 0x9ba:case 0xa1e:return 1200; // GetResource and the Get* that use it: the map searches
+			case 0x9d3:return 58000; // TEUpdate: the lines laid out again and drawn
+			case 0x9d0:return 4000; // TECalText
+			case 0x9cf:case 0x9de:case 0x9d7:case 0x9d4:case 0x9dc:return 1500; // TESetText, TEInsert, TEDelete, TEClick-free edits, TEKey
+			case 0x83d:return 1000; // TEDispatch (styled TextEdit)
+			case 0x8b5:case 0x9ed:return 300; // ScriptUtil, Pack6 (International Utilities)
+			case 0x9eb:return saneCost(cpu);
+			case 0x9ec:return 8000; // Elems68K: transcendental functions
+			case 0x9ee:return 1500; // DecStr68K: decimal strings
+			default:return TRAP_COST;
+		}
+	}
+	/** An FP68K operation of software SANE (the opword on top of the stack): the arithmetic of 80-bit extended numbers. */
+	private static long saneCost(M68kCpu cpu){
+		int op;try{op=cpu.memory.readWord(cpu.a[7])&0x1f;}catch(Exception e){return 800;}
+		switch(op){
+			case 0x01:case 0x03:case 0x05:case 0x07:case 0x15:case 0x17:case 0x19:case 0x1b:return 80; // environment, halts, exceptions
+			case 0x0d:case 0x0f:case 0x11:return 120; // negate, absolute value, copy sign
+			case 0x1c:return 300; // class
+			case 0x08:case 0x0a:return 400; // compare
+			case 0x0e:case 0x10:return 500; // conversions between formats
+			case 0x14:case 0x16:return 600; // round to integer, truncate
+			case 0x00:case 0x02:return 700; // add, subtract
+			case 0x04:return 1000; // multiply
+			case 0x06:return 1800; // divide
+			case 0x0c:return 2500; // remainder
+			case 0x12:return 3000; // square root
+			case 0x09:case 0x0b:return 5000; // decimal records to and from binary
+			case 0x18:case 0x1a:case 0x13:return 400; // scalb, logb, nextafter
+			default:return 800;
+		}
+	}
+	/**
+	 * How many of the VM's instructions a real Mac's take in time: the presets (and -Dhz68k.mips) are machines' nominal
+	 * instruction rates, and a real 68040 ran a program's code (memory traffic, cache misses) and the Toolbox's well below its
+	 * nominal rate. Fitted so that HyperCard 2.2 here at 30 MIPS gives the "HC速度計" scores a 68LC040 at 33 MHz printed with
+	 * HyperCard J-2.2 (44/27/37/28). -Dhz68k.weight=F overrides it.
+	 */
+	static final double WEIGHT=weight("hz68k.weight",4.2);
+	/**
+	 * The same for a PowerPC program, fitted to a Power Macintosh G3 at 333 MHz (HyperCard J-2.3 PowerPC printed 900/228/480/220
+	 * there; at 333 MIPS here it gives about that): its PowerPC instructions weigh {@link #PPC_WEIGHT}, and its Toolbox calls
+	 * (the trap charges in 68K instructions) {@link #PPC_TOOLBOX_WEIGHT} - much of the Toolbox of a Power Mac of the time was
+	 * still 68K code run by its emulator - and its drawing (QuickDraw68k's DRAW_COST charges) {@link #PPC_DRAW_WEIGHT}: QuickDraw
+	 * was native. -Dhzppc.weight / -Dhzppc.toolboxweight / -Dhzppc.drawweight override them.
+	 */
+	static final double PPC_WEIGHT=weight("hzppc.weight",2),PPC_TOOLBOX_WEIGHT=weight("hzppc.toolboxweight",8.5),PPC_DRAW_WEIGHT=weight("hzppc.drawweight",3.6);
+	private static double weight(String property,double standard){
+		try{return Math.max(0.01,Double.parseDouble(System.getProperty(property,String.valueOf(standard))));}catch(NumberFormatException e){return standard;}
+	}
 	/** The throttle lets a stretch of code run at host speed once this much virtual time has passed without anything the
 	 *  user could notice (drawing, sound, input polls, timed waits, direct screen writes): a decompressor or a long
 	 *  computation gains nothing from a slow CPU. A counted delay loop longer than this is cut short, which is the trade-off. */
@@ -590,7 +774,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		long virtual=cpu.instructions+cpu.charged;
 		if(deviceWritten)lastObservable=virtual;
 		double rate=app!=null?app.mips():stack!=null?StackSpeed.externalMips(mips):mips; // the launcher's per-program speed setting, a stack's speed limit for its XCMDs, else the preference
-		if(rate<=0||!hosted()||app!=null&&(app.service||app.finished)){throttleCounted=virtual;return;}
+		rate/=app!=null&&app.powerPC?PPC_TOOLBOX_WEIGHT:WEIGHT; // the machine's nominal rate: the VM's instructions it runs in that time
+		// offscreenMdef: the host menus learnt from a custom MDEF, thousands of calls no real Mac makes (BBEdit 3.5 spent over a minute of start-up paced here)
+		if(rate<=0||!hosted()||app!=null&&(app.service||app.finished)||offscreenMdef>0){throttleCounted=virtual;return;}
 		long delta=virtual-throttleCounted;throttleCounted=virtual;
 		long now=System.nanoTime();
 		if(virtual-lastObservable>(long)(rate*QUIET_MILLIS*1000)){throttleDeadline=now;return;} // nothing to see: run at host speed
@@ -650,6 +836,14 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	boolean hasDeferred(){return !deferred.isEmpty();}
 	/** Runs at every safe point of the VM thread (polls and event waits), outside any other deferred work: the QuickTime service drives MoviesTask from it. */
 	volatile Runnable idleHook;
+	/**
+	 * Interrupt-time work while the program waits inside a trap for the host (a pop-up menu held open): deferred tasks, sound
+	 * callbacks and Time Manager tasks run, as a Mac's interrupts went on under the Menu Manager. Called on the program's thread.
+	 */
+	void serviceWhileBlocked(){
+		try{runDeferred();runTimers();}
+		catch(M68kException|RuntimeException e){if(Mac68kApi.TRACE)System.err.println("[68K] interrupt work during a host wait: "+e);}
+	}
 	void runDeferred() throws M68kException {
 		// Not re-entrant: a deferred task that runs guest code (sound double-buffer callbacks, completion
 		// routines) polls too, and interrupt-time routines must not nest inside themselves.
@@ -758,7 +952,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	void updateTicks(){updateTicks(tickCount());}
 	void updateTicks(int tick){
 		try{
-			if(tick!=lastWrittenTick){lastWrittenTick=tick;memory.writeLong(0x16a,tick);updateMouse(false);}
+			if(tick!=lastWrittenTick){lastWrittenTick=tick;memory.writeLong(0x16a,tick);updateMouse(false);wacom.refresh(tick);}
 			long second=System.currentTimeMillis()/1000L; // at each new second (written a second after the last write, Time lagged up to 1 s behind `the seconds`)
 			if(second!=lastWrittenTime){lastWrittenTime=second;memory.writeLong(0x20c,(int)(macSeconds(second*1000L)+programClockSeconds+ownClockShift));}
 		}catch(M68kCpuException ignored){}}
@@ -766,6 +960,22 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	/** How far this program's "now" (Time, ReadDateTime) runs behind the VM clock: 0, or whole 28-year cycles for a program
 	 *  whose date arithmetic breaks with today's date (MacApp68k.ownClockShift). File dates are not moved. */
 	long ownClockShift;
+	/**
+	 * A program loading GCS's decompressor ('GCdc' - Apple Installer 3 scripts with "GCcm" compressed files, Alias Sketch! 1.5)
+	 * gets its own clock set back by whole 28-year cycles before April 2020: each archive's FMap 1000 holds an expiry (year
+	 * and month + 4747; March 2020 in every one seen), checked against GetTime, and the install rolled back with "Archive
+	 * File has Expired". An explicit -Dhz68k.yearshift leaves the clock to it.
+	 */
+	public void clockBeforeGcsExpiry(){
+		String setting=System.getProperty("hz68k.yearshift");
+		if(setting!=null&&!setting.trim().equalsIgnoreCase("auto"))return;
+		final long april2020=3668544000L; // 2020-04-01 00:00 in seconds since 1904
+		long shift=ownClockShift;
+		while(macNow()+shift>=april2020)shift-=CLOCK_CYCLE_SECONDS;
+		if(shift==ownClockShift)return;
+		ownClockShift=shift;lastWrittenTime=Long.MIN_VALUE;
+		System.err.println("[68K] clock set back "+(-shift/CLOCK_CYCLE_SECONDS*28)+" years: GCS compressed archives expire in March 2020");
+	}
 	/** JGNEFilter ($29A), the GetNextEvent filter hook, and its default (a no-op gate standing for the ROM's RTS). */
 	static final int JGNE_FILTER=0x29a;int gneFilterGate;
 	private int keyTransGate;
@@ -955,7 +1165,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		memory.writeWord(0xda0,0xcccc);memory.writeWord(0xda2,0xcccc);memory.writeWord(0xda4,0xffff); // HiliteRGB: the highlight colour (lavender)
 		memory.writeLong(0xa02,0x00010001);memory.writeLong(0xa06,0xffffffff); // OneOne, MinusOne
 		memory.writeWord(0xa5a,resources.applicationRefNum()); // CurMap
-		memory.writeByte(0xa5e,0xff);                   // ResLoad
+		memory.writeWord(0xa5e,0xffff);                 // ResLoad: both bytes (ResourceManager68k SetResLoad)
 		memory.writeWord(0xa60,0);                      // ResErr
 		memory.writeWord(0x220,0);                      // MemErr
 		// For a program with ResEdit's bit editor ('PACK' 1, BitEdit), bytes 6-$17 hold a 2-entry ColorTable body - ctSize 1,
@@ -1050,6 +1260,10 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	}
 
 	private void buildAppParms() throws M68kCpuException {
+		// A high-level-event-aware program (SIZE $0040) has no application parameters at all: AppParmHandle is NIL and its
+		// documents come only in the Open Documents event (measured, System 7.5.3 Finder). With both, AtariVD Editor opened a
+		// dropped disk twice (CountAppFiles and its 'odoc' handler).
+		if(app.hosted==null&&(app.sizeFlags()&0x0040)!=0){app.appParms=0;memory.writeLong(0xaec,0);return;}
 		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
 		out.write(0);out.write(0); // message: appOpen
 		int count=app.documents.size();out.write(count>>>8);out.write(count);
@@ -1287,6 +1501,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x5d:if(app!=null){host().directScreenAccess(api.quickDraw());host().swapMMUMode();}return true; // SwapMMUMode: programs call it before (and after) writing to screen memory
 			case 0xbd:return true; // FlushCodeCache: no result, every register kept - programs JSR its table entry ($6F4, jCacheFlush) in the middle of work (Alliance Power Tools' 'dcmp' 128 keeps its decryption count in D0 across it)
 			case 0x98:cpu.d[0]=NO_ERR;return true;               // HWPriv
+			case 0x94:memory.writeWord(cpu.a[0]+16,PARAM_ERR);cpu.d[0]=PARAM_ERR;return true; // _ServerDispatch: no AppleShare server here (Server Sleuth says so itself)
 			// DebugUtil with no debugger: DebuggerGetMax says 8; EnterSupervisorMode (8) answers the SR it found - code here runs in
 			// supervisor mode already, as on a Mac without virtual memory (SoftwareFPU's panel stopped at it); the rest do nothing
 			case 0x8d:{int selector=cpu.d[0];cpu.d[0]=selector==0?8:selector==8?cpu.sr&0xffff:selector>=1&&selector<=7?NO_ERR:PARAM_ERR;return true;}
@@ -1331,21 +1546,10 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		cpu.a[7]+=args;memory.writeWord(cpu.a[7],result);return true;
 	}
 
-	/**
-	 * _Pack11 ($A82D), the Edition Manager: D0 = argument words << 8 | selector, every routine returns an OSErr. Gestalt
-	 * 'edtn' says it is present (MacApp 3 requires it) and InitEditionPack succeeds (M.A.C.E.: a dummy one was enough);
-	 * publishing and subscribing then fail politely - editionMgrInitErr, and userCanceledErr from the dialogs.
-	 */
+	/** _Pack11 ($A82D), the Edition Manager: Publish & Subscribe (EditionManager68k). Gestalt 'edtn' says it is present (MacApp 3 requires it). */
 	private boolean editionDispatch(M68kCpu cpu) throws M68kException {
 		if(packageEntry(0xa82d)!=0)return false; // a program's own PACK 11 runs instead
-		int selector=cpu.d[0]&0xff,args=(cpu.d[0]>>>8&0xff)*2;
-		int result;
-		switch(selector){
-			case 0x00:result=0;break;                                          // InitEditionPack(Version)
-			case 0x32:case 0x34:case 0x36:case 0x38:case 0x3a:case 0x3c:result=-128;break; // New*Dialog, SectionOptions*: canceled
-			default:result=-450;break;                                         // editionMgrInitErr
-		}
-		cpu.a[7]+=args;memory.writeWord(cpu.a[7],result);return true;
+		return editions.dispatch(cpu);
 	}
 
 	/** MacApp/Object Pascal's class-info globals: the error routine (%_OBJERROR) and a pointer to the pointer to the table of
@@ -1833,6 +2037,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// _Unimplemented: it calls CodecManagerVersion through an existing entry and keeps that ICM otherwise.
 		if(word==0xaaa3&&guestQuickTime)return false;
 		if(word==0xaafe&&!powerPcExternals.isEmpty())return true; // _MixedModeMagic: a PowerPC-only external's stub looks for it
+		// _IconServicesDispatch (Mac OS 8.5+, IconServices68k) is there, unlike the Appearance traps $AA73/$AA74 kept hidden with
+		// 'appr': ACTION Menus' INIT saw System 9.2.2, patched it and called through the old address - _Unimplemented
+		if(word==0xaa75)return true;
 		if(api.isImplementedTrap(word))return true;
 		boolean toolbox=(word&0x0800)!=0;
 		int trap=toolbox?word&0xfff:word&0xff;
@@ -1892,7 +2099,10 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		memory.writeWord(zone+20,64);                       // moreMast
 		memory.writeWord(zone+22,0);                        // flags
 		for(int i=24;i<36;i+=2)memory.writeWord(zone+i,0);  // cntRel..cntHandles
-		if(zone32)memory.writeByte(zone+30,1);              // heapType: a 32-bit zone
+		// heapType: k32BitHeap for a 32-bit zone. Never kNewStyleHeap (2), although the Modern Memory Manager is always on under Mac OS
+		// 8.5+: with it Yoot Tower's SetHandleSize (through a patch) answered memFullErr and it quit at once; Escape Velocity 1.0.5
+		// only warns "you have the Modern Memory Manager turned off" without it
+		if(zone32)memory.writeByte(zone+30,1);
 		memory.writeLong(zone+36,0);                        // minCBFree
 		memory.writeLong(zone+40,0);                        // purgeProc
 		memory.writeLong(zone+44,0);                        // sparePtr
@@ -2132,7 +2342,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x64626163:return 1;
 			// 'nlup' (StandardNBP) stays undefined: CommToolbox68k's StandardNBP shows no lookup dialog (it answers nlCancel at once), so a
 			// program that offers "choose a server" only when the selector is there keeps that item off rather than doing nothing
-			case 0x6564746e:return 1;                          // edtn: gestaltEditionMgrPresent - every System 7 has it, and MacApp 3 programs refuse to start without it (Blackjack Solitaire: "lacks the required hardware or system software"); the calls themselves fail politely (editionDispatch). Was misspelled 'edit' (undefined)
+			case 0x6564746e:return 1;                          // edtn: gestaltEditionMgrPresent - every System 7 has it, and MacApp 3 programs refuse to start without it (Blackjack Solitaire: "lacks the required hardware or system software"); Publish & Subscribe is EditionManager68k. Was misspelled 'edit' (undefined)
 			// dsig: undefined - DigiSign (the AOCE signature manager, SigDispatch $AA5D) only exists with PowerTalk installed. Disk Copy
 			// 6.3 took a noErr answer as "present" and called SIGFileIsSigned through the unimplemented trap when mounting an image
 			case 0x64736967:return null;
@@ -2157,6 +2367,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x766d2020:return 0;                          // vm  : off
 			case 0x61646220:return 0;
 			case 0x64726167:return 1;                          // drag: Drag Manager present
+			// teat: gestaltTEHasGetHiliteRgn (TextEdit68k has TEGetHiliteRgn). SimpleText drags text only when both 'drag' and this
+			// bit are set; undefined, a press in the selection started a new selection instead of a drag
+			case 0x74656174:return 1;
 			case 0x69636f6e:return 1;                          // icon: Icon Utilities
 			case 0x636c746e:return 1;                          // cltn: Collection Manager
 			case 0x636d7463:return ColorSync68k.VERSION;       // cmtc: ColorSync 3.0
@@ -2529,7 +2742,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				memory.writeWord(cpu.a[7],launchDeskAccessory(spec,name));return true;}
 			case 0x37:{int psn=memory.readLong(cpu.a[7]);cpu.a[7]+=4;writePsn(psn,currentProcessOverride!=0?currentProcessOverride:serialNumber());memory.writeWord(cpu.a[7],NO_ERR);return true;} // GetCurrentProcess
 			case 0x39:{// GetFrontProcess glue pushes PSN* then a -1 long (moveq #-1,d0; move.l d0,-(sp)) before the selector
-				int psn=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;MacApp68k front=MacApp68k.frontApplication();
+				int psn=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;MacApp68k front=MacApp68k.frontApplication();awaitFirstEventCall(front);
 				writePsn(psn,MacApp68k.finderFront&&finderStandInPresent()?FINDER_SERIAL:front==null?serialNumber():front.serialNumber);memory.writeWord(cpu.a[7],NO_ERR);return true;}
 			// GetNextProcess: HyperCard when an external asks (it runs in HyperCard's process; Rinaldi's ProcessesList listed the
 			// Finder only), the running programs, then the Finder stand-in (a Mac always runs the Finder; Outlook Express 5 waits
@@ -2724,6 +2937,21 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	private void writePsn(int psn,int serial) throws M68kCpuException {if(psn!=0){memory.writeLong(psn,serial==0?0:PSN_HIGH);memory.writeLong(psn+4,serial);}}
 	static final int PSN_HIGH=1;
 	/** The program a ProcessSerialNumber names: kCurrentProcess {0, 2} and kNoProcess {0, 0} stand for this one. */
+	/**
+	 * GetFrontProcess asked by another program while the front one has not made its first event call yet: on a Mac the asker
+	 * did not run in between (the new front program had the processor from its launch to its first WaitNextEvent), so it
+	 * waits for that here. CinéMac's saver INIT (PMSCRSVR) types its own file 'APPL', launches it as the Director projector
+	 * and types it 'cdev' again once the projector is in front; running at the same time, it did so before the projector
+	 * looked at its file type ("Problem with the file", 27). Only during the program's start-up: one that never asks for events
+	 * holds nobody up for long.
+	 */
+	private void awaitFirstEventCall(MacApp68k front){
+		if(front==null||front==app)return;
+		long until=front.startedAt+FIRST_EVENT_CALL_WAIT_MS;
+		while(!front.finished&&(front.toolbox==null||!front.toolbox.events.firstEventCallMade())&&System.currentTimeMillis()<until)
+			try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}
+	}
+	private static final long FIRST_EVENT_CALL_WAIT_MS=20000;
 	private int serialOf(int psn) throws M68kCpuException {int high=memory.readLong(psn),low=memory.readLong(psn+4);return high==0&&(low==2||low==0)?serialNumber():low;}
 
 	/** Serial number of the program that sent 'quit' to the Finder stand-in (0: nobody). Until that program ends the stand-in is gone from the
@@ -2818,6 +3046,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	 *  MDEF waits with _Delay whenever the highlighted tool changes; nobody sees those probes, and the ~480 of them held the
 	 *  start-up (Home) back for 24 s. */
 	int offscreenMdef;
+	/** The probe now tells the MDEF the pointer left the menu: the button counts as up. AutoCAD R11's tear-off MDEF takes the
+	 *  pointer leaving with the button down for a tear-off and tracks until the release, which a probe never sends. */
+	boolean offscreenMdefLeft;
 	private boolean delay(M68kCpu cpu) throws M68kException {
 		if(offscreenMdef>0){cpu.d[0]=tickCount();return true;}
 		int ticks=Math.max(0,cpu.a[0]);
@@ -2877,8 +3108,14 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		}
 		runTimers();updateTicks();
 	}
+	/**
+	 * PrimeTime is what queues a task on a real Mac (InsTime only sets up its fields), so a task taken out with RmvTime runs
+	 * again when primed without a new InsTime: VocalWriter's synthesizer removes its 8 timers when the music stops and only
+	 * primes them when it starts again; ignoring those left the beat counter and karaoke still from the second play on.
+	 */
 	private boolean primeTime(M68kCpu cpu) throws M68kCpuException {
 		int record=cpu.a[0],count=cpu.d[0];
+		if(record!=0&&timers.stream().noneMatch(t->t.record==record))timers.add(new TimerTask(record,(memory.readWord(record+4)&TM_TASK_EXTENDED)!=0));
 		for(TimerTask t:timers)if(t.record==record){long micros=count<0?-(long)count:(long)count*1000L,now=System.nanoTime();
 			// Extended Time Manager: with tmWakeUp (record+14) non-zero the delay counts from the time the task was last due, not
 			// from now - drift-free periodic tasks (SoundApp's 20 ms MIDI clock re-primes from a deferred task; counted from now,
@@ -2980,8 +3217,11 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				}
 				memory.writeWord(cpu.a[7],result);return true;}                     // otherwise "ejected"
 			case 6:case 8:{int drive=memory.readWord(cpu.a[7]);cpu.a[7]+=2;memory.writeWord(cpu.a[7],files.isAddedDrive(drive)?0:-56);return true;} // DIFormat / DIVerify(drvNum): nothing to do on a disk image, nsDrvErr otherwise
-			case 10:{int name=memory.readLong(cpu.a[7]),drive=memory.readWord(cpu.a[7]+4);cpu.a[7]+=6; // DIZero(drvNum, volName)
-				memory.writeWord(cpu.a[7],files.isAddedDrive(drive)?files.initializeAddedDrive(cpu,drive,java.util.Arrays.copyOfRange(readPascalBytes(name),1,1+memory.readByte(name))):-56);return true;}
+			case 10:{int name=memory.readLong(cpu.a[7]),drive=memory.readWord(cpu.a[7]+4);cpu.a[7]+=6; // DIZero(drvNum, volName): writes the volume, then mounts it
+				byte[] volumeName=java.util.Arrays.copyOfRange(readPascalBytes(name),1,1+memory.readByte(name));
+				int result=files.isAddedDrive(drive)?files.initializeAddedDrive(cpu,drive,volumeName):-56;
+				if(result==0)files.mountZeroedDrive(drive,volumeName);
+				memory.writeWord(cpu.a[7],result);return true;}
 			default:memory.writeWord(cpu.a[7],-56);return true;
 		}
 	}

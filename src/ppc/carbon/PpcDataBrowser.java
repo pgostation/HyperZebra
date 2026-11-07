@@ -1016,8 +1016,9 @@ final class PpcDataBrowser {
 		// ---- the Control Manager calls that reach a browser with more than the 68K Appearance Manager knows (keys, focus, modifiers)
 		l.register(null,"HandleControlClick",(r,c)->{ // (control, Point, modifiers, action): the click's own modifiers reach the browser
 			int ctl=arg(0),pt=arg(1),mods=arg(2)&0xffff,action=arg(3);Browser b=browsers.get(ctl);
-			if(b==null){ret(rt.toolbox("HandleControlClick",ctl,pt,mods,action));return;}
-			int part=rt.toolbox.controls.partAt(ctl,(short)pt,pt>>16);ret(part==0?0:b.track(ctl,(short)pt,pt>>16,mods));});
+			int part=b==null?(short)rt.toolbox("HandleControlClick",ctl,pt,mods,action):rt.toolbox.controls.partAt(ctl,(short)pt,pt>>16);
+			if(b!=null&&part!=0)part=b.track(ctl,(short)pt,pt>>16,mods);
+			rt.libraries.carbon.tracked(ctl,part,mods);ret(part);});
 		l.register(null,"HandleControlKey",(r,c)->{ // (control, keyCode, charCode, modifiers)
 			int ctl=arg(0),code=arg(1)&0xffff,ch=arg(2)&0xffff,mods=arg(3)&0xffff;
 			ret(browsers.containsKey(ctl)?(short)rt.toolbox.controls.key(ctl,code,ch,mods):rt.toolbox("HandleControlKey",ctl,code,ch,mods));});

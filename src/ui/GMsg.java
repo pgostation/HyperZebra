@@ -66,7 +66,7 @@ public class GMsg extends JDialog {
 				for(int x=getInsets().left; x<right; x+=2) g.fillRect(x, y, 1, 1);
 			}
 		};
-		area.setFont(messageFont());
+		StartupWork.whenFontsRead(() -> area.setFont(messageFont()));
 		area.setMargin(new Insets(0,0,0,0));
 		area.setBorder(new EmptyBorder(0,TEXT_MARGIN,0,TEXT_MARGIN));
 		area.setBounds(1,BAR_HEIGHT,WIDTH-2,BODY_HEIGHT-1);
@@ -216,6 +216,7 @@ public class GMsg extends JDialog {
 	@Override
 	public void setVisible(boolean b){
 		boolean was = isVisible();
+		if(!b) typed = false;
 		if(b && !was){
 			//ハンドラの実行中に出たメッセージボックスはキー入力を奪わない(表示後にクリックすれば打てる)
 			focusOnShow = shownByUser();
@@ -229,13 +230,29 @@ public class GMsg extends JDialog {
 		}
 	}
 
+	/** The script's put left the text selected for type: letters typed by a script replace it (HC J-2.3) */
+	private boolean typeReplaces = false;
+
+	/** The last thing the box took was a script's type: the selectedChunk speaks of the insertion point */
+	private boolean typed = false;
+	boolean typedInto() {return typed;}
+
+	/** type from a script with no field open */
+	void typeText(String text){
+		if(typeReplaces) area.selectAll();
+		typeReplaces = false;
+		area.replaceSelection(text);
+		typed = true;
+	}
+
 	public void setText(String text){
-		String newstr="";
-		for(int i=0; i<text.length(); i++){
-			String substr = text.substring(i,i+1);
-			if(0!=substr.compareTo("\n") && 0!=substr.compareTo("\r")) newstr += substr;
-		}
-		
+		//one line: what follows a return is lost (HC J-2.3: put "a" & return & "b" into msg gives "a")
+		int end = 0;
+		while(end<text.length() && text.charAt(end)!='\n' && text.charAt(end)!='\r') end++;
+		String newstr = text.substring(0, end);
+		typeReplaces = true;
+		typed = false;
+
 		area.setText(newstr);
 		area.setCaretPosition(newstr.length()); //続けて打てるように挿入ポイントは末尾
 		if(!msg.isVisible()){

@@ -13,8 +13,10 @@ import javax.swing.Timer;
  * Scripts change parts from the script thread through PCARD.runOnEDT, one EDT task per change. Each change used to
  * paint the card before the next change could start (the paint event is queued ahead of the next task), so a loop of
  * "set the loc" / "set icon" / "put … into fld" ran at the speed of full paints, far more often than a display shows.
- * Here the card is painted at most once per frame: a request after a quiet period goes straight to Swing, requests
- * within FRAME_NANOS of the last one are merged and handed over together when the frame ends.
+ * Here the card is painted at most once per frame: a request after a quiet period goes straight to Swing, and so does
+ * what follows until that paint runs (a move asks for the old and the new place one after the other: one paint, not one for
+ * each, the part gone from the screen in between); requests within FRAME_NANOS after that are merged and handed over
+ * together when the frame ends.
  *
  * While the screen is locked the card shows the snapshot taken when the lock began (MyPanel.paint draws VEffect.oldoff),
  * or, for lock screen without a picture (VEffect.lazyLock), the parts themselves, which keep the locked state, or, while a card is rebuilt by go without a visual effect (VEffect.freezeScreen), simply what was painted last:
@@ -29,6 +31,8 @@ class CardRepaintManager extends RepaintManager {
 	private final Map<JComponent, Rectangle> pending = new LinkedHashMap<JComponent, Rectangle>();
 	private long lastPass = System.nanoTime() - FRAME_NANOS;
 	private boolean flushScheduled;
+	/** Requests went to Swing at lastPass and its paint has not run yet. */
+	private boolean paintQueued;
 	private final Timer flushTimer;
 
 	CardRepaintManager() {
@@ -62,8 +66,12 @@ class CardRepaintManager extends RepaintManager {
 		boolean pass;
 		synchronized(this){
 			long now = System.nanoTime();
-			if(!flushScheduled && now-lastPass>=FRAME_NANOS){
+			if(paintQueued && now-lastPass<FRAME_NANOS){
+				pass = true; //Swing paints it together with what it has
+			}
+			else if(!flushScheduled && now-lastPass>=FRAME_NANOS){
 				lastPass = now;
+				paintQueued = true;
 				pass = true;
 			}
 			else{
@@ -115,20 +123,20 @@ class CardRepaintManager extends RepaintManager {
 			flushScheduled = false;
 			lastPass = System.nanoTime();
 		}
-		//ロック前に出た要求: lock screen なら画面の絵(oldoff)はその変更の後に取ってあるので描いてよい。
+		//ロック前に出た要求: lock screen なら画面の絵(oldoff)はその変更の後に取ってあり、絵なしのロック(lazyLock)なら
+		//部品はロック開始時のままなので描いてよい(これがロック前の最後のコマになる)。
 		//カード移動の凍結(絵なし)では組み替え途中の部品を描いてしまうので捨てる(解除で全体を描き直す)
-		if(PCARD.lockedScreen && !PCARD.capturingEffect && VEffect.oldoff==null) return;
+		if(PCARD.lockedScreen && !PCARD.capturingEffect && VEffect.oldoff==null && !VEffect.lazyLock) return;
 		for(Map.Entry<JComponent, Rectangle> e : regions.entrySet()){
 			Rectangle r = e.getValue();
 			super.addDirtyRegion(e.getKey(), r.x, r.y, r.width, r.height);
 		}
 	}
 
-	/** (EDT) Paints what is waiting, now: lock screen without a picture (VEffect.lockLazily) shows the frame drawn just
-	 *  before it until the unlock, so that frame must reach the screen before the lock drops later requests. */
-	void paintNow() {
-		flush();
-		paintDirtyRegions();
+	@Override
+	public void paintDirtyRegions() {
+		synchronized(this){ paintQueued = false; }
+		super.paintDirtyRegions();
 	}
 
 	/** Swing's dirty region plus what waits for the end of the frame: everything that will be painted. */

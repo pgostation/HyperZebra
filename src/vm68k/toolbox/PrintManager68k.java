@@ -92,6 +92,43 @@ final class PrintManager68k {
 		cpu.a[7]=result;return true;
 	}
 
+	// ------------------------------------------------------------------ the printer resource file (PrLink glue)
+
+	/**
+	 * The PrGlue selectors behind the 'PDEF' entries of a printer resource file, by PDEF ID (0-3 printing, 4 dialogs, 5
+	 * PrPicFile, 7 PrGeneral) and entry (offset / 4) - the selector longs of the linked glue name the same PDEF and offset.
+	 */
+	private static final int[][] PDEF_SELECTORS={
+		{0x04000c00,0x08000484,0x10000808,0x1800040c},                                                  // PrOpenDoc PrCloseDoc PrOpenPage PrClosePage
+		{0x20040480,0x2a040484,0x32040488,0x3c04040c,0x44040410,0x4a040894,0x52040498,0x5804089c},      // PrintDefault .. PrJobMerge
+		{0x60051480},{0x70070480}};                                                                    // PrPicFile, PrGeneral
+	private int[][] pdefGates;
+	/**
+	 * Programs linked with the Printing Manager glue of 1984-86 (PrLink, before _PrGlue) do not call the trap: PrOpen opens the
+	 * .Print driver and then the printer resource file the Chooser names ('STR ' -8192) with OpenResFile, and every call JSRs into
+	 * a 'PDEF' of it at the routine's offset with the trap's arguments. Without the file Add 1.0 said "The Printer Driver Could
+	 * not be Opened" and printed nothing. This one is made in memory for each OpenResFile: each entry is a BRA.W to a JMP into a
+	 * host gate that runs the routine as {@link #dispatch} does.
+	 */
+	ResourceFile68k printerFile(){
+		if(pdefGates==null){
+			pdefGates=new int[PDEF_SELECTORS.length][];
+			for(int g=0;g<PDEF_SELECTORS.length;g++){pdefGates[g]=new int[PDEF_SELECTORS[g].length];
+				for(int k=0;k<PDEF_SELECTORS[g].length;k++){final int selector=PDEF_SELECTORS[g][k];
+					pdefGates[g][k]=tb.registerGate(c->{c.a[7]-=4;memory.writeLong(c.a[7],selector);dispatch(c);});}}}
+		ResourceFile68k f=new ResourceFile68k(null);
+		int pdef=ResourceFile68k.fourcc("PDEF");
+		for(int id=0;id<8;id++){
+			int g=id<=3?0:id==4?1:id==5?2:id==7?3:-1;if(g<0)continue; // PDEF 0-3 (draft, spool, two more loops) share the printing entries
+			int[] gates=pdefGates[g];int n=gates.length;byte[] code=new byte[4*n+6*n];
+			for(int k=0;k<n;k++){int stub=4*n+6*k,disp=stub-(4*k+2);
+				code[4*k]=0x60;code[4*k+1]=0;code[4*k+2]=(byte)(disp>>8);code[4*k+3]=(byte)disp;             // BRA.W stub
+				code[stub]=0x4e;code[stub+1]=(byte)0xf9;for(int b=0;b<4;b++)code[stub+2+b]=(byte)(gates[k]>>>(24-8*b));} // JMP gate.L
+			f.add(new ResourceFile68k.Resource(pdef,id,null,ResourceFile68k.RES_PURGEABLE,code));
+		}
+		return f;
+	}
+
 	// ------------------------------------------------------------------ draft text (PrCtlCall)
 
 	/**
@@ -139,7 +176,7 @@ final class PrintManager68k {
 	// ------------------------------------------------------------------ TPrint record
 
 	private boolean recordValid(int h) throws M68kCpuException {
-		if(h==0)return true;int p=memory.readLong(h);if(p==0||tb.api.handleSize(h)<TPRINT_SIZE)return false;
+		if(h==0)return true;int p=memory.readLong(h);if(p==0||tb.api.isHandle(h)&&tb.api.handleSize(h)<TPRINT_SIZE)return false;
 		// a record made for another printer (a LaserWriter's, kept in a document or a program's defaults) is not this driver's: the real
 		// drivers reformat it, and FreeHand 8 decides between PostScript and QuickDraw output from the wDev it finds there
 		return memory.readWord(p)==3&&(memory.readWord(p+24)&0xff00)==(W_DEV&0xff00)&&(short)memory.readWord(p+4)>0&&(short)memory.readWord(p+6)>0&&(short)memory.readWord(p+12)>0&&(short)memory.readWord(p+14)>0;
@@ -147,7 +184,9 @@ final class PrintManager68k {
 	/** Fills the TPrint record from the session's page format at its resolution (72 dpi unless setRsl chose more), keeping the job fields the session holds. */
 	private void fillRecord(int h,Session s) throws M68kCpuException {
 		if(h==0)return;
-		if(tb.api.handleSize(h)<TPRINT_SIZE)tb.api.resizeHandle(h,TPRINT_SIZE);
+		// only a real Handle grows: MacWrite 1.0 keeps its TPrint in its globals and passes a master pointer it pushed on the
+		// stack - "resized", the record went to a new block and its own stayed zero (page height 0: division by zero at start)
+		if(tb.api.isHandle(h)&&tb.api.handleSize(h)<TPRINT_SIZE)tb.api.resizeHandle(h,TPRINT_SIZE);
 		int p=memory.readLong(h);if(p==0)return;
 		PageFormat f=s.format;int paperW=(int)Math.round(f.getWidth()),paperH=(int)Math.round(f.getHeight());
 		int ix=(int)Math.round(f.getImageableX()),iy=(int)Math.round(f.getImageableY()),iw=(int)Math.round(f.getImageableWidth()),ih=(int)Math.round(f.getImageableHeight());

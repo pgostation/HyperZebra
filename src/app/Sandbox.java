@@ -15,7 +15,9 @@ import javax.swing.SwingUtilities;
  * connection and launch anything. Here every file request names who asks (the program or the stack) and what it wants,
  * at one of three levels - reading (and listing, running), changing (writing, renaming, creating) or deleting:
  * <ul>
- * <li>HyperZebra HD (the folder that holds the virtual System Folder, {@link AppPaths#stateDirectory}) is open to all.</li>
+ * <li>HyperZebra HD (the folder that holds the virtual System Folder, {@link AppPaths#stateDirectory}) is open to all, but
+ *     for HyperZebra's own settings, which hosted code never touches, and the Home stack: everyone reads it (its scripts and
+ *     resources are every stack's), changing it is asked for, because a script put there runs in every stack.</li>
  * <li>Opening a program gives that program alone its own folder to read, its own file to change (where classic programs
  *     keep their settings) and the documents it was opened with; new files may be created beside them, and those it
  *     made itself it may change and delete. Changing or deleting anything else that was there - the user's other
@@ -24,6 +26,7 @@ import javax.swing.SwingUtilities;
  * <li>A program can be opened read-only ({@link #readOnlyNextLaunch}, or its Application Settings): then nothing outside
  *     HyperZebra HD may be changed by it except files the user picks in its Save dialog, and it is refused without a
  *     dialog; a read-only document is shown to the program as locked.</li>
+ * <li>A program's code is guarded apart from all this, inside HyperZebra HD as well: {@link #allowProgramChange}.</li>
  * <li>Stacks are treated the same way, by stack: a stack's own bundle is its own, the folder around it is to read
  *     (their answers last for the session).</li>
  * </ul>
@@ -65,6 +68,7 @@ final class Sandbox {
 	}
 	enum Answer{DENY,ALLOW_ONCE,ALLOW_FOLDER}
 	static final String NET_CONNECT="wants to open a TCP connection to:",NET_LISTEN="wants to accept TCP connections on:",NET_UDP="wants to send and receive UDP packets on:",NET_LOOKUP="wants to look up the host name:",NET_APPLETALK="wants to join the AppleTalk network (LocalTalk over UDP) at:";
+	static final String CHANGE_SCRIPTS="wants to change the scripts of the stack:",CHANGE_PROTECTION="wants to change the protection of the stack:",PASTE_INTO="wants to paste into the stack:";
 	static final String RUN_PROGRAM="wants to run a program of this computer:",RUN_APPLESCRIPT="wants to run an AppleScript:",USE_MICROPHONE="wants to record from the microphone.",OPEN_URL="wants to open in the web browser:";
 
 	/** Replaces the dialog when set (tests); a null result means "show the dialog". */
@@ -73,6 +77,8 @@ final class Sandbox {
 	private static java.util.prefs.Preferences preferences(){try{return java.util.prefs.Preferences.userNodeForPackage(Sandbox.class);}catch(Exception e){return null;}}
 	/** {@code -Dhz.sandbox=allow}: no gate at all (test suites, unattended harnesses). */
 	private static final boolean ALLOW_ALL="allow".equalsIgnoreCase(System.getProperty("hz.sandbox",""));
+	/** -Dhz.nobrowser=true (unattended program checks): URLs a program asks to open never reach the host's browser, whatever -Dhz.sandbox says. */
+	private static final boolean NO_BROWSER=Boolean.getBoolean("hz.nobrowser");
 	/** The preference: off means every request is allowed silently (as System 7.5 did). */
 	static volatile boolean enabled=prefs==null||prefs.getBoolean("confirmAccess",true);
 	static void setEnabled(boolean on){enabled=on;try{if(prefs!=null)prefs.putBoolean("confirmAccess",on);}catch(Exception ignored){}}
@@ -96,23 +102,36 @@ final class Sandbox {
 	private static final Set<String> allowedOther=Collections.synchronizedSet(new HashSet<String>()),deniedOther=Collections.synchronizedSet(new HashSet<String>());
 	/** Programs whose next launch is read-only (identity paths; the launcher's "Open Read-Only"). */
 	private static final Set<String> readOnlyLaunches=Collections.synchronizedSet(new HashSet<String>());
-	/** HyperZebra HD and the Home stack shipped beside the program; found on first use so that {@code hz.state.dir} set later is honoured. */
+	/** HyperZebra HD; found on first use so that {@code hz.state.dir} set later is honoured. */
 	private static volatile List<String> builtInFolders;
+	/** The Home stack's folder, wherever it is (canonical), or null: to read for all, asked for to change. */
+	private static volatile String homeFolder;
+	/** What holds the access policies and what guards Home (canonical): never hosted code's, whatever its policy says. */
+	private static volatile List<String> hostOnly;
 	private static List<String> builtInFolders(){
 		List<String> roots=builtInFolders;
 		if(roots==null){
 			roots=new java.util.ArrayList<String>();
+			List<String> own=new java.util.ArrayList<String>();
+			own.add(canonical(new File(AppPaths.stateDirectory(),"launcher.properties")));
+			own.add(canonical(new File(AppPaths.stateDirectory(),"launcher-appearance.properties")));
+			own.add(canonical(HomeGuard.folder()));
+			own.add(canonical(ExtensionGuard.folder()));
+			hostOnly=own;
 			roots.add(canonical(AppPaths.stateDirectory()));
 			roots.add(canonical(new File(new File(System.getProperty("user.home","."),"Library"+File.separator+"Application Support"),"HyperZebra"))); // FileSystem68k's boot volume on every platform
-			File home=HomeStack.folder();if(home.isDirectory())roots.add(canonical(home));
+			File home=HomeStack.folder();homeFolder=home.isDirectory()?canonical(home):null;
 			builtInFolders=roots;
 		}
 		return roots;
 	}
 	/** The Home stack folder was just created (HomeStack): find the built-in folders again on the next use. */
 	static void forgetBuiltInFolders(){builtInFolders=null;}
-	/** Whether {@code path} lies in HyperZebra HD (or another built-in folder), open to everyone. */
-	static boolean isBuiltIn(File path){String p=canonical(path);for(String root:builtInFolders())if(under(p,root))return true;return false;}
+	/** Whether {@code path} lies in HyperZebra HD and is not one of the places below, open to everyone. */
+	static boolean isBuiltIn(File path){return openToAll(canonical(path));}
+	private static boolean openToAll(String p){if(isHostOnly(p)||isHome(p))return false;for(String root:builtInFolders())if(under(p,root))return true;return false;}
+	private static boolean isHome(String p){builtInFolders();String home=homeFolder;return home!=null&&under(p,home);}
+	private static boolean isHostOnly(String p){builtInFolders();for(String own:hostOnly)if(under(p,own))return true;return false;}
 	private Sandbox(){}
 
 	// ------------------------------------------------------------------ per-program policy
@@ -285,14 +304,15 @@ final class Sandbox {
 	static boolean isAllowed(File path){
 		if(path==null)return false;
 		String p=canonical(path);
-		for(String root:builtInFolders())if(under(p,root))return true;
-		return levelAt(p,null)!=null;
+		if(openToAll(p)||isHome(p))return true;
+		return !isHostOnly(p)&&levelAt(p,null)!=null;
 	}
 	/** True when {@code requester} may use {@code path} at {@code level} without asking. */
 	static boolean isAllowed(File path,Level level,String requester){
 		if(path==null)return false;
 		String p=canonical(path);
-		for(String root:builtInFolders())if(under(p,root))return true;
+		if(openToAll(p)||level==Level.READ&&isHome(p))return true;
+		if(isHostOnly(p))return false;
 		Level have=levelAt(p,requester);
 		return have!=null&&have.covers(level);
 	}
@@ -339,7 +359,9 @@ final class Sandbox {
 		if(ALLOW_ALL)return true;
 		String p=canonical(path);
 		File subject=new File(p);
-		for(String root:builtInFolders())if(under(p,root))return true;
+		if(isHostOnly(p)){System.err.println("[sandbox] refused (HyperZebra's own): "+requester+" "+access+" "+p);return false;}
+		boolean home=isHome(p);
+		if(openToAll(p)||home&&access.level()==Level.READ)return true;
 		if(access==Access.READ&&runningProgramFile(p))return true;
 		// writing a file that is not there yet makes a new one
 		if((access==Access.WRITE||access==Access.READ_WRITE)&&!subject.exists())access=Access.CREATE;
@@ -347,13 +369,13 @@ final class Sandbox {
 		if(have!=null&&have.covers(need))return true;
 		boolean ro=readOnlyFor(subject,requester);
 		// a new file beside the ones it may read: the program's (or stack's) own from now on - nothing that was there changes
-		if(access==Access.CREATE&&have!=null&&!ro){created(requester,subject);return true;}
+		if(access==Access.CREATE&&have!=null&&!ro&&!home){created(requester,subject);return true;}
 		if(ro&&need!=Level.READ){System.err.println("[sandbox] refused (read-only): "+requester+" "+access+" "+p);return false;}
 		Boolean settled=settled(requester);
 		if(settled!=null){if(settled&&access==Access.CREATE)created(requester,subject);return settled;}
 		String deniedKey=requester+"\0"+need+"\0"+p;
 		if(deniedPaths.contains(deniedKey))return false;
-		String note=have!=null?"It may read this place but not change it.":"It is outside HyperZebra HD and the folders of the files you opened.";
+		String note=home?HOME_NOTE:have!=null?"It may read this place but not change it.":"It is outside HyperZebra HD and the folders of the files you opened.";
 		Answer a=decide(new Request(requester,access.verb,path.getAbsolutePath(),note,subject,access)); // shown as asked for, decided on the canonical path
 		switch(a){
 			case ALLOW_FOLDER:{
@@ -366,6 +388,80 @@ final class Sandbox {
 			default:deniedPaths.add(deniedKey);return false;
 		}
 	}
+	private static final String HOME_NOTE="The Home stack's scripts run in every stack. Old stacks spread viruses this way: allow this only for an installation you started yourself.";
+	/**
+	 * A stack's handler changes what runs in another stack ({@code verb} says how, one of the CHANGE_ and PASTE_ texts,
+	 * {@code target} names that stack, {@code detail} what changes): the {@link StackGuard}'s question, asked once a session.
+	 */
+	static boolean allowStackChange(String requester,String verb,String target,String detail){
+		if(ALLOW_ALL)return true;
+		if(isReadOnly(requester))return false;
+		Boolean settled=settled(requester);
+		if(settled!=null)return settled;
+		String key=requester+"\0"+verb+"\0"+target;
+		if(allowedOther.contains(key))return true;
+		if(deniedOther.contains(key))return false;
+		Answer a=decide(new Request(requester,verb,detail==null||detail.isEmpty()?target:target+"\n\n"+detail,target.equals(HOME_REQUESTER)?HOME_NOTE:STACK_NOTE,null,null));
+		if(a==Answer.DENY){deniedOther.add(key);return false;}
+		allowedOther.add(key);return true;
+	}
+	/**
+	 * A program's code is about to change: resources of a code type going into {@code target}, or a program being replaced, moved
+	 * or deleted. That is how the viruses of the classic Mac spread, and HyperZebra HD being open to all does not cover it. Free
+	 * for a file the requester made (a linker's output, what an expander unpacks) or was given (ResEdit's Open dialog,
+	 * a drop, "Allow Its Folder and Below"); a program's own code is asked for too, since an INIT runs inside each program and that
+	 * is how it would reach them. Asked once a session per requester and file.
+	 */
+	static boolean allowProgramChange(File target,String requester){
+		if(ALLOW_ALL)return true;
+		if(target==null)return false;
+		String p=canonical(target);
+		boolean own=isProgramOf(requester,target);
+		if(!own){Level have=levelAt(p,requester);if(have!=null&&have.covers(Level.WRITE))return true;}
+		if(isReadOnly(requester))return false;
+		String key=requester+"\0"+CHANGE_PROGRAM+"\0"+p;
+		if(allowedOther.contains(key))return true;
+		if(deniedOther.contains(key))return false;
+		Boolean settled=settled(requester);
+		if(settled!=null)return settled;
+		File subject=new File(p);
+		Answer a=decide(new Request(requester,CHANGE_PROGRAM,target.getAbsolutePath(),PROGRAM_NOTE,subject,Access.WRITE));
+		if(a==Answer.DENY){deniedOther.add(key);System.err.println("[sandbox] refused (program code): "+requester+" "+p);return false;}
+		allowedOther.add(key);
+		if(!own)grant(requester,subject,false,Level.WRITE); // the ordinary file question is answered with it
+		if(a==Answer.ALLOW_FOLDER){
+			File folder=subject.getParentFile();
+			if(folder!=null){grant(requester,folder,true,Level.WRITE);remember(requester,folder,Level.WRITE);}
+		}
+		return true;
+	}
+	/** {@link #allowProgramChange} for code that reports failures as exceptions: the File Manager turns it into permErr. */
+	static void checkProgramChange(File target,String requester){
+		if(!allowProgramChange(target,requester))throw new SecurityException("change of program "+target+" not allowed");
+	}
+	/** Whether {@code file} is the program {@code requester} runs from. */
+	static boolean isProgramOf(String requester,File file){
+		File program=requester==null?null:apps.get(requester);
+		return program!=null&&canonical(program).equals(canonical(file));
+	}
+	/** Extensions new to the user would start inside {@code requester}: {@code names} lists them. Refused for a program that runs without the user. */
+	static boolean allowNewExtensions(String requester,String names){
+		if(ALLOW_ALL||!enabled)return true;
+		if(requester!=null&&unattended.contains(requester))return false;
+		return decide(new Request(requester,LOAD_EXTENSIONS,names,EXTENSIONS_NOTE,null,null))!=Answer.DENY;
+	}
+	/** An extension holds a known virus: it loads only if the user says so. */
+	static boolean allowInfectedExtension(String extension,String virus){
+		if(ALLOW_ALL)return true;
+		return decide(new Request(extension,INFECTED_WITH,virus,INFECTED_NOTE,null,null))!=Answer.DENY;
+	}
+	static final String CHANGE_PROGRAM="wants to change the program code of:",LOAD_EXTENSIONS="would load extensions that are new or have changed:",INFECTED_WITH="is an extension infected with the virus:";
+	private static final String PROGRAM_NOTE="Viruses of the classic Mac spread by adding their code to programs. Allow this only for an installation or update you started yourself.";
+	private static final String EXTENSIONS_NOTE="An extension runs inside every program, and viruses of the classic Mac stayed resident this way. Allow this if you installed them yourself; otherwise they stay out for now.";
+	private static final String INFECTED_NOTE="It stays out unless you allow it.";
+	private static final String STACK_NOTE="Old stacks spread viruses by writing into other stacks: allow this only for an installation you started yourself.";
+	/** {@code -Dhz.sandbox=allow}: an unattended run, nobody is there to answer warnings either. */
+	static boolean allowsEverything(){return ALLOW_ALL;}
 	/** "Its folder and below" for a program (or stack) with Application Settings: kept there for its next runs. */
 	private static void remember(String requester,File folder,Level level){
 		File app=requester==null?null:apps.get(requester);
@@ -407,6 +503,7 @@ final class Sandbox {
 	}
 	/** Something other than a file or the network: a program of this computer, an AppleScript, the microphone. */
 	static boolean allowOther(String requester,String verb,String detail){
+		if(NO_BROWSER&&verb.equals(OPEN_URL)){System.err.println("[sandbox] not opened (-Dhz.nobrowser): "+detail);return false;}
 		Boolean settled=settled(requester);
 		if(settled!=null)return settled;
 		String key=requester+"\0"+verb+"\0"+detail;
@@ -417,20 +514,27 @@ final class Sandbox {
 		allowedOther.add(key);return true;
 	}
 
-	/** The current stack, for requests made by HyperTalk. */
+	/** The stack whose handler is running - a handler that went to Home is not Home - else the current stack, for requests made by HyperTalk. */
 	static String scriptRequester(){
 		try{
+			OStack running=StackGuard.runningStack();
+			if(running!=null&&running.file!=null)return stackRequester(running.file);
 			OStack stack=PCARD.pc==null?null:PCARD.pc.stack;
 			if(stack!=null&&stack.file!=null)return stackRequester(stack.file);
 		}catch(RuntimeException ignored){}
 		return "HyperTalk";
 	}
+	/** The requester name of the Home stack; no other stack has it. */
+	static final String HOME_REQUESTER="Home";
 	/** The requester name of the stack at {@code f} (its bundle, _stack.xml or HyperCard file): the name without .hzb. */
 	static String stackRequester(File f){
 		f=StackBundle.host(f);
 		if(f.getName().equals("_stack.xml")||f.getName().equals("toc.xml")){File p=f.getParentFile();if(p!=null)f=p;}
-		return f.getName().replaceFirst("(?i)\\.hzb$","");
+		if(canonical(f).equals(homeFolderPath()))return HOME_REQUESTER;
+		String name=f.getName().replaceFirst("(?i)\\.hzb$","");
+		return name.equalsIgnoreCase(HOME_REQUESTER)?name+" (stack)":name; // "home.hzb" from the net is not Home: grants go by this name
 	}
+	private static String homeFolderPath(){builtInFolders();return homeFolder;}
 
 	// ------------------------------------------------------------------ the dialog
 
