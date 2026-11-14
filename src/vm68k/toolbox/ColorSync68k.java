@@ -20,7 +20,7 @@ import java.util.Map;
  * unchanged and all in gamut. The colour-space conversions are the real formulas on the ColorSync component formats (XYZ
  * components u1.15, L 0..100 and a/b/u/v -128..127.996 over 0..65535, hue a fraction of the circle).
  */
-final class ColorSync68k extends TrapManager68k {
+class ColorSync68k extends TrapManager68k {
 	ColorSync68k(Toolbox68k tb){super(tb);}
 
 	static final int NO_ERR=0,PARAM_ERR=-50,MEM_FULL_ERR=-108,FNF_ERR=-43,DIR_NF_ERR=-120,IO_ERR=-36,PERM_ERR=-54;
@@ -181,7 +181,7 @@ final class ColorSync68k extends TrapManager68k {
 		switch(loc.type()){
 			case LOC_FILE:case LOC_PATH:{
 				try{File f=locationFile(loc);if(f==null||!f.isFile()){lastError=FNF_ERR;return null;}
-					Sandbox.checkFile(f,Sandbox.Access.READ,tb.name);return java.nio.file.Files.readAllBytes(f.toPath());}
+					Sandbox68k.checkFile(f,Sandbox68k.Access.READ,tb.name);return Files68k.read(f);}
 				catch(SecurityException e){lastError=PERM_ERR;return null;}catch(IOException e){lastError=IO_ERR;return null;}}
 			case LOC_HANDLE:{int h=loc.long1();if(h==0){lastError=PARAM_ERR;return null;}return handleBytes(h);}
 			case LOC_PTR:{int p=loc.long1();if(p==0){lastError=PARAM_ERR;return null;}
@@ -215,7 +215,7 @@ final class ColorSync68k extends TrapManager68k {
 			case LOC_NONE:return NO_ERR; // a temporary profile in memory
 			case LOC_FILE:case LOC_PATH:{
 				try{File f=locationFile(loc);if(f==null||f.getParentFile()==null||!f.getAbsoluteFile().getParentFile().isDirectory())return DIR_NF_ERR;
-					Sandbox.checkFile(f,Sandbox.Access.WRITE,tb.name);boolean fresh=!f.exists();java.nio.file.Files.write(f.toPath(),b);
+					Sandbox68k.checkFile(f,Sandbox68k.Access.WRITE,tb.name);boolean fresh=!f.exists();Files68k.write(f,b);
 					if(fresh){byte[] info=new byte[16];put32(info,0,fourcc("prof"));put32(info,4,fourcc("sync"));FinderInfo68k.write(f,info);}
 					return NO_ERR;}
 				catch(SecurityException e){return PERM_ERR;}catch(IOException e){return IO_ERR;}}
@@ -260,7 +260,7 @@ final class ColorSync68k extends TrapManager68k {
 			if(f.getName().startsWith("."))continue;
 			if(f.isDirectory()){if(depth<3)collect(f,l,depth+1);continue;}
 			byte[] head=new byte[128];
-			try(java.io.InputStream in=java.nio.file.Files.newInputStream(f.toPath())){if(in.readNBytes(head,0,128)<128||be32(head,36)!=MAGIC)continue;}catch(IOException e){continue;}
+			try(java.io.InputStream in=Files68k.in(f)){if(Platform.readNBytes(in, head, 0, 128)<128||be32(head,36)!=MAGIC)continue;}catch(IOException e){continue;}
 			int spec=memory.allocate(70,2);
 			try{if(tb.files.fileManager.writeFSSpec(spec,f)!=NO_ERR)continue;byte[] raw=new byte[LOCATION_SIZE];put16(raw,0,LOC_FILE);System.arraycopy(memory.readBytes(spec,70),0,raw,2,70);l.add(new Entry(f,new Location(raw),head));}
 			finally{memory.free(spec);}
@@ -533,7 +533,7 @@ final class ColorSync68k extends TrapManager68k {
 		Location loc=a[1]==0?Location.none():readLocation(a[1]);
 		Profile p=newProfile();byte[] h=p.header;
 		put32(h,4,fourcc("appl"));put32(h,8,0x02100000);put32(h,36,MAGIC);put32(h,40,fourcc("APPL"));put32(h,68,s15(0.9642));put32(h,72,s15(1.0));put32(h,76,s15(0.8249));
-		java.time.LocalDateTime now=java.time.LocalDateTime.now();put16(h,24,now.getYear());put16(h,26,now.getMonthValue());put16(h,28,now.getDayOfMonth());put16(h,30,now.getHour());put16(h,32,now.getMinute());put16(h,34,now.getSecond());
+		int[] now=LocalTime68k.now();put16(h,24,now[0]);put16(h,26,now[1]);put16(h,28,now[2]);put16(h,30,now[3]);put16(h,32,now[4]);put16(h,34,now[5]);
 		p.location=loc;p.modified=true;putLong(a[0],p.ref);return NO_ERR;
 	}
 	/** CWNewLinkProfile / NCWNewLinkProfile: a device link profile from the first profile's space to the last one's, saved at the location. */

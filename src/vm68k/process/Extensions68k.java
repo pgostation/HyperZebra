@@ -14,7 +14,7 @@ import java.util.Comparator;
  * System Folder itself (where System 6 kept its INITs). A 'sysz' request needs
  * no reservation here: the system and application zones are one growable heap.
  */
-final class Extensions68k {
+class Extensions68k {
 	/** Apple's installed QuickTime extension (and its companions) run instead of the native Movie Toolbox whenever the System
 	 *  Folder holds it; -Dhz68k.quicktime=native keeps the native one in charge (and =extension is the old explicit opt-in). */
 	static final boolean QUICKTIME_EXTENSION=!"native".equalsIgnoreCase(System.getProperty("hz68k.quicktime",""));
@@ -85,12 +85,12 @@ final class Extensions68k {
 			if(!tb.guestQuickTime&&isQuickTimeFamily(file.getName()))continue;
 			// QuickDraw 3D's own INIT stays out while this library serves it (PpcQuickDraw3D): it would register the installed version
 			if(PpcQuickDraw3D.NATIVE&&isQuickDraw3D(file))continue;
-			if(isOleServer(file))continue;
+			if(isOleServer(file)||isContextualMenuExtension(file))continue;
 			try{load(file);}
 			catch(Exception e){System.err.println("[68K "+owner()+"] extension "+file.getName()+" failed: "+e.getMessage());
 				int pc=e instanceof M68kCpuException?((M68kCpuException)e).pc:tb.cpu.pc;
 				if(Mac68kApi.TRACE)System.err.println(tb.cpu.dumpState(pc));
-				if(PpcRuntime.TRACE&&tb.app!=null&&tb.app.ppc!=null)System.err.println(tb.app.ppc.describe(pc)); // the INIT's PowerPC code went wrong
+				if(Ppc68k.trace()&&tb.app!=null&&tb.app.ppc!=null)System.err.println(tb.app.ppc.describe(pc)); // the INIT's PowerPC code went wrong
 				if(tb.app!=null)tb.app.crashDump(pc);}
 		}
 	}
@@ -144,6 +144,15 @@ final class Extensions68k {
 	 */
 	static boolean isOleServer(File file){byte[] info=FinderInfo68k.read(file);return info!=null&&info[0]=='I'&&info[1]=='N'&&info[2]=='I'&&info[3]=='T'&&info[4]=='O'&&info[5]=='l'&&info[6]=='e'&&info[7]=='2';}
 
+	/**
+	 * Mac OS 8/9's Contextual Menu Extension (type 'INIT', creator 'cmnu'). Its INIT binds the "ContextualMenu" library - on a Mac
+	 * the extension's own fragment - and points _ContextualMenuDispatch ($AA72) at those functions. Here that library is native
+	 * ({@link PpcRuntime#SYSTEM_LIBRARIES}) and its functions call $AA72, so the patched trap called itself: Sherlock 2 on the
+	 * PowerMac 6500's Mac OS 9.1 System Folder died of a StackOverflowError in InitContextualMenus. The Contextual Menu Manager
+	 * is served natively (Toolbox68k), so the INIT stays out.
+	 */
+	static boolean isContextualMenuExtension(File file){byte[] info=FinderInfo68k.read(file);return info!=null&&info[0]=='I'&&info[1]=='N'&&info[2]=='I'&&info[3]=='T'&&info[4]=='c'&&info[5]=='m'&&info[6]=='n'&&info[7]=='u';}
+
 	/** The QuickDraw 3D extension (type 'INIT', creator 'QD3D'). */
 	private static boolean isQuickDraw3D(File file){byte[] info=FinderInfo68k.read(file);return info!=null&&info[0]=='I'&&info[1]=='N'&&info[2]=='I'&&info[3]=='T'&&info[4]=='Q'&&info[5]=='D'&&info[6]=='3'&&info[7]=='D';}
 
@@ -153,6 +162,10 @@ final class Extensions68k {
 		tb.resources.pin(ref); // stays open: components registered from it load their code on demand
 		int saved=tb.cpu.a[7];
 		java.util.List<ResourceFile68k.Resource> inits=initsOf(ref);
+		// An 'AINI' file (Location Manager Extension) keeps its start-up code in 'AINI' resources, run like INITs: the Location
+		// Manager's installs its _ALMDispatch ($AAA4); without it Office 2001 (Microsoft Database through WalkaboutLib) called the
+		// Unimplemented trap a little after Word's document window opened.
+		if(FinderInfo68k.type(file)==AINI){inits=new java.util.ArrayList<ResourceFile68k.Resource>(inits);inits.addAll(tb.resources.resourcesOfFile(ref,AINI));}
 		// The Component Manager registers the components of files of type 'thng' by itself; an INIT file (QuickTime, Sound
 		// Manager) registers its own with RegisterComponentResourceFile, deciding which ones fit the machine.
 		byte[] info=FinderInfo68k.read(file);
@@ -180,7 +193,7 @@ final class Extensions68k {
 			int h=tb.resources.handleFor(r);if(h==0)continue;
 			tb.api.setHandleState(h,tb.api.handleState(h)|0x80);
 			int entry=tb.memory.readLong(h);
-			System.out.println("[68K "+owner()+"] running INIT "+r.id+" of "+file.getName());
+			System.out.println("[68K "+owner()+"] running "+(r.type==AINI?"AINI ":"INIT ")+r.id+" of "+file.getName());
 			tb.cpu.setInstructionLimit(Long.MAX_VALUE);
 			tb.resources.useResFile(ref); // an INIT runs with its own file as the current resource file
 			// At INIT time a real Mac has not set CurApName ($910, 32 bytes) yet: the bytes are still the boot code's $FF fill.
@@ -203,13 +216,15 @@ final class Extensions68k {
 
 	// ------------------------------------------------------------------ installing (files dropped on HyperZebra)
 
-	/** File types the Finder files under Extensions: system extensions, background programs, components, script systems. */
-	private static final int[] EXTENSION_TYPES={0x494e4954,0x61707065,0x74686e67,0x73637269}; // INIT appe thng scri
+	/** File types the Finder files under Extensions: system extensions, background programs, components, script systems, 'AINI' extensions. */
+	private static final int[] EXTENSION_TYPES={0x494e4954,0x61707065,0x74686e67,0x73637269,0x41494e49}; // INIT appe thng scri AINI
+	/** 'AINI': an extension whose start-up code is in 'AINI' resources (Mac OS 8/9's Location Manager Extension). */
+	static final int AINI=0x41494e49;
 	/** Control panels ('cdev') go to the Control Panels folder; their INIT code is not run here, but a program can still open them. */
 	private static final int CDEV=0x63646576;
 
 	/** The virtual System Folder's Extensions folder (the one {@link #loadFolder} reads). */
-	static File folder(){return new File(QuickTimeService.systemFolder(),"Extensions");}
+	static File folder(){return new File(UiHost.get().quickTimeServiceSystemFolder(),"Extensions");}
 
 	/**
 	 * Whether a host file is a system extension document: decided like the Finder by file type ('INIT', 'appe', 'thng',
@@ -232,7 +247,7 @@ final class Extensions68k {
 	 * resource fork the way this platform stores forks; MacBinary containers are copied whole. Returns the installed
 	 * file. Programs launched from now on load it; the ones already running do not.
 	 */
-	static File install(File source) throws IOException {return install(source,QuickTimeService.systemFolder());}
+	static File install(File source) throws IOException {return install(source,UiHost.get().quickTimeServiceSystemFolder());}
 	static File install(File source,File systemFolder) throws IOException {
 		File installed=copyInto(source,new File(systemFolder,FinderInfo68k.type(source)==CDEV?"Control Panels":"Extensions"));
 		ExtensionGuard.approve(installed);

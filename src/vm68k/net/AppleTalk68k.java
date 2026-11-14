@@ -30,7 +30,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * clash) among the user-node range 1-127; there is no router, so the network number is 0 and zone calls answer
  * noBridgeErr as a LocalTalk-only Mac's do.
  */
-final class AppleTalk68k {
+class AppleTalk68k {
 	static final int MPP_REF=-10,ATP_REF=-11,XPP_REF=-41,DSP_REF=-59;
 	/** Low memory: PortBUse (bit 7 set = port B free, low nibble 1 = AppleTalk, bit 4 = ATP loaded, bit 5 = XPP loaded), SPConfig (port B: 1 = AppleTalk, 2 = serial), ABusVars, LAPMgrPtr. */
 	static final int PORT_B_USE=0x291,SP_CONFIG=0x1fb,ABUS_VARS=0x2d8,LAP_MGR_PTR=0xb18;
@@ -130,7 +130,7 @@ final class AppleTalk68k {
 	/** Joins the LAN (once, after the access dialog) at the first AppleTalk call; the process-wide hub is used either way. */
 	private void ensureJoined(){
 		if(joined)return;joined=true;
-		if(mode.equals(UDP)&&Sandbox.allowNetwork(tb.name,Sandbox.NET_APPLETALK,Hub.GROUP+":"+Hub.PORT,0))Hub.get().joinLan();
+		if(mode.equals(UDP)&&Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_APPLETALK,Hub.GROUP+":"+Hub.PORT,0))Hub.get().joinLan();
 		int probed=Hub.get().probe(this,node);if(probed!=node)setNode(probed);
 	}
 

@@ -16,7 +16,7 @@ import java.util.Map;
  * recomputed exactly as QuickTime lays them out, so atoms the program still holds stay valid as long
  * as nothing before them moved (the documented rule).
  */
-final class QTAtoms68k {
+class QTAtoms68k {
 	static final int SEAN=0x7365616e,HEADER=20;
 	static final int CANNOT_FIND_ATOM=-2101,NOT_LEAF_ATOM=-2102,ATOM_INDEX_INVALID=-2104,DUPLICATE_ATOM=-2105,INVALID_ATOM=-2106,INVALID_CONTAINER=-2107,CANNOT_BE_LEAF=-2109,PARAM_ERR=-50;
 
@@ -154,7 +154,7 @@ final class QTAtoms68k {
 	private byte[] preferencesBytes(){
 		java.io.File f=preferencesFile();
 		if(f==null||!f.isFile())return null;
-		try{byte[] b=java.nio.file.Files.readAllBytes(f.toPath());
+		try{byte[] b=Platform.get().readAllBytes(f);
 			if(b.length>=PREFERENCES_HEADER+HEADER&&u4(b,PREFERENCES_HEADER+4)==SEAN)return java.util.Arrays.copyOfRange(b,PREFERENCES_HEADER,b.length);
 			if(b.length>=HEADER&&u4(b,4)==SEAN)return b;
 		}catch(java.io.IOException ignored){}
@@ -163,7 +163,7 @@ final class QTAtoms68k {
 	private boolean savePreferences(byte[] container){
 		java.io.File f=preferencesFile();if(f==null)return false;
 		try{byte[] out=new byte[PREFERENCES_HEADER+container.length];System.arraycopy(container,0,out,PREFERENCES_HEADER,container.length);
-			java.nio.file.Files.write(f.toPath(),out);
+			try(java.io.FileOutputStream o=new java.io.FileOutputStream(f)){o.write(out);}
 			byte[] info=new byte[16];info[0]='p';info[1]='r';info[2]='e';info[3]='f';info[4]='T';info[5]='V';info[6]='O';info[7]='D'; // 'pref' of 'TVOD' (QuickTime)
 			FinderInfo68k.write(f,info);
 			return true;}

@@ -73,7 +73,8 @@ final class HyperTalkReference {
 		new Category("prop.menu","Menu"),
 		new Category("prop.paint","Paint"),
 		new Category("prop.global","HyperCard (global)"),
-		new Category("coll","Collections, JSON, web"));
+		new Category("coll","Collections, JSON, web"),
+		new Category("bin","Binary data & images"));
 
 	static Category category(String id){
 		for(Category c:CATEGORIES)if(c.id.equals(id))return c;
@@ -755,5 +756,33 @@ dialingTime || the dialingTime|dialingVolume || Dial settings
 *delete item || delete item <n> of <array> || Removes an array element
 *get URL || get URL <url> || Fetches a web page's text (into it) || cmd
 *put URL || put URL <url> into <container> || Fetches web text into a container || cmd
+*number of elements || the number of items|elements of <array> || How many elements an array or a dictionary has
+## bin
+*open file for || open file <file> for [binary] read|write|update|append || Opens a file read-only, emptied for writing, for reading and writing, or to add to its end; binary reads and writes the bytes as they are || cmd
+*read for bytes || read from file <file> [at <start>] for <n> bytes || Reads n bytes (into it); in a binary file each byte is one character || cmd
+*URL binfile || URL "binfile:<file>" || A file's bytes as a value; put <data> into|after URL "binfile:<file>" writes them, "file:" is for text || cmd
+*byte || byte <n> [to <m>] of <data> || The nth byte of binary data (the same as char) || chunk
+*number of bytes || the number of bytes in <data> || How many bytes || chunk
+*byteToNum || byteToNum(<byte>) || The number of a byte (0-255) || func
+*numToByte || numToByte(<n>) || The byte of a number (0-255); numToChar is for text || func
+*binaryEncode || binaryEncode(<format>, <value>, …) || Binary data from values: c C 1 byte, s S i I 2/4 bytes low byte first, n m N M 2/4 bytes high byte first, f d floating point, a A text, H h hexadecimal, B b bits, x a zero byte; a count or * after a letter || func
+*binaryDecode || binaryDecode(<format>, <data>, <var>, …) || Puts the values in binary data into variables (the letters of binaryEncode); gives how many it converted || func
+*base64Encode || base64Encode(<data>)  base64Decode(<text>) || Base 64 text of data (lines of 72 characters), and the data back || func
+*compress || compress(<data>)  decompress(<data>) || gzip compression || func
+*messageDigest || messageDigest(<data>, "SHA-256")  md5Digest(<data>)  sha1Digest(<data>) || The hash of data as bytes (binaryDecode("H*", …) gives hexadecimal) || func
+*textEncode || textEncode(<text>, "UTF-8"|"Shift_JIS"|"MacRoman"|"native") || Text as the bytes of an encoding (return is CR in Mac encodings, LF in others) || func
+*textDecode || textDecode(<data>, "UTF-8"|"Shift_JIS"|"MacRoman"|"native") || Text from the bytes of an encoding (every line end becomes return) || func
+*byteOffset || byteOffset(<find>, <data> [, <skip>]) || Where bytes are in data (0 when they are not) || func
+*imageToArray || imageToArray(<data>) || The pixels of PNG, JPEG, GIF, BMP or PICT data as rows of "r,g,b,a" (0-255), so px[y][x] counts from 1 at the top left || func
+*arrayToImage || arrayToImage(<pixels> [, "png"|"jpeg"|"gif"|"bmp"]) || Image file data from rows of "r,g,b" or "r,g,b,a" pixels || func
+*imageFilter || imageFilter(<data>, <script> [, <width>, <height>]) || Runs a pixel script (HyperTalk on numbers) for every pixel: r, g, b, a are the pixel, x, y where it is, w, h the image's size; what r, g, b, a hold at the end is the new pixel || func
+*pixel script || put 255 - r into r  get pixel <x>, <y>  red|green|blue|alpha|lum(<x>, <y>) || In imageFilter and the screenFilter: put, add, subtract, multiply, divide, if and repeat on numbers; get pixel takes another pixel, red(x, y) and the like read one || func
+*imageCombine || imageCombine(<base>, <top> [, <x>, <y> [, "<mode>" [, <opacity>]]]) || Draws top on base with its top left at x,y; modes normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity; opacity 0-100 || func
+*imageCreate || imageCreate(<width>, <height> [, "<colour>"]) || A new image, clear or of one colour (a name, #RRGGBB, #RRGGBBAA or r,g,b) || func
+*imageSize || imageSize(<data>) || The width and height of image data (width,height) || func
+*screenFilter || set the screenFilter to <script> || The card window is shown through a pixel script (as imageFilter's) until it is set to empty; the stack does not change || prop.global
+*screenOverlay || set the screenOverlay to <data> || An image shown over the card window from its top left; empty removes it || prop.global
+*export to variable || export paint|card|screen to <var> || The paint picture, the card with its parts, or the card window as it looks, as PNG data || cmd
+*import paint data || import paint from <data> || Draws image data on the card picture (the background's while editing it) || cmd
 """;
 }

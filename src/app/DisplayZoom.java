@@ -47,12 +47,12 @@ final class DisplayZoom {
 
 	/** A coordinate times percent/100, rounded half up (exact integer arithmetic, so it is the inverse of {@link #unscale}). */
 	static int scale(int x, int percent){
-		return (int)Math.floorDiv(2L*x*percent+100, 200);
+		return ZoomMath.scale(x, percent);
 	}
 
 	/** The coordinate x whose scaled pixels [scale(x), scale(x+1)) contain pixel p. */
 	static int unscale(int p, int percent){
-		return (int)Math.floorDiv(200L*p+99, 2L*percent);
+		return ZoomMath.unscale(p, percent);
 	}
 
 	/** How many times a w x h area (plus fixed extra width/height for the window chrome) fits in the display's usable area. */

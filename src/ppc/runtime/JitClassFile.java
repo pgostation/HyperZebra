@@ -70,6 +70,12 @@ final class JitClassFile {
 
 	private static final class MethodData {int access,name,descriptor;Code code;}
 	private final List<MethodData> methods=new ArrayList<MethodData>();
+	/** Instance or static fields (TalkJit's ahead-of-time classes): access, name, descriptor */
+	private final List<int[]> fields=new ArrayList<int[]>();
+	void declareField(int access,String name,String descriptor){fields.add(new int[]{access,utf8(name),utf8(descriptor)});}
+	int methodCount(){return methods.size();}
+	/** Drops the methods added after the first n (a block the compiler gave up on half way) */
+	void dropMethods(int n){while(methods.size()>n)methods.remove(methods.size()-1);}
 	private final String thisName,superName;private final String[] interfaces;
 
 	JitClassFile(String thisName,String superName,String... interfaces){this.thisName=thisName;this.superName=superName;this.interfaces=interfaces;}
@@ -87,7 +93,8 @@ final class JitClassFile {
 		body.u2(0x0030); // ACC_FINAL | ACC_SUPER
 		body.u2(thisIndex);body.u2(superIndex);
 		body.u2(interfaceIndex.length);for(int i:interfaceIndex)body.u2(i);
-		body.u2(0); // fields
+		body.u2(fields.size());
+		for(int[] f:fields){body.u2(f[0]);body.u2(f[1]);body.u2(f[2]);body.u2(0);}
 		body.u2(methods.size());
 		for(MethodData m:methods){
 			body.u2(m.access);body.u2(m.name);body.u2(m.descriptor);
@@ -254,7 +261,7 @@ final class JitClassFile {
 		I2L=0x85,I2D=0x87,L2I=0x88,F2D=0x8d,D2F=0x90,I2B=0x91,I2S=0x93,DCMPL=0x97,DCMPG=0x98,
 		IFEQ=0x99,IFNE=0x9a,IFLT=0x9b,IFGE=0x9c,IFGT=0x9d,IFLE=0x9e,IF_ICMPEQ=0x9f,IF_ICMPNE=0xa0,IF_ICMPLT=0xa1,IF_ICMPGE=0xa2,IF_ICMPGT=0xa3,IF_ICMPLE=0xa4,IF_ACMPEQ=0xa5,IF_ACMPNE=0xa6,IFNULL=0xc6,IFNONNULL=0xc7,
 		GOTO=0xa7,LOOKUPSWITCH=0xab,IRETURN=0xac,ARETURN=0xb0,RETURN=0xb1,GETFIELD=0xb4,PUTFIELD=0xb5,INVOKEVIRTUAL=0xb6,INVOKESPECIAL=0xb7,INVOKESTATIC=0xb8,
-		ANEWARRAY=0xbd,ATHROW=0xbf,WIDE=0xc4,AASTORE=0x53;
+		ANEWARRAY=0xbd,ATHROW=0xbf,WIDE=0xc4,AASTORE=0x53,AALOAD=0x32,NEW=0xbb;
 	/** The opposite condition of an if opcode (IFEQ..IF_ICMPLE). */
 	static int negate(int opcode){return opcode>=IFEQ&&opcode<=IF_ICMPLE?((opcode-IFEQ)^1)+IFEQ:opcode;}
 }

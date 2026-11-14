@@ -26,13 +26,8 @@ final class ScreenWindowFrame {
 	 *  of the screen in the background left the application active with no window focused: menus grey, keys lost). */
 	interface Mover{void pressed();void dragStarted();void draggedBy(int dx,int dy);void dragEnded();void centre();}
 
-	/** How the frame looks, in screen pixels (magnified with the screen). */
-	interface Look {
-		/** The frame's widths outside the content: {top, left, bottom, right}. */
-		int[] outsets();
-		/** The whole frame for content of that size, the content's place left clear (ARGB, structure-sized). */
-		BufferedImage paint(int contentWidth,int contentHeight,String title,boolean active);
-	}
+	/** How the frame looks, in screen pixels (magnified with the screen): FrameLook68k's two methods. */
+	interface Look extends FrameLook68k {}
 
 	/** The title font of Mac OS 9 windows: the system font at 12 points (Charcoal; Osaka on a Japanese system). */
 	static Font titleFont(){return Fonts68k.hostFont(0,12,0);}
@@ -59,7 +54,7 @@ final class ScreenWindowFrame {
 	private final javax.swing.JFrame[] strips=new javax.swing.JFrame[4]; // title bar (top), left, right, bottom
 	private final Rectangle[] sources=new Rectangle[4]; // each strip's part of the magnified frame
 	private String title;
-	private Look look=PLATINUM;private boolean active=true;
+	private FrameLook68k look=PLATINUM;private boolean active=true;
 	private int contentWidth,contentHeight,frameWidth,frameHeight;
 	private BufferedImage image;private Object interpolation=RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR;
 
@@ -94,7 +89,7 @@ final class ScreenWindowFrame {
 	int[] outsets(){return look.outsets().clone();}
 
 	/** Lays the frame round {@code screen} (host pixels; the program's screen is {@code width} x {@code height}) and shows it. */
-	void show(Rectangle screen,int width,int height,int percent,Look look,boolean active){
+	void show(Rectangle screen,int width,int height,int percent,FrameLook68k look,boolean active){
 		boolean redraw=look!=this.look||active!=this.active||width!=contentWidth||height!=contentHeight||image==null;
 		this.look=look;this.active=active;contentWidth=width;contentHeight=height;
 		if(redraw)image=look.paint(width,height,title,active);

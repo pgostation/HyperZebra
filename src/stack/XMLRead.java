@@ -2,10 +2,6 @@ import java.io.BufferedInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
 
 
 public class XMLRead {
@@ -19,29 +15,48 @@ public class XMLRead {
 	static boolean readError(Exception ex) {
 		partialRead = true;
 		System.err.println(ex.getMessage());
-		return ex instanceof XMLStreamException && ((XMLStreamException)ex).getLocation()!=null;
+		return ex instanceof XmlException && ((XmlException)ex).located;
 	}
 
 	//XMLファイル読み込み開始
 	public static boolean readToc(String xmlfile, OStack inStack) {
 		partialRead = false;
 		//HyperZebraスタックは速く読めるので進捗ウインドウは出さず、待ちカーソルだけにする
-		try(StackProgress.Busy busy = StackProgress.busy()){
-			return readTocBody(xmlfile, inStack);
+		Runnable endBusy = UiHost.get().beginBusy();
+		try{
+			return readTocBody(xmlfile, inStack, null);
+		}finally{
+			endBusy.run();
 		}
 	}
 
-	private static boolean readTocBody(String xmlfile, OStack inStack) {
-	    XMLInputFactory factory = XmlSafe.input();
+	/** The stack of a StackSource (P1 S9: the core reads an .hzb in memory): its _stack.xml, as readToc reads the file. */
+	public static boolean readToc(StackSource source, OStack inStack) {
+		partialRead = false;
+		Runnable endBusy = UiHost.get().beginBusy();
+		try{
+			return readTocBody(source.name()+"/_stack.xml", inStack, source);
+		}finally{
+			endBusy.run();
+		}
+	}
+
+	private static boolean readTocBody(String xmlfile, OStack inStack, StackSource source) {
 	    
-	    XMLStreamReader reader = null;
+	    XmlIn reader = null;
 	    BufferedInputStream stream = null;
 	    boolean result = false;
 	    boolean completeFlag = false;
 	    boolean oldWriter = false; //the file has the stackfile DOCTYPE of the first HyperZebra's writer
 	    
 	    try {
-	        byte[] fileBytes = readXmlBytes(xmlfile, inStack);
+	        byte[] fileBytes;
+	        if(source!=null){
+	        	byte[] raw = source.read("_stack.xml");
+	        	if(raw==null) throw new FileNotFoundException(xmlfile);
+	        	fileBytes = unsealed(raw, xmlfile, inStack);
+	        }
+	        else fileBytes = readXmlBytes(xmlfile, inStack);
 	        if(fileBytes==null){
 	        	//パスワードが要るスタックでキャンセルした/開けなかった: 何も読まずに失敗(書き込み禁止の警告は出さない)
 	        	return false;
@@ -68,15 +83,15 @@ public class XMLRead {
 	        	else oldWriter = s.indexOf("DTD stackfile")>=0;
 	        }
 	        
-	        reader = XmlText.decodingReader(factory.createXMLStreamReader(stream));
+	        reader = XmlText.decodingReader(Platform.get().xmlIn(stream));
 	        
 	        while (reader.hasNext()) {
 	    		
 	    	    try {
 		            int eventType = reader.next();
-		            if (eventType == XMLStreamConstants.START_ELEMENT) {
+		            if (eventType == XmlIn.START_ELEMENT) {
 		            	String elm = reader.getLocalName().intern();
-		            	if(elm.equals("stackfile") || elm.equals(PCARD.AppName+"stack")){
+		            	if(elm.equals("stackfile") || elm.equals(HZ.AppName+"stack")){
 		            	}else if(elm.equals("stack")){
 		            		reader = inStack.readXML(reader);
 		            	}else if(elm.equals("background")){
@@ -110,22 +125,22 @@ public class XMLRead {
 			                System.out.println("Element Text: " + reader.getElementText());
 		            	}
 		            }
-		            if (eventType == XMLStreamConstants.END_ELEMENT) {
+		            if (eventType == XmlIn.END_ELEMENT) {
 				    	String elm2 = reader.getLocalName();
-				    	if(elm2.equals("stackfile") || elm2.equals(PCARD.AppName+"stack")){
+				    	if(elm2.equals("stackfile") || elm2.equals(HZ.AppName+"stack")){
 				    		completeFlag = true;
 				    		break;
 				    	}
 		            }
-			    } catch (XMLStreamException ex) {
+			    } catch (XmlException ex) {
 				    System.err.println(ex.getMessage());
-				    throw new XMLStreamException();
+				    throw new XmlException();
 		        }
     	    }
 	        result = true;
 	    } catch (FileNotFoundException ex) {
 	        System.err.println(xmlfile + " が見つかりません");
-	    } catch (XMLStreamException ex) {
+	    } catch (XmlException ex) {
 	        System.err.println(xmlfile + " の読み込みに失敗しました");
 	        inStack.cantModify = true; //壊れたデータの書き込み禁止
 			ex.printStackTrace();
@@ -137,7 +152,7 @@ public class XMLRead {
 	        if (reader != null) {
 	            try {
 	                reader.close();
-	            } catch (XMLStreamException ex) {}
+	            } catch (XmlException ex) {}
 	        }
 	        if (stream != null) {
 	            try {
@@ -146,9 +161,7 @@ public class XMLRead {
 	        }
 	    }
 		//封印した絵の鍵を、絵を読む側(ファイルしか持たない)に知らせる
-		if(inStack.contentKey!=null && StackProtection.sealsXml(inStack)){
-			StackProtection.registerContentKey(new java.io.File(xmlfile).getAbsoluteFile().getParentFile(), inStack.contentKey);
-		}
+		UiHost.get().registerStackContentKey(inStack, xmlfile);
 		//The first HyperZebra (2012, the files with the stackfile DOCTYPE) wrote the cards from the second one on and the first
 		//card last (HamStar 1.1.hzb: firstCardID 2853 is the last card element; the stack's LIST order is 2853, 3807, …): the first
 		//card comes first again, so "cd 1" is the card HyperCard has there
@@ -176,8 +189,7 @@ public class XMLRead {
     		//ダイアログはOKまでこのスレッドを止めるので、先にフラグを立てておく
     		inStack.cantModify = true;
     		result = true;//途中までしか読めなくても強制的に開いてみる
-    		new GDialog(inStack.pcard, PCARDFrame.pc.intl.getDialogText(message)+"\n"+
-    			PCARDFrame.pc.intl.getDialogText("The stack is opened read-only."),null,"OK",null,null);
+    		UiHost.get().readOnlyNotice(inStack, message);
 		}
 		
 	    return result;
@@ -218,29 +230,15 @@ public class XMLRead {
 	}
 
 	static byte[] readXmlBytes(String xmlfile, OStack inStack) throws IOException {
+		lockedOut = false; //(also when the file cannot be read, as before)
+		byte[] data = Platform.get().readAllBytes(new java.io.File(xmlfile));
+		return unsealed(data, xmlfile, inStack);
+	}
+
+	/** The _stack.xml's bytes unsealed (StackProtection on the desktop; the headless core opens no sealed stack). */
+	static byte[] unsealed(byte[] data, String xmlfile, OStack inStack) {
 		lockedOut = false;
-		byte[] data = java.nio.file.Files.readAllBytes(new java.io.File(xmlfile).toPath());
-		if(!StackProtection.isSealed(data)) return data;
-		try {
-			if(!StackProtection.needsPassword(data)) return StackProtection.unseal(data, null);
-			if(inStack.unlockedPassword!=null){
-				try { return StackProtection.unseal(data, inStack.unlockedPassword); }
-				catch(java.security.GeneralSecurityException wrong){ inStack.unlockedPassword = null; }
-			}
-			final byte[][] plain = new byte[1][];
-			String name = new java.io.File(xmlfile).getAbsoluteFile().getParentFile().getName().replaceFirst("(?i)\\.hzb$", "");
-			String pw = StackProtection.askUntilRight(name, typed -> {
-				try { plain[0] = StackProtection.unseal(data, typed); return true; }
-				catch(java.security.GeneralSecurityException wrong){ return false; }
-			});
-			if(pw==null){ lockedOut = true; return null; }
-			inStack.unlockedPassword = pw;
-			return plain[0];
-		} catch(java.security.GeneralSecurityException e){
-			System.err.println(xmlfile+" could not be unsealed: "+e);
-			lockedOut = true;
-			return null;
-		}
+		return UiHost.get().unsealStack(data, xmlfile, inStack);
 	}
 
 	//<x> <true /> </x> 形式が基本だが、<x>true</x> のようにテキストで書かれた
@@ -251,23 +249,23 @@ public class XMLRead {
 		catch(NumberFormatException | NullPointerException e){ return 0; }
 	}
 
-	public static boolean bool(XMLStreamReader reader) throws XMLStreamException {
+	public static boolean bool(XmlIn reader) throws XmlException {
 		StringBuilder text = new StringBuilder();
         while(true){
         	int eventType = reader.next();
-	        if (eventType == XMLStreamConstants.START_ELEMENT) {
+	        if (eventType == XmlIn.START_ELEMENT) {
 				if(reader.getLocalName().equals("true")) return true;
 				else if(reader.getLocalName().equals("false")) return false;
-				else throw new XMLStreamException("not bool.");
+				else throw new XmlException("not bool.");
 	        }
-	        if (eventType == XMLStreamConstants.CHARACTERS || eventType == XMLStreamConstants.CDATA) {
+	        if (eventType == XmlIn.CHARACTERS || eventType == XmlIn.CDATA) {
 	        	text.append(reader.getText());
 	        }
-	        if (eventType == XMLStreamConstants.END_ELEMENT) {
+	        if (eventType == XmlIn.END_ELEMENT) {
 	        	String value = text.toString().trim();
 	        	if(value.equalsIgnoreCase("true")) return true;
 	        	if(value.equalsIgnoreCase("false")) return false;
-	        	throw new XMLStreamException("bool element not found.");
+	        	throw new XmlException("bool element not found.");
 	        }
         }
 	}
@@ -318,7 +316,7 @@ public class XMLRead {
 	
 	static String fromSJIS(ByteBuffer bb){
 		bb.flip();
-		Charset cs = Charset.forName("Shift_JIS");
+		Charset cs = Platform.get().charset("Shift_JIS");
 		CharsetDecoder decoder = cs.newDecoder();
 		
 		CharBuffer decBuf = null;

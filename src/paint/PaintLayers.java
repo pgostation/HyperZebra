@@ -4,8 +4,6 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 //ペイントの追加レイヤー。HyperCard本来のカードピクチャ(OCardBase.pict)と
 //バックグラウンドピクチャはそのまま「Card Paint」「Background Paint」として残し、
@@ -13,90 +11,6 @@ import javax.xml.stream.XMLStreamWriter;
 //画像はカードと同じ大きさのARGBで、スタックのバンドルにBMAP_<id>_L<n>.pngとして
 //保存され、カード/バックグラウンドのXMLに<paintLayer …/>で並ぶ。
 //HyperCardへの書き出しやサムネイルは、OCardBase.composite()で平らにした絵を使う。
-class PaintLayer {
-	String name;
-	BufferedImage image;
-	boolean visible = true;
-	int opacity = 100;                   //0〜100
-	int blend = MyPanel.blendMode.Copy;  //MyPanel.blendModeの値(Copy=通常)
-	boolean alphaLock;                   //描いても不透明度(アルファ)を変えない
-	boolean clipToBelow;                 //すぐ下のレイヤーの不透明な所だけ見せる
-	String fileName;                     //バンドル内のPNG名(未保存ならnull)
-
-	PaintLayer(String name, BufferedImage image){
-		this.name = name;
-		this.image = image;
-	}
-
-	//通常合成・不透明度100%・クリップ無し(単純にdrawImageで重ねられる)
-	boolean plain(){
-		return blend==MyPanel.blendMode.Copy && opacity>=100 && !clipToBelow;
-	}
-
-	PaintLayer copy(String newName){
-		PaintLayer l = new PaintLayer(newName, PaintUndo.copyInto(null, image));
-		l.visible = visible; l.opacity = opacity; l.blend = blend;
-		l.alphaLock = alphaLock; l.clipToBelow = clipToBelow;
-		return l;
-	}
-
-	long bytes(){
-		return image==null ? 0 : 4L*image.getWidth()*image.getHeight();
-	}
-
-	//----- 合成モードの名前(XML・HyperTalk・レイヤーパレット共通) -----
-	static final String[] BLEND_NAMES = {"Normal", "Blend", "Add", "Subtract", "Multiply", "Screen",
-		"Darken", "Lighten", "Difference", "Hue", "Color", "Saturation", "Luminosity"};
-
-	static String blendName(int mode){
-		if(mode<0 || mode>=BLEND_NAMES.length) return BLEND_NAMES[0];
-		return BLEND_NAMES[mode];
-	}
-
-	//名前→モード。知らない名前は-1
-	static int parseBlend(String name){
-		if(name==null) return -1;
-		String n = name.trim();
-		if(n.equalsIgnoreCase("Copy")) return MyPanel.blendMode.Copy;
-		for(int i=0; i<BLEND_NAMES.length; i++){
-			if(BLEND_NAMES[i].equalsIgnoreCase(n)) return i;
-		}
-		return -1;
-	}
-
-	//----- XML -----
-	void writeXML(XMLStreamWriter writer) throws javax.xml.stream.XMLStreamException {
-		writer.writeEmptyElement("paintLayer");
-		writer.writeAttribute("name", name==null ? "" : name);
-		if(fileName!=null) writer.writeAttribute("file", fileName);
-		writer.writeAttribute("visible", Boolean.toString(visible));
-		writer.writeAttribute("opacity", Integer.toString(opacity));
-		writer.writeAttribute("blend", blendName(blend));
-		writer.writeAttribute("alphaLock", Boolean.toString(alphaLock));
-		writer.writeAttribute("clip", Boolean.toString(clipToBelow));
-		writer.writeCharacters("\n\t\t");
-	}
-
-	//<paintLayer …/>のSTART_ELEMENTで呼ぶ。画像はまだ読まない(fileNameだけ)。
-	static PaintLayer readXML(XMLStreamReader reader){
-		PaintLayer l = new PaintLayer(attr(reader, "name", ""), null);
-		l.fileName = attr(reader, "file", null);
-		l.visible = Boolean.parseBoolean(attr(reader, "visible", "true"));
-		try{ l.opacity = Math.max(0, Math.min(100, Integer.parseInt(attr(reader, "opacity", "100")))); }catch(NumberFormatException e){}
-		int b = parseBlend(attr(reader, "blend", "Normal"));
-		l.blend = b<0 ? MyPanel.blendMode.Copy : b;
-		l.alphaLock = Boolean.parseBoolean(attr(reader, "alphaLock", "false"));
-		l.clipToBelow = Boolean.parseBoolean(attr(reader, "clip", "false"));
-		return l;
-	}
-
-	private static String attr(XMLStreamReader reader, String name, String def){
-		String v = reader.getAttributeValue(null, name);
-		return v==null ? def : v;
-	}
-}
-
-
 //レイヤーの合成。表示(MyPanel/MyLabel)、書き出し(HCExport)、レイヤーの結合で共通。
 class PaintLayers {
 
@@ -294,7 +208,7 @@ class PaintLayers {
 			l = new PaintLayer(nameOf(owner, 0)+" copy", PaintUndo.copyInto(null, owner.getSurface()));
 		}else{
 			PaintLayer src = g.layers.get(at-1);
-			l = src.copy(src.name+" copy");
+			l = src.with(src.name+" copy", PaintUndo.copyInto(null, src.image));
 		}
 		g.layers.add(at, l);
 		owner.setActiveLayer(at+1);

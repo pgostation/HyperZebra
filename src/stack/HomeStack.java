@@ -37,12 +37,12 @@ final class HomeStack {
 	static File folder(){
 		File found = folder;
 		if(found!=null) return found;
-		File beside = FOLDER, inState = new File(AppPaths.stateDirectory(), "home");
+		File beside = FOLDER, inState = new File(UiHost.get().appPathsStateDirectory(), "home");
 		if(bundledHome().isFile()) found = inState;
 		else if(exists(beside)) found = beside;
 		else if(exists(inState)) found = inState;
 		else if(System.getProperty("jpackage.app-path")!=null) found = inState;
-		else found = java.nio.file.Files.isWritable(beside.getAbsoluteFile().getParentFile().toPath()) ? beside : inState;
+		else found = Platform.get().isWritable(beside.getAbsoluteFile().getParentFile()) ? beside : inState;
 		folder = found;
 		return found;
 	}
@@ -74,8 +74,8 @@ final class HomeStack {
 		return made;
 	}
 
-	static File bundledHome(){ return new File(AppPaths.distributionDirectory(), "Support Files/home.hzb"); }
-	static File sampleApplication(){ return new File(AppPaths.distributionDirectory(), "Support Files/sampleHomeApp"); }
+	static File bundledHome(){ return new File(UiHost.get().appPathsDistributionDirectory(), "Support Files/home.hzb"); }
+	static File sampleApplication(){ return new File(UiHost.get().appPathsDistributionDirectory(), "Support Files/sampleHomeApp"); }
 
 	/** Unpack the clean Home template and extract Player resources only into the user's writable copy. */
 	static boolean install(File source, File application, File target){
@@ -104,7 +104,7 @@ final class HomeStack {
 			if(resources!=null && resources.length>0){
 				if(!HCResource.readResourceFork(resources, stack, APPLICATION_TYPES)) return false;
 				if(!HCData.waitForPictures(60_000L)) return false;
-				XMLwrite.writeOnce(stack);
+				UiHost.get().xMLwriteWriteOnce(stack);
 			}
 			deleteTree(target);
 			if(!scratch.renameTo(target)) return false;
@@ -147,7 +147,7 @@ final class HomeStack {
 	 * working directory (a packaged app), of its parent (the project tree) or of "resource". "Home" with its resource
 	 * fork (native or a "._Home" sidecar) is preferred, then a MacBinary "Home.bin". Null when there is none.
 	 */
-	static File playerHome(){ return playerHome(AppPaths.distributionDirectory(), new File("."), new File(".."), new File("resource")); }
+	static File playerHome(){ return playerHome(UiHost.get().appPathsDistributionDirectory(), new File("."), new File(".."), new File("resource")); }
 	/** As above, looking in the given folders in turn (the tests point it at a made-up distribution). */
 	static File playerHome(File... bases){
 		for(File base: bases){
@@ -187,7 +187,7 @@ final class HomeStack {
 				if(macBinary==null && applicationForkOfMacBinary(f)!=null) macBinary = f;
 				continue;
 			}
-			if(!MacApp68k.isApplication(f)) continue;
+			if(!UiHost.get().macApp68kIsApplication(f)) continue;
 			byte[] fork = HCConvert.getResourceForkBytes(f.getPath());
 			if(fork!=null && fork.length>0) return f;
 		}
@@ -296,7 +296,7 @@ final class HomeStack {
 		}
 		//the card and background pictures are decoded and written by other threads
 		if(!HCData.waitForPictures(60_000L)) System.err.println("Home stack: pictures of "+source+" were still being written");
-		XMLwrite.writeOnce(stack);
+		UiHost.get().xMLwriteWriteOnce(stack);
 		return stack.file.isFile();
 	}
 
@@ -310,7 +310,7 @@ final class HomeStack {
 	/** Whether a stack file (its _stack.xml or folder) is the Home stack. */
 	static boolean isHomeFile(String path){
 		if(path==null) return false;
-		String id = LauncherStore.identity(new File(path)), home = LauncherStore.identity(folder());
+		String id = UiHost.get().launcherStoreIdentity(new File(path)), home = UiHost.get().launcherStoreIdentity(folder());
 		return id!=null && id.equals(home);
 	}
 
@@ -408,10 +408,10 @@ final class HomeStack {
 		st.AddNewCard(cd.id);
 		return cd;
 	}
-	private static javax.xml.stream.XMLStreamReader elementReader(String xml, String element) throws Exception {
-		javax.xml.stream.XMLStreamReader reader = XmlSafe.input().createXMLStreamReader(new java.io.StringReader(xml));
+	private static XmlIn elementReader(String xml, String element) throws Exception {
+		XmlIn reader = Platform.get().xmlIn(new java.io.StringReader(xml));
 		while(reader.hasNext()){
-			if(reader.next()==javax.xml.stream.XMLStreamConstants.START_ELEMENT && reader.getLocalName().equals(element)) return reader;
+			if(reader.next()==XmlIn.START_ELEMENT && reader.getLocalName().equals(element)) return reader;
 		}
 		throw new IOException("no "+element);
 	}
@@ -444,7 +444,7 @@ final class HomeStack {
 			"on closeField\n  global UserName\n  put me into UserName\nend closeField\n\non exitField\n  closeField\nend exitField");
 		button(x, 2, "Text Arrows", 280, 142, 480, 162, "checkbox", 0, "true".equalsIgnoreCase(TUtil.compatibilityProperty("textArrows")), true,
 			"on mouseUp\n  set the textArrows to the hilite of me\nend mouseUp");
-		button(x, 3, "Power Keys", 280, 120, 480, 140, "checkbox", 0, PaintTool.powerKeys, true,
+		button(x, 3, "Power Keys", 280, 120, 480, 140, "checkbox", 0, UiHost.get().powerKeys(), true,
 			"on mouseUp\n  set the powerKeys to the hilite of me\nend mouseUp");
 		button(x, BLIND_TYPING_ID, "Blind Typing", 280, 164, 480, 184, "checkbox", 0, "true".equalsIgnoreCase(TUtil.compatibilityProperty("blindTyping")), true,
 			"on mouseUp\n  set the blindTyping to the hilite of me\nend mouseUp");

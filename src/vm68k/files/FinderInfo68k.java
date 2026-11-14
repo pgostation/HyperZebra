@@ -8,7 +8,7 @@ import java.nio.file.Files;
  * com.apple.FinderInfo extended attribute (through the xattr tool, since Java's
  * attribute view cannot reach Apple's namespace).
  */
-final class FinderInfo68k {
+class FinderInfo68k {
 	private FinderInfo68k(){}
 
 	/** 16 bytes of Finder info, or null when the host knows nothing about the file. */
@@ -27,15 +27,13 @@ final class FinderInfo68k {
 			byte[] afp=file.isFile()?afpInfo(file):null; // Windows: the stream write() keeps up to date, so it goes before any sidecar
 			if(afp!=null&&(afp[16]!=0||afp[20]!=0))return java.util.Arrays.copyOfRange(afp,16,32);
 			File sidecar=ResourceFile68k.AppleDouble.findSidecar(file);
-			if(sidecar!=null){byte[] fi=ResourceFile68k.AppleDouble.finderInfo(Files.readAllBytes(sidecar.toPath()));if(fi!=null&&(fi[0]!=0||fi[4]!=0)){byte[] info=new byte[16];System.arraycopy(fi,0,info,0,16);return info;}}
-			if(GMenu.isMacOSX()){
+			if(sidecar!=null){byte[] fi=ResourceFile68k.AppleDouble.finderInfo(Files68k.read(sidecar));if(fi!=null&&(fi[0]!=0||fi[4]!=0)){byte[] info=new byte[16];System.arraycopy(fi,0,info,0,16);return info;}}
+			if(HostXattr68k.macOS()){
 				byte[] attribute=nativeAttribute(file,FINDER_INFO_ATTRIBUTE);
 				if(attribute!=null){if(attribute.length>=16){byte[] info=new byte[16];System.arraycopy(attribute,0,info,0,16);return info;}}
 				else if(!nativeXattrAvailable()){ // the xattr tool: a process per file, only without the Foreign Function helper
-					Process p=new ProcessBuilder("xattr","-px",FINDER_INFO_ATTRIBUTE,file.getPath()).redirectErrorStream(true).start();
-					String out=new String(p.getInputStream().readAllBytes(),"US-ASCII");p.waitFor();
-					String hex=out.replaceAll("[^0-9A-Fa-f]","");
-					if(p.exitValue()==0&&hex.length()>=32){byte[] info=new byte[16];for(int i=0;i<16;i++)info[i]=(byte)Integer.parseInt(hex.substring(i*2,i*2+2),16);return info;}
+					byte[] read=HostXattr68k.read(file,FINDER_INFO_ATTRIBUTE);
+					if(read!=null&&read.length>=16){byte[] info=new byte[16];System.arraycopy(read,0,info,0,16);return info;}
 				}
 			}
 			byte[] pcExchange=file.isFile()?PcExchange.finderInfo(file):null; // a DOS disk's FINDER.DAT
@@ -61,9 +59,9 @@ final class FinderInfo68k {
 		else if(name.endsWith(".jpg")||name.endsWith(".jpeg")){type="JPEG";creator="ogle";}
 		else if(name.endsWith(".png")){type="PNGf";creator="ogle";}
 		else if(name.endsWith(".mid")||name.endsWith(".midi")){type="Midi";creator="TVOD";}
-		else if(MacApp68k.isApplication(file)){type="APPL";creator="????";}
+		else if(UiHost.get().macApp68kIsApplication(file)){type="APPL";creator="????";}
 		else if(isHyperCardStack(file)){type="STAK";creator="WILD";} // stacks copied without Finder info (HyperCard opens only 'STAK' files)
-		else if(StackBundle.hasHzbExtension(file)&&StackBundle.isPacked(file)){type="STAK";creator="WILD";} // a HyperZebra stack file is HyperCard's stack for externals: Files(folder,"STAK"), SFGetFile with a 'STAK' filter (DevStack's Files, CompactStacks) never saw one; opened by that name it is the stack's stand-in (StackFile68k)
+		else if(UiHost.get().stackBundleHasHzbExtension(file)&&UiHost.get().stackBundleIsPacked(file)){type="STAK";creator="WILD";} // a HyperZebra stack file is HyperCard's stack for externals: Files(folder,"STAK"), SFGetFile with a 'STAK' filter (DevStack's Files, CompactStacks) never saw one; opened by that name it is the stack's stand-in (StackFile68k)
 		if(type==null)return null;
 		byte[] info=new byte[16];for(int i=0;i<4;i++){info[i]=(byte)type.charAt(i);info[4+i]=(byte)creator.charAt(i);}return info;
 	}
@@ -71,7 +69,7 @@ final class FinderInfo68k {
 	/** A HyperCard stack file starts with its STAK block: size, then the 'STAK' block type. */
 	private static boolean isHyperCardStack(File file){
 		if(!file.isFile()||file.length()<64)return false;
-		try(java.io.InputStream in=Files.newInputStream(file.toPath())){byte[] head=in.readNBytes(8);
+		try(java.io.InputStream in=Files68k.in(file)){byte[] head=in.readNBytes(8);
 			return head.length==8&&(head[4]=='S'&&head[5]=='T'&&head[6]=='A'&&head[7]=='K'||
 				head[0]=='H'&&head[1]=='C'&&head[2]=='S'&&head[3]=='A'&&head[4]=='p'&&head[5]=='w'&&head[6]=='p'&&head[7]=='c');} // "HCSApwpc": a PowerPC code fragment in front of the stack
 		catch(IOException e){return false;}
@@ -94,9 +92,9 @@ final class FinderInfo68k {
 			}
 			File sidecar=ResourceFile68k.AppleDouble.sidecarOf(file),found=ResourceFile68k.AppleDouble.findSidecar(file);
 			byte[] fork=new byte[0],comment=null;
-			if(found!=null){byte[] data=Files.readAllBytes(found.toPath());byte[] existing=HCResource.extractResourceForkFromAppleDouble(data);if(existing!=null)fork=existing;comment=ResourceFile68k.AppleDouble.comment(data);}
+			if(found!=null){byte[] data=Files68k.read(found);byte[] existing=HCResource.extractResourceForkFromAppleDouble(data);if(existing!=null)fork=existing;comment=ResourceFile68k.AppleDouble.comment(data);}
 			byte[] fi=new byte[32];System.arraycopy(info,0,fi,0,16);
-			Files.write(sidecar.toPath(),ResourceFile68k.AppleDouble.build(fork,fi,comment));
+			Files68k.write(sidecar,ResourceFile68k.AppleDouble.build(fork,fi,comment));
 		}catch(Exception ignored){}
 	}
 
@@ -107,15 +105,12 @@ final class FinderInfo68k {
 	 */
 	static byte[] nativeFinderInfo(File file){
 		if(ResourceFile68k.WINDOWS){byte[] afp=afpInfo(file);return afp==null?null:java.util.Arrays.copyOfRange(afp,16,48);}
-		if(!GMenu.isMacOSX()||file==null||!file.exists())return null;
+		if(!HostXattr68k.macOS()||file==null||!file.exists())return null;
 		try{
 			byte[] attribute=nativeAttribute(file,FINDER_INFO_ATTRIBUTE);
 			if(attribute==null&&!nativeXattrAvailable()){
-				Process p=new ProcessBuilder("xattr","-px",FINDER_INFO_ATTRIBUTE,file.getPath()).redirectErrorStream(true).start();
-				String out=new String(p.getInputStream().readAllBytes(),"US-ASCII");p.waitFor();
-				String hex=out.replaceAll("[^0-9A-Fa-f]","");
-				if(p.exitValue()!=0||hex.length()<32)return null;
-				attribute=new byte[hex.length()/2];for(int i=0;i<attribute.length;i++)attribute[i]=(byte)Integer.parseInt(hex.substring(i*2,i*2+2),16);
+				attribute=HostXattr68k.read(file,FINDER_INFO_ATTRIBUTE);
+				if(attribute==null||attribute.length<16)return null;
 			}
 			if(attribute==null||attribute.length<16)return null;
 			byte[] info=new byte[32];System.arraycopy(attribute,0,info,0,Math.min(32,attribute.length));return info;
@@ -124,14 +119,9 @@ final class FinderInfo68k {
 
 	/** macOS: sets a file's com.apple.FinderInfo attribute (the 32 bytes of FInfo + FXInfo) and nothing else - no sidecar when it cannot. */
 	static boolean writeNative(File file,byte[] info32){
-		if(!GMenu.isMacOSX()||file==null||!file.exists()||info32==null||info32.length!=32)return false;
+		if(!HostXattr68k.macOS()||file==null||!file.exists()||info32==null||info32.length!=32)return false;
 		if(nativeXattrAvailable())return setNativeAttribute(file,FINDER_INFO_ATTRIBUTE,info32);
-		try{
-			StringBuilder hex=new StringBuilder();for(int i=0;i<32;i++)hex.append(String.format("%02X",info32[i]&0xff));
-			Process p=new ProcessBuilder("xattr","-wx",FINDER_INFO_ATTRIBUTE,hex.toString(),file.getPath()).redirectErrorStream(true).start();
-			p.getInputStream().readAllBytes();p.waitFor();
-			return p.exitValue()==0;
-		}catch(Exception e){return false;}
+		return HostXattr68k.write(file,FINDER_INFO_ATTRIBUTE,info32);
 	}
 
 	/** A text file HyperTalk's `open file` just made gets HyperCard's type and creator, TEXT/ttxt (HC 2.4 and J-2.3 measured):
@@ -183,29 +173,20 @@ final class FinderInfo68k {
 
 	/** macOS: an extended attribute of the file (null: none), through libc or else the xattr tool. */
 	static byte[] attribute(File file,String name){
-		if(!GMenu.isMacOSX()||file==null||!file.exists())return null;
+		if(!HostXattr68k.macOS()||file==null||!file.exists())return null;
 		if(nativeXattrAvailable())return nativeAttribute(file,name);
-		try{Process p=new ProcessBuilder("xattr","-px",name,file.getPath()).redirectErrorStream(true).start();
-			String out=new String(p.getInputStream().readAllBytes(),"US-ASCII");p.waitFor();
-			String hex=out.replaceAll("[^0-9A-Fa-f]","");if(p.exitValue()!=0||hex.isEmpty())return null;
-			byte[] b=new byte[hex.length()/2];for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(hex.substring(i*2,i*2+2),16);return b;}
-		catch(Exception e){return null;}
+		byte[] b=HostXattr68k.read(file,name);return b==null||b.length==0?null:b;
 	}
 	/** macOS: sets an extended attribute of the file; false when it could not. */
 	static boolean setAttribute(File file,String name,byte[] value){
-		if(!GMenu.isMacOSX()||file==null||!file.exists())return false;
+		if(!HostXattr68k.macOS()||file==null||!file.exists())return false;
 		if(nativeXattrAvailable())return setNativeAttribute(file,name,value);
-		try{StringBuilder hex=new StringBuilder();for(byte b:value)hex.append(String.format("%02X",b&0xff));
-			Process p=new ProcessBuilder("xattr","-wx",name,hex.toString(),file.getPath()).redirectErrorStream(true).start();
-			p.getInputStream().readAllBytes();p.waitFor();return p.exitValue()==0;}
-		catch(Exception e){return false;}
+		return HostXattr68k.write(file,name,value);
 	}
 	/** macOS: removes an extended attribute of the file (true also when it had none). */
 	static boolean removeAttribute(File file,String name){
-		if(!GMenu.isMacOSX()||file==null||!file.exists())return false;
+		if(!HostXattr68k.macOS()||file==null||!file.exists())return false;
 		if(attribute(file,name)==null)return true;
-		try{Process p=new ProcessBuilder("xattr","-d",name,file.getPath()).redirectErrorStream(true).start();
-			p.getInputStream().readAllBytes();p.waitFor();return p.exitValue()==0;}
-		catch(Exception e){return false;}
+		return HostXattr68k.remove(file,name);
 	}
 }

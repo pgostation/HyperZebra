@@ -15,7 +15,7 @@ import javax.swing.SwingUtilities;
  * Viruses that show only inside the code (ANTI, ZUC, T4) are not found here: they meet {@link ProgramGuard68k} when they spread.
  * The counterpart for stacks is {@link StackVirusScan}.
  */
-final class VirusScan68k {
+class VirusScan68k {
 	private VirusScan68k(){}
 
 	enum Choice{CANCEL,REPAIR,RUN}
@@ -96,10 +96,10 @@ final class VirusScan68k {
 	 * An IOException says it stays closed, for the launcher to show.
 	 */
 	static ResourceFile68k beforeLaunch(File file,ResourceFile68k rf) throws IOException {
-		if(Sandbox.allowsEverything())return rf;
+		if(Sandbox68k.allowsEverything())return rf;
 		Finding found=scan(rf,file.getName());
 		if(found==null)return rf;
-		String key=Sandbox.canonical(file);
+		String key=Sandbox68k.canonical(file);
 		if(kept.contains(key))return rf;
 		switch(ask(file,found)){
 			case RUN:kept.add(key);return rf;

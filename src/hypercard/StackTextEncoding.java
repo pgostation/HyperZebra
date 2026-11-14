@@ -63,7 +63,7 @@ enum StackTextEncoding {
 
 	StackTextEncoding(String displayName, String charsetName) {
 		this.displayName = displayName;
-		this.charset = charsetName == null ? null : Charset.forName(charsetName);
+		this.charset = charsetName == null ? null : Platform.get().optionalCharset(charsetName); //(null only in the headless core: GBK, Big5, EUC-KR)
 	}
 
 	String decode(byte[] data, int offset, int length) {
@@ -87,10 +87,9 @@ enum StackTextEncoding {
 
 	byte[] encodeReplacing(String text) {
 		try {
-			ByteBuffer bytes = outputCharset().newEncoder()
+			ByteBuffer bytes = Platform.questionMarks(outputCharset().newEncoder()
 				.onMalformedInput(CodingErrorAction.REPLACE)
-				.onUnmappableCharacter(CodingErrorAction.REPLACE)
-				.replaceWith(new byte[]{(byte)'?'})
+				.onUnmappableCharacter(CodingErrorAction.REPLACE))
 				.encode(java.nio.CharBuffer.wrap(text == null ? "" : text));
 			byte[] result = new byte[bytes.remaining()];
 			bytes.get(result);
@@ -102,8 +101,8 @@ enum StackTextEncoding {
 
 	private Charset outputCharset() {
 		if(this == JAPANESE) {
-			return Charset.isSupported("x-MacJapanese")
-				? Charset.forName("x-MacJapanese") : Charset.forName("windows-31j");
+			return Platform.get().charsetSupported("x-MacJapanese")
+				? Platform.get().charset("x-MacJapanese") : Platform.get().charset("windows-31j");
 		}
 		return charset;
 	}

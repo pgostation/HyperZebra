@@ -7,9 +7,6 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamWriter;
 
 
 public class XMLwrite {
@@ -120,65 +117,12 @@ public class XMLwrite {
 		File dir = file.getAbsoluteFile().getParentFile();
 		if(dir==null || !dir.isDirectory()) return "The folder is missing: "+(dir==null ? file.getPath() : dir.getPath());
 
-		XMLOutputFactory factory = XMLOutputFactory.newInstance();
-		 
-        StringWriter stringWriter = new StringWriter();
-        try {
-        	XMLStreamWriter writer = factory.createXMLStreamWriter(stringWriter);
-        	
-			writer.writeStartDocument("utf-8", "1.0");
-            writer.writeCharacters("\n");
-			//writer.writeDTD("<!DOCTYPE stackfile PUBLIC \"-//Apple, Inc.//DTD stackfile V 2.0//EN\" \"\" >");
-            writer.writeCharacters("\n");
-	        writer.writeStartElement("stackfile");
-            writer.writeCharacters("\n\t");
-
-	        stack.changed = false; //書き出す前に消す: 書き出し中の変更は再びtrueにするので次回に残る
-	        stack.writeXML(writer);
-	        stack.writeFontXML(writer);
-	        stack.writeStyleXML(writer);
-			for(int i=0 ;i<stack.bgCacheList.size(); i++){
-				OBackground bg = stack.bgCacheList.get(i);
-				if(bg.changed){ bg.changed = false; cleared.add(bg); }
-				bg.writeXML(writer);
-			}
-			if(stack.cardIdList.size()>=stack.cdCacheList.size()){
-				for(int i=0 ;i<stack.cardIdList.size(); i++){
-					int id = stack.cardIdList.get(i);
-					for(int j=0 ;j<stack.cdCacheList.size(); j++){
-						OCard cd = stack.cdCacheList.get(j);
-						if(cd.id == id){
-							if(cd.changed){ cd.changed = false; cleared.add(cd); }
-							cd.writeXML(writer);
-							break;
-						}
-					}
-				}
-			}else{
-				for(int i=0 ;i<stack.cdCacheList.size(); i++){
-					OCard cd = stack.cdCacheList.get(i);
-					if(cd.changed){ cd.changed = false; cleared.add(cd); }
-					cd.writeXML(writer);
-				} //これでは順番が狂ってしまう
-			}
-	        stack.rsrc.writeXML(writer);
-	        stack.rsrc.writePLTEXML(writer);
-	        stack.rsrc.writeAddColorXML(writer);
-	        stack.rsrc.writeXcmdXML(writer);
-	 
-	        writer.writeEndDocument();
-	 
-	        writer.close();
-		} catch (XMLStreamException e) {
-			e.printStackTrace();
-			return "Could not build the stack file: "+e.getMessage();
-		}
-
 		byte[] xml;
 		try {
-			xml = XmlText.encodeControlChars(stringWriter.toString()).getBytes("utf-8");
-		} catch (java.io.UnsupportedEncodingException e) {
-			return e.toString();
+			xml = StackXml.write(stack, cleared);
+		} catch (XmlException e) {
+			e.printStackTrace();
+			return "Could not build the stack file: "+e.getMessage();
 		}
 		//パスワード付きのスタックはフォルダを開いても中身(スクリプト・テキスト)が読めないよう封印する
 		if(StackProtection.sealsXml(stack)){
@@ -237,19 +181,7 @@ public class XMLwrite {
 		}
 	}
 	
-	boolean needsSave(){
-		if(stack.changed) return true;
-		ArrayList<OCard> cards = stack.cdCacheList;
-		ArrayList<OBackground> bgs = stack.bgCacheList;
-		if(cards==null || bgs==null) return false;
-		for(int i=0 ;i<cards.size(); i++){
-			if(cards.get(i).changed) return true;
-		}
-		for(int i=0 ;i<bgs.size(); i++){
-			if(bgs.get(i).changed) return true;
-		}
-		return false;
-	}
+	boolean needsSave(){ return StackXml.needsSave(stack); }
 
 	class saveThread extends Thread{
 		//暇なときは変更を監視

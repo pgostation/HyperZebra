@@ -10,10 +10,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 
 
@@ -197,7 +193,7 @@ public class Rsrc {
 			if(dir==null || isExternalFile(old.filename)) continue; //スタックの外のファイルはユーザのもの: 消さない
 			File oldFile = new File(dir, old.filename);
 			//同じファイルを別の登録(IDだけ変えたもの等)がまだ使っていればそのまま
-			if(oldFile.exists() && !work.isFileUsed(old.filename)) AppPaths.moveResourceToTrash(oldFile);
+			if(oldFile.exists() && !work.isFileUsed(old.filename)) UiHost.get().appPathsMoveResourceToTrash(oldFile);
 		}
 		//編集済みのファイルをスタックのフォルダへ(スタックの外のファイルはそのファイル自身へ書き戻す)
 		if(work.stagingDir!=null && work.stagingDir.isDirectory()){
@@ -234,7 +230,7 @@ public class Rsrc {
 		for(xcmdClass old : new ArrayList<xcmdClass>(xcmdNameMap.values())){
 			if(dir==null || isExternalFile(old.filename) || work.isFileUsed(old.filename)) continue;
 			File oldFile = new File(dir, old.filename);
-			if(oldFile.exists()) AppPaths.moveResourceToTrash(oldFile);
+			if(oldFile.exists()) UiHost.get().appPathsMoveResourceToTrash(oldFile);
 		}
 		if(work.stagingDir!=null && work.stagingDir.isDirectory()){
 			for(xcmdClass x : work.xcmdNameMap.values()){
@@ -401,8 +397,10 @@ public class Rsrc {
 		Found fond = foundByNameAll(name, "FOND");
 		if(fond!=null){
 			byte[] b = null;
-			try { b = java.nio.file.Files.readAllBytes(new File(fond.path()).toPath()); }
+			try { File ff = new File(fond.path()); if(ff.isFile()) b = Platform.get().readAllBytes(ff); }
 			catch(IOException | RuntimeException e){ }
+			//the browser player: the FOND is inside the packed stack (its StackSource), not a file
+			if(b==null) b = HzImages.bytes(fond.owner.ownerstack, fond.r.filename);
 			if(b!=null && b.length>=54){
 				int famID = (short)(((b[2]&0xFF)<<8)|(b[3]&0xFF));
 				int count = (((b[52]&0xFF)<<8)|(b[53]&0xFF))+1;
@@ -580,14 +578,14 @@ public class Rsrc {
 		return type;
 	}
 
-	public XMLStreamReader readXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readXML(XmlIn reader) throws Exception {
         String idStr = "0", typeStr = "", nameStr = "", fnameStr = "", leftStr = "0", topStr = "0";
         int attrs = 0;
         OptionInfo info = null;
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamConstants.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("id")){ idStr = reader.getElementText(); }
 	            	else if(elm.equals("type")){ typeStr = legacyToCurrentType(reader.getElementText()); }
@@ -605,7 +603,7 @@ public class Rsrc {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamConstants.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("media") || elm.equals("resource")){
 	            		addResource(Integer.valueOf(idStr), typeStr, nameStr, fnameStr, leftStr, topStr, info);
@@ -620,12 +618,12 @@ public class Rsrc {
 	    return reader;
 	}
 	
-	public XMLStreamReader readFontInfoXML(XMLStreamReader reader, FontInfo info) throws Exception {
+	public XmlIn readFontInfoXML(XmlIn reader, FontInfo info) throws Exception {
         int locCount = 0, offsetCount = 0, widthCount = 0;
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamConstants.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("firstChar")){ info.firstChar = (char)(int)(Integer.valueOf(reader.getElementText())); }
 	            	else if(elm.equals("lastChar")){ info.lastChar = (char)(int)(Integer.valueOf(reader.getElementText())); }
@@ -660,7 +658,7 @@ public class Rsrc {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamConstants.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("fontinfo")){
 	            		if(info.locs!=null && locCount<info.locs.length) info.locs = java.util.Arrays.copyOf(info.locs, locCount);
@@ -678,7 +676,7 @@ public class Rsrc {
 
 	
 	// XML保存
-	public void writeXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeXML(XmlOut writer) throws XmlException {
 		Iterator<rsrcClass> it = rsrcIdMap.values().iterator();
 		
 		while(it.hasNext()){
@@ -710,7 +708,7 @@ public class Rsrc {
 		}
 		
 
-		public void writeXMLOneRsrc(XMLStreamWriter writer) throws XMLStreamException
+		public void writeXMLOneRsrc(XmlOut writer) throws XmlException
 		{
 			writer.writeStartElement("media");
 		    writer.writeCharacters("\n\t\t");
@@ -934,7 +932,7 @@ public class Rsrc {
 		else if(ownerstack.file!=null){
 			File source = new File(this.ownerstack.file.getParent(),r.filename);
 			try {
-				if(source.exists()) AppPaths.moveResourceToTrash(source);
+				if(source.exists()) UiHost.get().appPathsMoveResourceToTrash(source);
 			} catch(java.io.IOException e) {
 				System.err.println("Could not move resource to trash: "+e.getMessage());
 				return false;
@@ -1025,36 +1023,7 @@ public class Rsrc {
 	//実際に必要になったタイミングで画像へデコードする。それ以外の拡張子
 	//(既に編集されてPNGになっている、または元々PICT/PBM形式等)は従来通り
 	//画像読み込みライブラリにまかせる。
-	private static BufferedImage loadImage(String path, String type){
-		if(path==null) return null;
-		BufferedImage bi = null;
-		try{
-			if(path.toLowerCase().endsWith(".data")){
-				byte[] b = java.nio.file.Files.readAllBytes(new File(path).toPath());
-				if("ICON".equals(type)) bi = HCResource.decodeICON(b);
-				else if("cicn".equals(type)) bi = HCResource.decodeCicn(b);
-				else if("CURS".equals(type)) bi = HCResource.decodeCURS(b);
-				else if("crsr".equals(type)) bi = HCResource.decodeCrsr(b);
-				else if("PAT#".equals(type)) bi = HCResource.decodePAT(b);
-				else if("ppat".equals(type)) bi = HCResource.decodePpat(b);
-				else if("Pdat".equals(type)) bi = PictureFile.loadPICT(b); //ColorizeHC's pictures: PICT data without the 512-byte file header
-				if(bi!=null) return bi;
-				//未知の型で.data拡張子の場合はここで諦めず、念のため下の
-				//通常の画像読み込みも試す(下のtry内で失敗してもnullを返すだけ)
-			}
-			bi = PictureFile.loadPbm(path);
-			if(bi==null){
-				bi = javax.imageio.ImageIO.read(new File(path));
-			}
-			if(bi==null){
-				bi = PictureFile.loadPICT(path);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-		return bi;
-	}
+	private static BufferedImage loadImage(String path, String type){ return UiHost.get().loadImage(path, type); }
 
 
 	//----------------
@@ -1102,7 +1071,7 @@ public class Rsrc {
 		int count = ownerstack==null || ownerstack.usingStacks==null ? 0 : ownerstack.usingStacks.size();
 		for(int i=-1; i<count; i++){
 			OStack stack = i<0 ? ownerstack : ownerstack.usingStacks.get(i);
-			if(stack==null || stack==PCARD.home) continue;
+			if(stack==null || stack==HZ.home) continue;
 			Rsrc owner = i<0 ? this : stack.rsrc;
 			if(owner==null) continue;
 			rsrcClass r = owner.rsrcIdMap.get("crsr"+id);
@@ -1285,7 +1254,7 @@ public class Rsrc {
 		markChanged();
 	}
 	
-	public XMLStreamReader readXCMDXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readXCMDXML(XmlIn reader) throws Exception {
         String idStr = "0", typeStr = "", nameStr = "", pathStr = "", platformStr = "", sizeStr = "";
         int attrs = 0;
         int count = reader.getAttributeCount();
@@ -1307,7 +1276,7 @@ public class Rsrc {
 	}
 
 	
-	public void writeXcmdXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeXcmdXML(XmlOut writer) throws XmlException {
 		Iterator<xcmdClass> it = xcmdNameMap.values().iterator();
 		xcmdClass xcmd;
 		while(it.hasNext()){
@@ -1354,13 +1323,13 @@ public class Rsrc {
 	//-------------
 	//AddColor関連
 	//-------------
-	public XMLStreamReader readAddColorXML(XMLStreamReader reader, boolean isBg) throws Exception {
+	public XmlIn readAddColorXML(XmlIn reader, boolean isBg) throws Exception {
         String idStr = "0";
         addcolorClass addColorOwner = null;
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamConstants.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName();
 		        	if(elm.equals("id")){ 
 		        		idStr = reader.getElementText(); 
@@ -1372,7 +1341,7 @@ public class Rsrc {
 			    		System.out.println("Element Text: " + reader.getElementText());
 			    	}
 	            }
-			    if (eventType == XMLStreamConstants.END_ELEMENT) {
+			    if (eventType == XmlIn.END_ELEMENT) {
 			    	String elm2 = reader.getLocalName();
 			    	if(elm2.equals("addcolorbackground")){
 			    		break;
@@ -1390,7 +1359,7 @@ public class Rsrc {
 	}
 	
 
-	public XMLStreamReader readAddColorObjXML(XMLStreamReader reader, addcolorClass parent) throws Exception {
+	public XmlIn readAddColorObjXML(XmlIn reader, addcolorClass parent) throws Exception {
         String typeStr = "", nameStr = "";
         boolean transparent = false, file = false;
         boolean visible = true;
@@ -1399,7 +1368,7 @@ public class Rsrc {
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamConstants.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName();
 		        	if(elm.equals("type")){ typeStr = reader.getElementText(); }
 		        	else if(elm.equals("id")){ id = Integer.valueOf(reader.getElementText()); }
@@ -1423,7 +1392,7 @@ public class Rsrc {
 			    		System.out.println("Element Text: " + reader.getElementText());
 			    	}
 	            }
-			    if (eventType == XMLStreamConstants.END_ELEMENT) {
+			    if (eventType == XmlIn.END_ELEMENT) {
 			    	String elm2 = reader.getLocalName();
 			    	if(elm2.equals("addcolorobject")){
 			    		break;
@@ -1451,10 +1420,10 @@ public class Rsrc {
 	
 	public static void setEnabledACObj(int number, boolean enabled){
 		//addcolorClassを探す
-		ArrayList<addcolorClass> cdList = PCARD.pc.stack.rsrc.addcolorList;
+		ArrayList<addcolorClass> cdList = HZ.stack().rsrc.addcolorList;
 		addcolorClass accd = null;
 		for(int i=0; i<cdList.size(); i++){
-			if(PCARD.pc.stack.curCard.id == cdList.get(i).id){
+			if(HZ.stack().curCard.id == cdList.get(i).id){
 				accd = cdList.get(i);
 				break;
 			}
@@ -1470,9 +1439,9 @@ public class Rsrc {
 	 *  colour object (rectangle/button/field) from now on - held in memory only, the stack's own colour stays as it was saved
 	 *  (変数コントローラー's Sample: the sliders change the screen colour; the next colorCard draws it). */
 	public static void setColorACObj(boolean bg, int number, Color color){
-		OCard card = PCARD.pc.stack.curCard;
+		OCard card = HZ.stack().curCard;
 		if(card==null) return;
-		for(addcolorClass c : PCARD.pc.stack.rsrc.addcolorList){
+		for(addcolorClass c : HZ.stack().rsrc.addcolorList){
 			boolean mine = bg ? c.isBg && card.bg!=null && c.id==card.bg.id : !c.isBg && c.id==card.id;
 			if(!mine) continue;
 			if(number>=0 && number<c.objList.size() && !(c.objList.get(number) instanceof PictObject)) c.objList.get(number).runColor = color;
@@ -1503,7 +1472,7 @@ public class Rsrc {
 			objList.add(new FldObject(id, bevel, color, visible));
 		}
 
-		public void writeAddColorXMLOne(XMLStreamWriter writer) throws XMLStreamException {
+		public void writeAddColorXMLOne(XmlOut writer) throws XmlException {
 			if(isBg){
 				writer.writeStartElement("addcolorbackground");
 			}else{
@@ -1715,7 +1684,7 @@ public class Rsrc {
 	
 
 	// XML保存
-	public void writeAddColorXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeAddColorXML(XmlOut writer) throws XmlException {
 		ArrayList<addcolorClass> cdList = addcolorList; //(以前はPCARD.pc.stackのものを書いていた: 表示中でないスタックの保存で食い違う)
 		for(int i=0; i<cdList.size(); i++){
 			cdList.get(i).writeAddColorXMLOne(writer);
@@ -1727,7 +1696,7 @@ public class Rsrc {
 	//-------------
 	//PLTE関連
 	//-------------
-	public XMLStreamReader readPlteXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readPlteXML(XmlIn reader) throws Exception {
         int id = 0;
         String name="";
         int WindowDef = 0;
@@ -1741,7 +1710,7 @@ public class Rsrc {
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamConstants.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("id")){ 
 		        		id = Integer.valueOf(reader.getElementText()); 
@@ -1786,7 +1755,7 @@ public class Rsrc {
 			    		System.out.println("Element Text: " + reader.getElementText());
 			    	}
 	            }
-			    if (eventType == XMLStreamConstants.END_ELEMENT) {
+			    if (eventType == XmlIn.END_ELEMENT) {
 			    	String elm2 = reader.getLocalName();
 			    	if(elm2.equals("palette")){
 			    		break;
@@ -1806,14 +1775,14 @@ public class Rsrc {
 	}
 	
 
-	public XMLStreamReader readPlteObjXML(XMLStreamReader reader, PlteClass parent) throws Exception {
+	public XmlIn readPlteObjXML(XmlIn reader, PlteClass parent) throws Exception {
         String message = "";
         Rectangle rect = new Rectangle();
         //int id=0; 
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamConstants.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName();
 		        	if(elm.equals("id")){ /*id =*/ Integer.valueOf(reader.getElementText()); }
 		        	else if(elm.equals("top")){ rect.y = Integer.valueOf(reader.getElementText()); }
@@ -1826,7 +1795,7 @@ public class Rsrc {
 			    		System.out.println("Element Text: " + reader.getElementText());
 			    	}
 	            }
-			    if (eventType == XMLStreamConstants.END_ELEMENT) {
+			    if (eventType == XmlIn.END_ELEMENT) {
 			    	String elm2 = reader.getLocalName();
 			    	if(elm2.equals("paletteobject")){
 			    		break;
@@ -1878,7 +1847,7 @@ public class Rsrc {
 			objList.add(new plteBtnObject(rect, message));
 		}
 
-		public void writePlteXMLOne(XMLStreamWriter writer) throws XMLStreamException {
+		public void writePlteXMLOne(XmlOut writer) throws XmlException {
 			writer.writeStartElement("palette");
 		    writer.writeCharacters("\n\t\t");
 		    {
@@ -1990,7 +1959,7 @@ public class Rsrc {
 	
 
 	// XML保存
-	public void writePLTEXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writePLTEXML(XmlOut writer) throws XmlException {
 		ArrayList<PlteClass> plteList = this.plteList;
 		for(int i=0; i<plteList.size(); i++){
 			plteList.get(i).writePlteXMLOne(writer);

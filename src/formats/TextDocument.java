@@ -42,7 +42,7 @@ final class TextDocument {
 		final String name;
 		private final StackTextEncoding mac;
 		private final Charset charset;
-		private Encoding(String name, StackTextEncoding mac, String charset){ this.name = name; this.mac = mac; this.charset = charset==null ? null : Charset.forName(charset); }
+		private Encoding(String name, StackTextEncoding mac, String charset){ this.name = name; this.mac = mac; this.charset = charset==null ? null : Platform.get().optionalCharset(charset); }
 		String decode(byte[] b, int from, int to){
 			if(to<=from) return "";
 			return mac!=null ? mac.decode(b, from, to-from) : new String(b, from, to-from, charset);
@@ -246,7 +246,7 @@ final class TextDocument {
 	}
 	private static boolean strict(byte[] b, int n, String charset){
 		try{
-			Charset.forName(charset).newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
+			Platform.get().charset(charset).newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
 				.decode(ByteBuffer.wrap(b, 0, cutAtCharacter(b, n, charset)));
 			return true;
 		}catch(CharacterCodingException e){ return false; }

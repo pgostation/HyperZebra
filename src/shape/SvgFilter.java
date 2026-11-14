@@ -7,10 +7,6 @@ import java.awt.image.Kernel;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
@@ -266,7 +262,7 @@ final class SvgFilter {
 		return fromSvg(filter);
 	}
 	private static String localName(Element e){return e.getLocalName()!=null?e.getLocalName():e.getTagName();}
-	void writeXML(XMLStreamWriter writer) throws XMLStreamException {
+	void writeXML(XmlOut writer) throws XmlException {
 		writer.writeStartElement("svgFilter");
 		for(Primitive p:primitives){writer.writeStartElement("primitive");writer.writeAttribute("name",p.type);
 			for(var attr:p.attributes.entrySet())writer.writeAttribute(attr.getKey(),attr.getValue());
@@ -274,14 +270,14 @@ final class SvgFilter {
 			writer.writeEndElement();
 		}writer.writeEndElement();
 	}
-	static SvgFilter readXML(XMLStreamReader reader) throws XMLStreamException {
+	static SvgFilter readXML(XmlIn reader) throws XmlException {
 		SvgFilter filter=new SvgFilter();Primitive current=null;
 		while(reader.hasNext()){int event=reader.next();
-			if(event==XMLStreamConstants.START_ELEMENT){String name=reader.getLocalName();
+			if(event==XmlIn.START_ELEMENT){String name=reader.getLocalName();
 				if(name.equals("primitive")){String type=reader.getAttributeValue(null,"name");if(!supported(type))continue;current=new Primitive(type);
 					for(int i=0;i<reader.getAttributeCount();i++){String key=reader.getAttributeLocalName(i);if(!key.equals("name"))current.attributes.put(key,reader.getAttributeValue(i));}}
 				else if(name.equals("mergeNode")&&current!=null)current.mergeInputs.add(reader.getAttributeValue(null,"in"));
-			}else if(event==XMLStreamConstants.END_ELEMENT){String name=reader.getLocalName();if(name.equals("primitive")&&current!=null){filter.primitives.add(current);current=null;}else if(name.equals("svgFilter"))break;}
+			}else if(event==XmlIn.END_ELEMENT){String name=reader.getLocalName();if(name.equals("primitive")&&current!=null){filter.primitives.add(current);current=null;}else if(name.equals("svgFilter"))break;}
 		}return filter;
 	}
 	@Override public boolean equals(Object other){return other instanceof SvgFilter f&&primitives.equals(f.primitives);}

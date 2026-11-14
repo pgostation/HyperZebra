@@ -429,7 +429,7 @@ public class HCData {
 		}
 		
 		//完全に読み取れたときだけピクチャの変換を開始
-		if(result) new HCData().new convertPictureThread().start();
+		if(result) Platform.get().start(new HCData().new convertPictureThread());
 		
 		return result;
 	}
@@ -475,6 +475,104 @@ public class HCData {
 		boolean cardPart;
 		String text = "";
 		ArrayList<styleClass> styles = new ArrayList<styleClass>();
+		/** the text's bytes (NULs left out) and each style run's byte offset in them, kept while {@link #oneByteFamilies}
+		 *  is not empty or the text lost bytes (U+FFFD), so that {@link #decodeOneByteFonts} can read it again */
+		byte[] raw;
+		int[] rawPositions;
+	}
+
+	/** Lower-case names of the stack's own Roman-script font families (HCResource.romanFamilyNames), set while a stack in a
+	 *  two-byte encoding is read; empty otherwise */
+	static java.util.Set<String> oneByteFamilies = java.util.Collections.emptySet();
+
+	/** Before reading a data fork: the families its resource fork carries (null or no fork: none) */
+	static void useStackFonts(byte[] resourceFork){
+		boolean twoByte = currentEncoding==StackTextEncoding.JAPANESE || currentEncoding==StackTextEncoding.SIMPLIFIED_CHINESE ||
+			currentEncoding==StackTextEncoding.TRADITIONAL_CHINESE || currentEncoding==StackTextEncoding.KOREAN;
+		oneByteFamilies = twoByte && resourceFork!=null ? HCResource.romanFamilyNames(resourceFork) : java.util.Collections.<String>emptySet();
+	}
+
+	/** A font the stack carries as a bitmap strike and the host cannot draw (so StackStrikeFont draws it): one glyph per byte */
+	static boolean oneByteFont(String name){
+		return name!=null && !oneByteFamilies.isEmpty() && oneByteFamilies.contains(name.trim().toLowerCase(java.util.Locale.ROOT))
+			&& !OObject.hostHasFamily(name);
+	}
+
+	/**
+	 * Reads again the runs of a part's text that are in a one-byte font ({@link #oneByteFont}): one character per byte, $A1-$DF as
+	 * half-width katakana (as Shift-JIS reads a single byte, and so as script literals hold them), other bytes from $80 as Mac OS
+	 * Roman. KanjiTalk draws a Roman-script font one byte at a time; read as Shift-JIS, two map-tile bytes became one kanji and
+	 * every later tile of the line moved left (ブレイヴパーソン's town maps in "biru font"), or an unpaired byte was lost.
+	 * {@code fieldFont} is the field's own font (runs that do not set one, and text before the first run).
+	 */
+	static void decodeOneByteFonts(PartContent content, String fieldFont, OStack stack){
+		if(content==null || content.raw==null) return;
+		byte[] raw = content.raw;
+		int runs = content.styles.size();
+		int[] starts = new int[runs+1];
+		String[] fonts = new String[runs+1];
+		starts[0] = 0; fonts[0] = fieldFont;
+		boolean any = oneByteFont(fieldFont) && (runs==0 || content.rawPositions[0]>0);
+		for(int i=0; i<runs; i++){
+			starts[i+1] = Math.max(starts[i], Math.min(raw.length, content.rawPositions[i]));
+			String font = fieldFont;
+			if(stack!=null) for(OStack.styleClass st : stack.styleList){
+				if(st.id!=content.styles.get(i).styleId) continue;
+				if(st.font>=0){
+					font = null;
+					for(OStack.fontClass f : stack.fontList) if(f.id==st.font){ font = f.name; break; }
+				}
+				break;
+			}
+			fonts[i+1] = font;
+			if(oneByteFont(font)) any = true;
+		}
+		//bytes Shift-JIS has no character for (a lead byte without its trail): kept as raw bytes, not lost as U+FFFD
+		//(ブレイヴパーソン's save slots: map tile bytes in Osaka fields, copied back into the map field by つづき)
+		boolean lost = currentEncoding==StackTextEncoding.JAPANESE && content.text.indexOf('�')>=0;
+		if(!any && !lost) return;
+		StringBuilder text = new StringBuilder(raw.length);
+		for(int i=0; i<=runs; i++){
+			int from = starts[i], to = i<runs ? starts[i+1] : raw.length;
+			if(i>0) content.styles.get(i-1).textPosition = text.length();
+			if(to<=from) continue;
+			if(oneByteFont(fonts[i])) text.append(decodeOneByte(raw, from, to));
+			else if(currentEncoding==StackTextEncoding.JAPANESE) text.append(MacJapaneseDecoder.decode(raw, from, to-from, true));
+			else text.append(currentEncoding.decode(raw, from, to-from));
+		}
+		content.text = sanitizeForXml(text.toString().replace('\r', '\n'));
+	}
+
+	private static java.nio.charset.Charset macRoman;
+	static String decodeOneByte(byte[] b, int from, int to){
+		if(macRoman==null) macRoman = Platform.get().charset("x-MacRoman");
+		StringBuilder sb = new StringBuilder(to-from);
+		for(int i=from; i<to; i++){
+			int c = b[i]&0xFF;
+			if(c<0x80) sb.append((char)c);
+			else if(c>=0xA1 && c<=0xDF) sb.append((char)(0xFF61+c-0xA1));
+			else sb.append(new String(b, i, 1, macRoman));
+		}
+		return sb.toString();
+	}
+
+	/** {@code bytes} without its NULs (readText leaves them out of the text), and {@code positions} moved to match */
+	private static void keepRaw(PartContent result, byte[] bytes, int[] positions){
+		if(oneByteFamilies.isEmpty() && !(currentEncoding==StackTextEncoding.JAPANESE && result.text.indexOf('�')>=0)) return;
+		byte[] out = new byte[bytes.length];
+		int[] removedBefore = new int[bytes.length+1];
+		int n = 0;
+		for(int i=0; i<bytes.length; i++){
+			removedBefore[i] = i-n;
+			if(bytes[i]!=0) out[n++] = bytes[i];
+		}
+		removedBefore[bytes.length] = bytes.length-n;
+		result.raw = java.util.Arrays.copyOf(out, n);
+		result.rawPositions = new int[positions.length];
+		for(int i=0; i<positions.length; i++){
+			int p = Math.max(0, Math.min(bytes.length, positions[i]));
+			result.rawPositions[i] = p-removedBefore[p];
+		}
 	}
 
 	/**
@@ -542,6 +640,7 @@ public class HCData {
 			}
 			byte[] bytes = text.toByteArray();
 			result.text = bytes.length==0 ? "" : readText(new DataInputStream(new java.io.ByteArrayInputStream(bytes)), bytes.length).str;
+			keepRaw(result, bytes, new int[0]);
 			return result;
 		}
 		int contentLength = readCode(dis, 2) & 0xFFFF;
@@ -564,7 +663,9 @@ public class HCData {
 			new java.io.ByteArrayInputStream(contentBytes));
 		int marker = readCode(content, 1);
 		if((marker & 0x80) == 0) {
+			int textStart = contentBytes.length - remaining(content);
 			result.text = readText(content, remaining(content)).str;
+			keepRaw(result, java.util.Arrays.copyOfRange(contentBytes, Math.min(textStart, contentBytes.length), contentBytes.length), new int[0]);
 			return result;
 		}
 
@@ -598,6 +699,9 @@ public class HCData {
 		result.text = readText(content, remaining(content)).str;
 		byte[] textBytes = java.util.Arrays.copyOfRange(contentBytes,
 			Math.min(textStartInContent, contentBytes.length), contentBytes.length);
+		int[] bytePositions = new int[result.styles.size()];
+		for(int k=0; k<bytePositions.length; k++) bytePositions[k] = result.styles.get(k).textPosition;
+		keepRaw(result, textBytes, bytePositions);
 		for(styleClass style: result.styles) {
 			int byteOffset = Math.max(0, Math.min(textBytes.length, style.textPosition));
 			style.textPosition = currentEncoding.decode(textBytes, 0, byteOffset).length();
@@ -645,7 +749,7 @@ public class HCData {
 		int n;
 		try {
 			dis.mark(maxLen);
-			n = dis.readNBytes(b, 0, maxLen);
+			n = Platform.readNBytes(dis, b, 0, maxLen);
 			dis.reset();
 		} catch (IOException e) {
 			return null;
@@ -976,9 +1080,7 @@ public class HCData {
 	//二者が同時に判定した場合にstart()を二重に呼んでIllegalThreadStateExceptionになる
 	static void startIfNew(Thread p){
 		if(p==null) return;
-		synchronized(p){
-			if(p.getState()==Thread.State.NEW) p.start();
-		}
+		Platform.get().startIfNew(p);
 	}
 
 	/** Waits until every picture of the stack just read has been decoded and written (the threads of {@link #threadList}
@@ -1129,7 +1231,7 @@ public class HCData {
 					//並行3スレッドまで
 					while(lastp2!=null && lastp2.isAlive()){
 						try {
-							Thread.sleep(20);
+							Platform.get().sleep(20);
 						} catch (InterruptedException e) {
 							e.printStackTrace();
 						}

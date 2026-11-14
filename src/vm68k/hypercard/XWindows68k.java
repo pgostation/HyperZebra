@@ -100,15 +100,7 @@ final class XWindows68k {
 		}
 	}
 
-	/** The palettes HideHCPalettes hid, which ShowHCPalettes brings back (only those). */
-	private static final java.util.List<java.awt.Window> hiddenPalettes=new java.util.ArrayList<java.awt.Window>();
-	private static void showHyperCardPalettes(boolean show){
-		synchronized(hiddenPalettes){
-			if(show){for(java.awt.Window w:hiddenPalettes)w.setVisible(true);hiddenPalettes.clear();return;}
-			java.awt.Window tools=PCARD.pc!=null&&PCARD.pc.toolbar!=null?PCARD.pc.toolbar.tb:null;
-			for(java.awt.Window w:new java.awt.Window[]{GMsg.msg,tools})if(w!=null&&w.isVisible()&&!hiddenPalettes.contains(w)){w.setVisible(false);hiddenPalettes.add(w);}
-		}
-	}
+	private static void showHyperCardPalettes(boolean show){Toolbox68k.PARTS.showHyperCardPalettes(show);}
 
 	private int newWindow(int rect,int title,boolean visible,int procId,boolean color,boolean floating) throws M68kException {
 		Toolbox68k tb=tb();int[] bounds=tb.windows.readRect(rect);String name=tb.readPascal(title);

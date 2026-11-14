@@ -69,27 +69,27 @@ msgctxt "menu"
 msgid "Print…"
 msgstr "Stampa…"
 
-#: GMenu.java GPreferencesDialog.java LlmTranslation.java VMTranslation.java
+#: GMenu.java GPreferencesDialog.java JapaneseMenuNames.java LlmTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Preferences…"
 msgstr "Preferenze…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Stack Settings…"
 msgstr "Impostazioni della pila…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Settings…"
 msgstr "Impostazioni…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "VM Settings…"
 msgstr "Impostazioni della macchina virtuale…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Mac Application Settings…"
 msgstr "Impostazioni delle applicazioni Mac…"
@@ -99,7 +99,7 @@ msgctxt "menu"
 msgid "Show Launcher"
 msgstr "Mostra avviatore"
 
-#: BuiltinCommandMessage.java GMenu.java HyperZebra.java TTalk.java
+#: BuiltinCommandMessage.java ExternalMenusUI.java GMenu.java HyperZebra.java JapaneseMenuNames.java TTalk.java
 msgctxt "menu"
 msgid "Quit HyperCard"
 msgstr "Esci da HyperCard"
@@ -184,7 +184,7 @@ msgctxt "menu"
 msgid "Copy Card"
 msgstr "Copia scheda"
 
-#: CardClipboard.java GMenu.java
+#: CardClipboard.java GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Card"
 msgstr "Incolla scheda"
@@ -209,117 +209,117 @@ msgctxt "menu"
 msgid "Resource…"
 msgstr "Risorsa…"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Sound Editor"
 msgstr "Editor audio"
 
-#: FileManager68k.java GAppInfoWindow.java ResEdit.java ShapeInfoPanel.java SoundEditor.java StandardFile68k.java StrEditor.java TTalk.java VariableWatcher.java
+#: FileManager68k.java GAppInfoWindow.java JapaneseMenuNames.java ResEdit.java ShapeInfoPanel.java SoundEditor.java StandardFile68k.java StrEditor.java TTalk.java VariableWatcher.java
 msgctxt "menu"
 msgid "Name"
 msgstr "Nome"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Duration"
 msgstr "Durata"
 
-#: SoundEditor.java VMTranslation.java
+#: JapaneseMenuNames.java SoundEditor.java VMTranslation.java
 msgctxt "menu"
 msgid "Format"
 msgstr "Formato"
 
-#: GVisualEffectWindow.java OObject.java SoundEditor.java
+#: GVisualEffectWindow.java JapaneseMenuNames.java SoundEditor.java WindowUI.java
 msgctxt "menu"
 msgid "Play"
 msgstr "Riproduci"
 
-#: GTranslateAheadDialog.java GVisualEffectWindow.java SoundEditor.java SoundInput68k.java VMTranslation.java
+#: GTranslateAheadDialog.java GVisualEffectWindow.java JapaneseMenuNames.java SoundEditor.java Toolbox68kDesktopParts.java Toolbox68kParts.java VMTranslation.java
 msgctxt "menu"
 msgid "Stop"
 msgstr "Interrompi"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "New Sound"
 msgstr "Nuovo suono"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Cut Selection"
 msgstr "Taglia selezione"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "Volume"
 msgstr "Volume"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Pitch"
 msgstr "Altezza"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "semitones"
 msgstr "semitoni"
 
-#: GLlmTranslationDialog.java SoundEditor.java VMTranslation.java
+#: GLlmTranslationDialog.java JapaneseMenuNames.java SoundEditor.java VMTranslation.java
 msgctxt "menu"
 msgid "Apply"
 msgstr "Applica"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Copy Selection"
 msgstr "Copia selezione"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Insert Silence"
 msgstr "Inserisci silenzio"
 
-#: SoundEditor.java TTalk.java
+#: JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "sec"
 msgstr "s"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Button"
 msgstr "Taglia pulsante"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Button"
 msgstr "Copia pulsante"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Button"
 msgstr "Incolla pulsante"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Button"
 msgstr "Elimina pulsante"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Field"
 msgstr "Taglia campo"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Field"
 msgstr "Copia campo"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Field"
 msgstr "Incolla campo"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Field"
 msgstr "Elimina campo"
@@ -414,12 +414,12 @@ msgctxt "menu"
 msgid "Show Balloons"
 msgstr "Mostra fumetti"
 
-#: GMenu.java
+#: GMenu.java GPaintMenu.java
 msgctxt "menu"
 msgid "Tool"
 msgstr "Strumento"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Hide ToolBar"
 msgstr "Nascondi barra degli strumenti"
@@ -449,7 +449,7 @@ msgctxt "menu"
 msgid "Objects"
 msgstr "Oggetti"
 
-#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: ExternalMenusUI.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java ShapeInfoPanel.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Font"
 msgstr "Font"
@@ -494,38 +494,47 @@ msgctxt "menu"
 msgid "Zoom"
 msgstr "Zoom"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 25%"
 msgstr "Zoom 25%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 50%"
 msgstr "Zoom 50%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 100%"
 msgstr "Zoom 100%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 200%"
 msgstr "Zoom 200%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 300%"
 msgstr "Zoom 300%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 400%"
 msgstr "Zoom 400%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 800%"
 msgstr "Zoom 800%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 1600%"
 msgstr "Zoom 1600%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 3200%"
 msgstr "Zoom 3200%"
@@ -574,26 +583,32 @@ msgctxt "menu"
 msgid "Drawing Grid Size"
 msgstr "Dimensioni della griglia di disegno"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 2"
 msgstr "Dimensioni della griglia di disegno 2"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 4"
 msgstr "Dimensioni della griglia di disegno 4"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 8"
 msgstr "Dimensioni della griglia di disegno 8"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 16"
 msgstr "Dimensioni della griglia di disegno 16"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 32"
 msgstr "Dimensioni della griglia di disegno 32"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 64"
 msgstr "Dimensioni della griglia di disegno 64"
@@ -622,38 +637,47 @@ msgctxt "menu"
 msgid "Multiple Space"
 msgstr "Spaziatura tra le forme"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 1"
 msgstr "Spaziatura tra le forme 1"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 2"
 msgstr "Spaziatura tra le forme 2"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 3"
 msgstr "Spaziatura tra le forme 3"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 4"
 msgstr "Spaziatura tra le forme 4"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 5"
 msgstr "Spaziatura tra le forme 5"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 6"
 msgstr "Spaziatura tra le forme 6"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 7"
 msgstr "Spaziatura tra le forme 7"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 8"
 msgstr "Spaziatura tra le forme 8"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 9"
 msgstr "Spaziatura tra le forme 9"
@@ -668,27 +692,27 @@ msgctxt "menu"
 msgid "Show Layers"
 msgstr "Mostra livelli"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "New Layer"
 msgstr "Nuovo livello"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Duplicate Layer"
 msgstr "Duplica livello"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Layer"
 msgstr "Elimina livello"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Merge Down"
 msgstr "Unisci al livello sottostante"
 
-#: GMenu.java GPaintMenu.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Flatten Layers"
 msgstr "Unisci tutti i livelli"
@@ -708,42 +732,42 @@ msgctxt "menu"
 msgid "Rename Layer…"
 msgstr "Rinomina livello…"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Card Layers"
 msgstr "Livelli della scheda"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Background Layers"
 msgstr "Livelli dello sfondo"
 
-#: PaintLayer.java
+#: JapaneseMenuNames.java PaintLayers.java
 msgctxt "menu"
 msgid "Card Paint"
 msgstr "Immagine della scheda"
 
-#: PaintLayer.java
+#: JapaneseMenuNames.java PaintLayers.java
 msgctxt "menu"
 msgid "Background Paint"
 msgstr "Immagine dello sfondo"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Alpha Lock"
 msgstr "Blocca trasparenza"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Clip to Below"
 msgstr "Ritaglia sul livello sottostante"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Blend Mode"
 msgstr "Metodo di fusione"
 
-#: PaintLayer.java Q3Metafile.java TUtil.java VMTranslation.java
+#: HeadlessProps.java PaintLayer.java Q3Metafile.java ToolsUI.java VMTranslation.java
 msgid "Normal"
 msgstr "Normale"
 
@@ -756,27 +780,27 @@ msgctxt "menu"
 msgid "Symmetry"
 msgstr "Simmetria"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Symmetry Off"
 msgstr "Simmetria disattivata"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Vertical Symmetry"
 msgstr "Simmetria verticale"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Horizontal Symmetry"
 msgstr "Simmetria orizzontale"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Quadrant Symmetry"
 msgstr "Simmetria quadrangolare"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Radial Symmetry…"
 msgstr "Simmetria radiale…"
@@ -824,22 +848,22 @@ msgctxt "menu"
 msgid "Color"
 msgstr "Colore"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Left"
 msgstr "Sposta a sinistra"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Right"
 msgstr "Sposta a destra"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Up"
 msgstr "Sposta su"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Down"
 msgstr "Sposta giù"
@@ -1011,7 +1035,7 @@ msgstr "Espandi di (pixel):"
 msgid "Shrink by (pixels):"
 msgstr "Riduci di (pixel):"
 
-#: GPaintMenu.java TTalk.java
+#: EditorsUI.java GPaintMenu.java TTalk.java
 msgid "No selection"
 msgstr "Nessuna selezione"
 
@@ -1129,7 +1153,7 @@ msgctxt "menu"
 msgid "Stamp"
 msgstr "Timbro"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Strength"
 msgstr "Forza"
@@ -1139,16 +1163,17 @@ msgctxt "menu"
 msgid "Transparency"
 msgstr "Trasparenza"
 
-#: GPaintDialog.java GPaintPalette.java
+#: GPaintDialog.java GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Gradation"
 msgstr "Sfumatura"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Angle"
 msgstr "Angolo"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Don't Fill"
 msgstr "Senza riempimento"
@@ -1173,17 +1198,17 @@ msgctxt "menu"
 msgid "New Shape"
 msgstr "Nuova forma"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Shape"
 msgstr "Taglia forma"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Shape"
 msgstr "Copia forma"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Shape"
 msgstr "Incolla forma"
@@ -1193,7 +1218,7 @@ msgctxt "menu"
 msgid "Shape Info…"
 msgstr "Informazioni sulla forma…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Edit Shapes"
 msgstr "Modifica forme"
@@ -1208,11 +1233,12 @@ msgctxt "menu"
 msgid "Export Card Image…"
 msgstr "Esporta immagine della scheda…"
 
-#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
+#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java JapaneseMenuNames.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Resource Translation…"
 msgstr "Traduzione delle risorse…"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Show Translation"
 msgstr "Mostra traduzione"
@@ -1252,12 +1278,12 @@ msgctxt "menu"
 msgid "New Field"
 msgstr "Nuovo campo"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "New Shape…"
 msgstr "Nuova forma…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Shape"
 msgstr "Elimina forma"
@@ -1402,7 +1428,7 @@ msgctxt "menu"
 msgid "HyperTalk Reference"
 msgstr "Riferimento HyperTalk"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "New Item"
 msgstr "Nuovo elemento"
@@ -1417,22 +1443,22 @@ msgctxt "menu"
 msgid "Create New Resource"
 msgstr "Crea una nuova risorsa"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "Get Resource Info…"
 msgstr "Informazioni risorsa…"
 
-#: ResEdit.java VMTranslation.java
+#: JapaneseMenuNames.java ResEdit.java VMTranslation.java
 msgctxt "menu"
 msgid "Duplicate"
 msgstr "Duplica"
 
-#: SoundEditor.java StrEditor.java
+#: JapaneseMenuNames.java SoundEditor.java StrEditor.java
 msgctxt "menu"
 msgid "Apply to Resource"
 msgstr "Applica alla risorsa"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Applied"
 msgstr "Applicato"
@@ -1447,7 +1473,7 @@ msgctxt "menu"
 msgid "Image Size…"
 msgstr "Dimensione dell'immagine…"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "View File"
 msgstr "Visualizza file"
@@ -1473,7 +1499,7 @@ msgstr "Impostazioni della pila"
 msgid "Settings"
 msgstr "Impostazioni"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "Settings…"
 msgstr "Impostazioni…"
 
@@ -1518,11 +1544,11 @@ msgstr "Impostazioni della macchina virtuale"
 msgid "Mac Application Settings"
 msgstr "Impostazioni delle applicazioni Mac"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "Stack Settings…"
 msgstr "Impostazioni della pila…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "VM Settings…"
 msgstr "Impostazioni della macchina virtuale…"
 
@@ -1654,9 +1680,11 @@ msgstr "Esegue alla velocità di un Mac 68040 / un iMac G3. Disattivato: alcuni 
 msgid "HyperTalk JIT compiler"
 msgstr "Compilatore JIT HyperTalk"
 
+#: GPreferencesDialog.java
 msgid "Runs scripts faster. Off: the interpreter only."
 msgstr "Esegue gli script più velocemente. Disattivato: solo l'interprete."
 
+#: GPreferencesDialog.java
 msgid "PowerPC JIT compiler"
 msgstr "Compilatore JIT PowerPC"
 
@@ -2176,7 +2204,7 @@ msgstr "Comando del controller"
 msgid "Types"
 msgstr "Tipi"
 
-#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java OButton.java PanelChooser.java PpcCarbon.java PpcGameSprockets.java TTalk.java
+#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java JapaneseMenuNames.java OButton.java PanelChooser.java PlayerLoop.java PpcCarbon.java PpcGameSprockets.java StandardMenus.java TTalk.java
 msgid "Button"
 msgstr "Pulsante"
 
@@ -2260,7 +2288,7 @@ msgstr "Maiuscole"
 msgid "Control"
 msgstr "Control"
 
-#: DiskImages.java FileManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperCard68kCallbacks.java ResEdit.java ResEditIndex.java TTalk.java VMTranslation.java
+#: DiskImages.java ExternalMenusUI.java FileManager68k.java GMenu.java GToolBar.java GamepadHost.java HeadlessMenus.java HyperCard68kCallbacks.java JapaneseMenuNames.java ResEdit.java ResEditIndex.java StandardMenus.java VMTranslation.java
 msgid "Delete"
 msgstr "Elimina"
 
@@ -2352,7 +2380,7 @@ msgstr "HyperCard e Macintosh sono marchi di Apple Inc. Questo progetto non è a
 msgid "Launcher"
 msgstr "Avviatore"
 
-#: GLauncher.java GMenu.java
+#: GLauncher.java GMenu.java JapaneseMenuNames.java
 msgid "Show Launcher"
 msgstr "Mostra avviatore"
 
@@ -2360,7 +2388,7 @@ msgstr "Mostra avviatore"
 msgid "Window"
 msgstr "Finestra"
 
-#: GLauncher.java GMenu.java HyperCardResources68k.java TTalk.java TUtil.java VMTranslation.java
+#: ExternalMenusUI.java GLauncher.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java WindowUI.java
 msgid "Tools"
 msgstr "Strumenti"
 
@@ -2408,7 +2436,7 @@ msgstr "Non riuscito"
 msgid "cannot list the folder"
 msgstr "impossibile elencare la cartella"
 
-#: GLauncher.java Q3.java TUtil.java VMTranslation.java
+#: GLauncher.java Q3.java VMTranslation.java WindowUI.java
 msgid "View"
 msgstr "Vista"
 
@@ -2508,7 +2536,7 @@ msgstr "24 bit"
 msgid "32-bit"
 msgstr "32 bit"
 
-#: BuiltinCommandMessage.java DeskAccessoryHost68k.java GAppInfoWindow.java GLauncher.java GMenu.java HyperCardResources68k.java IconEditor.java LlmTranslation.java MenuManager68k.java PCARD.java Q3.java ResEdit.java ResEditIndex.java ScriptEditor.java TTalk.java VMTranslation.java
+#: BuiltinCommandMessage.java DeskAccessoryHost68k.java ExternalMenusUI.java GAppInfoWindow.java GLauncher.java GMenu.java HyperCardResources68k.java IconEditor.java JapaneseMenuNames.java LlmTranslation.java MenuManager68k.java PCARD.java Q3.java ResEdit.java ResEditIndex.java ScriptEditor.java StandardMenus.java TTalk.java VMTranslation.java
 msgid "File"
 msgstr "File"
 
@@ -2584,7 +2612,7 @@ msgstr "Risorsa SIZE"
 msgid "preferred"
 msgstr "preferito"
 
-#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
+#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HeadlessProps.java HyperCard68kCallbacks.java HzCursors.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TalkImage.java Toolbox68k.java ToolsUI.java VMTranslation.java
 msgid "none"
 msgstr "nessuno"
 
@@ -2656,7 +2684,7 @@ msgstr "Posizioni"
 msgid "Home Folder"
 msgstr "Cartella Home"
 
-#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java StandardFile68k.java VMTranslation.java WorkingCopies.java
+#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java StandardFile68k.java VMTranslation.java VirusScan68k.java WorkingCopies.java
 msgid "Desktop"
 msgstr "Desktop"
 
@@ -2707,7 +2735,7 @@ msgstr "Pile"
 msgid "Mac program"
 msgstr "Programma Mac"
 
-#: GLauncher.java HyperTalkReference.java
+#: GLauncher.java HyperTalkReference.java PlayerSaving.java
 msgid "Stack"
 msgstr "Pila"
 
@@ -2715,11 +2743,11 @@ msgstr "Pila"
 msgid "running"
 msgstr "in esecuzione"
 
-#: BuiltinCommandMessage.java GLauncher.java IconServices68k.java MacApp68k.java MidiHost68k.java MiscManagers68k.java OStack.java PpcStdio.java ResEdit.java ScriptEditor.java ScriptLint.java TTalk.java TUtil.java
+#: BuiltinCommandMessage.java GLauncher.java IconServices68k.java MacApp68k.java MidiHost68k.java MiscManagers68k.java OStack.java PpcStdio.java ProgramsUI.java ResEdit.java ScriptLint.java TTalk.java TUtil.java TalkWords.java
 msgid "open"
 msgstr "aperto"
 
-#: EventManager68k.java GLauncher.java GMenu.java GStackWindow.java PCARD.java TTalk.java
+#: EventManager68k.java ExternalMenusUI.java GLauncher.java GMenu.java GStackWindow.java HeadlessMenus.java JapaneseMenuNames.java PCARD.java StandardMenus.java
 msgid "Close Stack"
 msgstr "Chiudi pila"
 
@@ -2755,7 +2783,7 @@ msgstr "Apri HyperZebra HD"
 msgid "Home stack not found"
 msgstr "Pila Home non trovata"
 
-#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
+#: AppPaths.java FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
 msgid "HyperZebra HD"
 msgstr "HyperZebra HD"
 
@@ -2763,7 +2791,7 @@ msgstr "HyperZebra HD"
 msgid "Drop programs or stacks here to open them."
 msgstr "Lascia programmi o pile qui per aprirli."
 
-#: CommToolbox68k.java FileManager68k.java GLauncher.java HyperCardResources68k.java PpcNavServices.java ResEdit.java ResEditIndex.java StandardFile68k.java VMTranslation.java
+#: PlayerUiHost.java
 msgid "Open"
 msgstr "Apri"
 
@@ -2795,7 +2823,7 @@ msgstr "Impostazioni di \"{0}\"…"
 msgid "Colors, screen size and speed for one program"
 msgstr "Colori, dimensione dello schermo e velocità per un programma"
 
-#: FieldTextMenus.java GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java JapaneseMenuNames.java TTalk.java
 msgid "Other…"
 msgstr "Altro…"
 
@@ -2835,7 +2863,7 @@ msgstr "Rimuovi {0} elementi dalla cronologia"
 msgid "Clear History"
 msgstr "Cancella la cronologia"
 
-#: AppleEvents68k.java GAppInfoWindow.java GLauncher.java GMenu.java LlmTranslation.java MenuManager68k.java TTalk.java VMTranslation.java
+#: AppleEvents68k.java ExternalMenusUI.java GAppInfoWindow.java GLauncher.java GMenu.java JapaneseMenuNames.java LlmTranslation.java MenuManager68k.java TTalk.java VMTranslation.java
 msgid "Quit"
 msgstr "Esci"
 
@@ -3089,7 +3117,7 @@ msgstr "Dialoghi di file ampi per i programmi Mac (data, dimensione, tipo e ordi
 msgid "Save PICT files that Mac programs create as PNG, and show them PNG files as PICT"
 msgstr "Salva i file PICT che i programmi Mac creano come PNG e mostra i file PNG come PICT"
 
-#: OStack.java PCARD.java
+#: PCARD.java ProgramsUI.java
 msgid "Can't launch the Mac application."
 msgstr "Non è possibile avviare l'applicazione Mac."
 
@@ -3153,19 +3181,19 @@ msgstr "vuole elencare la cartella:"
 msgid "wants to run the program:"
 msgstr "Vuole eseguire il programma:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to open a TCP connection to:"
 msgstr "vuole aprire una connessione TCP a:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to accept TCP connections on:"
 msgstr "desidera accettare connessioni TCP su:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to send and receive UDP packets on:"
 msgstr "Vuole inviare e ricevere pacchetti UDP su:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to look up the host name:"
 msgstr "Vuole cercare il nome host:"
 
@@ -3177,7 +3205,7 @@ msgstr "Vuole eseguire un programma di questo computer:"
 msgid "wants to run an AppleScript:"
 msgstr "vuole eseguire un AppleScript:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to record from the microphone."
 msgstr "Vuole registrare dal microfono."
 
@@ -3324,7 +3352,7 @@ msgstr "Tutti i colori"
 msgid "Thousands of colors"
 msgstr "Migliaia di colori"
 
-#: GAppInfoWindow.java GPreferencesDialog.java
+#: GAppInfoWindow.java GPreferencesDialog.java IndexedScreenText.java
 msgid "256 colors"
 msgstr "256 colori"
 
@@ -3352,7 +3380,7 @@ msgstr "Editor di script"
 msgid "Script is not saved."
 msgstr "Lo script non è salvato."
 
-#: ScriptEditor.java
+#: PlayerUiHost.java ScriptEditor.java StationeryPads.java
 msgid "Save"
 msgstr "Salva"
 
@@ -3384,7 +3412,7 @@ msgstr "Salvare le modifiche allo script di “%1” prima di chiudere?"
 msgid "The resources could not be saved."
 msgstr "Le risorse non sono state salvate."
 
-#: DiskImages.java GMenu.java PpcUrlAccess.java ResSession.java VMTranslation.java
+#: DiskImages.java GMenu.java PpcUrlAccess.java ResSession.java VMTranslation.java WebExport.java
 msgid "Untitled"
 msgstr "Senza titolo"
 
@@ -3412,7 +3440,7 @@ msgstr "%1 delle risorse incollate hanno lo stesso ID o nome di risorse già pre
 msgid "Unique ID"
 msgstr "ID univoco"
 
-#: ResClipboard.java ScriptEditor.java
+#: PlayerUiHost.java
 msgid "Replace"
 msgstr "Sostituisci"
 
@@ -3511,7 +3539,7 @@ msgstr "Larghezza:"
 msgid "Height:"
 msgstr "Altezza:"
 
-#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java TTalk.java
+#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java PlayerUiHost.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java StationeryPads.java TTalk.java WebExport.java
 msgid "Cancel"
 msgstr "Annulla"
 
@@ -3523,11 +3551,11 @@ msgstr "Script"
 msgid "Debug"
 msgstr "Debug"
 
-#: HyperCardResources68k.java ScriptEditor.java TTalk.java TUtil.java VariableWatcher.java
+#: HyperCardResources68k.java JapaneseMenuNames.java ScriptEditor.java TTalk.java VariableWatcher.java WindowUI.java
 msgid "Variable Watcher"
 msgstr "Monitoraggio variabili"
 
-#: HyperCardResources68k.java MessageWatcher.java ScriptEditor.java TTalk.java TUtil.java
+#: HyperCardResources68k.java JapaneseMenuNames.java MessageWatcher.java ScriptEditor.java TTalk.java WindowUI.java
 msgid "Message Watcher"
 msgstr "Monitoraggio messaggi"
 
@@ -3543,7 +3571,7 @@ msgstr "Nome"
 msgid "Value"
 msgstr "Valore"
 
-#: CardWindow68k.java GMenu.java GMsg.java MessageWatcher.java TTalk.java TUtil.java
+#: CardWindow68k.java ExternalMenusUI.java GMenu.java GMsg.java JapaneseMenuNames.java MessageWatcher.java PlayerUiHost.java StandardMenus.java TUtil.java WindowUI.java
 msgid "Message"
 msgstr "Messaggio"
 
@@ -3598,6 +3626,7 @@ msgstr "Metti in pausa lo script per cambiare i valori."
 msgid "globals"
 msgstr "Globali"
 
+#: TalkJit.java
 msgid "locals"
 msgstr "Locali"
 
@@ -3941,7 +3970,7 @@ msgstr "Nuovo colore"
 msgid "Original color (click to restore)"
 msgstr "Colore originale (clic per ripristinare)"
 
-#: Q3.java StrEditor.java TXcmd.java
+#: Q3.java StrEditor.java
 msgid "String"
 msgstr "Stringa"
 
@@ -3985,11 +4014,11 @@ msgstr "Nuovo"
 msgid "unreadable"
 msgstr "illeggibile"
 
-#: PpcCoreFoundation.java StrEditor.java
+#: PpcCoreFoundation.java StrEditor.java TalkJit.java
 msgid "strings"
 msgstr "stringhe"
 
-#: StrEditor.java
+#: StrEditor.java TTalk.java TalkWords.java
 msgid "bytes"
 msgstr "byte"
 
@@ -4090,16 +4119,17 @@ msgctxt "menu"
 msgid "Other Colors…"
 msgstr "Altri colori…"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Foreground Color"
 msgstr "Colore di primo piano"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Brush Size"
 msgstr "Dimensione del pennello"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Hardness"
 msgstr "Durezza"
@@ -4109,27 +4139,27 @@ msgctxt "menu"
 msgid "Opacity"
 msgstr "Opacità"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Spacing"
 msgstr "Spaziatura"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Stabilizer"
 msgstr "Stabilizzatore"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Pen Pressure"
 msgstr "Pressione penna"
 
-#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java JapaneseMenuNames.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgctxt "menu"
 msgid "Size"
 msgstr "Dimensione"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Line Size"
 msgstr "Spessore della linea"
@@ -4139,27 +4169,27 @@ msgctxt "menu"
 msgid "Draw Filled"
 msgstr "Disegna pieno"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Spray Size"
 msgstr "Dimensione dello spruzzo"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Polygon Sides"
 msgstr "Lati del poligono"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Color Tolerance"
 msgstr "Tolleranza colore"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Fill Tolerance"
 msgstr "Tolleranza di riempimento"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Eraser Size"
 msgstr "Dimensione della gomma"
@@ -4179,17 +4209,17 @@ msgctxt "menu"
 msgid "Fill Style"
 msgstr "Stile di riempimento"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Color / Pattern"
 msgstr "Colore / Motivo"
 
-#: GToolOptions.java Q3Metafile.java
+#: GToolOptions.java JapaneseMenuNames.java Q3Metafile.java
 msgctxt "menu"
 msgid "Linear"
 msgstr "Lineare"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Radial"
 msgstr "Radiale"
@@ -4199,7 +4229,7 @@ msgctxt "menu"
 msgid "Texture"
 msgstr "Texture"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Custom Texture"
 msgstr "Texture personalizzata"
@@ -4214,42 +4244,42 @@ msgctxt "menu"
 msgid "Texture from Selection"
 msgstr "Texture dalla selezione"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Wood"
 msgstr "Legno"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Marble"
 msgstr "Marmo"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Clouds"
 msgstr "Nubi"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Sand"
 msgstr "Sabbia"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Granite"
 msgstr "Granito"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Brick"
 msgstr "Mattone"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Canvas"
 msgstr "Tela"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Water"
 msgstr "Acqua"
@@ -4289,67 +4319,67 @@ msgctxt "menu"
 msgid "Export All Patterns…"
 msgstr "Esporta tutti i motivi…"
 
-#: AuthDialog.java GPaintPalette.java
+#: AuthDialog.java GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Background Color"
 msgstr "Colore di sfondo"
 
-#: AuthDialog.java
+#: AuthDialog.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Text Color"
 msgstr "Colore del testo"
 
-#: FieldTextMenus.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GMenu.java HyperCardResources68k.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Plain"
 msgstr "Normale"
 
-#: FieldTextMenus.java GFontDialog.java PpcAtsui.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java GMenu.java HeadlessMenus.java JapaneseMenuNames.java PpcAtsui.java ShapeInfoPanel.java TTalk.java TUtil.java VMTranslation.java
 msgctxt "menu"
 msgid "Bold"
 msgstr "Grassetto"
 
-#: FieldTextMenus.java GFontDialog.java PpcAtsui.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java PpcAtsui.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Italic"
 msgstr "Corsivo"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Underline"
 msgstr "Sottolineato"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Outline"
 msgstr "Contorno"
 
-#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java TTalk.java VMTranslation.java
+#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java PartInfo.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Shadow"
 msgstr "Ombreggiato"
 
-#: FieldTextMenus.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Condense"
 msgstr "Condensato"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Extend"
 msgstr "Espanso"
 
-#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java Q3.java TTalk.java
+#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java Q3.java TTalk.java
 msgctxt "menu"
 msgid "Group"
 msgstr "Gruppo"
 
-#: FieldTextMenus.java GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java JapaneseMenuNames.java TTalk.java
 msgctxt "menu"
 msgid "Other…"
 msgstr "Altro…"
 
-#: FieldTextMenus.java
+#: FieldTextMenus.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Text Color…"
 msgstr "Colore del testo…"
@@ -4525,11 +4555,11 @@ msgstr "Canale alfa"
 msgid "Font"
 msgstr "Font"
 
-#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java JapaneseMenuNames.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgid "Size"
 msgstr "Dimensione"
 
-#: FieldTextMenus.java GMenu.java HyperCardResources68k.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
+#: ExternalMenusUI.java FieldTextMenus.java GMenu.java HyperCardResources68k.java JapaneseMenuNames.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
 msgid "Style"
 msgstr "Stile"
 
@@ -4612,7 +4642,7 @@ msgstr "Si è verificato un errore nella lettura dei dati dello stack MacBinary 
 msgid "Resource data is not found."
 msgstr "I dati delle risorse non sono stati trovati."
 
-#: OStack.java
+#: StacksUI.java
 msgid "This version of Java Runtime is not supported streaming API for XML."
 msgstr "Questa versione di Java Runtime non supporta l'API di streaming per XML."
 
@@ -4624,7 +4654,7 @@ msgstr "Si è verificato un errore nella lettura del file XML."
 msgid "XML end tag is not found."
 msgstr "Il tag di fine XML non è stato trovato."
 
-#: XMLRead.java
+#: SwingUiHost.java
 msgid "The stack is opened read-only."
 msgstr "La pila è aperta in sola lettura."
 
@@ -4772,7 +4802,7 @@ msgstr "Questo tipo di immagine su disco non può ancora essere aperta."
 msgid "Mounting the disk image"
 msgstr "Montaggio dell'immagine del disco"
 
-#: TTalk.java
+#: WindowUI.java
 msgid "Can't mount the disk image."
 msgstr "Impossibile montare l'immagine disco."
 
@@ -6061,17 +6091,17 @@ msgctxt "reference"
 msgid "Properties"
 msgstr "Proprietà"
 
-#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java OButton.java PanelChooser.java PpcCarbon.java PpcGameSprockets.java TTalk.java
+#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java JapaneseMenuNames.java OButton.java PanelChooser.java PlayerLoop.java PpcCarbon.java PpcGameSprockets.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Button"
 msgstr "Pulsante"
 
-#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GScriptReference.java GToolBar.java HyperTalkReference.java PanelChooser.java TTalk.java
+#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GScriptReference.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PanelChooser.java PlayerLoop.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Field"
 msgstr "Campo"
 
-#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GToolBar.java HyperTalkReference.java PanelChooser.java Q3.java ShapeEditor.java ShapeInfoPanel.java TTalk.java
+#: CardUI.java ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PanelChooser.java PlayerLoop.java Q3.java ShapeEditor.java ShapeInfoPanel.java SwingUiHost.java TTalk.java
 msgctxt "reference"
 msgid "Shape"
 msgstr "Forma"
@@ -6081,12 +6111,12 @@ msgctxt "reference"
 msgid "Card"
 msgstr "Scheda"
 
-#: GMenu.java GPaintMenu.java GToolBar.java HyperTalkReference.java ShapeInfoPanel.java TTalk.java TUtil.java
+#: ExternalMenusUI.java GMenu.java GPaintMenu.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PlayerLoop.java ProgramsUI.java ShapeInfoPanel.java StandardMenus.java TUtil.java
 msgctxt "reference"
 msgid "Background"
 msgstr "Sfondo"
 
-#: GLauncher.java HyperTalkReference.java
+#: GLauncher.java HyperTalkReference.java PlayerSaving.java
 msgctxt "reference"
 msgid "Stack"
 msgstr "Pila"
@@ -6106,7 +6136,7 @@ msgctxt "reference"
 msgid "Menu"
 msgstr "Menu"
 
-#: CommToolbox68k.java GLayerPalette.java GMenu.java GPaintMenu.java HyperCardResources68k.java HyperTalkReference.java IconEditor.java PaintFile.java PaintTool.java PpcRuntime.java TTalk.java
+#: CommToolbox68k.java GLayerPalette.java GMenu.java GPaintMenu.java HyperCardResources68k.java HyperTalkReference.java IconEditor.java JapaneseMenuNames.java PaintFile.java PaintTool.java PpcRuntime.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Paint"
 msgstr "Disegno"
@@ -7294,12 +7324,12 @@ msgctxt "reference"
 msgid "A list allowing several lines"
 msgstr "Un elenco che consente diverse righe"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgctxt "reference"
 msgid "Wide margins"
 msgstr "Margini ampi"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgctxt "reference"
 msgid "Fixed line height"
 msgstr "Altezza della linea fissa"
@@ -7488,7 +7518,7 @@ msgctxt "reference"
 msgid "Loops"
 msgstr "Riproduzione in ciclo"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "reference"
 msgid "Volume"
 msgstr "Volume"
@@ -8675,12 +8705,12 @@ msgctxt "shape"
 msgid "Contrast"
 msgstr "Contrasto"
 
-#: GMenu.java GPaintMenu.java GPaintPalette.java HyperCardResources68k.java IconEditor.java PaintTool.java PpcRuntime.java ShapeFilterPanel.java
+#: GMenu.java GPaintMenu.java GPaintPalette.java HyperCardResources68k.java IconEditor.java JapaneseMenuNames.java PaintTool.java PpcRuntime.java ShapeFilterPanel.java StandardMenus.java
 msgctxt "shape"
 msgid "Invert"
 msgstr "Inverti"
 
-#: CompactColorChooserPanel.java GLayerPalette.java GToolOptions.java ShapeFilterPanel.java
+#: CompactColorChooserPanel.java GLayerPalette.java GToolOptions.java JapaneseMenuNames.java ShapeFilterPanel.java
 msgctxt "shape"
 msgid "Opacity"
 msgstr "Opacità"
@@ -8789,7 +8819,7 @@ msgstr "Usa i suoi menu o rilascia i documenti che vuoi aprire qui."
 msgid "Closing this window quits the application."
 msgstr "Chiudendo questa finestra si chiude l'applicazione."
 
-#: TalkCollection.java
+#: TTalk.java TalkCollection.java
 msgid "An array or a dictionary is required"
 msgstr "È necessario un array o un dizionario"
 
@@ -8797,11 +8827,10 @@ msgstr "È necessario un array o un dizionario"
 msgid "Invalid collection data"
 msgstr "Dati di collezione non validi"
 
-#: TalkCollection.java
 msgid "Collection is too large"
 msgstr "La collezione è troppo grande"
 
-#: TalkCollection.java
+#: TalkCollection.java TalkLive.java
 msgid "Array index is too large"
 msgstr "L'indice dell'array è troppo grande"
 
@@ -8821,7 +8850,7 @@ msgstr "La condizione per {0} richiede true o false: {1}"
 msgid "The wait duration is not a number: {0}"
 msgstr "La durata dell'attesa non è un numero: {0}"
 
-#: TTalk.java TXcmd.java
+#: PlayerExternals68k.java TTalk.java TXcmd.java
 msgid "Too much handler recursion: {0} [{1}]"
 msgstr "Troppa ricorsione dei gestori: {0} [{1}]"
 
@@ -8841,6 +8870,7 @@ msgstr "Impossibile trovare end repeat"
 msgid "Cannot understand the arguments to repeat with"
 msgstr "Non riesco a capire gli argomenti a repeat with"
 
+#: TTalk.java
 msgid "Cannot understand the arguments of {0}"
 msgstr "Impossibile capire gli argomenti di {0}"
 
@@ -8852,11 +8882,11 @@ msgstr "repeat with richiede un valore start e to"
 msgid "repeat with requires an end value"
 msgstr "repeat with richiede un valore finale"
 
-#: TTalk.java
+#: TTalk.java TalkJit.java
 msgid "repeat with requires integer bounds"
 msgstr "repeat with richiede limiti interi"
 
-#: TTalk.java
+#: TTalk.java TalkJit.java
 msgid "The repeat count is not a number: {0}"
 msgstr "Il conteggio delle ripetizioni non è un numero: {0}"
 
@@ -8876,11 +8906,11 @@ msgstr "Non riesco a capire pass"
 msgid "Misplaced end"
 msgstr "end fuori posto"
 
-#: TTalk.java
+#: TTalk.java ToolsUI.java
 msgid "choose tool requires an integer from 1 to 18"
 msgstr "choose tool richiede un numero intero from 1 to 18"
 
-#: TTalk.java
+#: TTalk.java ToolsUI.java
 msgid "No such tool: \"{0}\""
 msgstr "Non esiste uno strumento del genere: \"{0}\""
 
@@ -8908,7 +8938,7 @@ msgstr "Impossibile identificare la scheda o lo sfondo con l'immagine"
 msgid "menuItem requires of menu"
 msgstr "menuItem richiede of menu"
 
-#: GMenu.java TTalk.java
+#: GMenu.java HeadlessMenus.java TTalk.java
 msgid "No such menu: {0}"
 msgstr "Nessun menu del genere: {0}"
 
@@ -9056,7 +9086,7 @@ msgstr "send richiede to"
 msgid "Cannot understand send to"
 msgstr "Non riesco a capire send to"
 
-#: TTalk.java
+#: FilesUI.java TTalk.java
 msgid "No such stack: {0}"
 msgstr "Nessuna pila del genere: {0}"
 
@@ -9068,83 +9098,83 @@ msgstr "Impossibile aprire la pila: {0}"
 msgid "Cannot identify the object to send the message to"
 msgstr "Impossibile identificare l'oggetto a cui inviare il messaggio"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand edit"
 msgstr "Non riesco a capire edit"
 
-#: TTalk.java
+#: EditorsUI.java ScriptWeb.java
 msgid "File access was denied: {0}"
 msgstr "L'accesso al file è stato negato: {0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "edit requires of"
 msgstr "edit richiede of"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand edit of"
 msgstr "Non riesco a capire edit of"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot identify the object to edit"
 msgstr "Impossibile identificare l'oggetto da modificare"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "This stack's scripts cannot be viewed (cantPeek)"
 msgstr "Gli script di questo stack non possono essere visualizzati (cantPeek)"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot edit {0}"
 msgstr "Impossibile modificare {0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand export"
 msgstr "Non riesco a capire export"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "export paint requires to file"
 msgstr "export paint richiede to file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand export paint to file"
 msgstr "Non riesco a capire export paint to file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "No image to export"
 msgstr "Nessuna immagine da esportare"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not export to file: {0}"
 msgstr "Impossibile esportare nel file: {0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "{0} requires a width in pixels"
 msgstr "{0} richiede una larghezza in pixel"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "The width for {0} must be a number: {1}"
 msgstr "La larghezza per {0} deve essere un numero: {1}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "The width for {0} must be at least 0"
 msgstr "La larghezza per {0} deve essere almeno 0"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand import"
 msgstr "Non riesco a capire import"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "import paint requires from file"
 msgstr "import paint richiede from file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand import paint from file"
 msgstr "Non riesco a capire import paint from file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not read file: {0}"
 msgstr "Impossibile leggere il file: {0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not read the file as an image"
 msgstr "Impossibile leggere il file come immagine"
 
@@ -9192,39 +9222,39 @@ msgstr "Impossibile capire pop: {0}"
 msgid "Missing container for pop card {0}"
 msgstr "Contenitore mancante per pop card {0}"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for click at"
 msgstr "Coordinate mancanti per click at"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for click at"
 msgstr "Impossibile interpretare le coordinate per click at"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot understand click"
 msgstr "Non riesco a capire click"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for drag from"
 msgstr "Coordinate mancanti per drag from"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for drag from"
 msgstr "Impossibile interpretare le coordinate per drag from"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing from"
 msgstr "Manca from"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for drag to"
 msgstr "Coordinate mancanti per drag to"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for drag to"
 msgstr "Impossibile interpretare le coordinate per drag to"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing to"
 msgstr "Manca to"
 
@@ -9264,7 +9294,6 @@ msgstr "controlKey richiede un codice carattere valido"
 msgid "Cannot understand reset"
 msgstr "Non riesco a capire reset"
 
-#: TTalk.java
 msgid "Cannot understand delete"
 msgstr "Non riesco a capire delete"
 
@@ -9300,11 +9329,11 @@ msgstr "Non riesco a capire domenu"
 msgid "Cannot understand copy (only copy template is supported)"
 msgstr "Impossibile capire la copia (è supportato solo copy template)"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand request"
 msgstr "Non riesco a capire request"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "request requires from program"
 msgstr "request richiede from program"
 
@@ -9312,19 +9341,19 @@ msgstr "request richiede from program"
 msgid "Cannot identify the card for {0}"
 msgstr "Impossibile identificare la scheda per {0}"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "Cannot identify the stack to save"
 msgstr "Impossibile identificare lo stack da salvare"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "save requires as <filename>"
 msgstr "save richiede as <nomefile>"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "This stack cannot be saved"
 msgstr "Questa pila non può essere salvata"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "Missing destination for save as"
 msgstr "Destinazione mancante per save as"
 
@@ -9356,11 +9385,11 @@ msgstr "Il testo può essere selezionato solo nei campi e nei pulsanti pop-up"
 msgid "select supports only buttons, fields, shapes and text"
 msgstr "Select supporta solo pulsanti, campi, forme e testo"
 
-#: TTalk.java
+#: ToolsUI.java
 msgid "Cannot understand choose"
 msgstr "Non riesco a capire choose"
 
-#: TTalk.java
+#: ToolsUI.java
 msgid "Tool \"{0}\" is not yet supported"
 msgstr "Lo strumento \"{0}\" non è ancora supportato"
 
@@ -9448,7 +9477,7 @@ msgstr "read richiede until o for"
 msgid "Cannot understand read from file for"
 msgstr "Non riesco a capire read from file for"
 
-#: TTalk.java
+#: TTalk.java TUtil.java TalkBinary.java
 msgid "A number is required here: {0}"
 msgstr "Qui è richiesto un numero: {0}"
 
@@ -9616,23 +9645,23 @@ msgstr "with richiede shiftKey/optionKey/commandKey/controlKey: {0}"
 msgid "Movie does not exist: {0}"
 msgstr "Il filmato non esiste: {0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Missing object to print"
 msgstr "Oggetto mancante da stampare"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "The card count for print … cards is not a number: {0}"
 msgstr "Il numero di schede per print … cards non è un numero: {0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "The card count for print … cards must be at least 1: {0}"
 msgstr "Il numero di schede per print … cards deve essere almeno 1: {0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "print card from requires to"
 msgstr "print card from richiede to"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand the coordinates in print card from"
 msgstr "Impossibile capire le coordinate in print card from"
 
@@ -9700,7 +9729,7 @@ msgstr "or richiede valori booleani (true/false)"
 msgid "Cannot interpret {0} {1}"
 msgstr "Impossibile interpretare {0} {1}"
 
-#: OsaScript.java TTalk.java
+#: OsaScript.java TTalk.java TalkJit.java UiHost.java
 msgid "Cannot interpret {0}"
 msgstr "Impossibile interpretare {0}"
 
@@ -10079,15 +10108,15 @@ msgstr "L'espressione regolare è troppo complessa"
 msgid "Unimplemented XCMD/XFCN: {0}"
 msgstr "XCMD/XFCN non implementato: {0}"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Called an unsupported Mac API ({1})"
 msgstr "{0}: è stata chiamata un'API Mac non supportata ({1})"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Aborted"
 msgstr "{0}: Interrotto"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Cannot read the XCMD/XFCN resource ({1})"
 msgstr "{0}: Impossibile leggere la risorsa XCMD/XFCN ({1})"
 
@@ -10095,7 +10124,7 @@ msgstr "{0}: Impossibile leggere la risorsa XCMD/XFCN ({1})"
 msgid "No card to copy"
 msgstr "Nessuna scheda da copiare"
 
-#: CardClipboard.java
+#: CardClipboard.java HeadlessMenus.java
 msgid "Cannot copy card: {0}"
 msgstr "Impossibile copiare la scheda: {0}"
 
@@ -10107,7 +10136,7 @@ msgstr "Nessuna scheda da incollare"
 msgid "No destination to paste into"
 msgstr "Nessuna destinazione in cui incollare"
 
-#: CardClipboard.java
+#: CardClipboard.java HeadlessMenus.java
 msgid "Cannot paste card: {0}"
 msgstr "Impossibile incollare la scheda: {0}"
 
@@ -10127,11 +10156,11 @@ msgstr "È richiesto un oggetto JSON"
 msgid "Invalid JSON (position {0}): {1}"
 msgstr "JSON non valido (posizione {0}): {1}"
 
-#: ScriptEditor.java
+#: TalkWords.java
 msgid "there is not requires a/an"
 msgstr "there is not richiede a/an"
 
-#: ScriptEditor.java
+#: TalkWords.java
 msgid "there is requires a/an"
 msgstr "there is richiede a/an"
 
@@ -10162,15 +10191,19 @@ msgstr "Divisione per zero: x mod 0"
 msgid "Division by zero: x div 0"
 msgstr "Divisione per zero: x div 0"
 
-#: TTalk.java TUtil.java
+#: PlayerUiHost.java TTalk.java TUtil.java ToolsUI.java WindowUI.java
 msgid "A number is required here"
 msgstr "Qui è richiesto un numero"
 
 #: TUtil.java
+msgid "Not a scrolling field."
+msgstr "Questo campo non è scorrevole."
+
+#: TUtil.java WindowUI.java
 msgid "A rectangle is required here"
 msgstr "Qui è richiesto un rettangolo"
 
-#: TUtil.java
+#: TUtil.java WindowUI.java
 msgid "Coordinates are required here"
 msgstr "Le coordinate sono richieste qui"
 
@@ -10230,7 +10263,7 @@ msgstr "Il numero di family non è un numero: {0}"
 msgid "family must be between 1 and 15: {0}"
 msgstr "family deve essere compreso tra 1 e 15: {0}"
 
-#: TUtil.java
+#: PlayerUiHost.java UiHost.java WindowUI.java
 msgid "palette requires a palette name"
 msgstr "palette richiede un nome palette"
 
@@ -10238,19 +10271,19 @@ msgstr "palette richiede un nome palette"
 msgid "rect requires four coordinates"
 msgstr "rect richiede quattro coordinate"
 
-#: TUtil.java
+#: ToolsUI.java UiHost.java
 msgid "No such pattern"
 msgstr "Nessun motivo del genere"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} requires 8, 16, 32 or 64 (ppat format)"
 msgstr "{0} richiede 8, 16, 32 o 64 (formato ppat)"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "Incorrect imageData length ({0} bytes required)"
 msgstr "Lunghezza imageData errata ({0} byte richiesti)"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "pattern has no property {0}"
 msgstr "pattern non ha la proprietà {0}"
 
@@ -10502,110 +10535,110 @@ msgstr "userLevel richiede un numero intero from 1 to 5"
 msgid "A boolean is required here"
 msgstr "Un booleano è richiesto qui"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "editBkgnd requires userLevel 3 or higher"
 msgstr "editBkgnd richiede userLevel 3 o superiore"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "multiSpace must be between 1 and {0}"
 msgstr "multiSpace deve essere compreso tra 1 e {0}"
 
 msgid "polySides must be between 3 and 50"
 msgstr "polySides deve essere compreso tra 3 e 50"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "gradient requires off, linear, radial or texture"
 msgstr "Il gradiente richiede off, lineare, radiale o texture"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "fillTexture requires a built-in texture name or an image file: {0}"
 msgstr "fillTexture richiede un nome di texture integrato o un file immagine: {0}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "fillTolerance must be between 0 and 100"
 msgstr "fillTolerance deve essere compreso tra 0 e 100"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushSize must be between 1 and 256"
 msgstr "brushSize deve essere compreso tra 1 e 256"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushHardness must be between 0 and 100"
 msgstr "brushHardness deve essere compreso tra 0 e 100"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "smudgeStrength must be between 1 and 100"
 msgstr "smudgeStrength deve essere compreso tra 1 e 100"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "stampSource requires \"x,y\""
 msgstr "stampSource richiede \"x,y\""
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushOpacity must be between 1 and 100"
 msgstr "brushOpacity deve essere compreso tra 1 e 100"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushSpacing must be between 1 and 200"
 msgstr "brushSpacing deve essere compreso tra 1 e 200"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushPressure must be size, opacity, both or none"
 msgstr "brushPressure deve essere size, opacity, both o none"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "Can't set the penPressure"
 msgstr "Impossibile impostare penPressure"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} must be between 0 and 98"
 msgstr "{0} deve essere compreso tra 0 e 98"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoom requires a number (%)"
 msgstr "zoom richiede un numero (%)"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoom must be between {0} and {1}"
 msgstr "zoom deve essere compreso tra {0} e {1}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoomOrigin requires a point (x,y)"
 msgstr "zoomOrigin richiede un punto (x,y)"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "gridSize must be between 1 and {0}"
 msgstr "gridSize deve essere compreso tra 1 e {0}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "No such layer: {0}"
 msgstr "Nessun livello di questo tipo: {0}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "layerOpacity must be between 0 and 100"
 msgstr "layerOpacity deve essere compreso tra 0 e 100"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "layerBlend requires a blend mode name (Normal, Multiply, etc.)"
 msgstr "layerBlend richiede un nome della modalità di fusione (Normale, Moltiplica, ecc.)"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetry requires none, vertical, horizontal, quadrant or radial"
 msgstr "La simmetria non richiede nessuno, verticale, orizzontale, quadrante o radiale"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetryAxes must be between {0} and {1}"
 msgstr "symmetryAxes deve essere compreso tra {0} e {1}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetryCenter requires \"x,y\""
 msgstr "symmetryCenter richiede \"x,y\""
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "lineSize requires a number"
 msgstr "lineSize richiede un numero"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} must be between 1 and 40"
 msgstr "{0} deve essere compreso tra 1 e 40"
 
@@ -10796,7 +10829,7 @@ msgstr "File audio non supportato per il suono \"{0}\""
 msgid "Cannot open sound \"{0}\""
 msgstr "Impossibile aprire il suono \"{0}\""
 
-#: FieldTable.java
+#: FieldTableData.java
 msgid "columnWidths requires comma-separated widths such as \"120,80,200\""
 msgstr "columnWidths richiede larghezze separate da virgole come \"120,80,200\""
 
@@ -10852,7 +10885,7 @@ msgstr "Impossibile passare a una forma di testo"
 msgid "{0} requires {1} numbers"
 msgstr "{0} richiede {1} numeri"
 
-#: OObject.java
+#: UiHost.java WindowUI.java
 msgid "Cannot set zoomed on this window"
 msgstr "Impossibile impostare zoomed su questa finestra"
 
@@ -10896,19 +10929,19 @@ msgstr "matchText richiede una stringa, un'espressione regolare e variabili di r
 msgid "matchChunk requires a string, a regular expression and optional position variables"
 msgstr "matchChunk richiede una stringa, un'espressione regolare e variabili di posizione opzionali"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set visible on this object?"
 msgstr "Impossibile impostare visible su questo oggetto?"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set left on this object?"
 msgstr "Impossibile impostare left su questo oggetto?"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set top on this object?"
 msgstr "Impossibile impostare top su questo oggetto?"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set topleft on this object?"
 msgstr "Impossibile impostare topleft su questo oggetto?"
 
@@ -10916,7 +10949,7 @@ msgstr "Impossibile impostare topleft su questo oggetto?"
 msgid "Cannot set loc on this object?"
 msgstr "Impossibile impostare loc su questo oggetto?"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set rect on this object?"
 msgstr "Impossibile impostare rect su questo oggetto?"
 
@@ -11086,7 +11119,7 @@ msgstr "HyperCard menu non disponibile in HyperZebra: {0}"
 msgid "line {0} of {1}"
 msgstr "riga {0} di {1}"
 
-#: ScriptDebugger.java TTalk.java TXcmd.java
+#: EditorsUI.java PlayerExternals68k.java ScriptDebugger.java TTalk.java TXcmd.java
 msgid "user abort."
 msgstr "interruzione da parte dell'utente."
 
@@ -11110,7 +11143,7 @@ msgstr "Disattivato: il pulsante viene invertito quando evidenziato, come in Hyp
 msgid "Translation Settings"
 msgstr "Impostazioni di traduzione"
 
-#: GAppSettingsDialog.java GLauncher.java GMenu.java
+#: GAppSettingsDialog.java GLauncher.java GMenu.java JapaneseMenuNames.java
 msgid "Translation Settings…"
 msgstr "Impostazioni di traduzione…"
 
@@ -11119,7 +11152,7 @@ msgctxt "menu"
 msgid "Translation Settings…"
 msgstr "Impostazioni di traduzione…"
 
-#: GLauncher.java PpcRuntime.java
+#: GLauncher.java PpcLibraries.java PpcRuntime.java
 msgid "Translation"
 msgstr "Traduzione"
 
@@ -11271,7 +11304,7 @@ msgctxt "menu"
 msgid "Individual Stack Settings…"
 msgstr "Impostazioni proprie della pila…"
 
-#: GAppSettingsDialog.java GLauncher.java GMenu.java StackSettings.java
+#: GAppSettingsDialog.java GLauncher.java GMenu.java JapaneseMenuNames.java StackSettings.java
 msgid "Individual Stack Settings…"
 msgstr "Impostazioni proprie della pila…"
 
@@ -11319,7 +11352,7 @@ msgstr "Zoom, tasti, controller e conferma degli accessi per una pila"
 msgid "Not a HyperZebra stack"
 msgstr "Non è una pila HyperZebra"
 
-#: GAppSettingsDialog.java GMenu.java
+#: GAppSettingsDialog.java GMenu.java JapaneseMenuNames.java
 msgid "Zoom"
 msgstr "Zoom"
 
@@ -11355,11 +11388,11 @@ msgstr "Per usarli, metti il pannello di controllo Kaleidoscope in Control Panel
 msgid "Lets more than one line be selected in a list field (Auto select, table or outline). It does not limit typing."
 msgstr "Consente di selezionare più righe in un campo elenco (selezione automatica, tabella o struttura). Non limita la digitazione."
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgid "Button Info"
 msgstr "Informazioni pulsante"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgid "Field Info"
 msgstr "Informazioni campo"
 
@@ -11619,7 +11652,7 @@ msgstr "Togli dal pannello"
 msgid "Panel “{0}” · {1} parts"
 msgstr "Pannello «{0}» · {1} parti"
 
-#: GLauncher.java GLlmTranslationDialog.java GTranslationSettingsDialog.java MacAppHost.java
+#: GLauncher.java GLlmTranslationDialog.java GTranslationSettingsDialog.java JapaneseMenuNames.java MacAppHost.java
 msgctxt "menu"
 msgid "Resource Translation with AI Chat…"
 msgstr "Traduzione delle risorse con chat IA…"
@@ -11860,7 +11893,7 @@ msgstr "Oggetto inesistente"
 msgid "set without to"
 msgstr "set senza to"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand reply"
 msgstr "reply non compreso"
 
@@ -11979,7 +12012,7 @@ msgstr "Ricerca del programma di installazione di Tesseract…"
 msgid "The Tesseract installer was not found."
 msgstr "Programma di installazione di Tesseract non trovato."
 
-#: TesseractInstall.java
+#: TesseractInstall.java WebAotBuild.java
 msgid "Cancelled."
 msgstr "Annullato."
 
@@ -11991,7 +12024,7 @@ msgstr "Il programma di installazione di Tesseract è aperto: installalo, poi to
 msgid "Install the tesseract-ocr packages of your system."
 msgstr "Installa i pacchetti tesseract-ocr del tuo sistema."
 
-#: TesseractInstall.java
+#: TesseractInstall.java WebAotBuild.java
 msgid "Downloading failed: {0}"
 msgstr "Download non riuscito: {0}"
 
@@ -12131,7 +12164,7 @@ msgstr "Non è un file audio o video."
 msgid "Loop"
 msgstr "Ripeti"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgid "Volume"
 msgstr "Volume"
 
@@ -12431,107 +12464,805 @@ msgstr "Annullare questo editore? Il documento non invierà più edizioni."
 msgid "Cancel this subscriber? The document stops getting editions."
 msgstr "Annullare questo abbonato? Il documento non riceverà più edizioni."
 
+#: StationeryPads.java
 msgid "Stationery Pad"
 msgstr "Modello"
 
+#: StationeryPads.java
 msgid "\"{0}\" is a stationery pad: a new document is made from it and opened."
 msgstr "«{0}» è un modello: da esso viene creato un nuovo documento, che viene aperto."
 
+#: StationeryPads.java
 msgid "Name of the new document:"
 msgstr "Nome del nuovo documento:"
 
+#: StationeryPads.java
 msgid "{0} copy"
 msgstr "{0} copia"
 
+#: StationeryPads.java
 msgid "\"{0}\" already exists. Choose another name."
 msgstr "«{0}» esiste già. Scegliere un altro nome."
 
+#: StationeryPads.java
 msgid "The new document could not be made: {0}"
 msgstr "Impossibile creare il nuovo documento: {0}"
 
+#: HomeGuard.java
 msgid "Home Stack Changed"
 msgstr "Stack Home modificato"
 
+#: HomeGuard.java
 msgid "Something outside HyperZebra changed the Home stack's file while it was open. HyperZebra's own copy has been saved over that change."
 msgstr "Qualcosa di esterno a HyperZebra ha modificato il file dello stack Home mentre era aperto. La copia di HyperZebra è stata salvata sopra quella modifica."
 
+#: HomeGuard.java
 msgid "The Home stack's scripts were changed outside HyperZebra. Scripts in Home run in every stack."
 msgstr "Gli script dello stack Home sono stati modificati fuori da HyperZebra. Gli script di Home vengono eseguiti in tutti gli stack."
 
+#: HomeGuard.java
 msgid "Keep Home As It Is"
 msgstr "Lascia Home così com'è"
 
+#: HomeGuard.java
 msgid "Restore the Last Copy"
 msgstr "Ripristina l'ultima copia"
 
+#: StackGuard.java
 msgid "Handlers added or changed: {0}"
 msgstr "Gestori aggiunti o modificati: {0}"
 
+#: StackVirusScan.java
 msgid "Virus Found"
 msgstr "Virus trovato"
 
+#: StackVirusScan.java
 msgid "The stack \"{0}\" carries the MerryXmas virus, which copies itself into the Home stack and into every stack you open."
 msgstr "Lo stack «{0}» contiene il virus MerryXmas, che si copia nello stack Home e in tutti gli stack che apri."
 
+#: StackVirusScan.java
 msgid "Remove the Virus"
 msgstr "Rimuovi il virus"
 
+#: StackVirusScan.java
 msgid "Open As Is"
 msgstr "Apri così com'è"
 
+#: Sandbox.java
 msgid "wants to change the scripts of the stack:"
 msgstr "vuole modificare gli script dello stack:"
 
+#: Sandbox.java
 msgid "wants to change the protection of the stack:"
 msgstr "vuole modificare la protezione dello stack:"
 
+#: Sandbox.java
 msgid "wants to paste into the stack:"
 msgstr "vuole incollare nello stack:"
 
+#: Sandbox.java
 msgid "The Home stack's scripts run in every stack. Old stacks spread viruses this way: allow this only for an installation you started yourself."
 msgstr "Gli script dello stack Home vengono eseguiti in tutti gli stack. I vecchi stack diffondono i virus in questo modo: consenti solo per un'installazione avviata da te."
 
+#: Sandbox.java
 msgid "Old stacks spread viruses by writing into other stacks: allow this only for an installation you started yourself."
 msgstr "I vecchi stack diffondono i virus scrivendo in altri stack: consenti solo per un'installazione avviata da te."
 
+#: Sandbox.java
 msgid "wants to change the program code of:"
 msgstr "vuole modificare il codice del programma:"
 
+#: Sandbox.java
 msgid "would load extensions that are new or have changed:"
 msgstr "caricherebbe estensioni nuove o modificate:"
 
+#: Sandbox.java
 msgid "is an extension infected with the virus:"
 msgstr "è un'estensione infettata dal virus:"
 
+#: Sandbox.java
 msgid "Viruses of the classic Mac spread by adding their code to programs. Allow this only for an installation or update you started yourself."
 msgstr "I virus del Mac classico si diffondevano aggiungendo il proprio codice ai programmi. Consentilo solo per un'installazione o un aggiornamento avviati da te."
 
+#: Sandbox.java
 msgid "An extension runs inside every program, and viruses of the classic Mac stayed resident this way. Allow this if you installed them yourself; otherwise they stay out for now."
 msgstr "Un'estensione viene eseguita in ogni programma, e i virus del Mac classico restavano residenti così. Consentilo se le hai installate tu; altrimenti per ora restano fuori."
 
+#: Sandbox.java
 msgid "It stays out unless you allow it."
 msgstr "Non viene caricata a meno che tu non lo consenta."
 
+#: VirusScan68k.java
 msgid "It holds a virus and was not opened."
 msgstr "Contiene un virus e non è stato aperto."
 
+#: VirusScan68k.java
 msgid "\"{0}\" is infected with the virus {1}."
 msgstr "«{0}» è infetto dal virus {1}."
 
+#: VirusScan68k.java
 msgid "Repairing puts the program back as it was; the infected file is kept in Deleted Files."
 msgstr "La riparazione riporta il programma allo stato originale; il file infetto viene conservato in Deleted Files."
 
+#: VirusScan68k.java
 msgid "HyperZebra cannot repair this file. If you open it anyway, changes it tries to make to other programs are still refused."
 msgstr "HyperZebra non può riparare questo file. Se lo apri comunque, ti verrà chiesto prima che modifichi altri programmi."
 
+#: VirusScan68k.java
 msgid "Don't Open"
 msgstr "Non aprire"
 
+#: VirusScan68k.java
 msgid "Repair and Open"
 msgstr "Ripara e apri"
 
+#: VirusScan68k.java
 msgid "Open Anyway"
 msgstr "Apri comunque"
 
-msgid "Not a scrolling field."
-msgstr "Questo campo non è scorrevole."
+#: ScriptWeb.java
+msgid "No such file: {0}"
+msgstr "File inesistente: {0}"
+
+#: ScriptWeb.java
+msgid "The file is too large: {0}"
+msgstr "Il file è troppo grande: {0}"
+
+#: ScriptWeb.java
+msgid "Cannot read the file: {0}"
+msgstr "Impossibile leggere il file: {0}"
+
+#: ScriptWeb.java
+msgid "put into URL writes only file: and binfile: URLs"
+msgstr "put into URL scrive solo URL file: e binfile:"
+
+#: ScriptWeb.java
+msgid "Can't create that file."
+msgstr "Impossibile creare il file."
+
+#: ScriptWeb.java
+msgid "Cannot write the file: {0}"
+msgstr "Impossibile scrivere il file: {0}"
+
+#: TTalk.java
+msgid "read from file: more than 512 MB at once"
+msgstr "read from file: più di 512 MB in una volta"
+
+#: TTalk.java
+msgid "The file was opened for read: {0}"
+msgstr "Il file è stato aperto in lettura (for read): {0}"
+
+#: TUtil.java TalkBinary.java TalkImage.java
+msgid "Wrong number of arguments for {0}: {1}"
+msgstr "Numero di argomenti errato per {0}: {1}"
+
+#: TalkBinary.java
+msgid "binaryEncode: unknown data type {0}"
+msgstr "binaryEncode: tipo di dato sconosciuto {0}"
+
+#: TalkBinary.java
+msgid "binaryEncode: not enough values for the format"
+msgstr "binaryEncode: valori insufficienti per il formato"
+
+#: TalkBinary.java
+msgid "binaryEncode: not a hexadecimal digit: {0}"
+msgstr "binaryEncode: non è una cifra esadecimale: {0}"
+
+#: TalkBinary.java
+msgid "binaryEncode: a number is required here: {0}"
+msgstr "binaryEncode: qui serve un numero: {0}"
+
+#: TalkBinary.java
+msgid "binaryDecode: unknown data type {0}"
+msgstr "binaryDecode: tipo di dato sconosciuto {0}"
+
+#: TalkBinary.java
+msgid "base64Decode: not base 64 data"
+msgstr "base64Decode: non sono dati base 64"
+
+#: TalkBinary.java
+msgid "decompress: not compressed data"
+msgstr "decompress: non sono dati compressi"
+
+#: TalkBinary.java
+msgid "messageDigest: unknown digest {0}"
+msgstr "messageDigest: digest sconosciuto {0}"
+
+#: TalkBinary.java
+msgid "Unknown text encoding: {0}"
+msgstr "Codifica del testo sconosciuta: {0}"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "imageToArray: the image is too large"
+msgstr "imageToArray: l'immagine è troppo grande"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage requires an array of rows of pixels"
+msgstr "arrayToImage richiede un array di righe di pixel"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the array has no pixels"
+msgstr "arrayToImage: l'array non ha pixel"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the image is too large"
+msgstr "arrayToImage: l'immagine è troppo grande"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the format must be png, jpeg, gif or bmp: {0}"
+msgstr "arrayToImage: il formato deve essere png, jpeg, gif o bmp: {0}"
+
+#: EditorsUI.java PlayerUiHost.java TalkImage.java
+msgid "arrayToImage: cannot write {0}"
+msgstr "arrayToImage: impossibile scrivere {0}"
+
+#: TalkBinary.java
+msgid "arrayToImage: a pixel needs numbers like 255,0,0,255: {0}"
+msgstr "arrayToImage: un pixel richiede numeri come 255,0,0,255: {0}"
+
+msgctxt "reference"
+msgid "How many elements an array or a dictionary has"
+msgstr "Quanti elementi ha un array o un dizionario"
+
+msgctxt "reference"
+msgid "Opens a file read-only, emptied for writing, for reading and writing, or to add to its end; binary reads and writes the bytes as they are"
+msgstr "Apre un file in sola lettura, svuotato per la scrittura, in lettura e scrittura o per aggiungere in fondo; binary legge e scrive i byte così come sono"
+
+msgctxt "reference"
+msgid "Reads n bytes (into it); in a binary file each byte is one character"
+msgstr "Legge n byte (in it); in un file binario ogni byte è un carattere"
+
+msgctxt "reference"
+msgid "A file's bytes as a value; put <data> into|after URL \"binfile:<file>\" writes them, \"file:\" is for text"
+msgstr "I byte di un file come valore; put <data> into|after URL \"binfile:<file>\" li scrive, \"file:\" è per il testo"
+
+msgctxt "reference"
+msgid "The nth byte of binary data (the same as char)"
+msgstr "L'n-esimo byte di dati binari (come char)"
+
+msgctxt "reference"
+msgid "How many bytes"
+msgstr "Quanti byte"
+
+msgctxt "reference"
+msgid "The number of a byte (0-255)"
+msgstr "Il numero di un byte (0-255)"
+
+msgctxt "reference"
+msgid "The byte of a number (0-255); numToChar is for text"
+msgstr "Il byte di un numero (0-255); numToChar è per il testo"
+
+msgctxt "reference"
+msgid "Binary data from values: c C 1 byte, s S i I 2/4 bytes low byte first, n m N M 2/4 bytes high byte first, f d floating point, a A text, H h hexadecimal, B b bits, x a zero byte; a count or * after a letter"
+msgstr "Dati binari da valori: c C 1 byte, s S i I 2/4 byte con il byte basso prima, n m N M 2/4 byte con l'alto prima, f d virgola mobile, a A testo, H h esadecimale, B b bit, x un byte zero; un numero o * dopo una lettera"
+
+msgctxt "reference"
+msgid "Puts the values in binary data into variables (the letters of binaryEncode); gives how many it converted"
+msgstr "Mette i valori di dati binari nelle variabili (le lettere di binaryEncode); dà quanti ne ha convertiti"
+
+msgctxt "reference"
+msgid "Base 64 text of data (lines of 72 characters), and the data back"
+msgstr "Testo base 64 dei dati (righe di 72 caratteri) e i dati di ritorno"
+
+msgctxt "reference"
+msgid "gzip compression"
+msgstr "Compressione gzip"
+
+msgctxt "reference"
+msgid "The hash of data as bytes (binaryDecode(\"H*\", …) gives hexadecimal)"
+msgstr "L'hash dei dati in byte (binaryDecode(\"H*\", …) dà l'esadecimale)"
+
+msgctxt "reference"
+msgid "Text as the bytes of an encoding (return is CR in Mac encodings, LF in others)"
+msgstr "Testo come byte di una codifica (return è CR nelle codifiche Mac, LF nelle altre)"
+
+msgctxt "reference"
+msgid "Text from the bytes of an encoding (every line end becomes return)"
+msgstr "Testo dai byte di una codifica (ogni fine riga diventa return)"
+
+msgctxt "reference"
+msgid "Where bytes are in data (0 when they are not)"
+msgstr "Dove si trovano dei byte nei dati (0 se non ci sono)"
+
+msgctxt "reference"
+msgid "The pixels of PNG, JPEG, GIF, BMP or PICT data as rows of \"r,g,b,a\" (0-255), so px[y][x] counts from 1 at the top left"
+msgstr "I pixel di dati PNG, JPEG, GIF, BMP o PICT come righe di \"r,g,b,a\" (0-255), quindi px[y][x] conta da 1 in alto a sinistra"
+
+msgctxt "reference"
+msgid "Image file data from rows of \"r,g,b\" or \"r,g,b,a\" pixels"
+msgstr "Dati di file immagine da righe di pixel \"r,g,b\" o \"r,g,b,a\""
+
+#: HyperTalkReference.java
+msgctxt "reference"
+msgid "Binary data & images"
+msgstr "Dati binari e immagini"
+
+#: GHelpWindow.java
+msgctxt "help"
+msgid "Binary data and images"
+msgstr "Dati binari e immagini"
+
+msgctxt "help"
+msgid ""
+"Scripts can read and write any file byte by byte, and turn a picture into an array of pixels and back. The names and the syntax are LiveCode's, so examples written for LiveCode work as they are.\n"
+"\n"
+"Binary data\n"
+"  Binary data is text with one character for each byte. byte n of data is char n of data, and byteToNum and numToByte give the number of a byte (0 to 255) and the byte of a number. Use them for binary data rather than charToNum and numToChar, which follow the stack's text encoding.\n"
+"    put URL \"binfile:photo.png\" into data\n"
+"    put the number of bytes in data into size\n"
+"    put byteToNum(byte 1 of data) into first\n"
+"    put data into URL \"binfile:copy.png\"\n"
+"  A file name without a folder is in the stack's folder. URL \"file:notes.txt\" reads and writes text instead; put … after URL adds to the end of a file. HyperZebra asks before a stack reads or writes a file outside its own places (Settings: access confirmation).\n"
+"\n"
+"Files\n"
+"    open file \"data.bin\" for binary read\n"
+"    read from file \"data.bin\" for 4 bytes\n"
+"    put it into header\n"
+"    read from file \"data.bin\" until eof\n"
+"    close file \"data.bin\"\n"
+"  The modes are read (the file is only read), write (the file is emptied first), update (read and written, nothing is cut) and append (written at the end). Without binary the file is text, as before. open file without a mode works as in HyperCard.\n"
+"\n"
+"Numbers in binary data\n"
+"    put binaryEncode(\"NnC\", 100000, 2, 255) into data\n"
+"    get binaryDecode(\"NnC\", data, a, b, c)\n"
+"  Each letter is a value: c C a byte (with or without a sign), s S i I 2 and 4 bytes with the low byte first (Intel order), n m N M 2 and 4 bytes with the high byte first (n N with a sign), f d floating-point numbers, a A text, H h hexadecimal, B b bits, x a zero byte that is skipped. A count after a letter takes that many values, * all the rest. binaryDecode puts the values into the variables and gives how many it converted.\n"
+"    get binaryDecode(\"H*\", sha1Digest(data), hex)\n"
+"  Also for binary data: base64Encode and base64Decode, compress and decompress (gzip), md5Digest, sha1Digest, messageDigest(data, \"SHA-256\"), and textEncode(text, \"UTF-8\") and textDecode(data, \"UTF-8\"), which turn text into the bytes of an encoding and back.\n"
+"\n"
+"Images as arrays of pixels\n"
+"  imageToArray turns PNG, JPEG, GIF, BMP or PICT data into an array of rows. Each pixel is \"r,g,b,a\" (red, green, blue, opacity, from 0 to 255), so px[y][x] is the pixel x from the left in row y from the top, counting from 1. arrayToImage makes PNG data from such an array, or \"jpeg\", \"gif\" or \"bmp\". A pixel may also be \"r,g,b\" (opaque) or [r, g, b, a].\n"
+"    put imageToArray(URL \"binfile:photo.png\") into px\n"
+"    put the number of items of px into h\n"
+"    put the number of items of px[1] into w\n"
+"    repeat with y = 1 to h\n"
+"      repeat with x = 1 to w\n"
+"        put px[y][x] into c\n"
+"        put 255 - item 1 of c & \",\" & 255 - item 2 of c & \",\" & 255 - item 3 of c & \",\" & item 4 of c into px[y][x]\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put arrayToImage(px) into URL \"binfile:negative.png\"\n"
+"  Changing an array one element at a time is quick: a loop over every pixel of a 640 x 480 picture takes a fraction of a second."
+msgstr ""
+"Gli script possono leggere e scrivere qualsiasi file byte per byte, e trasformare un'immagine in un array di pixel e viceversa. I nomi e la sintassi sono quelli di LiveCode, quindi gli esempi scritti per LiveCode funzionano così come sono.\n"
+"\n"
+"Dati binari\n"
+"  I dati binari sono testo con un carattere per ogni byte. byte n of data è char n of data, e byteToNum e numToByte danno il numero di un byte (da 0 a 255) e il byte di un numero. Usali per i dati binari invece di charToNum e numToChar, che seguono la codifica del testo dello stack.\n"
+"    put URL \"binfile:photo.png\" into data\n"
+"    put the number of bytes in data into size\n"
+"    put byteToNum(byte 1 of data) into first\n"
+"    put data into URL \"binfile:copy.png\"\n"
+"  Un nome di file senza cartella si trova nella cartella dello stack. URL \"file:notes.txt\" legge e scrive invece testo; put … after URL aggiunge in fondo a un file. HyperZebra chiede prima che uno stack legga o scriva un file fuori dai suoi luoghi (Impostazioni: conferma di accesso).\n"
+"\n"
+"File\n"
+"    open file \"data.bin\" for binary read\n"
+"    read from file \"data.bin\" for 4 bytes\n"
+"    put it into header\n"
+"    read from file \"data.bin\" until eof\n"
+"    close file \"data.bin\"\n"
+"  Le modalità sono read (il file viene solo letto), write (il file viene prima svuotato), update (letto e scritto, non si taglia nulla) e append (scritto in fondo). Senza binary il file è testo, come prima. open file senza modalità funziona come in HyperCard.\n"
+"\n"
+"Numeri nei dati binari\n"
+"    put binaryEncode(\"NnC\", 100000, 2, 255) into data\n"
+"    get binaryDecode(\"NnC\", data, a, b, c)\n"
+"  Ogni lettera è un valore: c C un byte (con o senza segno), s S i I 2 e 4 byte con il byte basso prima (ordine Intel), n m N M 2 e 4 byte con il byte alto prima (n N con segno), f d numeri in virgola mobile, a A testo, H h esadecimale, B b bit, x un byte zero saltato. Un numero dopo una lettera prende altrettanti valori, * tutti i restanti. binaryDecode mette i valori nelle variabili e dà quanti ne ha convertiti.\n"
+"    get binaryDecode(\"H*\", sha1Digest(data), hex)\n"
+"  Anche per i dati binari: base64Encode e base64Decode, compress e decompress (gzip), md5Digest, sha1Digest, messageDigest(data, \"SHA-256\"), e textEncode(text, \"UTF-8\") e textDecode(data, \"UTF-8\"), che trasformano il testo nei byte di una codifica e viceversa.\n"
+"\n"
+"Immagini come array di pixel\n"
+"  imageToArray trasforma dati PNG, JPEG, GIF, BMP o PICT in un array di righe. Ogni pixel è \"r,g,b,a\" (rosso, verde, blu, opacità, da 0 a 255), quindi px[y][x] è il pixel x da sinistra nella riga y dall'alto, contando da 1. arrayToImage crea dati PNG da un array del genere, oppure \"jpeg\", \"gif\" o \"bmp\". Un pixel può anche essere \"r,g,b\" (opaco) o [r, g, b, a].\n"
+"    put imageToArray(URL \"binfile:photo.png\") into px\n"
+"    put the number of items of px into h\n"
+"    put the number of items of px[1] into w\n"
+"    repeat with y = 1 to h\n"
+"      repeat with x = 1 to w\n"
+"        put px[y][x] into c\n"
+"        put 255 - item 1 of c & \",\" & 255 - item 2 of c & \",\" & 255 - item 3 of c & \",\" & item 4 of c into px[y][x]\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put arrayToImage(px) into URL \"binfile:negative.png\"\n"
+"  Modificare un array un elemento alla volta è rapido: un ciclo su tutti i pixel di un'immagine di 640 x 480 richiede una frazione di secondo."
+
+#: PlayerUiHost.java TalkImage.java
+msgid "{0}: not image data (PNG, JPEG, GIF, BMP or PICT)"
+msgstr "{0}: non sono dati di immagine (PNG, JPEG, GIF, BMP o PICT)"
+
+#: TalkImage.java
+msgid "{0}: the image is too large"
+msgstr "{0}: l'immagine è troppo grande"
+
+#: TalkImage.java
+msgid "imageCombine: unknown mode {0} (normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity)"
+msgstr "imageCombine: modalità sconosciuta {0} (normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity)"
+
+#: TalkImage.java
+msgid "imageCreate: the image is too large or empty: {0} x {1}"
+msgstr "imageCreate: l'immagine è troppo grande o vuota: {0} x {1}"
+
+#: TalkImage.java
+msgid "{0}: a number is required here: {1}"
+msgstr "{0}: qui serve un numero: {1}"
+
+#: TalkImage.java
+msgid "Not a colour: {0} (a name, #RRGGBB or r,g,b)"
+msgstr "Non è un colore: {0} (un nome, #RRGGBB o r,g,b)"
+
+msgctxt "reference"
+msgid "Draws top on base with its top left at x,y; modes normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity; opacity 0-100"
+msgstr "Disegna top su base con l'angolo superiore sinistro in x,y; modalità normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity; opacità 0-100"
+
+msgctxt "reference"
+msgid "A new image, clear or of one colour (a name, #RRGGBB, #RRGGBBAA or r,g,b)"
+msgstr "Una nuova immagine, trasparente o di un colore (un nome, #RRGGBB, #RRGGBBAA o r,g,b)"
+
+msgctxt "reference"
+msgid "The width and height of image data (width,height)"
+msgstr "Larghezza e altezza di dati di immagine (larghezza,altezza)"
+
+msgctxt "reference"
+msgid "An image shown over the card window from its top left; empty removes it"
+msgstr "Un'immagine mostrata sopra la finestra della scheda dal suo angolo superiore sinistro; empty la toglie"
+
+msgctxt "reference"
+msgid "The paint picture, the card with its parts, or the card window as it looks, as PNG data"
+msgstr "L'immagine di pittura, la scheda con le sue parti o la finestra della scheda come appare, come dati PNG"
+
+msgctxt "reference"
+msgid "Draws image data on the card picture (the background's while editing it)"
+msgstr "Disegna dati di immagine sull'immagine della scheda (su quella dello sfondo mentre si modifica lo sfondo)"
+
+#: GHelpWindow.java
+msgctxt "help"
+msgid "Image effects"
+msgstr "Effetti immagine"
+
+#: TalkPixelScript.java
+msgid "Can't understand the image script at line {0}: {1}"
+msgstr "Impossibile capire lo script di immagine alla riga {0}: {1}"
+
+#: TalkPixelScript.java
+msgid "The image script runs too long at the pixel {0},{1}"
+msgstr "Lo script di immagine dura troppo al pixel {0},{1}"
+
+#: TalkPixelScript.java
+msgid "The image script was interrupted"
+msgstr "Lo script di immagine è stato interrotto"
+
+msgctxt "reference"
+msgid "Runs a pixel script (HyperTalk on numbers) for every pixel: r, g, b, a are the pixel, x, y where it is, w, h the image's size; what r, g, b, a hold at the end is the new pixel"
+msgstr "Esegue uno script di pixel (HyperTalk su numeri) per ogni pixel: r, g, b, a sono il pixel, x, y dove si trova, w, h la dimensione dell'immagine; ciò che r, g, b, a contengono alla fine è il nuovo pixel"
+
+msgctxt "reference"
+msgid "In imageFilter and the screenFilter: put, add, subtract, multiply, divide, if and repeat on numbers; get pixel takes another pixel, red(x, y) and the like read one"
+msgstr "In imageFilter e nello screenFilter: put, add, subtract, multiply, divide, if e repeat su numeri; get pixel prende un altro pixel, red(x, y) e simili ne leggono uno"
+
+msgctxt "reference"
+msgid "The card window is shown through a pixel script (as imageFilter's) until it is set to empty; the stack does not change"
+msgstr "La finestra della scheda è mostrata attraverso uno script di pixel (come quello di imageFilter) finché non la si imposta a empty; lo stack non cambia"
+
+msgctxt "help"
+msgid ""
+"Whole images can be changed at once, far faster than pixel by pixel in a repeat loop: to touch up a picture, or for effects in a game. An image is image data as URL \"binfile:…\" gives it (PNG, JPEG, GIF, BMP or PICT); the functions give PNG data.\n"
+"\n"
+"imageFilter(data, script)\n"
+"  Runs a short script for every pixel. It is HyperTalk on numbers: r, g, b and a hold the pixel's red, green, blue and opacity (0 to 255), x and y where it is (from 0 at the top left), w and h the size of the image. What r, g, b and a hold at the end is the new pixel.\n"
+"    put \"put 255 - r into r; put 255 - g into g; put 255 - b into b\" into invert\n"
+"    put imageFilter(URL \"binfile:photo.jpg\", invert) into URL \"binfile:negative.png\"\n"
+"  Lines are separated by return or by ;. The script may use put, add, subtract, multiply, divide, if … then … else, repeat (with, times, while, until, exit repeat, next repeat), + - * / div mod ^, comparisons, and, or, not, and abs, min, max, sqrt, sin, cos, tan, atan, exp, ln, round, trunc, random and pi. Its own variables start at 0 for every pixel. red(x, y), green(x, y), blue(x, y), alpha(x, y) and lum(x, y) (brightness) read any pixel of the image, and get pixel x, y takes all of one; numbers between two pixels blend them. A script that runs too long stops with an error, and Command-period stops it too.\n"
+"\n"
+"Filters to copy\n"
+"  These are pixel scripts: keep the ones you use in a field or a variable, as in imageFilter(img, field \"Sepia\"). Values can be put in with &: \"multiply a by\" && opacity.\n"
+"  Grayscale:\n"
+"    put r * 0.3 + g * 0.59 + b * 0.11 into v; put v into r; put v into g; put v into b\n"
+"  Sepia:\n"
+"    put r * 0.39 + g * 0.77 + b * 0.19 into nr; put r * 0.35 + g * 0.69 + b * 0.17 into ng\n"
+"    put r * 0.27 + g * 0.53 + b * 0.13 into b; put nr into r; put ng into g\n"
+"  Brightness and contrast (20 lighter, 1.4 times the contrast):\n"
+"    put (r - 128) * 1.4 + 148 into r; put (g - 128) * 1.4 + 148 into g; put (b - 128) * 1.4 + 148 into b\n"
+"  Black and white:\n"
+"    if lum(x, y) > 128 then put 255 into v else put 0 into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  A red flash, half way to red:\n"
+"    put r + (255 - r) / 2 into r; multiply g by 0.5; multiply b by 0.5\n"
+"  Green screen (that green becomes clear):\n"
+"    if g > 150 and r < 120 and b < 120 then put 0 into a\n"
+"  Blur (the average of 5 by 5 pixels):\n"
+"    repeat with dy = -2 to 2\n"
+"      repeat with dx = -2 to 2\n"
+"        add red(x + dx, y + dy) to sr; add green(x + dx, y + dy) to sg; add blue(x + dx, y + dy) to sb\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put sr / 25 into r; put sg / 25 into g; put sb / 25 into b\n"
+"  Outlines of what is drawn:\n"
+"    put abs(lum(x + 1, y) - lum(x - 1, y)) + abs(lum(x, y + 1) - lum(x, y - 1)) into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  Mosaic, mirror and wave:\n"
+"    get pixel x - x mod 8, y - y mod 8\n"
+"    get pixel w - 1 - x, y\n"
+"    get pixel x + 6 * sin(y / 12), y\n"
+"  Darker corners, scan lines and noise:\n"
+"    put ((x - w / 2) ^ 2 + (y - h / 2) ^ 2) / ((w / 2) ^ 2 + (h / 2) ^ 2) * 0.8 into d\n"
+"    multiply r by 1 - d; multiply g by 1 - d; multiply b by 1 - d\n"
+"    put 1 - y mod 2 * 0.4 into k; multiply r by k; multiply g by k; multiply b by k\n"
+"    put random(41) - 21 into n; add n to r; add n to g; add n to b\n"
+"\n"
+"Other sizes\n"
+"  imageFilter(data, script, width, height) makes an image of that size: the script runs for each of its pixels (width and height hold its size) and takes the original's with get pixel.\n"
+"    put imageFilter(img, \"get pixel x * w / width, y * h / height\", 320, 240) into small\n"
+"    put imageFilter(img, \"get pixel y, h - 1 - x\", item 2 of imageSize(img), item 1 of imageSize(img)) into turned\n"
+"\n"
+"Combining and making images\n"
+"    put imageCreate(200, 40, \"#00000080\") into bar\n"
+"    put imageCombine(img, bar, 10, 300) into img\n"
+"    put imageCombine(img, sprite, x, y, \"screen\", 70) into img\n"
+"  imageCombine draws the second image on the first with its top left at x,y. The mode is normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation or luminosity, and the opacity is from 0 to 100. imageSize gives width,height.\n"
+"\n"
+"Pictures of the stack\n"
+"    export card to snap\n"
+"    import paint from imageFilter(snap, field \"Sepia\")\n"
+"  export paint, export card and export screen to a variable give the paint picture, the card with its buttons and fields, or the card window as it looks now. import paint from image data draws it on the card picture (on the background's while you edit the background).\n"
+"\n"
+"Screen effects\n"
+"    set the screenFilter to field \"Grayscale\"\n"
+"    set the screenFilter to empty\n"
+"  The screenFilter shows the card window through a pixel script while the stack stays as it is: for a flashback, a pause screen or a dream. There x and y are pixels of the screen, and scale is how much it is magnified (2 when the card is shown at 200%). The screenOverlay is an image shown over the card from its top left, for a flash of colour or a status panel. Both end when the stack closes, and lock screen and visual effects show them as well.\n"
+"    repeat with i = 1 to 10\n"
+"      put 1 - i / 10 into k\n"
+"      set the screenFilter to \"multiply r by\" && k & \"; multiply g by\" && k & \"; multiply b by\" && k\n"
+"      wait 2 ticks\n"
+"    end repeat\n"
+"    set the screenOverlay to imageCreate(the width of this card, the height of this card, \"#FF000060\")\n"
+"    wait 5 ticks\n"
+"    set the screenOverlay to empty\n"
+"  A colour script costs well under a millisecond each time the card is drawn; one that reads 25 pixels for each, like the blur, about 15."
+msgstr ""
+"Si possono cambiare intere immagini in una volta, molto più velocemente che pixel per pixel in un ciclo repeat: per ritoccare una foto o per effetti in un gioco. Un'immagine sono dati di immagine come li dà URL \"binfile:…\" (PNG, JPEG, GIF, BMP o PICT); le funzioni danno dati PNG.\n"
+"\n"
+"imageFilter(dati, script)\n"
+"  Esegue un breve script per ogni pixel. È HyperTalk su numeri: r, g, b e a contengono rosso, verde, blu e opacità del pixel (da 0 a 255), x e y dove si trova (da 0 in alto a sinistra), w e h la dimensione dell'immagine. Ciò che r, g, b e a contengono alla fine è il nuovo pixel.\n"
+"    put \"put 255 - r into r; put 255 - g into g; put 255 - b into b\" into invert\n"
+"    put imageFilter(URL \"binfile:photo.jpg\", invert) into URL \"binfile:negative.png\"\n"
+"  Le righe si separano con return o con ;. Lo script può usare put, add, subtract, multiply, divide, if … then … else, repeat (with, times, while, until, exit repeat, next repeat), + - * / div mod ^, confronti, and, or, not, e abs, min, max, sqrt, sin, cos, tan, atan, exp, ln, round, trunc, random e pi. Le sue variabili partono da 0 per ogni pixel. red(x, y), green(x, y), blue(x, y), alpha(x, y) e lum(x, y) (luminosità) leggono qualsiasi pixel dell'immagine, e get pixel x, y ne prende uno intero; numeri tra due pixel li mescolano. Uno script che dura troppo si ferma con un errore, e Comando-punto lo ferma comunque.\n"
+"\n"
+"Filtri da copiare\n"
+"  Sono script di pixel: tieni quelli che usi in un campo o in una variabile, come in imageFilter(img, field \"Sepia\"). I valori si possono inserire con &: \"multiply a by\" && opacity.\n"
+"  Scala di grigi:\n"
+"    put r * 0.3 + g * 0.59 + b * 0.11 into v; put v into r; put v into g; put v into b\n"
+"  Seppia:\n"
+"    put r * 0.39 + g * 0.77 + b * 0.19 into nr; put r * 0.35 + g * 0.69 + b * 0.17 into ng\n"
+"    put r * 0.27 + g * 0.53 + b * 0.13 into b; put nr into r; put ng into g\n"
+"  Luminosità e contrasto (20 più chiaro, 1,4 volte il contrasto):\n"
+"    put (r - 128) * 1.4 + 148 into r; put (g - 128) * 1.4 + 148 into g; put (b - 128) * 1.4 + 148 into b\n"
+"  Bianco e nero:\n"
+"    if lum(x, y) > 128 then put 255 into v else put 0 into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  Un lampo rosso, a metà strada verso il rosso:\n"
+"    put r + (255 - r) / 2 into r; multiply g by 0.5; multiply b by 0.5\n"
+"  Green screen (quel verde diventa trasparente):\n"
+"    if g > 150 and r < 120 and b < 120 then put 0 into a\n"
+"  Sfocatura (la media di 5 per 5 pixel):\n"
+"    repeat with dy = -2 to 2\n"
+"      repeat with dx = -2 to 2\n"
+"        add red(x + dx, y + dy) to sr; add green(x + dx, y + dy) to sg; add blue(x + dx, y + dy) to sb\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put sr / 25 into r; put sg / 25 into g; put sb / 25 into b\n"
+"  Contorni di ciò che è disegnato:\n"
+"    put abs(lum(x + 1, y) - lum(x - 1, y)) + abs(lum(x, y + 1) - lum(x, y - 1)) into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  Mosaico, specchio e onda:\n"
+"    get pixel x - x mod 8, y - y mod 8\n"
+"    get pixel w - 1 - x, y\n"
+"    get pixel x + 6 * sin(y / 12), y\n"
+"  Angoli più scuri, linee di scansione e rumore:\n"
+"    put ((x - w / 2) ^ 2 + (y - h / 2) ^ 2) / ((w / 2) ^ 2 + (h / 2) ^ 2) * 0.8 into d\n"
+"    multiply r by 1 - d; multiply g by 1 - d; multiply b by 1 - d\n"
+"    put 1 - y mod 2 * 0.4 into k; multiply r by k; multiply g by k; multiply b by k\n"
+"    put random(41) - 21 into n; add n to r; add n to g; add n to b\n"
+"\n"
+"Altre dimensioni\n"
+"  imageFilter(dati, script, larghezza, altezza) crea un'immagine di quella dimensione: lo script viene eseguito per ognuno dei suoi pixel (width e height contengono la sua dimensione) e prende quelli dell'originale con get pixel.\n"
+"    put imageFilter(img, \"get pixel x * w / width, y * h / height\", 320, 240) into small\n"
+"    put imageFilter(img, \"get pixel y, h - 1 - x\", item 2 of imageSize(img), item 1 of imageSize(img)) into turned\n"
+"\n"
+"Combinare e creare immagini\n"
+"    put imageCreate(200, 40, \"#00000080\") into bar\n"
+"    put imageCombine(img, bar, 10, 300) into img\n"
+"    put imageCombine(img, sprite, x, y, \"screen\", 70) into img\n"
+"  imageCombine disegna la seconda immagine sulla prima con l'angolo superiore sinistro in x,y. La modalità è normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation o luminosity, e l'opacità va da 0 a 100. imageSize dà larghezza,altezza.\n"
+"\n"
+"Immagini dello stack\n"
+"    export card to snap\n"
+"    import paint from imageFilter(snap, field \"Sepia\")\n"
+"  export paint, export card ed export screen in una variabile danno l'immagine di pittura, la scheda con i suoi pulsanti e campi, o la finestra della scheda come appare ora. import paint from con dati di immagine li disegna sull'immagine della scheda (su quella dello sfondo mentre modifichi lo sfondo).\n"
+"\n"
+"Effetti sullo schermo\n"
+"    set the screenFilter to field \"Grayscale\"\n"
+"    set the screenFilter to empty\n"
+"  Lo screenFilter mostra la finestra della scheda attraverso uno script di pixel mentre lo stack resta com'è: per un ricordo, una schermata di pausa o un sogno. Lì x e y sono pixel dello schermo, e scale è l'ingrandimento (2 quando la scheda è mostrata al 200%). Lo screenOverlay è un'immagine mostrata sopra la scheda dal suo angolo superiore sinistro, per un lampo di colore o un pannello di stato. Entrambi finiscono quando lo stack si chiude, e lock screen e gli effetti visivi li mostrano lo stesso.\n"
+"    repeat with i = 1 to 10\n"
+"      put 1 - i / 10 into k\n"
+"      set the screenFilter to \"multiply r by\" && k & \"; multiply g by\" && k & \"; multiply b by\" && k\n"
+"      wait 2 ticks\n"
+"    end repeat\n"
+"    set the screenOverlay to imageCreate(the width of this card, the height of this card, \"#FF000060\")\n"
+"    wait 5 ticks\n"
+"    set the screenOverlay to empty\n"
+"  Uno script di colore costa molto meno di un millisecondo ogni volta che la scheda viene disegnata; uno che legge 25 pixel per ognuno, come la sfocatura, circa 15."
+
+#: GMenu.java
+msgctxt "menu"
+msgid "Export for Web…"
+msgstr "Esporta per il Web…"
+
+#: WebExport.java
+msgid "The web player is not in this copy of HyperZebra."
+msgstr "Questa copia di HyperZebra non contiene il lettore Web."
+
+#: WebExport.java
+msgid "It belongs in the folder Support Files/WebPlayer beside the application."
+msgstr "Deve trovarsi nella cartella Support Files/WebPlayer accanto all’applicazione."
+
+#: WebExport.java
+msgid "Try in Browser"
+msgstr "Prova nel browser"
+
+#: WebExport.java
+msgid "Could not start the test server."
+msgstr "Impossibile avviare il server di prova."
+
+#: WebExport.java
+msgid "Test Server"
+msgstr "Server di prova"
+
+#: WebExport.java
+msgid "The test server is running (this computer only)."
+msgstr "Il server di prova è in esecuzione (solo su questo computer)."
+
+#: WebExport.java
+msgid "Open in Browser"
+msgstr "Apri nel browser"
+
+#: WebExport.java
+msgid "Stop Server"
+msgstr "Arresta server"
+
+#: WebExport.java
+msgid "Export for Web"
+msgstr "Esporta per il Web"
+
+#: WebExport.java
+msgid "A file or folder with that name already exists. Choose another name."
+msgstr "Esiste già un file o una cartella con questo nome. Scegli un altro nome."
+
+#: WebExport.java
+msgid "The stack was exported for the web."
+msgstr "La pila è stata esportata per il Web."
+
+#: WebExport.java
+msgid "Put the folder on a web server and open index.html there (opened as a file, it does not run)."
+msgstr "Metti la cartella su un server Web e apri lì index.html (aperto come file, non funziona)."
+
+#: WebExport.java
+msgid "Could not export the stack for the web."
+msgstr "Impossibile esportare la pila per il Web."
+
+#: WebExport.java
+msgid "Icons not found (the buttons show none): %s"
+msgstr "Icone non trovate (i pulsanti non ne mostrano nessuna): %s"
+
+#: WebExport.java
+msgid "The stack's 68K external commands need the 68K web player, which is not in this copy of HyperZebra: they do nothing in the browser."
+msgstr "I comandi esterni 68K della pila richiedono il lettore web 68K, che non è in questa copia di HyperZebra: nel browser non fanno nulla."
+
+#: WebExport.java
+msgid "The stack's Private Access does not apply in the browser: anyone who has the page can open the stack."
+msgstr "L'accesso privato dello stack non vale nel browser: chiunque abbia la pagina può aprire lo stack."
+
+#: WebExport.java
+msgid "A stack this stack uses was left out: %s"
+msgstr "Uno stack usato da questo stack è stato lasciato fuori: %s"
+
+#: WebExport.java
+msgid "A file this stack uses was left out: %s"
+msgstr "Un file usato da questo stack è stato lasciato fuori: %s"
+
+#: WebExport.java
+msgid "These external commands need PowerPC code, which the web player does not run: %s"
+msgstr "Questi comandi esterni richiedono codice PowerPC, che il player web non esegue: %s"
+
+#: WebExport.java
+msgid "Show the menu bar on the page"
+msgstr "Mostra la barra dei menu nella pagina"
+
+#: PlayerUiHost.java
+msgid "Replace existing “{0}”?"
+msgstr "Sostituire «{0}» esistente?"
+
+#: PlayerUiHost.java
+msgid "Upload…"
+msgstr "Carica…"
+
+#: PlayerUiHost.java
+msgid "The file is too large to open here."
+msgstr "Il file è troppo grande per essere aperto qui."
+
+#: WebExport.java
+msgid "Compile the scripts (faster in the browser)"
+msgstr "Compila gli script (più veloce nel browser)"
+
+#: WebExport.java
+msgid "Compiling the scripts for the web…"
+msgstr "Compilazione degli script per il Web…"
+
+#: WebExport.java
+msgid "The scripts were not compiled (they run as they are, more slowly): %s"
+msgstr "Gli script non sono stati compilati (vengono eseguiti così come sono, più lentamente): %s"
+
+#: WebExport.java
+msgid "Needs the script compiler, which this copy does not have"
+msgstr "Richiede il compilatore di script, assente in questa copia"
+
+#: WebExport.java
+msgid "Download the Script Compiler ({0})…"
+msgstr "Scarica il compilatore di script ({0})…"
+
+#: WebExport.java
+msgid "Script Compiler"
+msgstr "Compilatore di script"
+
+#: WebExport.java
+msgid "Downloading the script compiler…"
+msgstr "Download del compilatore di script…"
+
+#: WebAotBuild.java
+msgid "Downloading the script compiler ({0})…"
+msgstr "Download del compilatore di script ({0})…"
+
+#: WebAotBuild.java
+msgid "The downloaded script compiler is not the one of this HyperZebra (its checksum differs)."
+msgstr "Il compilatore di script scaricato non è quello di questo HyperZebra (il checksum è diverso)."
+
+#: WebAotBuild.java
+msgid "Unpacking the script compiler…"
+msgstr "Estrazione del compilatore di script…"
+
+#: WebAotBuild.java
+msgid "The download has no script compiler."
+msgstr "Il download non contiene il compilatore di script."
+
+#: WebAotBuild.java
+msgid "This copy of HyperZebra does not say where its script compiler is."
+msgstr "Questa copia di HyperZebra non indica dove si trova il suo compilatore di script."
+
+#: WebExport.java
+msgid "up, down, left, right, space, return, shift, option, command, control, a letter or digit; empty: no game pad"
+msgstr "up, down, left, right, space, return, shift, option, command, control, una lettera o una cifra; vuoto: nessun gamepad"
+
+#: WebExport.java
+msgid "Press Keys…"
+msgstr "Premi i tasti…"
+
+#: WebExport.java
+msgid "Press the keys to add them; click again when done"
+msgstr "Premi i tasti per aggiungerli; fai di nuovo clic quando hai finito"
+
+#: WebExport.java
+msgid "Game pad keys (phones and tablets):"
+msgstr "Tasti del gamepad (telefoni e tablet):"
+
+#: UiHost.java
+msgid "Images are not available here: {0}"
+msgstr "Le immagini non sono disponibili qui: {0}"
+
+#: UiHost.java
+msgid "Can't understand {0}"
+msgstr "Impossibile interpretare {0}"
+
+#: UiHost.java
+msgid "Cannot open URL: {0}"
+msgstr "Impossibile aprire l’URL: {0}"
+
+#: WebExport.java
+msgid "Done"
+msgstr "Fine"
+

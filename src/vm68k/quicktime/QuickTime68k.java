@@ -8,26 +8,18 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-import javax.sound.midi.MidiChannel;
-import javax.sound.midi.MidiSystem;
-import javax.sound.midi.Sequencer;
-import javax.sound.midi.Synthesizer;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.sampled.FloatControl;
 
 /**
  * Native Movie Toolbox ($AAAA) and movie controller component for hosted applications. Old movie
- * formats are decoded by the same converters HyperZebra uses for QuickTime XCMDs (own sound decoders, MIDI for music,
- * ffmpeg for video), then
+ * formats are decoded by the same converters HyperZebra uses for QuickTime XCMDs (own sound and video decoders, MIDI for
+ * music and ffmpeg for the rest on the desktop; the own decoders alone in the browser player: Toolbox68kParts.movieData), then
  * rendered into the program's window or GWorld by MoviesTask/MCIdle.
  *
  * Selector numbers were confirmed against a classic movie external (argument sizes and the way each
  * result is consumed), not only against the multiversal interface definitions, which stop at the
  * few calls the first version needed.
  */
-final class QuickTime68k {
+class QuickTime68k {
 	/** Gestalt 'qtim' for programs: QuickTime 2.5, release stage final ($80) - stage $00 is a development build, and Avid
 	 *  VideoShop 3.0J warned at start-up that the QuickTime in use was a pre-release version. */
 	static final int VERSION=0x02508000;
@@ -44,7 +36,7 @@ final class QuickTime68k {
 	static final int TRIGGER_TIME_FWD=1,TRIGGER_TIME_BWD=2,TRIGGER_TIME_EITHER=3;
 
 	final class Movie {
-		final int handle;File file;TQTMovie.MovieAsset asset;int port,box[]=new int[4];boolean active=true;
+		final int handle;File file;MovieData asset;int port,box[]=new int[4];boolean active=true;
 		int rate; // Fixed; playing while non-zero
 		long startMillis;int pausedAt; // wall clock when the current run started, and the position (ms) it started from
 		int lastTime=-1; // movie time seen by the last task(), for callbacks
@@ -69,7 +61,7 @@ final class QuickTime68k {
 		 *  GoToBeginningOfMovie plays it again - the loop idiom "MoviesTask; if IsMovieDone then GoToBeginningOfMovie" (UxPlayMovie's
 		 *  playCount; it stayed on frame 0 and a count of 2 never ended). */
 		int endRate;
-		Clip clip;StreamingSound stream;Sequencer sequencer;Synthesizer synthesizer;int controller; // stream: an MP3, decoded while it plays
+		MovieSound68k audio;int controller; // its sound (Toolbox68kParts.movieSound: Java Sound on the desktop, the 68K mixer in the browser)
 		int selectionTime,selectionDuration,userData; // UserData list (QTUserData68k), created by GetMovieUserData
 		/** The active segment (SetMovieActiveSegment, or a controller playing its selection), in movie units; start -1 = the whole
 		 *  movie. Playback starts within it and stops at its end (A Hard Day's Night's Movie XCMD plays a clip by setting the
@@ -91,9 +83,7 @@ final class QuickTime68k {
 			if(asset==null)return 0;
 			if(asset.timeScale>0&&asset.duration>0)return asset.duration*1000L/asset.timeScale;
 			if(asset.hasVideo())return (long)(asset.frameCount()*1000.0/asset.frameRate());
-			if(clip!=null)return clip.getMicrosecondLength()/1000;
-			if(stream!=null)return stream.getMicrosecondLength()/1000;
-			if(sequencer!=null)return sequencer.getMicrosecondLength()/1000;
+			if(audio!=null)return audio.lengthMicros()/1000;
 			return 0;
 		}
 		int currentMillis(){
@@ -373,7 +363,7 @@ final class QuickTime68k {
 	/** The movie file an FSSpec names, made empty (createMovieFileDeleteCurFile replaces one there) with the type MooV. */
 	private int newMovieFile(File file,int creator,int flags) throws M68kCpuException {
 		if(file.isDirectory())return -1302;
-		if(!Sandbox.allowFile(file,Sandbox.Access.WRITE,tb.name))return -54; // permErr
+		if(!Sandbox68k.allowFile(file,Sandbox68k.Access.WRITE,tb.name))return -54; // permErr
 		if(file.exists()&&(flags&CREATE_DELETE_CUR_FILE)==0)return -48; // dupFNErr
 		try{
 			if(file.exists()){int err=tb.files.fileManager.deleteObject(file,false);if(err!=0)return err;}
@@ -389,12 +379,12 @@ final class QuickTime68k {
 		File input,output;
 		try{input=inputSpec==0?null:tb.files.fileForSpec(inputSpec);output=outputSpec==0?null:tb.files.fileForSpec(outputSpec);}catch(IOException e){return -43;}
 		if(input==null||!input.isFile()||output==null)return -43;
-		TQTMovie.MovieAsset asset=TQTMovie.assetFor(input);
-		if(asset==null||!asset.hasVideo()&&!asset.hasAudio()&&asset.musicSequence==null)return -2003; // cantFindHandler
+		MovieData asset=Toolbox68k.PARTS.movieData(input);
+		if(asset==null||!asset.hasVideo()&&!asset.hasAudio()&&!asset.hasMusic())return -2003; // cantFindHandler
 		if(output.isDirectory())return -1302;
-		if(!Sandbox.allowFile(output,Sandbox.Access.WRITE,tb.name))return -54;
+		if(!Sandbox68k.allowFile(output,Sandbox68k.Access.WRITE,tb.name))return -54;
 		try{
-			if(!output.getCanonicalFile().equals(input.getCanonicalFile()))java.nio.file.Files.copy(input.toPath(),output.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			if(!output.getCanonicalFile().equals(input.getCanonicalFile()))try(java.io.FileOutputStream o=new java.io.FileOutputStream(output)){o.write(Platform.get().readAllBytes(input));}
 			byte[] info=new byte[16];MovieWriter68k.put4(info,0,MOOV_FILE);MovieWriter68k.put4(info,4,creator);FinderInfo68k.write(output,info);
 		}catch(IOException e){return -36;}
 		if(resIdPtr!=0)memory.writeWord(resIdPtr,128);
@@ -408,16 +398,11 @@ final class QuickTime68k {
 		if(type!=MIDI_FILE)return WR_PERM_ERR;
 		File output;try{output=outputSpec==0?null:tb.files.fileForSpec(outputSpec);}catch(IOException e){return -43;}
 		if(output==null)return -43;if(output.isDirectory())return -1302;
-		if(!Sandbox.allowFile(output,Sandbox.Access.WRITE,tb.name))return -54;
-		javax.sound.midi.Sequence sequence=null;
-		try{sequence=m.asset!=null&&m.asset.musicSequence!=null?m.asset.musicSequence:m.file!=null?QTMusicConverter.convert(m.file):null;}
-		catch(IOException|javax.sound.midi.InvalidMidiDataException|RuntimeException e){sequence=null;}
-		if(sequence==null)return -2003; // cantFindHandler: no music in the movie
-		try{
-			int[] types=MidiSystem.getMidiFileTypes(sequence);int fileType=types.length==0?0:types[0];for(int t:types)if(t==1)fileType=1;
-			MidiSystem.write(sequence,fileType,output);
-			byte[] info=new byte[16];MovieWriter68k.put4(info,0,MIDI_FILE);MovieWriter68k.put4(info,4,creator);FinderInfo68k.write(output,info);
-		}catch(IOException|IllegalArgumentException e){return -36;}
+		if(!Sandbox68k.allowFile(output,Sandbox68k.Access.WRITE,tb.name))return -54;
+		int written=Toolbox68k.PARTS.movieToMidiFile(m.asset,m.file,output); // (the desktop's MIDI; none in the browser player)
+		if(written!=0)return written;
+		try{byte[] info=new byte[16];MovieWriter68k.put4(info,0,MIDI_FILE);MovieWriter68k.put4(info,4,creator);FinderInfo68k.write(output,info);}
+		catch(IllegalArgumentException e){return -36;}
 		return 0;
 	}
 	/** CreateMovieFile: the file (its data fork takes the samples), its resource fork open (resRefNum) and a new movie to build. */
@@ -589,7 +574,7 @@ final class QuickTime68k {
 		File data=null;
 		if(dataRef!=0&&refType==MovieWriter68k.ALIS){byte[] alias=tb.api.handleContents(dataRef);if(alias!=null)data=tb.files.resolveAlias(alias);}
 		if(data==null)data=t.movie.edit.file;
-		if(data==null){try{data=TempFiles.createFile("hzmovie",".mdat");}catch(IOException e){fail(-36);return 0;}}
+		if(data==null){try{data=UiHost.get().tempFilesCreateFile("hzmovie",".mdat");}catch(IOException e){fail(-36);return 0;}}
 		if(t.media!=0){medias.remove(t.media);tb.api.disposeHandleAndFree(t.media);}
 		t.media=tb.api.createHandle(new byte[4]);t.type=type;t.data.media=new MovieWriter68k.MediaData(type,timeScale,data);medias.put(t.media,t);
 		return t.media;
@@ -600,7 +585,7 @@ final class QuickTime68k {
 		MovieWriter68k.MediaData md=t.data.media;
 		int p=dataIn==0?0:memory.readLong(dataIn);byte[] description=desc==0?null:tb.api.handleContents(desc);
 		if(p==0||size<0||description==null||description.length<16){fail(-50);return -50;}
-		if(!Sandbox.allowFile(md.dataFile,Sandbox.Access.WRITE,tb.name)){fail(-54);return -54;}
+		if(!Sandbox68k.allowFile(md.dataFile,Sandbox68k.Access.WRITE,tb.name)){fail(-54);return -54;}
 		long start=md.duration();
 		try{
 			long at=MovieWriter68k.append(md.dataFile,memory.readBytes(p+offset,size),0,size);
@@ -716,7 +701,7 @@ final class QuickTime68k {
 	Movie movie(int handle){return movies.get(handle);}
 	Movie newMovie(File file) throws M68kCpuException {
 		int handle=tb.api.createHandle(new byte[4]);
-		Movie m=new Movie(handle);m.file=file;m.asset=TQTMovie.assetFor(file);
+		Movie m=new Movie(handle);m.file=file;m.asset=Toolbox68k.PARTS.movieData(file);
 		if(m.asset.timeScale>0){m.timeScale=m.asset.timeScale;m.durationUnits=m.asset.duration;}
 		// A sound-only movie has an empty box, like the real Movie Toolbox reports.
 		if(m.hasFrames())m.box=new int[]{0,0,m.asset.frameHeight(),m.asset.frameWidth()};
@@ -732,7 +717,7 @@ final class QuickTime68k {
 		QuickTimeFile q;try{q=QuickTimeFile.open(file);q.close();}catch(IOException|RuntimeException e){return;}
 		m.previewTime=q.previewTime;m.previewDuration=q.previewDuration;m.posterTime=q.posterTime;
 		if(m.hasFrames())m.frameTimes=frameTimes(q,m.timeScale);
-		if(m.asset!=null&&(m.asset.hasVideo()||m.asset.hasAudio()||m.asset.musicSequence!=null)||q.tracks.isEmpty())return;
+		if(m.asset!=null&&(m.asset.hasVideo()||m.asset.hasAudio()||m.asset.hasMusic())||q.tracks.isEmpty())return;
 		m.fileTracks=new ArrayList<int[]>();
 		for(QuickTimeFile.Track t:q.tracks)m.fileTracks.add(new int[]{t.media==null?0:t.media.handlerType,t.width,t.height});
 		int[] box=q.box();if(box[2]>box[0]&&box[3]>box[1]){m.fileBox=new int[]{0,0,box[2]-box[0],box[3]-box[1]};m.box=m.fileBox.clone();}
@@ -767,7 +752,7 @@ final class QuickTime68k {
 		if(m.tracks.isEmpty()&&m.asset!=null){
 			if(m.hasFrames())addTrack(m,VIDE);
 			if(m.asset.hasAudio())addTrack(m,SOUN);
-			if(m.asset.musicSequence!=null)addTrack(m,MUSI);
+			if(m.asset.hasMusic())addTrack(m,MUSI);
 			if(m.tracks.isEmpty()&&m.fileTracks!=null)for(int[] f:m.fileTracks){addTrack(m,f[0]);Track t=m.tracks.get(m.tracks.size()-1);t.width=f[1];t.height=f[2];}
 		}
 		return m.tracks;
@@ -935,7 +920,7 @@ final class QuickTime68k {
 	}
 	private void drawFrame(Movie m,BufferedImage frame) throws M68kCpuException {
 		if(frame==null||m.port==0)return;
-		Graphics2D g=tb.quickDraw.surface(m.port,m.box);
+		Graphics2D g=tb.quickDraw.imageSurface(m.port,m.box);
 		if(g==null)return;
 		try{g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BILINEAR);g.drawImage(frame,m.box[1],m.box[0],Math.max(1,m.box[3]-m.box[1]),Math.max(1,m.box[2]-m.box[0]),null);}
 		finally{g.dispose();}
@@ -950,49 +935,19 @@ final class QuickTime68k {
 
 	private void openAudio(Movie m){
 		if(m.asset==null)return;
-		if(m.asset.mp3!=null)m.stream=StreamingSound.of(m.asset.mp3);
-		else if(m.asset.hasAudio()){
-			try{AudioInputStream in=HostSampleRate.forHost(m.asset.audioStream());m.clip=AudioSystem.getClip();m.clip.open(in);} // (an 11127 Hz track broke the host's audio after a minute)
-			catch(Exception e){m.clip=null;}
-		}
-		if(m.clip==null&&m.stream==null&&m.asset.musicSequence!=null){
-			Synthesizer synth=null;Sequencer sequencer=null;
-			try{
-				try{synth=MidiSystem.getSynthesizer();synth.open();sequencer=MidiSystem.getSequencer(false);sequencer.open();sequencer.getTransmitter().setReceiver(synth.getReceiver());}
-				catch(Exception direct){if(sequencer!=null)sequencer.close();if(synth!=null)synth.close();synth=null;sequencer=MidiSystem.getSequencer();sequencer.open();} // only a pre-wired default sequencer
-				sequencer.setSequence(m.asset.musicSequence);m.sequencer=sequencer;m.synthesizer=synth;
-			}catch(Exception e){System.err.println("[qt] MIDI playback unavailable: "+e);m.sequencer=null;if(synth!=null)synth.close();}
-		}
+		m.audio=Toolbox68k.PARTS.movieSound(m.asset);
 		applyVolume(m);
 	}
 	private void startAudio(Movie m){
 		positionAudio(m);
-		try{if(m.clip!=null)m.clip.start();if(m.stream!=null)m.stream.start();if(m.sequencer!=null)m.sequencer.start();}catch(Exception e){}
+		if(m.audio!=null)m.audio.start();
 	}
-	private void positionAudio(Movie m){
-		long micros=m.pausedAt*1000L;
-		try{if(m.clip!=null)m.clip.setMicrosecondPosition(Math.min(micros,m.clip.getMicrosecondLength()));
-			if(m.stream!=null)m.stream.setMicrosecondPosition(micros);
-			if(m.sequencer!=null)m.sequencer.setMicrosecondPosition(Math.min(micros,m.sequencer.getMicrosecondLength()));}catch(Exception e){}
-	}
-	private void stopAudio(Movie m){try{if(m.clip!=null)m.clip.stop();if(m.stream!=null)m.stream.stop();if(m.sequencer!=null&&m.sequencer.isRunning())m.sequencer.stop();}catch(Exception e){}}
-	private void closeAudio(Movie m){
-		stopAudio(m);
-		try{if(m.clip!=null)m.clip.close();if(m.stream!=null)m.stream.close();if(m.sequencer!=null)m.sequencer.close();if(m.synthesizer!=null)m.synthesizer.close();}catch(Exception e){}
-		m.clip=null;m.stream=null;m.sequencer=null;m.synthesizer=null;
-	}
+	private void positionAudio(Movie m){if(m.audio!=null)m.audio.position(m.pausedAt*1000L);}
+	private void stopAudio(Movie m){if(m.audio!=null)m.audio.stop();}
+	private void closeAudio(Movie m){if(m.audio!=null)m.audio.close();m.audio=null;}
 	void setVolume(Movie m,int volume){m.volume=volume;applyVolume(m);}
 	/** Movie volumes are 8.8 fixed (0x0100 = full); negative values are muted. */
-	private void applyVolume(Movie m){
-		//scaled by the Mac's sound volume (SetSoundVol / SetDefaultOutputVolume), which every sound of the Mac follows
-		int level=Math.round(Math.max(0,Math.min(256,m.volume))*(SoundMixer68k.gainLeft()+SoundMixer68k.gainRight())/2);
-		try{
-			if(m.stream!=null)m.stream.setLevel(level);
-			if(m.clip!=null&&m.clip.isControlSupported(FloatControl.Type.MASTER_GAIN)){FloatControl gain=(FloatControl)m.clip.getControl(FloatControl.Type.MASTER_GAIN);
-				float dB=level==0?gain.getMinimum():(float)(20*Math.log10(level/256.0));gain.setValue(Math.max(gain.getMinimum(),Math.min(gain.getMaximum(),dB)));}
-			if(m.synthesizer!=null){int value=TQTMovie.midiVolume(level);for(MidiChannel channel:m.synthesizer.getChannels())if(channel!=null)channel.controlChange(7,value);}
-		}catch(Exception e){}
-	}
+	private void applyVolume(Movie m){if(m.audio!=null)m.audio.level(m.volume);}
 
 	// ------------------------------------------------------------------ time records and callbacks
 
@@ -1126,7 +1081,7 @@ final class QuickTime68k {
 				if(m!=null){position(c,m,movieRect==0?null:readRect(movieRect),controllerRect==0?null:readRect(controllerRect),flags);c.lastBar=null;}return 0;}
 			// MCGetControllerInfo: mcInfoHasSound $20, mcInfoIsPlaying $40 (Movies.h); $400 is mcInfoMovieIsInteractive (UxGetMovieInfo
 			// read every video movie as interactive and none as having sound)
-			case 0x25:{int flagsPtr=memory.readLong(params);if(flagsPtr!=0)memory.writeLong(flagsPtr,(m!=null&&m.playing()?0x40:0)|(m!=null&&m.asset!=null&&(m.asset.hasAudio()||m.asset.musicSequence!=null)?0x20:0));return 0;}
+			case 0x25:{int flagsPtr=memory.readLong(params);if(flagsPtr!=0)memory.writeLong(flagsPtr,(m!=null&&m.playing()?0x40:0)|(m!=null&&m.asset!=null&&(m.asset.hasAudio()||m.asset.hasMusic())?0x20:0));return 0;}
 			case 0x28:case 0x29:return 0; // MCSetClip / MCGetClip
 			case 0x2a:return 0; // MCDrawBadge
 			case 0x2e:{int where=memory.readLong(params+4),partPtr=memory.readLong(params);if(partPtr!=0)memory.writeWord(partPtr,m!=null&&barShown(c)&&inside(barRect(c,m),(short)where,(short)(where>>16))?1:0);return 0;} // MCPtInController

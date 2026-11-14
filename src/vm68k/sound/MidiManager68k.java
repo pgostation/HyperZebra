@@ -41,9 +41,9 @@ final class MidiManager68k {
 	/** Bumped by every change of clients, ports or connections; a client's MIDIWorldChanged answers whether it has seen the latest. */
 	private int worldVersion;
 	private final ConcurrentLinkedQueue<byte[]> hostInput=new ConcurrentLinkedQueue<byte[]>();
-	private final MidiHost68k.Listener hostListener=new MidiHost68k.Listener(){@Override public void received(int port,byte[] message){byte[] m=new byte[message.length+1];m[0]=(byte)port;System.arraycopy(message,0,m,1,message.length);hostInput.add(m);Toolbox68k tb=macApi.application();if(tb!=null)tb.wakeIdle();}};
+	private final MidiPorts68k.Listener hostListener=new MidiPorts68k.Listener(){@Override public void received(int port,byte[] message){byte[] m=new byte[message.length+1];m[0]=(byte)port;System.arraycopy(message,0,m,1,message.length);hostInput.add(m);Toolbox68k tb=macApi.application();if(tb!=null)tb.wakeIdle();}};
 	private boolean listening,servicing,inHook;
-	private final MidiStream[] outputStreams={new MidiStream(MidiHost68k.MODEM),new MidiStream(MidiHost68k.PRINTER)};
+	private final MidiStream[] outputStreams={new MidiStream(MidiPorts68k.MODEM),new MidiStream(MidiPorts68k.PRINTER)};
 
 	static final class Client {
 		final int id;int refCon,icon;String name;final boolean virtual;
@@ -82,14 +82,14 @@ final class MidiManager68k {
 	MidiManager68k(M68kMemory memory,Mac68kApi macApi){
 		this.memory=memory;this.macApi=macApi;
 		Client driver=new Client(DRIVER_CLIENT,"Apple MIDI Driver",true);clients.put(DRIVER_CLIENT,driver);
-		addVirtualPort(driver,PORT_A_IN,PORT_OUTPUT,"Modem Port",MidiHost68k.MODEM);
-		addVirtualPort(driver,PORT_A_OUT,PORT_INPUT,"Modem Port",MidiHost68k.MODEM);
-		addVirtualPort(driver,PORT_B_IN,PORT_OUTPUT,"Printer Port",MidiHost68k.PRINTER);
-		addVirtualPort(driver,PORT_B_OUT,PORT_INPUT,"Printer Port",MidiHost68k.PRINTER);
+		addVirtualPort(driver,PORT_A_IN,PORT_OUTPUT,"Modem Port",MidiPorts68k.MODEM);
+		addVirtualPort(driver,PORT_A_OUT,PORT_INPUT,"Modem Port",MidiPorts68k.MODEM);
+		addVirtualPort(driver,PORT_B_IN,PORT_OUTPUT,"Printer Port",MidiPorts68k.PRINTER);
+		addVirtualPort(driver,PORT_B_OUT,PORT_INPUT,"Printer Port",MidiPorts68k.PRINTER);
 	}
 	private void addVirtualPort(Client c,int id,int type,String name,int hostPort){Port p=new Port(c,id,nextRefNum++,type,name);p.hostPort=hostPort;c.ports.add(p);portsByRefNum.put(p.refNum,p);}
 
-	void shutDown(){if(listening){MidiHost68k.removeListener(hostListener);listening=false;}for(MidiStream s:outputStreams)s.allNotesOff();}
+	void shutDown(){if(listening){MidiPorts68k.removeListener(hostListener);listening=false;}for(MidiStream s:outputStreams)s.allNotesOff();}
 
 	// ------------------------------------------------------------------ dispatch
 
@@ -308,7 +308,7 @@ final class MidiManager68k {
 		if((flags&FLAG_TYPE_MASK)==FLAG_MGR_TYPE)return NO_ERR; // a manager message, not MIDI
 		if((flags&FLAG_STAMP_CURRENT)!=0&&p.timeBase!=null){tStamp=(int)currentTime(p.timeBase);flags&=~FLAG_STAMP_CURRENT;}
 		if(p.dataConnections.isEmpty())autoConnect(tb,p);
-		if(Mac68kApi.TRACE)System.err.println("[midi] write "+describe(p)+" flags $"+Integer.toHexString(flags)+" stamp "+tStamp+" "+MidiHost68k.hex(data)+" -> "+p.dataConnections.size()+" port(s)");
+		if(Mac68kApi.TRACE)System.err.println("[midi] write "+describe(p)+" flags $"+Integer.toHexString(flags)+" stamp "+tStamp+" "+MidiPorts68k.hex(data)+" -> "+p.dataConnections.size()+" port(s)");
 		for(Port dst:new ArrayList<Port>(p.dataConnections)){
 			if(dst.hostPort>=0){outputStreams[dst.hostPort].feed(data,flags&FLAG_CONT_MASK);continue;}
 			receive(tb,dst,new Packet(flags,tStamp,data),true);
@@ -349,7 +349,7 @@ final class MidiManager68k {
 				int[] d=cpu.d.clone(),a=cpu.a.clone();int sr=cpu.sr;
 				try{cpu.a[7]-=Toolbox68k.INTERRUPT_STACK_SLACK;cpu.pushWord(0);cpu.pushLong(p.scratch);cpu.pushLong(p.refCon);cpu.callPascal(p.readHook,8);answer=(short)memory.readWord(cpu.a[7]);}
 				finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}
-				if(Mac68kApi.TRACE)System.err.println("[midi] read hook of "+describe(p)+" "+MidiHost68k.hex(packet.data)+" -> "+answer);
+				if(Mac68kApi.TRACE)System.err.println("[midi] read hook of "+describe(p)+" "+MidiPorts68k.hex(packet.data)+" -> "+answer);
 				if(answer==MORE_PACKET||answer==NO_MORE_PACKET){it.remove();p.buffered-=packet.data.length+PACKET_HEADER;}
 				else packet.held=true;
 				if(answer==NO_MORE_PACKET||answer==HOLD_PACKET)break;
@@ -374,14 +374,14 @@ final class MidiManager68k {
 	/** Called at the Toolbox's safe points: MIDI from the host reaches the ports, wake-ups and due packets reach the program. */
 	void service(Toolbox68k tb) throws M68kException {
 		if(servicing||tb==null)return;
-		if(!listening&&hasInputPorts()){MidiHost68k.addListener(hostListener);listening=true;}
+		if(!listening&&hasInputPorts()){MidiPorts68k.addListener(hostListener);listening=true;}
 		servicing=true;
 		try{
 			byte[] m;
 			while((m=hostInput.poll())!=null){
-				int hostPort=m[0];Port source=port(DRIVER_CLIENT,hostPort==MidiHost68k.MODEM?PORT_A_IN:PORT_B_IN);if(source==null)continue;
+				int hostPort=m[0];Port source=port(DRIVER_CLIENT,hostPort==MidiPorts68k.MODEM?PORT_A_IN:PORT_B_IN);if(source==null)continue;
 				if(source.dataConnections.isEmpty())for(Port p:new ArrayList<Port>(portsByRefNum.values()))if(p.isInput()&&!p.client.virtual&&p.dataConnections.isEmpty()&&p.readHook!=0)autoConnect(tb,p);
-				if(Mac68kApi.TRACE&&!source.dataConnections.isEmpty())System.err.println("[midi] host input "+MidiHost68k.hex(java.util.Arrays.copyOfRange(m,1,m.length))+" -> "+source.dataConnections.size()+" port(s)");
+				if(Mac68kApi.TRACE&&!source.dataConnections.isEmpty())System.err.println("[midi] host input "+MidiPorts68k.hex(java.util.Arrays.copyOfRange(m,1,m.length))+" -> "+source.dataConnections.size()+" port(s)");
 				for(Port dst:new ArrayList<Port>(source.dataConnections)){
 					int length=m.length-1,offset=1;
 					if(length<=PACKET_MAX_DATA){receive(tb,dst,new Packet(FLAG_STAMP_CURRENT,0,java.util.Arrays.copyOfRange(m,1,m.length)),false);continue;}
@@ -421,10 +421,10 @@ final class MidiManager68k {
 			used=true;
 			for(byte value:data){
 				int b=value&0xff;
-				if(b>=0xf8){MidiHost68k.send(hostPort,new byte[]{(byte)b});continue;}
+				if(b>=0xf8){MidiPorts68k.send(hostPort,new byte[]{(byte)b});continue;}
 				if(sysex!=null){
 					if(b<0x80){sysex.write(b);continue;}
-					sysex.write(0xf7);MidiHost68k.send(hostPort,sysex.toByteArray());sysex=null;
+					sysex.write(0xf7);MidiPorts68k.send(hostPort,sysex.toByteArray());sysex=null;
 					if(b==0xf7)continue;
 				}
 				if(b==0xf0){sysex=new java.io.ByteArrayOutputStream();sysex.write(0xf0);status=0;continue;}
@@ -432,16 +432,16 @@ final class MidiManager68k {
 					status=b;pendingLength=0;
 					int high=b&0xf0;
 					needed=high==0xc0||high==0xd0?1:b==0xf1||b==0xf3?1:b==0xf2?2:b>=0xf4?0:2;
-					if(needed==0){MidiHost68k.send(hostPort,new byte[]{(byte)b});status=0;}
+					if(needed==0){MidiPorts68k.send(hostPort,new byte[]{(byte)b});status=0;}
 					continue;
 				}
 				if(status==0)continue; // a data byte with no status to go with it
 				pending[pendingLength++]=(byte)b;
-				if(pendingLength>=needed){byte[] m=new byte[1+needed];m[0]=(byte)status;System.arraycopy(pending,0,m,1,needed);MidiHost68k.send(hostPort,m);pendingLength=0;if(status>=0xf0)status=0;}
+				if(pendingLength>=needed){byte[] m=new byte[1+needed];m[0]=(byte)status;System.arraycopy(pending,0,m,1,needed);MidiPorts68k.send(hostPort,m);pendingLength=0;if(status>=0xf0)status=0;}
 			}
 		}
 		/** Silence for a program that quit with notes sounding. */
-		void allNotesOff(){if(!used)return;for(int channel=0;channel<16;channel++){MidiHost68k.send(hostPort,new byte[]{(byte)(0xb0|channel),123,0});MidiHost68k.send(hostPort,new byte[]{(byte)(0xb0|channel),120,0});}}
+		void allNotesOff(){if(!used)return;for(int channel=0;channel<16;channel++){MidiPorts68k.send(hostPort,new byte[]{(byte)(0xb0|channel),123,0});MidiPorts68k.send(hostPort,new byte[]{(byte)(0xb0|channel),120,0});}}
 	}
 
 	static String fourcc(int v){return ""+(char)((v>>>24)&0xff)+(char)((v>>>16)&0xff)+(char)((v>>>8)&0xff)+(char)(v&0xff);}

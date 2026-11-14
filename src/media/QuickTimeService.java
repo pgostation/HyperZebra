@@ -34,8 +34,7 @@ final class QuickTimeService {
 		return Extensions68k.hasQuickTimeExtension(systemFolder());
 	}
 	static File systemFolder(){
-		File home=new File(System.getProperty("user.home"));
-		return new File(new File(home,"Library"+File.separator+"Application Support"+File.separator+"HyperZebra"),"System Folder");
+		return new File(FileSystem68k.bootVolumeDirectory(),"System Folder");
 	}
 
 	/** The running service, started on first use; null when it could not start (the caller falls back to ffmpeg). */

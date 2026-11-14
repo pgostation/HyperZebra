@@ -144,6 +144,41 @@ public class HCResource {
 	static boolean readResourceFork(byte[] b, OStack stack){ return readResourceFork(b, stack, null); }
 
 	/**
+	 * The lower-case names of the font families a resource fork carries in the Roman script range (family numbers 2..16383
+	 * other than Geneva's 3): its 'FOND's, and old-style 'FONT' families (id = family*128, the size-0 entry names it). Their
+	 * strikes have one glyph per byte, so a Japanese stack's text in them is one character per byte (HCData.decodeOneByteFonts).
+	 */
+	static java.util.Set<String> romanFamilyNames(byte[] b){
+		java.util.Set<String> names = new java.util.HashSet<String>();
+		if(b==null || b.length<16) return names;
+		try {
+			int mapOffset = u4(b,4);
+			int typeListOffset = u2(b,mapOffset+24) + mapOffset;
+			int nameListOffset = u2(b,mapOffset+26) + mapOffset;
+			int typesCount = u2(b,typeListOffset) + 1;
+			for(int i=0; i<typesCount; i++){
+				int t = typeListOffset + 2 + 8*i;
+				String type = str4(b,t);
+				if(!type.equals("FOND") && !type.equals("FONT")) continue;
+				int count = u2(b,t+4) + 1;
+				int ref = u2(b,t+6) + typeListOffset;
+				for(int j=0; j<count; j++, ref+=12){
+					int id = s2(b,ref);
+					int nameOffset = s2(b,ref+2);
+					int family = type.equals("FOND") ? id : (id&0x7F)==0 ? id>>7 : -1;
+					if(family<2 || family==3 || family>=16384 || nameOffset<0) continue;
+					int at = nameListOffset + nameOffset;
+					String name = strn(b, at+1, u1(b,at)).trim();
+					if(!name.isEmpty()) names.add(name.toLowerCase(java.util.Locale.ROOT));
+				}
+			}
+		} catch (IndexOutOfBoundsException | NegativeArraySizeException e) {
+			//a broken map: no fonts
+		}
+		return names;
+	}
+
+	/**
 	 * {@code onlyTypes}: when not null, only resources of these types are converted, and one the stack already has (same
 	 * type and id) is left alone - the Home stack made at start-up borrows the HyperCard application's icons, sounds and
 	 * patterns this way, behind the Home stack's own resources (HomeStack).
@@ -497,7 +532,7 @@ public class HCResource {
 		//PNG形式に変換してファイルに保存
 		File ofile=new File(parentPath+File.separatorChar+"ICON_"+id+".png");
 		try {
-			ImageIO.write(bi, "png", ofile);
+			Toolbox68k.PARTS.writePng(bi, ofile);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -752,7 +787,7 @@ public class HCResource {
 		//PNG形式に変換してファイルに保存
 		File ofile=new File(parentPath+File.separatorChar+"cicn_"+id+".png");
 		try {
-			ImageIO.write(bi, "png", ofile);
+			Toolbox68k.PARTS.writePng(bi, ofile);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -808,7 +843,7 @@ public class HCResource {
 
 		File ofile=new File(parentPath+File.separatorChar+"PAT#_"+id+".png");
 		try {
-			ImageIO.write(bi, "png", ofile);
+			Toolbox68k.PARTS.writePng(bi, ofile);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -945,7 +980,7 @@ public class HCResource {
 
 		File ofile=new File(parentPath+File.separatorChar+"ppat_"+id+".png");
 		try {
-			ImageIO.write(bi, "png", ofile);
+			Toolbox68k.PARTS.writePng(bi, ofile);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -1055,9 +1090,9 @@ public class HCResource {
 	static byte[] decodeSndToAiffBytes(byte[] b) {
 		File tempFile = null;
 		try {
-			tempFile = TempFiles.createFile("hyperzebra-snd-", ".aiff");
+			tempFile = UiHost.get().tempFilesCreateFile("hyperzebra-snd-", ".aiff");
 			if(!convertSndToFile(b, tempFile)) return null;
-			return java.nio.file.Files.readAllBytes(tempFile.toPath());
+			return Platform.get().readAllBytes(tempFile); // (the browser's File has no toPath)
 		} catch (IOException e) {
 			e.printStackTrace();
 			return null;
@@ -1461,7 +1496,7 @@ public class HCResource {
 		//PNG形式に変換してファイルに保存
 		File ofile=new File(parentPath+File.separatorChar+"CURS_"+id+".png");
 		try {
-			ImageIO.write(bi, "png", ofile);
+			Toolbox68k.PARTS.writePng(bi, ofile);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -1759,7 +1794,7 @@ public class HCResource {
 		//PNG形式に変換してファイルに保存
 		File ofile=new File(parentPath+File.separatorChar+"FONT_"+id+".png");
 		try {
-			ImageIO.write(bi, "png", ofile);
+			Toolbox68k.PARTS.writePng(bi, ofile);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

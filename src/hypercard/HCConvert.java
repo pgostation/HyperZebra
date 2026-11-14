@@ -52,7 +52,10 @@ public class HCConvert {
 		}
 
 		stack.bar.setString("Reading HyperCard data fork");
-		boolean dataRead = HCData.readDataFork(new DataInputStream(new ByteArrayInputStream(dataFork)), stack);
+		HCData.useStackFonts(resourceFork);
+		boolean dataRead;
+		try{ dataRead = HCData.readDataFork(new DataInputStream(new ByteArrayInputStream(dataFork)), stack); }
+		finally{ HCData.useStackFonts(null); }
 		dataFork = null;
 		if(!dataRead){
 			closeProgress(stack);
@@ -83,7 +86,7 @@ public class HCConvert {
 		
 		byte[] header = new byte[128];
 		try (FileInputStream fis = new FileInputStream(new File(path))) {
-			if(fis.readNBytes(header, 0, header.length)!=header.length ||
+			if(Platform.readNBytes(fis, header, 0, header.length)!=header.length ||
 				header[65]!='S' || header[66]!='T' || header[67]!='A' || header[68]!='K'){
 				closeProgress(stack);
 				return false;
@@ -120,7 +123,11 @@ public class HCConvert {
 			DataInputStream dis = new DataInputStream(new ByteArrayInputStream(dataBytes));
 
 			//データフォーク読み込み
-			if(HCData.readDataFork(dis, stack)){
+			HCData.useStackFonts(macBinaryResourceFork(path, resourceOffset, resourceForkLength));
+			boolean dataRead;
+			try{ dataRead = HCData.readDataFork(dis, stack); }
+			finally{ HCData.useStackFonts(null); }
+			if(dataRead){
 				dataBytes = null;
 				
 				int rsrcForkLen = (int)resourceForkLength;
@@ -145,7 +152,7 @@ public class HCConvert {
 				}
 				else{
 					System.out.println("Error occured at reading resource data from MacBinary file.");
-		    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Error occured at reading MacBinary HyperCard stack data."),
+		    		new GDialog(PCARDFrame.pc, HZ.intl().getDialogText("Error occured at reading MacBinary HyperCard stack data."),
 		    				null,"OK",null,null);
 				}
 			}
@@ -155,7 +162,7 @@ public class HCConvert {
 			}
 			else{
 				System.out.println("Error occured at reading data from MacBinary file.");
-	    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Error occured at reading MacBinary HyperCard stack data."),
+	    		new GDialog(PCARDFrame.pc, HZ.intl().getDialogText("Error occured at reading MacBinary HyperCard stack data."),
 	    				null,"OK",null,null);
 			}
 		} catch (IOException e) {
@@ -279,7 +286,7 @@ public class HCConvert {
 			i++;
 		}
 		if(!newdir.mkdir()){
-    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Can't create a new folder."),
+    		new GDialog(PCARDFrame.pc, HZ.intl().getDialogText("Can't create a new folder."),
     				null,"OK",null,null);
 			return false;
 		}
@@ -308,7 +315,7 @@ public class HCConvert {
 			if(!java.nio.file.Files.isWritable(packed.getAbsoluteFile().getParentFile().toPath())) throw new IOException("not writable");
 			newdir = StackBundle.create(packed);
 		}catch(IOException e){
-    		new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Can't create a new folder."),
+    		new GDialog(PCARDFrame.pc, HZ.intl().getDialogText("Can't create a new folder."),
     				null,"OK",null,null);
 			return false;
 		}
@@ -325,7 +332,7 @@ public class HCConvert {
         if(os!=null && os.startsWith("Mac OS X")){
         }
         else{
-    		/*new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("Converting from HyperCard Stack is need to run on MacOSX."),
+    		/*new GDialog(PCARD.pc, HZ.intl().getDialogText("Converting from HyperCard Stack is need to run on MacOSX."),
     				null,"OK",null,null);*/
         	return null;
         }
@@ -431,8 +438,8 @@ public class HCConvert {
 	static public String getConvertPath(String inPath){
 		byte[] sjisByte = null;
 		try {
-			sjisByte = inPath.getBytes("SJIS");
-		} catch (UnsupportedEncodingException e) {
+			sjisByte = inPath.getBytes(Platform.get().charset("SJIS"));
+		} catch (java.nio.charset.UnsupportedCharsetException e) { //(the String name's UnsupportedEncodingException before)
 			e.printStackTrace();
 		}
 		
@@ -485,7 +492,7 @@ public class HCConvert {
 					foundDataFork = true;
 					if(!HCData.readDataFork(dis, stack)){
 						System.out.println("Error occured at reading data fork from tar file.");
-						if(!cancelled) new GDialog(PCARDFrame.pc, PCARDFrame.pc.intl.getDialogText("Error occured at reading HyperCard stack data."),
+						if(!cancelled) new GDialog(PCARDFrame.pc, HZ.intl().getDialogText("Error occured at reading HyperCard stack data."),
 								null,"OK",null,null);
 						success = false;
 					}

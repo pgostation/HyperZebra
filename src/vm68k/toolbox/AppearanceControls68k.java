@@ -32,7 +32,7 @@ import java.util.Map;
  * Without an embedding hierarchy, a tab control redraws the controls created after it that lie inside its pane (as the
  * Control Manager redraws an embedder's subcontrols); radio groups keep only their value.
  */
-final class AppearanceControls68k {
+class AppearanceControls68k {
 	private final Toolbox68k tb;
 	private final M68kMemory memory;
 	private final ControlManager68k cm;

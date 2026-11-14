@@ -65,7 +65,7 @@ final class SfntStandIn68k {
 	static byte[] build(int id,String name){
 		Metrics m=metrics(id);boolean japanese=m.japanese;int[] advance=m.advance;int widest=m.widest,ascent=m.ascent,descent=m.descent,gap=m.gap;
 		boolean mono=monospaced(name);
-		byte[] familyName=name.getBytes(java.nio.charset.Charset.forName(japanese?"Shift_JIS":"x-MacRoman"));
+		byte[] familyName=name.getBytes(Platform.get().charset(japanese?"Shift_JIS":"x-MacRoman"));
 		String ascii=new String(familyName,StandardCharsets.ISO_8859_1).replaceAll("[^A-Za-z0-9-]","");
 		if(ascii.isEmpty())ascii="HyperZebra"+id;
 

@@ -545,7 +545,7 @@ final class PpcGameSprockets {
 	private boolean keyboardActive,mouseActive,suspended,stopped=true;
 	private Thread poller;
 	/** The program's host window system (keyboard map, pointer); set on the emulation thread. */
-	private volatile MacAppHost host;
+	private volatile VmHost host;
 	/** Some element is bound to the mouse: only then is the pointer polled. */
 	private boolean mouseBound,mouseElements;
 	private final byte[] keyMap=new byte[16];
@@ -652,7 +652,7 @@ final class PpcGameSprockets {
 
 	/** Samples the keyboard and mouse and turns changes into element events (poller thread or emulation thread). */
 	private void poll(){
-		MacAppHost host=this.host;
+		VmHost host=this.host;
 		if(host==null)return;
 		long now=System.nanoTime();
 		synchronized(isp){

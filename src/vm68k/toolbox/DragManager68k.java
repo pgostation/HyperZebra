@@ -110,8 +110,8 @@ final class DragManager68k {
 
 	/** WaitMouseMoved: true once the mouse leaves a 4-pixel square around the start while the button stays down. */
 	private boolean waitMouseMoved(int startH,int startV){
-		MacAppHost host=tb.host();long deadline=System.currentTimeMillis()+60_000;
-		while(host.isMouseDown()&&System.currentTimeMillis()<deadline){java.awt.Point p=host.mouseLocation();if(Math.abs(p.x-startH)>3||Math.abs(p.y-startV)>3)return true;try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();return false;}}
+		VmHost host=tb.host();long deadline=System.currentTimeMillis()+60_000;
+		while(host.isMouseDown()&&System.currentTimeMillis()<deadline){java.awt.Point p=host.mouseLocation();if(Math.abs(p.x-startH)>3||Math.abs(p.y-startV)>3)return true;try{Platform.get().sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();return false;}}
 		return false;
 	}
 	/**
@@ -119,7 +119,7 @@ final class DragManager68k {
 	 * window under it informed (enter/in/leave), then offers the drop to that window's receive handlers.
 	 */
 	private int track(M68kCpu cpu,Drag d,int event,int region) throws M68kException {
-		MacAppHost host=tb.host();
+		VmHost host=tb.host();
 		d.originH=(short)memory.readWord(event+12);d.originV=(short)memory.readWord(event+10);d.mouseDownModifiers=memory.readWord(event+14);d.modifiers=d.mouseDownModifiers;
 		d.senderWindow=tb.windows.windowAt(d.originH,d.originV);d.mouseH=d.originH;d.mouseV=d.originV;
 		int[] bounds=region==0?null:regionBounds(region);
@@ -141,7 +141,7 @@ final class DragManager68k {
 				}
 				if(currentWindow!=0)for(Handler h:currentHandlers)call(cpu,h,IN_WINDOW,currentWindow,d);
 				if(bounds!=null)host.moveDragOutline(bounds[1]+p.x-d.originH,bounds[0]+p.y-d.originV);
-				try{Thread.sleep(20);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+				try{Platform.get().sleep(20);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			}
 			d.mouseUpModifiers=host.modifiers();java.awt.Point p=host.mouseLocation();follow(d,p);
 			host.hideDragOutline();

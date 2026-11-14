@@ -5,7 +5,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -15,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Sandboxed synchronous subset of the classic File Manager parameter-block API. */
-final class FileManager68k {
+class FileManager68k {
 	private static final int NO_ERR=0,NSV_ERR=-35,IO_ERR=-36,BD_NAM_ERR=-37,EOF_ERR=-39,POS_ERR=-40,FNF_ERR=-43,F_LCKD_ERR=-45,F_BSY_ERR=-47,DUP_FN_ERR=-48,PARAM_ERR=-50,RF_NUM_ERR=-51,PERM_ERR=-54,WR_PERM_ERR=-61,DIR_NF_ERR=-120,BAD_MOV_ERR=-122,FID_NOT_FOUND_ERR=-1300,FID_EXISTS=-1301,NOT_A_FILE_ERR=-1302,AFP_RANGE_NOT_LOCKED=-5020,AFP_RANGE_OVERLAP=-5021;
 	private static final int IO_RESULT=16,IO_NAME_PTR=18,IO_VREF_NUM=22,IO_REF_NUM=24,IO_PERMISSION=27,IO_MISC=28,IO_BUFFER=32,IO_REQ_COUNT=36,IO_ACT_COUNT=40,IO_POS_MODE=44,IO_POS_OFFSET=46;
 	private static final int IO_DIR_INDEX=28,IO_FL_ATTRIB=30,IO_FL_FNDR_INFO=32,IO_FL_NUM=48,IO_FL_LG_LEN=54,IO_FL_PY_LEN=58,IO_FL_R_LG_LEN=64,IO_FL_R_PY_LEN=68,IO_FL_CR_DAT=72,IO_FL_MD_DAT=76;
@@ -97,7 +96,7 @@ final class FileManager68k {
 	void resourceFileClosed(int reference){
 		OpenFile open=files.get(reference);if(open==null||!open.attached)return;
 		files.remove(reference);
-		try{open.file.close();if(persistent&&open.writable&&open.dirty){ResourceFork fork=resourceForkFor(open.path);ResourceFile68k.writeForkBytes(open.path,Files.readAllBytes(fork.storage.toPath()),ResourceFile68k.Storage.NONE);}}
+		try{open.file.close();if(persistent&&open.writable&&open.dirty){ResourceFork fork=resourceForkFor(open.path);ResourceFile68k.writeForkBytes(open.path,Files68k.read(fork.storage),ResourceFile68k.Storage.NONE);}}
 		catch(IOException ignored){}
 	}
 	/** The owner of the FCB table hears about forks opened and closed here. */
@@ -130,7 +129,7 @@ final class FileManager68k {
 		if(path==null||!path.isFile())return null;
 		// read/write when the Resource Manager has it open for writing (asked of the sandbox at the first write)
 		boolean writable=resourceFileWritable!=null&&resourceFileWritable.test(reference)&&path.canWrite();
-		try{open=new OpenFile(new RandomAccessFile(resourceForkFor(path).storage,writable?"rw":"r"),path,writable,true,true);open.askAtWrite=writable;}catch(IOException e){return null;}files.put(reference,open);return open;}
+		try{open=new OpenFile(openFork(resourceForkFor(path).storage,writable),path,writable,true,true);open.askAtWrite=writable;}catch(IOException e){return null;}files.put(reference,open);return open;}
 	/** The name a program sees for {@code path}: the header name of a MacBinary container, else the host name (see {@link #programName}). */
 	String macNameOf(File path) throws IOException {ResourceFile68k.MacBinary mb=macBinaryFor(path);String name=mb!=null&&mb.nameBytes.length>0?encoding.decode(mb.nameBytes):programName(path.getName());
 		if(encoding.encodeReplacing(name).length<=HFS_NAME_MAX)return name;
@@ -173,7 +172,7 @@ final class FileManager68k {
 		if(isAscii(hostName))return hostName;
 		// macOS keeps names as they were written, often decomposed (an unpacked "はいぱあれもん" has ぱ as は + U+309A): the
 		// program's encoding has only the composed letter (Shift-JIS had no combining marks, the name became "はいぱ?あれもん")
-		hostName=Normalizer.normalize(hostName,Normalizer.Form.NFC);
+		hostName=Platform.get().normalize(hostName,UnicodeNorm.Form.NFC);
 		String unpacked=archivedName(hostName);if(unpacked==null)unpacked=latin1ArchivedName(hostName);if(unpacked!=null)hostName=unpacked;
 		try{encoding.encode(hostName);return hostName;}catch(java.nio.charset.CharacterCodingException e){}
 		// Japanese and Mac OS Roman come first in the enumeration: the encodings host names here were written in.
@@ -190,7 +189,7 @@ final class FileManager68k {
 	static String displayName(String hostName){
 		if(File.separatorChar=='\\')hostName=decodeWindowsName(hostName);
 		String latin1=latin1ArchivedName(hostName);if(latin1!=null)hostName=latin1; // "Asant\u008E Agent" is "Asanté Agent"
-		return Normalizer.normalize(hostName.replace(':','/'),Normalizer.Form.NFC);
+		return Platform.get().normalize(hostName.replace(':','/'),UnicodeNorm.Form.NFC);
 	}
 	/** The host file name for a Mac name (escaped on Windows): disk images written into host folders use it. */
 	static String hostFileName(String name){return windowsName(name);}
@@ -241,7 +240,7 @@ final class FileManager68k {
 	}
 	FileManager68k(M68kMemory memory,OStack stack){this.memory=memory;encoding=stack==null?StackTextEncoding.ROMAN:stack.legacyTextEncoding;File source=stack==null?null:stack.file;
 		if(source==null&&stack!=null&&stack.path!=null&&!stack.path.isEmpty())source=new File(stack.path);root=source==null?null:convertedFrom(source.isDirectory()?source:source.getParentFile());
-		if(root!=null)Sandbox.trustStackFolder(root); // the default directory (FileSystem68k mounts the volumes holding it)
+		if(root!=null)Sandbox68k.trustStackFolder(root); // the default directory (FileSystem68k mounts the volumes holding it)
 		// what an external changes stays, as in HyperCard: G-XCollection's MtSetFTC sets a file's type and creator, MtWriteFile's
 		// creator, MtZapRsrc empties a resource fork (all of it vanished with the external's VM before)
 		persistent=true;
@@ -262,6 +261,7 @@ final class FileManager68k {
 		File bundle=StackFile68k.stackAt(path);if(bundle==null)return path;
 		StackFile68k.Shadow s=stackShadows.get(bundle.getPath());
 		if(s==null||!s.file.isFile()){s=StackFile68k.make(bundle,path.getName(),requester);if(s==null)return path;stackShadows.put(bundle.getPath(),s);}
+		else StackFile68k.refreshData(s); // (the stack's bytes as they are now: the autosave wrote the .hzb since)
 		return s.file;
 	}
 	/** The stack a stand-in file stands for, or null when {@code file} is no stand-in of this VM. */
@@ -294,7 +294,7 @@ final class FileManager68k {
 	}
 	/** The HyperCard stack file a .hzb folder was converted from ("CO.Intro" for "CO.Intro.hzb" or "CO.Intro 2.hzb"), or null. */
 	static File convertedStackFile(File folder){
-		folder=StackBundle.host(folder); // a stack file (.hzb ZIP) is beside the HyperCard stack it came from, not its working folder
+		folder=UiHost.get().stackBundleHost(folder); // a stack file (.hzb ZIP) is beside the HyperCard stack it came from, not its working folder
 		if(folder==null||!folder.getName().endsWith(".hzb"))return null;
 		File parent=folder.getParentFile();if(parent==null)return null;
 		String base=folder.getName().substring(0,folder.getName().length()-4);
@@ -325,14 +325,14 @@ final class FileManager68k {
 			File c=canon(volume);
 			for(DiskImages.Mounted m:DiskImages.mounted())if(m.capacity>0&&canon(m.folder).equals(c))return m.capacity;
 		}
-		return volume.getTotalSpace();
+		return Files68k.totalSpace(volume);
 	}
 	/** Capacities of the writable volumes standing for drives a program zeroed (DIZero on its RAM disk): canonical root -> bytes. */
 	final Map<File,Long> guestCapacities=new HashMap<File,Long>();
 	/** The free space of an unlocked volume: what the host disk has, or for a zeroed program drive its size less the files on it. */
 	long volumeFreeSpace(File volume){
 		if(!guestCapacities.isEmpty()){Long c=guestCapacities.get(canon(volume));if(c!=null)return Math.max(0,c-DiskImages.sizeOf(volume));}
-		return volume.getUsableSpace();
+		return Files68k.usableSpace(volume);
 	}
 	/** Whether the volume with index {@code index} (vRefNum -(index+1)) is locked. */
 	boolean volumeLocked(int index){return index>=0&&index<volumes.size()&&!lockedRoots.isEmpty()&&lockedRoots.contains(canon(volumes.get(index)));}
@@ -498,7 +498,7 @@ final class FileManager68k {
 	private File nearFolder(){
 		File near=searchFirst==null?null:searchFirst.getParentFile();
 		if(near==null||!near.isDirectory())return null;
-		String c=Sandbox.canonical(near);for(File v:volumes)if(Sandbox.canonical(v).equals(c))return null;
+		String c=Sandbox68k.canonical(near);for(File v:volumes)if(Sandbox68k.canonical(v).equals(c))return null;
 		return near;
 	}
 	/** vRefNum (volume or working directory) of the default directory. */
@@ -559,7 +559,7 @@ final class FileManager68k {
 	}
 	private boolean createDirectory(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File parent=baseFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM),memory.readLong(pb+IO_NAME_PTR));if(parent==null)result=FNF_ERR;else {File path=resolveFrom(parent,memory.readLong(pb+IO_NAME_PTR));if(path==null)result=BD_NAM_ERR;else {result=createFolder(path);/* ioNamePtr may be a partial pathname below ioDirID: AppleScript creates ":Scripting Additions:Dialects" from the Extensions folder */if(result==NO_ERR)memory.writeLong(pb+48,directoryId(path));}}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Creates the folder {@code path} (PBDirCreate, FSCreateDirectoryUnicode); a result code. */
-	int createFolder(File path) throws IOException {if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR;Sandbox.checkFile(path,Sandbox.Access.CREATE,requester);return path.mkdir()?NO_ERR:path.getParentFile().canWrite()?IO_ERR:WPR_ERR/* the host folder is not writable (the root of the host disk): a locked volume to the program, not an I/O error - Sniffer Dog's installer reported success after -36 */;}
+	int createFolder(File path) throws IOException {if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR;Sandbox68k.checkFile(path,Sandbox68k.Access.CREATE,requester);return path.mkdir()?NO_ERR:path.getParentFile().canWrite()?IO_ERR:WPR_ERR/* the host folder is not writable (the root of the host disk): a locked volume to the program, not an I/O error - Sniffer Dog's installer reported success after -36 */;}
 	private boolean openWorkingDirectory(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File directory=directoryFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM));
 		// ioNamePtr may name the directory (a partial pathname from ioWDDirID: applications may open a support folder in the System Folder; a volume
 		// name alone stands for the volume); a leaf name that is no folder is ignored, as programs leave file names in the block from earlier calls; a pathname that names nothing is fnfErr (Illustrator 8 probes ...:CMS and recursed forever when it "existed")
@@ -597,7 +597,7 @@ final class FileManager68k {
 		String name=path.getName();File extensions=path.getParentFile(),system=extensions==null?null:extensions.getParentFile();
 		return name.startsWith("QuickTime")&&name.length()<=10&&system!=null&&extensions.getName().equals("Extensions")&&system.getName().equals("System Folder");} // the TM sign by the program's encoding
 	private void writeNativeQuickTimeInfo(int pb,boolean catalog) throws IOException,M68kCpuException {
-		File stand=TempFiles.createFile("hyperzebra-quicktime-",".bin");
+		File stand=UiHost.get().tempFilesCreateFile("hyperzebra-quicktime-",".bin");
 		try{if(catalog)writeCatalogInfo(pb,stand);else writeFileInfo(pb,stand);}finally{stand.delete();}
 		memory.writeByte(pb+IO_FL_ATTRIB,0x80);memory.writeLong(pb+IO_FL_FNDR_INFO,0x494E4954);memory.writeLong(pb+IO_FL_FNDR_INFO+4,0x71756963);} // busy, 'INIT' 'quic'
 	private File volumeNamedByCatalogName(int namePtr) throws M68kCpuException {if(namePtr==0||memory.readByte(namePtr)==0)return null;String n=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr)));if(n.endsWith(":"))n=n.substring(0,n.length()-1);int i=volumeIndexNamed(n);return i<0?null:volumes.get(i);}
@@ -616,7 +616,7 @@ final class FileManager68k {
 	 */
 	volatile File finderInfoKept;
 	private boolean keepsFinderInfo(File path) throws IOException {File kept=finderInfoKept;return kept!=null&&canonical(path).equals(canonical(kept));}
-	int setCatalogEntry(File path,Boolean locked,byte[] finderInfo,byte[] extendedFinderInfo,int created,int modified,Integer backup) throws IOException {if(onLockedVolume(path))return WPR_ERR;Sandbox.checkFile(path,Sandbox.Access.WRITE,requester);Metadata value=metadataFor(path);if(locked!=null){value.locked=locked;if(persistent&&path.isFile()&&HostFileAttributes68k.locked(path)!=locked)HostFileAttributes68k.setLocked(path,locked);}if(extendedFinderInfo!=null)System.arraycopy(extendedFinderInfo,0,value.extendedFinderInfo,0,16);if(finderInfo!=null&&!keepsFinderInfo(path)){int oldType=path.isFile()?typeOf(path):0;System.arraycopy(finderInfo,0,value.finderInfo,0,16);if(persistent)FinderInfo68k.write(path,hostFolderSafe(path,hostFinderInfo(path,value.finderInfo)));if(untypedNewFiles.contains(canonical(path).getPath()))convertNewFile(path);revertRetypedText(path,oldType);}if(backup!=null)value.backupDate=backup;if(modified!=0){value.modificationDate=modified;setHostModificationDate(path,modified);}if(created!=0&&created!=value.creationDate){value.creationDate=created;if(persistent)setHostCreationDate(path,created);}return NO_ERR;}
+	int setCatalogEntry(File path,Boolean locked,byte[] finderInfo,byte[] extendedFinderInfo,int created,int modified,Integer backup) throws IOException {if(onLockedVolume(path))return WPR_ERR;Sandbox68k.checkFile(path,Sandbox68k.Access.WRITE,requester);Metadata value=metadataFor(path);if(locked!=null){value.locked=locked;if(persistent&&path.isFile()&&HostFileAttributes68k.locked(path)!=locked)HostFileAttributes68k.setLocked(path,locked);}if(extendedFinderInfo!=null)System.arraycopy(extendedFinderInfo,0,value.extendedFinderInfo,0,16);if(finderInfo!=null&&!keepsFinderInfo(path)){int oldType=path.isFile()?typeOf(path):0;System.arraycopy(finderInfo,0,value.finderInfo,0,16);if(persistent)FinderInfo68k.write(path,hostFolderSafe(path,hostFinderInfo(path,value.finderInfo)));if(untypedNewFiles.contains(canonical(path).getPath()))convertNewFile(path);revertRetypedText(path,oldType);}if(backup!=null)value.backupDate=backup;if(modified!=0){value.modificationDate=modified;setHostModificationDate(path,modified);}if(created!=0&&created!=value.creationDate){value.creationDate=created;if(persistent)setHostCreationDate(path,created);}return NO_ERR;}
 	/** Selector $1A is PBOpenDF ($A060, a ParamBlockRec without ioDirID) or PBHOpenDF ($A260, HParamBlockRec): bit 9 of the trap word tells them apart like OpenRF/HOpenRF. */
 	private boolean openDataFork(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);result=openPath(pb,path,false);traceOpen(pb,hierarchical,path,result);}catch(SecurityException e){result=securityError(e);}catch(IOException e){if(Mac68kApi.TRACE)e.printStackTrace();result=IO_ERR;}return finish(cpu,pb,result);}
 	private boolean openResourceFork(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {File base=hierarchical?baseFor(memory.readLong(pb+48),(short)memory.readWord(pb+IO_VREF_NUM),memory.readLong(pb+IO_NAME_PTR)):directoryFor(0,(short)memory.readWord(pb+IO_VREF_NUM)),path=resolveFrom(base,memory.readLong(pb+IO_NAME_PTR));result=openPath(pb,path,true);}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
@@ -664,7 +664,7 @@ final class FileManager68k {
 			   Never bNoSysDir (17) / bNoBootBlks (19): those mark a server volume that cannot hold a System Folder, and Aladdin InstallerMaker 1.x (After Dark 2.0 "Double-Click Me to Install") refuses such a disk (its explanation falls through to "is damaged"). */byte[] data=ByteBuffer.allocate(20).order(ByteOrder.BIG_ENDIAN).putShort((short)2).putInt(attributes).putInt(0).putInt(0).putInt(0).putShort((short)0).array();int actual=Math.min(requested,data.length);for(int i=0;i<actual;i++)memory.writeByte(buffer+i,data[i]);memory.writeLong(pb+IO_ACT_COUNT,actual);result=NO_ERR;}return finish(cpu,pb,result);}
 	private boolean moveCatalogEntry(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],result;if(root==null)return finish(cpu,pb,NSV_ERR);try {int volume=(short)memory.readWord(pb+IO_VREF_NUM);File sourceDirectory=baseFor(memory.readLong(pb+48),volume,memory.readLong(pb+IO_NAME_PTR)),source=resolveFrom(sourceDirectory,memory.readLong(pb+IO_NAME_PTR));File volumeRoot=memory.readLong(pb+36)==1?volumeNamedByCatalogName(memory.readLong(pb+28)):null;/* ioNewDirID 1 (fsRtParID) with a volume's name is that volume's root (dfXFCNs fMove(file,"Home:")) */File destinationBase=volumeRoot!=null?volumeRoot:baseFor(memory.readLong(pb+36),volume,memory.readLong(pb+28)),destinationDirectory=volumeRoot!=null||memory.readLong(pb+28)==0||memory.readByte(memory.readLong(pb+28))==0?destinationBase:resolveFrom(destinationBase,memory.readLong(pb+28)); /* an empty ioNewName is the folder ioNewDirID itself, as NIL is (FSpCatMove to an FSSpec of {vRefNum, dirID, ""} from FindFolder: A-Dock's installer moving the old A-Dock to the Trash) */if(source==null||!source.exists())result=FNF_ERR;else if(destinationDirectory==null||!destinationDirectory.isDirectory())result=BD_NAM_ERR;else result=moveObject(source,destinationDirectory);}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Moves {@code source} into the folder {@code destinationDirectory} (same volume, same name); a result code. PBCatMove and FSMoveObject share it. */
-	int moveObject(File source,File destinationDirectory) throws IOException {if(onLockedVolume(source)||onLockedVolume(destinationDirectory))return WPR_ERR;if(metadataFor(destinationDirectory).locked)return F_LCKD_ERR;guardProgram(source);Sandbox.checkFile(source,Sandbox.Access.WRITE,requester);Sandbox.checkFile(destinationDirectory,Sandbox.Access.WRITE,requester);if(Sandbox.isCreatedBy(requester,source))Sandbox.created(requester,new File(destinationDirectory,source.getName()));File destination=new File(destinationDirectory,source.getName()).getCanonicalFile(),canonicalSource=source.getCanonicalFile();String sourcePath=canonicalSource.getPath(),destinationDirectoryPath=destinationDirectory.getCanonicalPath();if(canonicalSource.equals(root.getCanonicalFile())||(source.isDirectory()&&(destinationDirectoryPath.equals(sourcePath)||destinationDirectoryPath.startsWith(sourcePath+File.separator))))return BAD_MOV_ERR;if(destination.equals(canonicalSource))return NO_ERR;if(destination.exists())return DUP_FN_ERR;boolean file=canonicalSource.isFile();if(canonicalSource.renameTo(destination)){if(file)ResourceFile68k.AppleDouble.moveWith(canonicalSource,destination);rebaseState(sourcePath,destination.getPath());if(moveListener!=null)moveListener.accept(canonicalSource,destination);return NO_ERR;}return IO_ERR;}
+	int moveObject(File source,File destinationDirectory) throws IOException {if(onLockedVolume(source)||onLockedVolume(destinationDirectory))return WPR_ERR;if(metadataFor(destinationDirectory).locked)return F_LCKD_ERR;guardProgram(source);Sandbox68k.checkFile(source,Sandbox68k.Access.WRITE,requester);Sandbox68k.checkFile(destinationDirectory,Sandbox68k.Access.WRITE,requester);if(Sandbox68k.isCreatedBy(requester,source))Sandbox68k.created(requester,new File(destinationDirectory,source.getName()));File destination=new File(destinationDirectory,source.getName()).getCanonicalFile(),canonicalSource=source.getCanonicalFile();String sourcePath=canonicalSource.getPath(),destinationDirectoryPath=destinationDirectory.getCanonicalPath();if(canonicalSource.equals(root.getCanonicalFile())||(source.isDirectory()&&(destinationDirectoryPath.equals(sourcePath)||destinationDirectoryPath.startsWith(sourcePath+File.separator))))return BAD_MOV_ERR;if(destination.equals(canonicalSource))return NO_ERR;if(destination.exists())return DUP_FN_ERR;boolean file=canonicalSource.isFile();if(canonicalSource.renameTo(destination)){if(file)ResourceFile68k.AppleDouble.moveWith(canonicalSource,destination);rebaseState(sourcePath,destination.getPath());if(moveListener!=null)moveListener.accept(canonicalSource,destination);return NO_ERR;}return IO_ERR;}
 	/** Whether {@code reference} is a resource file the Resource Manager holds open (the System file included). */
 	private boolean isResourceFileReference(int reference){
 		if(resourceFileLookup!=null&&resourceFileLookup.apply(reference)!=null)return true;
@@ -672,12 +672,32 @@ final class FileManager68k {
 	}
 	private boolean getFileControlBlockInfo(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],index=(short)memory.readWord(pb+IO_FCB_INDEX),result=NO_ERR,reference=(short)memory.readWord(pb+IO_REF_NUM);OpenFile open=null;
 		if(index>0){reference=indexedControlBlock(index,(short)memory.readWord(pb+IO_VREF_NUM));if(reference==0)return finish(cpu,pb,RF_NUM_ERR);open=files.get(reference);}else open=files.get(reference);
+		if(open==null&&reference>=SCRIPT_FILE_REFERENCE){ // a file a script holds open: its data fork, as HyperCard's FCB
+			File path=scriptOpenFile(scriptOpenFiles(),reference);
+			if(path==null)return finish(cpu,pb,RF_NUM_ERR); // (scriptOpenFiles: only files on the VM's volumes)
+			try {int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0)writePascal(output,macNameOf(path));memory.writeWord(pb+IO_REF_NUM,reference);memory.writeLong(pb+IO_FCB_FILE_NUMBER,fileNumber(path));memory.writeWord(pb+IO_FCB_FLAGS,path.canWrite()?0x0100:0);memory.writeWord(pb+38,0);long length=path.length();memory.writeLong(pb+IO_FCB_EOF,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FCB_PHYSICAL,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FCB_POSITION,0);memory.writeWord(pb+IO_FCB_VREF,volumeRefNumFor(path));memory.writeLong(pb+IO_FCB_CLUMP,0);memory.writeLong(pb+IO_FCB_PARENT,parentDirectoryId(path));}catch(IOException e){result=IO_ERR;}
+			return finish(cpu,pb,result);}
 		if(open==null){ // a resource file opened by the Resource Manager is an open resource fork too (programs locate themselves through CurResFile + PBGetFCBInfo)
 			File path=resourceFileLookup==null?null:resourceFileLookup.apply(reference);
 			if(path==null&&systemResourceFile!=null&&systemFileReference!=null&&reference==systemFileReference.getAsInt())path=systemResourceFile;
 			if(path==null)result=RF_NUM_ERR;else try {int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0)writePascal(output,macNameOf(path));memory.writeWord(pb+IO_REF_NUM,reference);memory.writeLong(pb+IO_FCB_FILE_NUMBER,fileNumber(path));memory.writeWord(pb+IO_FCB_FLAGS,0x0200|(path.canWrite()?0x0100:0));memory.writeWord(pb+38,0);long length=path.isFile()?resourceForkFor(path).storage.length():0;memory.writeLong(pb+IO_FCB_EOF,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FCB_PHYSICAL,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FCB_POSITION,0);memory.writeWord(pb+IO_FCB_VREF,volumeRefNumFor(path));memory.writeLong(pb+IO_FCB_CLUMP,0);memory.writeLong(pb+IO_FCB_PARENT,parentDirectoryId(path));}catch(IOException e){result=IO_ERR;}
 			return finish(cpu,pb,result);}
 		try {int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0)writePascal(output,macNameOf(open.path));memory.writeWord(pb+IO_REF_NUM,reference);memory.writeLong(pb+IO_FCB_FILE_NUMBER,fileNumber(open.path));memory.writeWord(pb+IO_FCB_FLAGS,(open.writable?0x0100:0)|(open.resourceFork?0x0200:0));memory.writeWord(pb+38,0);long length=open.file.length();memory.writeLong(pb+IO_FCB_EOF,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FCB_PHYSICAL,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FCB_POSITION,(int)open.file.getFilePointer());memory.writeWord(pb+IO_FCB_VREF,volumeRefNumFor(open.path));memory.writeLong(pb+IO_FCB_CLUMP,0);memory.writeLong(pb+IO_FCB_PARENT,parentDirectoryId(open.path));}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
+
+	/** The refNums the FCB table gives the files scripts hold open (HyperCard's own forks), above the ones drawn for the VM. */
+	static final int SCRIPT_FILE_REFERENCE=32000;
+	/** The files scripts hold open with "open file" (TTalk.openFilePaths) that this VM has not opened itself, on its volumes.
+	 *  Import/Export Tools closes its text file before it reads it again only when the OpenFiles XFCN lists it; it did not, so
+	 *  the import began after the first record, which was lost. */
+	private java.util.List<File> scriptOpenFiles(){
+		java.util.ArrayList<File> out=new java.util.ArrayList<File>();
+		if(root==null)return out;
+		java.util.HashSet<String> mine=new java.util.HashSet<String>();
+		for(OpenFile f:files.values())try{if(f.path!=null)mine.add(f.path.getCanonicalPath());}catch(IOException e){}
+		for(File f:TTalk.openFilePaths())try{File c=f.getCanonicalFile();if(!mine.contains(c.getPath())&&volumeIndexFor(c)>=0)out.add(c);}catch(IOException|SecurityException e){}
+		return out;
+	}
+	private static File scriptOpenFile(java.util.List<File> scripts,int reference){int i=reference-SCRIPT_FILE_REFERENCE;return i>=0&&i<scripts.size()?scripts.get(i):null;}
 
 	/**
 	 * The refNum of the {@code index}th open fork (1-based) for indexed PBGetFCBInfo, 0 past the end. The FCB table holds every
@@ -687,11 +707,14 @@ final class FileManager68k {
 	private int indexedControlBlock(int index,int volume){
 		java.util.TreeSet<Integer> references=new java.util.TreeSet<Integer>(files.keySet());
 		if(resourceFileReferences!=null)references.addAll(resourceFileReferences.get());
+		// then HyperCard's own: the files scripts hold open (open file), which are FCBs on a Mac too
+		java.util.List<File> scripts=scriptOpenFiles();
+		for(int i=0;i<scripts.size();i++)references.add(SCRIPT_FILE_REFERENCE+i);
 		File wanted=null;
 		if(volume!=0)try{wanted=namedVolume(volume);if(wanted==null)return 0;wanted=wanted.getCanonicalFile();}catch(IOException e){return 0;}
 		int at=0;
 		for(int reference:references){
-			OpenFile open=files.get(reference);File path=open!=null?open.path:resourceFileLookup==null?null:resourceFileLookup.apply(reference);
+			OpenFile open=files.get(reference);File path=open!=null?open.path:reference>=SCRIPT_FILE_REFERENCE?scriptOpenFile(scripts,reference):resourceFileLookup==null?null:resourceFileLookup.apply(reference);
 			if(path==null)continue;
 			if(wanted!=null)try{File root=namedVolume(volumeRefNumFor(path));if(root==null||!root.getCanonicalFile().equals(wanted))continue;}catch(IOException e){continue;}
 			if(++at==index)return reference;
@@ -735,7 +758,7 @@ final class FileManager68k {
 	int exchangeObjects(File a,File b) throws IOException {
 		if(a==null||b==null||!a.exists()||!b.exists())return FNF_ERR;if(!a.isFile()||!b.isFile())return NOT_A_FILE_ERR;
 		if(canonical(a).equals(canonical(b)))return NO_ERR;if(onLockedVolume(a)||onLockedVolume(b))return WPR_ERR;if(metadataFor(a).locked||metadataFor(b).locked)return F_LCKD_ERR;
-		guardProgram(a);guardProgram(b);Sandbox.checkFile(a,Sandbox.Access.WRITE,requester);Sandbox.checkFile(b,Sandbox.Access.WRITE,requester);
+		guardProgram(a);guardProgram(b);Sandbox68k.checkFile(a,Sandbox68k.Access.WRITE,requester);Sandbox68k.checkFile(b,Sandbox68k.Access.WRITE,requester);
 		byte[] infoA=persistent?FinderInfo68k.stored(a):null,infoB=persistent?FinderInfo68k.stored(b):null;
 		File temp=new File(a.getParentFile(),".hz-exchange-"+System.nanoTime());
 		if(!a.renameTo(temp))return IO_ERR;ResourceFile68k.AppleDouble.moveWith(a,temp);
@@ -749,7 +772,7 @@ final class FileManager68k {
 	/** Empties a fork of a closed file (FSDeleteFork: the data and resource forks of an HFS file always exist); a result code. */
 	int emptyFork(File path,boolean resourceFork) throws IOException {
 		if(path==null||!path.exists())return FNF_ERR;if(!path.isFile())return NOT_A_FILE_ERR;if(metadataFor(path).locked)return F_LCKD_ERR;if(isBusy(path))return F_BSY_ERR;
-		guardProgram(path);Sandbox.checkFile(path,Sandbox.Access.WRITE,requester);if(!HostFileAttributes68k.makeWritable(path))return F_LCKD_ERR;String key=canonical(path).getPath();
+		guardProgram(path);Sandbox68k.checkFile(path,Sandbox68k.Access.WRITE,requester);if(!HostFileAttributes68k.makeWritable(path))return F_LCKD_ERR;String key=canonical(path).getPath();
 		if(resourceFork){if(forkLengths(path)[1]>0)ResourceFile68k.writeForkBytes(path,new byte[0],ResourceFile68k.Storage.NONE);ResourceFork fork=resourceForks.remove(key);if(fork!=null)fork.storage.delete();return NO_ERR;}
 		ResourceFile68k.MacBinary mb=persistent?macBinaryFor(path):null;
 		if(mb!=null){mb.dataFork=new byte[0];mb.write(path);}else try(RandomAccessFile file=new RandomAccessFile(path,"rw")){file.setLength(0);}
@@ -781,9 +804,21 @@ final class FileManager68k {
 			// write access is granted on a locked volume and refused at the first PBWrite/SetEOF/Allocate (IM Files: "no error is
 			// returned until..."): the MacPopulous floppy's installer opens the fork it copies with fsRdWrPerm (OpenRF used to
 			// answer wPrErr and the program was installed without its resource fork); deny-mode opens still fail
-			else if(permission>=2&&permission<=4){permission=1;lockedVolume=true;}else if(permission!=1)return WPR_ERR;}if(Sandbox.readOnlyFor(path,requester)){if(permission==0)permission=1;/* opened read-only (the launcher): like a locked file */else if(permission!=1)return PERM_ERR;}boolean askAtWrite=permission!=1&&!Sandbox.allowedWithoutAsking(path,Sandbox.Level.WRITE,requester);/* many programs open their files read-write only to read them: asked at the first write */Sandbox.checkFile(path,permission==1||askAtWrite?Sandbox.Access.READ:Sandbox.Access.READ_WRITE,requester);Metadata value=metadataFor(path);if(value.locked&&(permission&3)==0)permission=1;/* fsCurPerm: what the locked file allows */if(permission!=1&&value.locked)return F_LCKD_ERR;int reference=allocateReference();File backing=resourceFork?resourceForkFor(path).storage:dataForkFor(path);if((permission&3)==0&&!backing.canWrite()&&!HostFileAttributes68k.readOnlyCopy(path))permission=1;boolean copy=permission!=1&&HostFileAttributes68k.readOnlyCopy(path),upgrade=copy&&!backing.canWrite();/* a file only its host permissions keep read-only (copied from a CD, StarGates checks it can write its own data fork): opened for writing as on a Mac's disk, made writable at the first write (most are only read) *//* fsCurPerm (low two bits 0; a block with a stray byte there, like Dark Forces' PBHOpenDF, still means that) on a file the host keeps read-only (a game's data copied from its CD): what the file allows */HostView view=resourceFork?null:views.get(canonical(path).getPath());if(view!=null&&view.storage==null)view=null;RandomAccessFile file=new RandomAccessFile(backing,permission==1||upgrade?"r":"rw");OpenFile open=new OpenFile(file,path,permission!=1,resourceFork);open.askAtWrite=askAtWrite;open.lockedVolume=lockedVolume;if(copy){open.readOnlyCopy=true;open.reopenAtWrite=upgrade?backing:null;}open.view=view;if(view!=null)view.open++;else if(!resourceFork&&file.length()==0)open.fresh=true;files.put(reference,open);if(fcbListener!=null)fcbListener.opened(reference,path,resourceFork,permission!=1,file.length());return reference;}
+			else if(permission>=2&&permission<=4){permission=1;lockedVolume=true;}else if(permission!=1)return WPR_ERR;}if(Sandbox68k.readOnlyFor(path,requester)){if(permission==0)permission=1;/* opened read-only (the launcher): like a locked file */else if(permission!=1)return PERM_ERR;}boolean askAtWrite=permission!=1&&!Sandbox68k.allowedWithoutAsking(path,Sandbox68k.Level.WRITE,requester);/* many programs open their files read-write only to read them: asked at the first write */Sandbox68k.checkFile(path,permission==1||askAtWrite?Sandbox68k.Access.READ:Sandbox68k.Access.READ_WRITE,requester);Metadata value=metadataFor(path);if(value.locked&&(permission&3)==0)permission=1;/* fsCurPerm: what the locked file allows */if(permission!=1&&value.locked)return F_LCKD_ERR;int reference=allocateReference();File backing=resourceFork?resourceForkFor(path).storage:dataForkFor(path);if((permission&3)==0&&!backing.canWrite()&&!HostFileAttributes68k.readOnlyCopy(path))permission=1;boolean copy=permission!=1&&HostFileAttributes68k.readOnlyCopy(path),upgrade=copy&&!backing.canWrite();/* a file only its host permissions keep read-only (copied from a CD, StarGates checks it can write its own data fork): opened for writing as on a Mac's disk, made writable at the first write (most are only read) *//* fsCurPerm (low two bits 0; a block with a stray byte there, like Dark Forces' PBHOpenDF, still means that) on a file the host keeps read-only (a game's data copied from its CD): what the file allows */HostView view=resourceFork?null:views.get(canonical(path).getPath());if(view!=null&&view.storage==null)view=null;RandomAccessFile file=openFork(backing,!(permission==1||upgrade));OpenFile open=new OpenFile(file,path,permission!=1,resourceFork);open.askAtWrite=askAtWrite;open.lockedVolume=lockedVolume;if(copy){open.readOnlyCopy=true;open.reopenAtWrite=upgrade?backing:null;}open.view=view;if(view!=null)view.open++;else if(!resourceFork&&file.length()==0)open.fresh=true;files.put(reference,open);if(fcbListener!=null)fcbListener.opened(reference,path,resourceFork,permission!=1,file.length());return reference;}
+	/**
+	 * A handle on a fork's file. The browser's RandomAccessFile (TeaVM) empties an existing file opened "rw": there the bytes are
+	 * read first and written back, so a program that opens its data with fsCurPerm/fsRdWrPerm only to read it (MusicBox's file
+	 * play of an AIFF: -51) finds it whole. On the desktop it is the plain open.
+	 */
+	private static RandomAccessFile openFork(File file,boolean write) throws IOException {
+		if(!write)return new RandomAccessFile(file,"r");
+		byte[] old=Toolbox68k.PARTS.emptiesReadWriteOpen()&&file.isFile()?Files68k.read(file):null;
+		RandomAccessFile handle=new RandomAccessFile(file,"rw");
+		if(old!=null&&old.length>0){handle.write(old);handle.seek(0);}
+		return handle;
+	}
 	/** Opens a read-only reference on a byte image (a resource fork image handed to a program's own loader). */
-	int openBytes(byte[] contents) throws IOException {File temp=TempFiles.createFile("hyperzebra-fork-",".bin");Files.write(temp.toPath(),contents);int reference=allocateReference();files.put(reference,new OpenFile(new RandomAccessFile(temp,"r"),temp,false,false));return reference;}
+	int openBytes(byte[] contents) throws IOException {File temp=UiHost.get().tempFilesCreateFile("hyperzebra-fork-",".bin");Files68k.write(temp,contents);int reference=allocateReference();files.put(reference,new OpenFile(new RandomAccessFile(temp,"r"),temp,false,false));return reference;}
 	/** Reads {@code length} bytes at {@code offset} of an open reference (the Resource Manager's own reads); null when the reference is unknown. */
 	byte[] readReference(int reference,long offset,int length) throws IOException {OpenFile open=files.get(reference);if(open==null)return null;byte[] result=new byte[Math.max(0,length)];open.file.seek(offset);int actual=0;while(actual<result.length){int count=open.file.read(result,actual,result.length-actual);if(count<0)break;actual+=count;}return actual==result.length?result:java.util.Arrays.copyOf(result,actual);}
 	/** Length of an open file (-1: not open here). */
@@ -795,7 +830,14 @@ final class FileManager68k {
 	/** Closes {@code open}: the handle, then what it wrote goes to the host - a resource fork, a MacBinary data fork, a converted copy ({@link #writeBack}) or a new text/picture file ({@link #convertNewFile}). */
 	/** Only a fork written or resized through this handle goes back into the file: macBinify (HyperBBS) and Prototyping Toolkit's FileCopy
 	 *  open their source's resource fork with fsCurPerm and only read it, and rewriting it on Close moved the host file's modification date. */
-	private void closeOpenFile(int reference,OpenFile open) throws IOException {files.remove(reference);releaseRangeLocks(reference);open.file.close();if(!open.attached&&fcbListener!=null)fcbListener.closed(reference);if(persistent&&open.resourceFork&&open.writable){if(open.dirty){ResourceFork fork=resourceForkFor(open.path);ResourceFile68k.writeForkBytes(open.path,Files.readAllBytes(fork.storage.toPath()),ResourceFile68k.Storage.NONE);}}else if(open.view!=null){open.view.open--;if(open.writable&&open.dirty)writeBack(open);}else if(open.writable&&!open.resourceFork){ResourceFile68k.MacBinary mb=persistent?macBinaryFor(open.path):null;if(mb!=null){if(open.dirty){mb.dataFork=Files.readAllBytes(dataForkFor(open.path).toPath());mb.write(open.path);}}else if(open.dirty&&(open.fresh||untypedNewFiles.contains(canonical(open.path).getPath())))convertNewFile(open.path);else if(open.dirty&&open.path.isFile()&&open.path.length()<=TextFile68k.LIMIT&&(typeOf(open.path)==TEXT_TYPE||typeOf(open.path)==0))ProgramFiles.record(canonical(open.path).getPath(),hostStamp(open.path));}} // a text file the program rewrote as it is (no converted copy) stays its bytes
+	/** Closes {@code open} ({@link #closeOpenFile0}); a fork written through it is told to the host (the browser player keeps it
+	 *  for the page's next visit: Cosmic Osmo's saved game, "Copy of CO.Hard Disk" in the System Folder, was gone on reload) */
+	private void closeOpenFile(int reference,OpenFile open) throws IOException {
+		boolean wrote=open.writable&&open.dirty;
+		closeOpenFile0(reference,open);
+		if(wrote)UiHost.get().scriptFileWritten(open.path);
+	}
+	private void closeOpenFile0(int reference,OpenFile open) throws IOException {files.remove(reference);releaseRangeLocks(reference);open.file.close();if(!open.attached&&fcbListener!=null)fcbListener.closed(reference);if(persistent&&open.resourceFork&&open.writable){if(open.dirty){ResourceFork fork=resourceForkFor(open.path);ResourceFile68k.writeForkBytes(open.path,Files68k.read(fork.storage),ResourceFile68k.Storage.NONE);}}else if(open.view!=null){open.view.open--;if(open.writable&&open.dirty)writeBack(open);}else if(open.writable&&!open.resourceFork){ResourceFile68k.MacBinary mb=persistent?macBinaryFor(open.path):null;if(mb!=null){if(open.dirty){mb.dataFork=Files68k.read(dataForkFor(open.path));mb.write(open.path);}}else if(open.dirty&&(open.fresh||untypedNewFiles.contains(canonical(open.path).getPath())))convertNewFile(open.path);else if(open.dirty&&open.path.isFile()&&open.path.length()<=TextFile68k.LIMIT&&(typeOf(open.path)==TEXT_TYPE||typeOf(open.path)==0))ProgramFiles.record(canonical(open.path).getPath(),hostStamp(open.path));}} // a text file the program rewrote as it is (no converted copy) stays its bytes
 	private boolean read(M68kCpu cpu) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_REF_NUM),requested=memory.readLong(pb+IO_REQ_COUNT),buffer=memory.readLong(pb+IO_BUFFER),result=NO_ERR;OpenFile open=openFileFor(reference);memory.writeLong(pb+IO_ACT_COUNT,0);
 		// ioPosMode bit 7 = newline mode: the read stops after the newline character in the mode's high byte (HyperCard's
 		// "read from file until return" reads 512 bytes in newline mode $0D80; Roulette v4.5 compares the first line with a key)
@@ -808,12 +850,12 @@ final class FileManager68k {
 
 	private boolean create(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);result=createFile(path);traceOpen(pb,hierarchical,path,result);}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Creates the empty file {@code path} (PBHCreate, FSCreateFileUnicode); a result code. */
-	int createFile(File path) throws IOException {if(path==null)return root==null?NSV_ERR:BD_NAM_ERR;if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR/* a folder of the path is missing (Rinaldi's FullWrite: "Folder not found") */;Sandbox.checkFile(path,Sandbox.Access.CREATE,requester);if(path.createNewFile()){Sandbox.created(requester,path);metadataFor(path);if(persistent)createdFiles.add(canonical(path).getPath());return NO_ERR;}return path.getParentFile().canWrite()?IO_ERR:WPR_ERR;}
+	int createFile(File path) throws IOException {if(path==null)return root==null?NSV_ERR:BD_NAM_ERR;if(path.exists())return DUP_FN_ERR;if(onLockedVolume(path))return WPR_ERR;if(path.getParentFile()==null||!path.getParentFile().isDirectory())return DIR_NF_ERR/* a folder of the path is missing (Rinaldi's FullWrite: "Folder not found") */;Sandbox68k.checkFile(path,Sandbox68k.Access.CREATE,requester);if(path.createNewFile()){Sandbox68k.created(requester,path);metadataFor(path);if(persistent)createdFiles.add(canonical(path).getPath());return NO_ERR;}return path.getParentFile().canWrite()?IO_ERR:WPR_ERR;}
 	private boolean delete(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);result=path==null?(root==null?NSV_ERR:BD_NAM_ERR):deleteObject(path,true)/* PBDelete removes an empty folder too on HFS (Rinaldi's RemoveFolder: "Unknown #-54") */;}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** Deletes a file or an empty folder (a folder only when {@code folders}); a result code. PBDelete, PBHDelete and FSDeleteObject share it. */
-	int deleteObject(File path,boolean folders) throws IOException {if(!path.exists())return FNF_ERR;if(onLockedVolume(path))return WPR_ERR;if(metadataFor(path).locked)return F_LCKD_ERR;if(folders)clearHostLeftovers(path);if(isBusy(path)||isStackStandIn(path))return F_BSY_ERR;if(path.isDirectory()&&!folders)return PERM_ERR;guardProgram(path);Sandbox.checkFile(path,Sandbox.Access.DELETE,requester);String key=path.getCanonicalPath();if(DeletedFiles.delete(path,requester)/* the user's own files go to HyperZebra HD's Deleted Files, not away for good */){ResourceFile68k.AppleDouble.deleteWith(path);removeState(key);return NO_ERR;}return IO_ERR;}
+	int deleteObject(File path,boolean folders) throws IOException {if(!path.exists())return FNF_ERR;if(onLockedVolume(path))return WPR_ERR;if(metadataFor(path).locked)return F_LCKD_ERR;if(folders)clearHostLeftovers(path);if(isBusy(path)||isStackStandIn(path))return F_BSY_ERR;if(path.isDirectory()&&!folders)return PERM_ERR;guardProgram(path);Sandbox68k.checkFile(path,Sandbox68k.Access.DELETE,requester);String key=path.getCanonicalPath();if(DeletedFiles.delete(path,requester)/* the user's own files go to HyperZebra HD's Deleted Files, not away for good */){ResourceFile68k.AppleDouble.deleteWith(path);removeState(key);return NO_ERR;}return IO_ERR;}
 	/** A folder a program sees as empty may still hold the host's own .DS_Store and "._" sidecars; they go before the folder is deleted (else fBsyErr). */
-	private void clearHostLeftovers(File folder){if(!folder.isDirectory())return;File[] all=folder.listFiles();if(all==null||all.length==0)return;for(File f:all){String n=f.getName();if(!f.isFile()||!(n.equals(".DS_Store")||n.startsWith("._")))return;}if(!Sandbox.allowFile(folder,Sandbox.Access.DELETE,requester))return;for(File f:all)f.delete();}
+	private void clearHostLeftovers(File folder){if(!folder.isDirectory())return;File[] all=folder.listFiles();if(all==null||all.length==0)return;for(File f:all){String n=f.getName();if(!f.isFile()||!(n.equals(".DS_Store")||n.startsWith("._")))return;}if(!Sandbox68k.allowFile(folder,Sandbox68k.Access.DELETE,requester))return;for(File f:all)f.delete();}
 	private boolean rename(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File from=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical),to=from==null?null:newNameIn(from,memory.readLong(pb+IO_MISC));result=from==null||to==null?(root==null?NSV_ERR:BD_NAM_ERR):renameObject(from,to);}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/**
 	 * The new name of a rename (ioMisc) as a file beside {@code from}: only its last component counts (FullRename hands over the
@@ -837,12 +879,12 @@ final class FileManager68k {
 		return to;
 	}
 	/** Renames {@code from} to {@code to} (same folder); a result code. PBHRename and FSRenameUnicode share it. */
-	int renameObject(File from,File to) throws IOException {if(!from.exists())return FNF_ERR;if(onLockedVolume(from))return WPR_ERR;if(metadataFor(from).locked)return F_LCKD_ERR;if(to.exists()&&(from.getName().equals(to.getName())||!canonical(to).equals(canonical(from))))return DUP_FN_ERR;/* another spelling of the same name (case only, on a case-insensitive host) renames in place */guardProgram(from);Sandbox.checkFile(from,Sandbox.Access.WRITE,requester);Sandbox.checkFile(to,Sandbox.Access.WRITE,requester);if(Sandbox.isCreatedBy(requester,from))Sandbox.created(requester,to);String oldKey=from.getCanonicalPath();boolean file=from.isFile();if(from.renameTo(to)){if(file)ResourceFile68k.AppleDouble.moveWith(from,to);rebaseState(oldKey,to.getCanonicalPath());if(moveListener!=null)moveListener.accept(new File(oldKey),to.getCanonicalFile());if(file&&untypedNewFiles.contains(to.getCanonicalPath()))convertNewFile(to)/* a new text file renamed to its .txt name (a safe save) is typed by the name now */;return NO_ERR;}return IO_ERR;}
+	int renameObject(File from,File to) throws IOException {if(!from.exists())return FNF_ERR;if(onLockedVolume(from))return WPR_ERR;if(metadataFor(from).locked)return F_LCKD_ERR;if(to.exists()&&(from.getName().equals(to.getName())||!canonical(to).equals(canonical(from))))return DUP_FN_ERR;/* another spelling of the same name (case only, on a case-insensitive host) renames in place */guardProgram(from);Sandbox68k.checkFile(from,Sandbox68k.Access.WRITE,requester);Sandbox68k.checkFile(to,Sandbox68k.Access.WRITE,requester);if(Sandbox68k.isCreatedBy(requester,from))Sandbox68k.created(requester,to);String oldKey=from.getCanonicalPath();boolean file=from.isFile();if(from.renameTo(to)){if(file)ResourceFile68k.AppleDouble.moveWith(from,to);rebaseState(oldKey,to.getCanonicalPath());if(moveListener!=null)moveListener.accept(new File(oldKey),to.getCanonicalFile());if(file&&untypedNewFiles.contains(to.getCanonicalPath()))convertNewFile(to)/* a new text file renamed to its .txt name (a safe save) is typed by the name now */;return NO_ERR;}return IO_ERR;}
 	/** GetFileInfo/HGetFileInfo (and FSpGetFInfo through it): a folder is fnfErr, as on HFS (only file records are looked up) -
 	 *  Apple's HFSCopy finds the folders of a path it has to create that way, and with every folder "a file" it created none. */
 	private boolean getFileInfo(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=fileForInfo(pb,hierarchical);if(path!=null&&!path.exists()&&nativeQuickTimeFile(path)){writeNativeQuickTimeInfo(pb,false);result=NO_ERR;}else if(path==null||!path.exists()||path.isDirectory())result=FNF_ERR;else {if((short)memory.readWord(pb+IO_DIR_INDEX)<=0)materializeView(path);writeFileInfo(pb,path);result=NO_ERR;}}catch(IndexOutOfBoundsException e){result=FNF_ERR;}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
-	private boolean setFileInfo(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);if(path==null)result=root==null?NSV_ERR:BD_NAM_ERR;else if(!path.exists()||path.isDirectory())result=FNF_ERR;/* a folder too, as GetFileInfo (cSetFileInfo wrote a file type over a host folder's window rect) */else if(onLockedVolume(path))result=WPR_ERR;else {Sandbox.checkFile(path,Sandbox.Access.WRITE,requester);byte[] finderInfo=new byte[16];for(int i=0;i<finderInfo.length;i++)finderInfo[i]=(byte)memory.readByte(pb+IO_FL_FNDR_INFO+i);Metadata value=metadataFor(path);if(!keepsFinderInfo(path)){int oldType=typeOf(path);value.finderInfo=finderInfo;if(persistent)FinderInfo68k.write(path,hostFinderInfo(path,finderInfo));if(untypedNewFiles.contains(canonical(path).getPath()))convertNewFile(path);revertRetypedText(path,oldType);}int created=memory.readLong(pb+IO_FL_CR_DAT),modified=memory.readLong(pb+IO_FL_MD_DAT);if(modified!=0){value.modificationDate=modified;setHostModificationDate(path,modified);}if(created!=0&&created!=value.creationDate){value.creationDate=created;if(persistent)setHostCreationDate(path,created);}/* after the modification date: macOS moves a birth time later than the new modification time back to it */result=NO_ERR;}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
-	private boolean setFileLock(M68kCpu cpu,boolean hierarchical,boolean locked) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);if(path==null)result=root==null?NSV_ERR:BD_NAM_ERR;else if(!path.exists())result=FNF_ERR;else if(onLockedVolume(path))result=WPR_ERR;else {Sandbox.checkFile(path,Sandbox.Access.WRITE,requester);metadataFor(path).locked=locked;if(persistent&&path.isFile()&&HostFileAttributes68k.locked(path)!=locked)HostFileAttributes68k.setLocked(path,locked);/* the Finder's Locked on the host: the lock outlasts this VM (Rinaldi's SetFinderLock, then EraseFile in another external's VM) */result=NO_ERR;}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
+	private boolean setFileInfo(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);if(path==null)result=root==null?NSV_ERR:BD_NAM_ERR;else if(!path.exists()||path.isDirectory())result=FNF_ERR;/* a folder too, as GetFileInfo (cSetFileInfo wrote a file type over a host folder's window rect) */else if(onLockedVolume(path))result=WPR_ERR;else {Sandbox68k.checkFile(path,Sandbox68k.Access.WRITE,requester);byte[] finderInfo=new byte[16];for(int i=0;i<finderInfo.length;i++)finderInfo[i]=(byte)memory.readByte(pb+IO_FL_FNDR_INFO+i);Metadata value=metadataFor(path);if(!keepsFinderInfo(path)){int oldType=typeOf(path);value.finderInfo=finderInfo;if(persistent)FinderInfo68k.write(path,hostFinderInfo(path,finderInfo));if(untypedNewFiles.contains(canonical(path).getPath()))convertNewFile(path);revertRetypedText(path,oldType);}int created=memory.readLong(pb+IO_FL_CR_DAT),modified=memory.readLong(pb+IO_FL_MD_DAT);if(modified!=0){value.modificationDate=modified;setHostModificationDate(path,modified);}if(created!=0&&created!=value.creationDate){value.creationDate=created;if(persistent)setHostCreationDate(path,created);}/* after the modification date: macOS moves a birth time later than the new modification time back to it */result=NO_ERR;}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
+	private boolean setFileLock(M68kCpu cpu,boolean hierarchical,boolean locked) throws M68kCpuException {int pb=cpu.a[0],result;try {File path=resolveForParameterBlock(pb,memory.readLong(pb+IO_NAME_PTR),hierarchical);if(path==null)result=root==null?NSV_ERR:BD_NAM_ERR;else if(!path.exists())result=FNF_ERR;else if(onLockedVolume(path))result=WPR_ERR;else {Sandbox68k.checkFile(path,Sandbox68k.Access.WRITE,requester);metadataFor(path).locked=locked;if(persistent&&path.isFile()&&HostFileAttributes68k.locked(path)!=locked)HostFileAttributes68k.setLocked(path,locked);/* the Finder's Locked on the host: the lock outlasts this VM (Rinaldi's SetFinderLock, then EraseFile in another external's VM) */result=NO_ERR;}}catch(SecurityException e){result=securityError(e);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 
 	/** Allocate: nothing to reserve on the host; the space asked for is granted. A resource file the Resource Manager holds open
 	 *  is an open fork too: Arrange-It (Kodak) reserves room in its temporary file through FSpOpenResFile's refNum, and rfNumErr
@@ -859,13 +901,13 @@ final class FileManager68k {
 		if(target<0)result=POS_ERR;else if(target>open.file.length()){open.file.seek(open.file.length());result=EOF_ERR;}else {open.file.seek(target);result=NO_ERR;}memory.writeLong(pb+IO_POS_OFFSET,(int)open.file.getFilePointer());}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	/** FlushFile/FlushVol. A resource file the Resource Manager holds open is an open fork too: Onslaught 1.0.2 flushes its settings
 	 *  file by that refNum after UpdateResFile and reported "an internal error has occurred (Toolbox Code: -51)" at every start. */
-	private boolean flush(M68kCpu cpu,boolean fileOnly) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_REF_NUM),result=NO_ERR;if(fileOnly){OpenFile open=files.get(reference);if(open==null)result=isResourceFileReference(reference)?NO_ERR:RF_NUM_ERR;else try{open.file.getFD().sync();if(open.view!=null&&open.writable&&open.dirty)writeBack(open);}catch(IOException e){result=IO_ERR;}}else try{syncViews(true);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
+	private boolean flush(M68kCpu cpu,boolean fileOnly) throws M68kCpuException {int pb=cpu.a[0],reference=(short)memory.readWord(pb+IO_REF_NUM),result=NO_ERR;if(fileOnly){OpenFile open=files.get(reference);if(open==null)result=isResourceFileReference(reference)?NO_ERR:RF_NUM_ERR;else try{Toolbox68k.PARTS.sync(open.file);if(open.view!=null&&open.writable&&open.dirty)writeBack(open);}catch(IOException e){result=IO_ERR;}}else try{syncViews(true);}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 
 	private boolean getVolume(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],result=root==null?NSV_ERR:NO_ERR;if(result==NO_ERR)try{File d=volumeRootFor(defaultVolumeRef);WorkingDirectory working=workingDirectories.get(defaultVolumeRef);if(working!=null&&directories.get(working.directoryId)!=null)d=directories.get(working.directoryId);int output=memory.readLong(pb+IO_NAME_PTR);/* the volume's name even when the default is a working directory (only ioVRefNum names the folder): SoftWindows puts it in front of the partial path the installer saved (":SoftWindows:SoftWindows Hard Disk File C"), and with the folder's name drive C: was not found */if(output!=0)writePascal(output,volumeNameFor(d));memory.writeWord(pb+IO_VREF_NUM,working!=null?defaultVolumeRef:volumeRefNumFor(d));/* HGetVol also fills ioWDProcID/ioWDVRefNum/ioWDDirID - PBGetVol ($A014) not: the 1984 Font Mover passes a 24-byte block on the stack, and its return address became ioWDProcID 0 */if(hierarchical){memory.writeLong(pb+28,0);memory.writeWord(pb+32,volumeRefNumFor(d));memory.writeLong(pb+48,directoryId(d));}}catch(IOException e){result=IO_ERR;}return finish(cpu,pb,result);}
 	private boolean getVolumeInfo(M68kCpu cpu,boolean hierarchical) throws M68kCpuException {int pb=cpu.a[0],askedRef=(short)memory.readWord(pb+IO_VREF_NUM),index=(short)memory.readWord(pb+IO_VOL_INDEX),result=root==null||index>volumes.size()?NSV_ERR:NO_ERR;if(result==NO_ERR)try {File volume;if(index>0)volume=volumes.get(index-1);else{int namePtr=memory.readLong(pb+IO_NAME_PTR);int ref=(short)memory.readWord(pb+IO_VREF_NUM);volume=null;/* a negative ioVolIndex names the volume by the pathname in ioNamePtr first, whatever ioVRefNum holds (Netscape 2.02 saves its bookmarks, then asks for "HyperZebra HD:" with vRefNum -32768) */if((ref==0||index<0)&&namePtr!=0&&memory.readByte(namePtr)>0){String n=encoding.decode(memory.readBytes(namePtr+1,memory.readByte(namePtr)));int colon=n.indexOf(':');if(colon>0)n=n.substring(0,colon);int named=volumeIndexNamed(n);if(named>=0)volume=volumes.get(named);
 					/* a full pathname ("Disk:...") names its volume: one not mounted is nsvErr, not ioVRefNum's volume. Apple Installer 3 asks
 					   for its next floppy so ("Win Install 2:") and took the startup disk it was given for that disk ("the wrong disk") */
-					if(volume==null&&colon>0)return finish(cpu,pb,NSV_ERR);}if(volume==null)volume=namedVolume(ref);if(volume==null)return finish(cpu,pb,NSV_ERR);}int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0)writePascal(output,volumeNameFor(volume));memory.writeWord(pb+IO_VREF_NUM,volumeRefNumFor(volume));File root=volume;BasicFileAttributes attributes=Files.readAttributes(root.toPath(),BasicFileAttributes.class);int created=macDate(attributes.creationTime().toMillis()),modified=macDate(attributes.lastModifiedTime().toMillis());if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] volume list "+root);File[] entries=root.listFiles();if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] volume done "+root);int fileCount=0;if(entries!=null)for(File entry:entries)if(entry.isFile())fileCount++;/* PBGetVInfo on a working directory - ioVRefNum one, or 0 while the default directory is a folder - answers that folder's valence (its files and folders) in ioVNmFls, for programs written for MFS (IM IV-129); the volume root's files otherwise. HyperZebraRegressionTest passed only by chance: the stack folder's volume was the host root, whose one plain file is macOS's /.file */if(!hierarchical&&index<=0){WorkingDirectory working=workingDirectories.get(askedRef==0?defaultVolumeRef:askedRef);File folder=working==null?null:directories.get(working.directoryId);if(folder!=null&&folder.isDirectory()&&!folder.equals(root)){File[] valence=catalogEntries(folder);fileCount=valence==null?0:valence.length;}}
+					if(volume==null&&colon>0)return finish(cpu,pb,NSV_ERR);}if(volume==null)volume=namedVolume(ref);if(volume==null)return finish(cpu,pb,NSV_ERR);}int output=memory.readLong(pb+IO_NAME_PTR);if(output!=0)writePascal(output,volumeNameFor(volume));memory.writeWord(pb+IO_VREF_NUM,volumeRefNumFor(volume));File root=volume;long[] attributes=Files68k.times(root);int created=macDate(attributes[0]),modified=macDate(attributes[1]);if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] volume list "+root);File[] entries=root.listFiles();if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] volume done "+root);int fileCount=0;if(entries!=null)for(File entry:entries)if(entry.isFile())fileCount++;/* PBGetVInfo on a working directory - ioVRefNum one, or 0 while the default directory is a folder - answers that folder's valence (its files and folders) in ioVNmFls, for programs written for MFS (IM IV-129); the volume root's files otherwise. HyperZebraRegressionTest passed only by chance: the stack folder's volume was the host root, whose one plain file is macOS's /.file */if(!hierarchical&&index<=0){WorkingDirectory working=workingDirectories.get(askedRef==0?defaultVolumeRef:askedRef);File folder=working==null?null:directories.get(working.directoryId);if(folder!=null&&folder.isDirectory()&&!folder.equals(root)){File[] valence=catalogEntries(folder);fileCount=valence==null?0:valence.length;}}
 		memory.writeLong(pb+IO_V_CR_DATE,created);memory.writeLong(pb+IO_V_LS_MOD,modified);boolean lockedVolume=volumeLocked(volumeIndexFor(volume));memory.writeWord(pb+IO_V_ATTRIB,lockedVolume?0x0080:0);/* bit 7: locked by hardware - a disk image mounted read-only, as a CD */memory.writeWord(pb+IO_V_NUM_FILES,Math.min(0xffff,fileCount));memory.writeWord(pb+42,0);memory.writeWord(pb+44,512);int blockSize=volumeBlockSize(volumeTotalSpace(root));memory.writeWord(pb+46,volumeBlocks(volumeTotalSpace(root),blockSize));memory.writeLong(pb+IO_V_AL_BLK_SIZE,(int)blockSize);memory.writeLong(pb+IO_V_CLUMP_SIZE,(int)blockSize);memory.writeWord(pb+56,0);memory.writeLong(pb+IO_V_NEXT_FILE,fileCount+2);memory.writeWord(pb+IO_V_FREE_BLOCKS,lockedVolume?0:volumeBlocks(volumeFreeSpace(root),blockSize));if(hierarchical){/* HGetVInfo extras (HVolumeParam is 122 bytes; a plain PBGetVInfo block is only 64 and writing past it smashes the caller's frame).
 			   ioVSigWord must read 'BD': installers reject any other signature as "not HFS" and leave the block size at 0 (StuffIt InstallerMaker then divides by it). */
 			int dirCount=0;if(entries!=null)for(File entry:entries)if(entry.isDirectory())dirCount++;
@@ -886,7 +928,7 @@ final class FileManager68k {
 				if(d!=null&&d.isDirectory()){defaultVolumeRef=workingDirectoryRefFor(d);return finish(cpu,pb,NO_ERR);}}}
 		if(dirId!=0&&dirId!=2){File d=directoryById(dirId);if(d==null)return finish(cpu,pb,DIR_NF_ERR);defaultVolumeRef=workingDirectoryRefFor(d);return finish(cpu,pb,NO_ERR);}
 		if(ref==0)return finish(cpu,pb,NO_ERR);if(volumeRootFor(ref)==null)return finish(cpu,pb,NSV_ERR);defaultVolumeRef=ref;return finish(cpu,pb,NO_ERR);}catch(IOException e){return finish(cpu,pb,IO_ERR);}}
-	private void writeCatalogInfo(int pb,File path) throws IOException,M68kCpuException {Metadata value=metadataFor(path);int parentId=parentDirectoryId(path);if(path.isFile()){writeFileInfo(pb,path);memory.writeLong(pb+80,value.backupDate);for(int i=0;i<16;i++)memory.writeByte(pb+84+i,value.extendedFinderInfo[i]);memory.writeLong(pb+100,parentId);memory.writeLong(pb+104,0);return;}memory.writeByte(pb+IO_FL_ATTRIB,0x10|(value.locked||!path.canWrite()?1:0));memory.writeByte(pb+31,0);for(int i=0;i<16;i++)memory.writeByte(pb+32+i,value.finderInfo[i]);if((value.finderInfo[8]&0x04)!=0&&!new File(path,"Icon\r").exists())memory.writeByte(pb+40,value.finderInfo[8]&0xfb);/* kHasCustomIcon without the "Icon\r" file that holds the icon (host folders carry stray flag bits): the Finder opens that file for such a folder and gives up with fnfErr */memory.writeLong(pb+48,directoryId(path));File[] entries=catalogEntries(path);memory.writeWord(pb+52,entries==null?0:Math.min(0xffff,entries.length));/* ioDrNmFls counts what an indexed GetCatInfo will hand out (no .DS_Store, sidecars, packages): After Dark's installer walks the System Folder from that count downwards and gives up at the first -43 */memory.fill(pb+54,18,0);memory.writeLong(pb+72,value.creationDate);memory.writeLong(pb+76,value.modificationDate);memory.writeLong(pb+80,value.backupDate);for(int i=0;i<16;i++)memory.writeByte(pb+84+i,value.extendedFinderInfo[i]);memory.writeLong(pb+100,parentId);/* a DirInfo ends at ioDrParID (104 bytes): no ioFlClpSiz, SuperPaint 3.0's Save keeps one on its stack (smashed return address) */}
+	private void writeCatalogInfo(int pb,File path) throws IOException,M68kCpuException {Metadata value=metadataFor(path);int parentId=parentDirectoryId(path);if(path.isFile()){writeFileInfo(pb,path);memory.writeLong(pb+80,value.backupDate);for(int i=0;i<16;i++)memory.writeByte(pb+84+i,value.extendedFinderInfo[i]);memory.writeLong(pb+100,parentId);memory.writeLong(pb+104,0);return;}memory.writeByte(pb+IO_FL_ATTRIB,0x10|(value.locked||!path.canWrite()?1:0));memory.writeByte(pb+31,0);for(int i=0;i<16;i++)memory.writeByte(pb+32+i,value.finderInfo[i]);if((value.finderInfo[8]&0x04)!=0&&!new File(path,"Icon\r").exists())memory.writeByte(pb+40,value.finderInfo[8]&0xfb);/* kHasCustomIcon without the "Icon\r" file that holds the icon (host folders carry stray flag bits): the Finder opens that file for such a folder and gives up with fnfErr */memory.writeLong(pb+48,directoryId(path));File[] entries=volumeEntries(path);memory.writeWord(pb+52,entries==null?0:Math.min(0xffff,entries.length));/* ioDrNmFls counts what an indexed GetCatInfo will hand out (no .DS_Store, sidecars, packages): After Dark's installer walks the System Folder from that count downwards and gives up at the first -43 */memory.fill(pb+54,18,0);memory.writeLong(pb+72,value.creationDate);memory.writeLong(pb+76,value.modificationDate);memory.writeLong(pb+80,value.backupDate);for(int i=0;i<16;i++)memory.writeByte(pb+84+i,value.extendedFinderInfo[i]);memory.writeLong(pb+100,parentId);/* a DirInfo ends at ioDrParID (104 bytes): no ioFlClpSiz, SuperPaint 3.0's Save keeps one on its stack (smashed return address) */}
 	private File directoryFor(int directoryId,int volumeReference) throws IOException {if(root==null)return null;if(directoryId==2)return volumeRootFor(volumeReference);if(directoryId!=0)return directoryById(directoryId);/* vRefNum 0 = the default directory (SetVol / app folder at launch), which may itself be a working directory */if((short)volumeReference==0)volumeReference=defaultVolumeRef;WorkingDirectory working=workingDirectories.get((int)(short)volumeReference);return working==null?volumeRootFor(volumeReference):directories.get(working.directoryId);}
 	private int directoryId(File directory) throws IOException {File canonical=canonical(directory);if(isVolumeRoot(canonical))return 2;Integer known=directoryIds.get(canonical);if(known!=null)return known;int result=catalogId(canonical);directories.put(result,canonical);directoryIds.put(canonical,result);return result;}
 	/**
@@ -915,7 +957,7 @@ final class FileManager68k {
 	/** File numbers from inodes start here, clear of {@link CatalogIds} and of the session counter's numbers. */
 	private static final int FILE_NUMBERS=2*FileManager68k.SESSION_IDS;
 	private static long inodeOf(File file){
-		try{Object key=Files.readAttributes(file.toPath(),BasicFileAttributes.class).fileKey();if(key==null)return -1;
+		try{Object key=Files68k.fileKey(file);if(key==null)return -1;
 			String k=key.toString();int at=k.indexOf("ino=");if(at<0)return -1;int end=at+4;while(end<k.length()&&Character.isDigit(k.charAt(end)))end++;
 			return Long.parseLong(k.substring(at+4,end));}
 		catch(IOException|RuntimeException e){return -1;}
@@ -932,11 +974,11 @@ final class FileManager68k {
 		private static final Map<Long,Integer> byInode=new HashMap<Long,Integer>();
 		private static final Map<Integer,Long> byId=new HashMap<Integer,Long>();
 		private static long readOffset;private static int next=FIRST;
-		private static File file(){return new File(AppPaths.stateDirectory(),"CatalogIDs.txt");}
+		private static File file(){return new File(UiHost.get().appPathsStateDirectory(),"CatalogIDs.txt");}
 		/** The folder ID of a host inode, a new one when it has none yet; -1 when the table cannot be kept. */
 		static synchronized int idFor(long inode){
 			Integer id=byInode.get(inode);if(id!=null)return id;
-			try(RandomAccessFile f=new RandomAccessFile(file(),"rw");java.nio.channels.FileLock lock=f.getChannel().lock()){
+			try(RandomAccessFile f=new RandomAccessFile(file(),"rw");Toolbox68kParts.FileLock68k lock=Toolbox68k.PARTS.lock(f)){
 				readFrom(f);id=byInode.get(inode);if(id!=null)return id;
 				while(byId.containsKey(next))next++;if(next>=SESSION_IDS)return -1;
 				int fresh=next;f.seek(f.length());f.write((inode+" "+fresh+"\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));readOffset=f.length();
@@ -945,7 +987,7 @@ final class FileManager68k {
 		}
 		/** The inode a folder ID was given to in this or an earlier session, or -1. */
 		static synchronized long inodeOf(int id){
-			if(!byId.containsKey(id)){try(RandomAccessFile f=new RandomAccessFile(file(),"rw");java.nio.channels.FileLock lock=f.getChannel().lock()){readFrom(f);}catch(IOException|RuntimeException e){return -1;}}
+			if(!byId.containsKey(id)){try(RandomAccessFile f=new RandomAccessFile(file(),"rw");Toolbox68kParts.FileLock68k lock=Toolbox68k.PARTS.lock(f)){readFrom(f);}catch(IOException|RuntimeException e){return -1;}}
 			Long inode=byId.get(id);return inode==null?-1:inode;
 		}
 		/** Takes in the lines added since the last read (by this JVM or another copy); a line cut short is read next time. */
@@ -979,19 +1021,19 @@ final class FileManager68k {
 		/** The stamp that marks a file as no longer the program's own bytes (converted to the host form): no host file has it. */
 		static final long CONVERTED=Long.MIN_VALUE;
 		private static long readOffset;
-		private static File file(){return new File(AppPaths.stateDirectory(),"ProgramFiles.txt");}
+		private static File file(){return new File(UiHost.get().appPathsStateDirectory(),"ProgramFiles.txt");}
 		/** Whether the program's last write left {@code key} (a canonical path) with this host stamp. */
 		static synchronized boolean wrote(String key,long stamp){
 			Long known=stamps.get(key);if(known!=null&&known==stamp)return true;
 			File f=file();if(!f.isFile())return false;
-			try(RandomAccessFile r=new RandomAccessFile(f,"rw");java.nio.channels.FileLock lock=r.getChannel().lock()){readFrom(r);}
+			try(RandomAccessFile r=new RandomAccessFile(f,"rw");Toolbox68kParts.FileLock68k lock=Toolbox68k.PARTS.lock(r)){readFrom(r);}
 			catch(IOException|RuntimeException e){return false;}
 			known=stamps.get(key);return known!=null&&known==stamp;
 		}
 		/** Records the program's write of {@code key}: from now on its bytes are read back as they are while the stamp holds. */
 		static synchronized void record(String key,long stamp){
 			Long known=stamps.get(key);if(known!=null&&known==stamp||key.indexOf('\n')>=0)return;
-			try(RandomAccessFile r=new RandomAccessFile(file(),"rw");java.nio.channels.FileLock lock=r.getChannel().lock()){
+			try(RandomAccessFile r=new RandomAccessFile(file(),"rw");Toolbox68kParts.FileLock68k lock=Toolbox68k.PARTS.lock(r)){
 				readFrom(r);stamps.put(key,stamp);
 				if(r.length()>COMPACT_AT){ // keep what still describes a file as the program left it
 					StringBuilder kept=new StringBuilder();
@@ -1089,20 +1131,20 @@ final class FileManager68k {
 	private File findWithCreator(int creator,int index,int kind,File within,boolean volumesOnly,long waitMs,boolean[] settled) {
 		if(settled!=null)settled[0]=true;
 		java.util.ArrayDeque<File[]> queue=new java.util.ArrayDeque<File[]>();
-		String inside=within==null?null:Sandbox.canonical(within);
-		java.util.function.Predicate<File> wanted=f->inside==null||(Sandbox.canonical(f)+File.separator).startsWith(inside.endsWith(File.separator)?inside:inside+File.separator);
+		String inside=within==null?null:Sandbox68k.canonical(within);
+		java.util.function.Predicate<File> wanted=f->inside==null||(Sandbox68k.canonical(f)+File.separator).startsWith(inside.endsWith(File.separator)?inside:inside+File.separator);
 		// the program's own folder first: the helpers a program launches by creator usually sit beside it (Adobe PageMill's
 		// QuickHelp viewer in its Help folder), and a real Desktop Database knows them however big the volume is
-		if(searchFirst!=null&&searchFirst.isDirectory()&&Sandbox.allowedWithoutAsking(searchFirst,requester)&&wanted.test(searchFirst))queue.add(new File[]{searchFirst,null,null,null,null,null,null});
+		if(searchFirst!=null&&searchFirst.isDirectory()&&Sandbox68k.allowedWithoutAsking(searchFirst,requester)&&wanted.test(searchFirst))queue.add(new File[]{searchFirst,null,null,null,null,null,null});
 		// then the folder holding it (not a volume, walked anyway): a companion often sits one level up - Analog Helper 68k, in a
 		// folder of its own inside "Analog 3.2 ƒ", asks every volume for 'MAG^' (Analog, beside that folder), and the limited
 		// walk of the host disk never got that deep: "cannot find a copy of Analog 3 on any mounted disk"
 		File near=nearFolder();
-		if(near!=null&&Sandbox.allowedWithoutAsking(near,requester)&&wanted.test(near))queue.add(new File[]{near,null,null,null,null,null,null});
+		if(near!=null&&Sandbox68k.allowedWithoutAsking(near,requester)&&wanted.test(near))queue.add(new File[]{near,null,null,null,null,null,null});
 		// only where the program may look without asking: BBEdit calls PBDTGetAPPL at start-up, and a permission dialog for
 		// listing the whole host disk came up before its first window (and blocked it until answered)
-		for(File v:volumes)if(Sandbox.allowedWithoutAsking(v,requester)&&wanted.test(v))queue.add(new File[]{v,null,null,null,null,null,null});
-		if(!volumesOnly)for(File r:Sandbox.allowedRoots(requester)){boolean covered=false;for(File[] q:queue)if(Sandbox.canonical(r).startsWith(Sandbox.canonical(q[0])))covered=true;if(!covered&&r.isDirectory()&&wanted.test(r))queue.add(new File[]{r,null,null,null,null,null,null});}
+		for(File v:volumes)if(Sandbox68k.allowedWithoutAsking(v,requester)&&wanted.test(v))queue.add(new File[]{v,null,null,null,null,null,null});
+		if(!volumesOnly)for(File r:Sandbox68k.allowedRoots(requester)){boolean covered=false;for(File[] q:queue)if(Sandbox68k.canonical(r).startsWith(Sandbox68k.canonical(q[0])))covered=true;if(!covered&&r.isDirectory()&&wanted.test(r))queue.add(new File[]{r,null,null,null,null,null,null});}
 		StringBuilder key=new StringBuilder();for(File[] q:queue)key.append('|').append(q[0].getPath());
 		String cacheKey=key.toString();
 		Object[] cached=CREATOR_CACHE.get(cacheKey);long now=System.currentTimeMillis();
@@ -1116,30 +1158,11 @@ final class FileManager68k {
 		// spinning up, a huge folder) held every program's start in the QuickTime extension's PBDTGetAPPL for over a minute.
 		// A walk that takes longer answers that there is none and leaves its index in the cache for the next call.
 		long deadline=System.nanoTime()+waitMs*1_000_000L;
-		java.util.concurrent.Future<Map<Integer,List<Object[]>>> done=CREATOR_WALKS.get(cacheKey);if(done!=null&&done.isDone())CREATOR_WALKS.remove(cacheKey,done); // its index is out of date
-		java.util.concurrent.Future<Map<Integer,List<Object[]>>> walk=CREATOR_WALKS.computeIfAbsent(cacheKey,k->WALKERS.submit(()->{
-			Map<Integer,List<Object[]>> result=walkCreators(queue);CREATOR_CACHE.put(k,new Object[]{result,System.currentTimeMillis()});return result;}));
-		// the program's own folder (then the folder holding it) is walked on its own as well and a match there answers at once:
-		// the whole walk (every volume, the host root) often outlasts the wait, and Caliban's isAPPL("RSED") said false with
-		// ResEdit right beside the stack
-		if(index<=1)for(File[] first:queue){ // ioIndex 0 and 1 both ask for the newest (isAPPL passes 0)
-			if(walk.isDone()||!first[0].equals(searchFirst)&&!first[0].equals(near))break;
-			java.util.ArrayDeque<File[]> own=new java.util.ArrayDeque<File[]>();own.add(first);
-			java.util.concurrent.Future<Map<Integer,List<Object[]>>> ownWalk=WALKERS.submit(()->walkCreators(own));
-			try{File result=pickWithCreator(ownWalk.get(Math.max(1,deadline-System.nanoTime()),java.util.concurrent.TimeUnit.NANOSECONDS),creator,1,kind);if(result!=null)return result;}
-			catch(java.util.concurrent.TimeoutException e){ownWalk.cancel(true);if(settled!=null)settled[0]=false;return null;}
-			catch(InterruptedException e){Thread.currentThread().interrupt();if(settled!=null)settled[0]=false;return null;}
-			catch(java.util.concurrent.ExecutionException ignored){}
-		}
-		try{Map<Integer,List<Object[]>> found=walk.get(Math.max(1,deadline-System.nanoTime()),java.util.concurrent.TimeUnit.NANOSECONDS);CREATOR_WALKS.remove(cacheKey,walk);return pickWithCreator(found,creator,index,kind);}
-		catch(java.util.concurrent.TimeoutException e){if(settled!=null)settled[0]=false;return null;}
-		catch(InterruptedException e){Thread.currentThread().interrupt();if(settled!=null)settled[0]=false;return null;}
-		catch(java.util.concurrent.ExecutionException e){CREATOR_WALKS.remove(cacheKey,walk);return null;}
+		@SuppressWarnings("unchecked") java.util.function.BiFunction<Object,Integer,File> pick=(found,i)->pickWithCreator((Map<Integer,List<Object[]>>)found,creator,i,kind);
+		return Toolbox68k.PARTS.creatorWalk(cacheKey,queue,deadline,settled,index,first->first[0].equals(searchFirst)||first[0].equals(near),
+			()->{Map<Integer,List<Object[]>> result=walkCreators(queue);CREATOR_CACHE.put(cacheKey,new Object[]{result,System.currentTimeMillis()});return result;},
+			own->walkCreators(own),pick);
 	}
-	/** Walks under way, by the folders they walk; the threads they run on (daemons: a walk stuck in a host folder never keeps
-	 *  HyperZebra from quitting). */
-	private static final java.util.Map<String,java.util.concurrent.Future<Map<Integer,List<Object[]>>>> CREATOR_WALKS=new java.util.concurrent.ConcurrentHashMap<String,java.util.concurrent.Future<Map<Integer,List<Object[]>>>>();
-	private static final java.util.concurrent.ExecutorService WALKERS=java.util.concurrent.Executors.newCachedThreadPool(r->{Thread t=new Thread(r,"PBDTGetAPPL walk");t.setDaemon(true);return t;});
 	/** How long a program waits for a walk (-Dhz68k.dtwalkms). */
 	private static final long CREATOR_WALK_WAIT_MS=Long.getLong("hz68k.dtwalkms",2000L);
 	/** The {@code index}-th (0/1 = newest) file of a walk's index with that creator and kind (the application first for BUNDLE_OWNER). */
@@ -1192,9 +1215,9 @@ final class FileManager68k {
 	 * looks for the ".bms" songs next to it with PBCatSearch over every volume and found none.
 	 */
 	List<File> catalogWalk(int volumeReference,int limit){
-		List<File> result=new ArrayList<File>();File root;try{root=volumeRootFor(volumeReference);}catch(IOException e){return result;}if(root==null||!Sandbox.allowFile(root,Sandbox.Access.LIST,requester))return result;
+		List<File> result=new ArrayList<File>();File root;try{root=volumeRootFor(volumeReference);}catch(IOException e){return result;}if(root==null||!Sandbox68k.allowFile(root,Sandbox68k.Access.LIST,requester))return result;
 		File first=null;
-		try{if(searchFirst!=null&&searchFirst.isDirectory()&&volumeIndexFor(searchFirst)==volumeIndexFor(root)&&!canonical(root).equals(searchFirst)&&Sandbox.allowFile(searchFirst,Sandbox.Access.LIST,requester))first=searchFirst;}catch(IOException ignored){}
+		try{if(searchFirst!=null&&searchFirst.isDirectory()&&volumeIndexFor(searchFirst)==volumeIndexFor(root)&&!canonical(root).equals(searchFirst)&&Sandbox68k.allowFile(searchFirst,Sandbox68k.Access.LIST,requester))first=searchFirst;}catch(IOException ignored){}
 		if(first!=null){result.add(first);walk(first,null,result,limit);}
 		walk(root,first,result,limit);
 		return result;
@@ -1263,7 +1286,7 @@ final class FileManager68k {
 		return found;
 	}
 	private static boolean sameFile(File file,File canonical){if(file.equals(canonical))return true;try{return file.getCanonicalFile().equals(canonical);}catch(IOException e){return false;}}
-	private void writeFileInfo(int pb,File path) throws IOException,M68kCpuException {Metadata value=metadataFor(path);int attributes=(path.isDirectory()?0x10:0)|(value.locked||HostFileAttributes68k.locked(path)&&!onLockedVolume(path)||path.isFile()&&Sandbox.readOnlyFor(path,requester)?1:0);/* a locked disk image's files are read-only on the host, but locked is the volume, not each file */if(path.isFile())attributes|=openForkAttributes(path)|(onLockedVolume(path)?DiskImages.attributesOf(path):0);/* the copy-protected bit of a disk image's file */memory.writeByte(pb+IO_FL_ATTRIB,attributes);if(path.isFile())memory.writeWord(pb+24,openReference(path));/* ioFRefNum */memory.writeByte(pb+31,0);for(int i=0;i<16;i++)memory.writeByte(pb+IO_FL_FNDR_INFO+i,value.finderInfo[i]);memory.writeLong(pb+IO_FL_NUM,value.fileNumber);memory.writeWord(pb+52,0);long[] lengths=path.isFile()?forkLengths(path):new long[]{0,0};long length=lengths[0],resourceLength=lengths[1];int block=path.isFile()?allocationBlockFor(path):1;memory.writeLong(pb+IO_FL_LG_LEN,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FL_PY_LEN,(int)Math.min(0x7fffffffL,physical(length,block)));memory.writeWord(pb+62,0);memory.writeLong(pb+IO_FL_R_LG_LEN,(int)Math.min(0x7fffffffL,resourceLength));memory.writeLong(pb+IO_FL_R_PY_LEN,(int)Math.min(0x7fffffffL,physical(resourceLength,block)));memory.writeLong(pb+IO_FL_CR_DAT,value.creationDate);memory.writeLong(pb+IO_FL_MD_DAT,value.modificationDate);}
+	private void writeFileInfo(int pb,File path) throws IOException,M68kCpuException {Metadata value=metadataFor(path);int attributes=(path.isDirectory()?0x10:0)|(value.locked||HostFileAttributes68k.locked(path)&&!onLockedVolume(path)||path.isFile()&&Sandbox68k.readOnlyFor(path,requester)?1:0);/* a locked disk image's files are read-only on the host, but locked is the volume, not each file */if(path.isFile())attributes|=openForkAttributes(path)|(onLockedVolume(path)?DiskImages.attributesOf(path):0);/* the copy-protected bit of a disk image's file */memory.writeByte(pb+IO_FL_ATTRIB,attributes);if(path.isFile())memory.writeWord(pb+24,openReference(path));/* ioFRefNum */memory.writeByte(pb+31,0);for(int i=0;i<16;i++)memory.writeByte(pb+IO_FL_FNDR_INFO+i,value.finderInfo[i]);memory.writeLong(pb+IO_FL_NUM,value.fileNumber);memory.writeWord(pb+52,0);long[] lengths=path.isFile()?forkLengths(path):new long[]{0,0};long length=lengths[0],resourceLength=lengths[1];int block=path.isFile()?allocationBlockFor(path):1;memory.writeLong(pb+IO_FL_LG_LEN,(int)Math.min(0x7fffffffL,length));memory.writeLong(pb+IO_FL_PY_LEN,(int)Math.min(0x7fffffffL,physical(length,block)));memory.writeWord(pb+62,0);memory.writeLong(pb+IO_FL_R_LG_LEN,(int)Math.min(0x7fffffffL,resourceLength));memory.writeLong(pb+IO_FL_R_PY_LEN,(int)Math.min(0x7fffffffL,physical(resourceLength,block)));memory.writeLong(pb+IO_FL_CR_DAT,value.creationDate);memory.writeLong(pb+IO_FL_MD_DAT,value.modificationDate);}
 	/**
 	 * Entries a program never meets when it walks a folder: the host's hidden files, its packages (an .app is one item to
 	 * the Finder and thousands of files to a disk search), the system directories at the root of a host volume and a
@@ -1286,7 +1309,8 @@ final class FileManager68k {
 		if(n.startsWith(".")||n.equals("__MACOSX"))return true;
 		if(STATE_ENTRIES.contains(n)&&entry.getParentFile()!=null&&entry.getParentFile().equals(FileSystem68k.bootVolumeDirectory()))return true;
 		if(!entry.isDirectory())return false;
-		if(Files.isSymbolicLink(entry.toPath()))return true; // a linked folder would be walked twice, or for ever when it links upward
+		if(Files68k.isSymbolicLink(entry))return true; // a linked folder would be walked twice, or for ever when it links upward
+		if(n.equals("_unpacked")&&unpackedStacks(entry))return true;
 		String lower=n.toLowerCase();for(String ext:PACKAGE_EXTENSIONS)if(lower.endsWith(ext))return true;
 		File parent=entry.getParentFile();if(parent==null)return false;
 		if(parent.getParentFile()==null&&SYSTEM_ROOT_DIRECTORIES.contains(n))return true; // root of a host volume
@@ -1294,25 +1318,48 @@ final class FileManager68k {
 			if(parent.equals(new File(System.getProperty("user.home")))||grand!=null&&grand.getName().equals("Users")&&grand.getParentFile()!=null&&grand.getParentFile().getParentFile()==null)return true;}
 		return false;
 	}
+	/** Whether {@code folder} ("_unpacked") is the 68K player's working copy of packed stacks (HeadlessStacks.unpack: X.hzb folders
+	 *  beside the X.hzb files they come from): the page's stack is one file, as on the desktop, and a disk walk (DiskLibrary's
+	 *  GetDir) listed its _stack.xml, pictures and resources as the disk's files */
+	private static boolean unpackedStacks(File folder){
+		File parent=folder.getParentFile();File[] in=folder.listFiles();
+		if(parent==null||in==null||in.length==0)return false;
+		for(File f:in)if(!f.isDirectory()||!f.getName().toLowerCase().endsWith(".hzb")||!new File(parent,f.getName()).isFile())return false;
+		return true;
+	}
 	static File[] catalogEntries(File directory){
 		if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] catalog list "+directory);File[] all=directory.listFiles();if(Boolean.getBoolean("hz68k.bbdebug"))System.err.println("[bbdebug] catalog done "+directory);if(all==null)return null;
 		List<File> kept=new ArrayList<File>(all.length);for(File f:all)if(!hiddenFromCatalog(f))kept.add(f);
 		return kept.toArray(new File[0]);
 	}
+	/**
+	 * A folder's entries as its volume's catalog has them: a folder that is the root of another mounted volume (the startup disk
+	 * "HyperZebra HD" inside Home, Home inside Macintosh HD, the browser player's /HyperZebra/Boot Volume inside its "/") is left
+	 * out - it is a disk of its own, as /Volumes is. Listed, it had a volume root's directory ID (2), so an external walking the
+	 * catalog by IDs went back to the top of the volume it was on: DiskLibrary's GetDir("Macintosh HD","F+") went round until its
+	 * stack ran over (68K VM error, unsupported F-line instruction) in the browser player.
+	 */
+	private File[] volumeEntries(File directory) throws IOException {
+		File[] all=catalogEntries(directory);
+		if(all==null||volumes.size()<2)return all;
+		List<File> kept=new ArrayList<File>(all.length);
+		for(File f:all)if(!(f.isDirectory()&&isVolumeRoot(canonical(f))))kept.add(f);
+		return kept.size()==all.length?all:kept.toArray(new File[0]);
+	}
 	/** A directory's entries in HFS catalog order (case-insensitive by name), kept for a moment: indexed GetCatInfo/GetFileInfo walk
 	 *  a folder one entry per call, and listing and sorting it afresh each time made a disk search quadratic. */
 	private final Map<String,Object[]> listings=new HashMap<String,Object[]>();
 	private File[] sortedEntries(File base) throws IOException {
-		Sandbox.checkFile(base,Sandbox.Access.LIST,requester);
+		Sandbox68k.checkFile(base,Sandbox68k.Access.LIST,requester);
 		String key=canonical(base).getPath();long modified=base.lastModified(),now=System.currentTimeMillis();
 		Object[] cached=listings.get(key);
 		if(cached!=null&&(Long)cached[0]==modified&&now-(Long)cached[1]<2000L)return (File[])cached[2];
-		File[] entries=catalogEntries(base);if(entries==null)throw new IOException("cannot enumerate directory");
+		File[] entries=volumeEntries(base);if(entries==null)throw new IOException("cannot enumerate directory");
 		Arrays.sort(entries,Comparator.comparing(File::getName,String.CASE_INSENSITIVE_ORDER));
 		if(listings.size()>64)listings.clear();
 		listings.put(key,new Object[]{modified,now,entries});return entries;
 	}
-	private Metadata metadataFor(File path) throws IOException {String key=canonical(path).getPath();Metadata value=metadata.get(key);if(value!=null){value.modificationDate=macDate(path.lastModified());return value;}long created=path.lastModified();try{created=Files.readAttributes(path.toPath(),BasicFileAttributes.class).creationTime().toMillis();}catch(IOException ignored){}value=new Metadata(macDate(created),macDate(path.lastModified()),path.isDirectory()?directoryId(path):fileNumberOf(path));/* externals see the host's Finder info too: MacroMind's PlayMovie takes only files whose type is 'VWMD' */{byte[] info=FinderInfo68k.read(path);if(info!=null)System.arraycopy(info,0,value.finderInfo,0,16);}value.hostType=MacApp68k.u4(value.finderInfo,0);if(pictureViews()&&PictureFile68k.isHostImageType(value.hostType)&&path.isFile()){value.finderInfo[0]='P';value.finderInfo[1]='I';value.finderInfo[2]='C';value.finderInfo[3]='T';}if(persistent&&HostFileAttributes68k.locked(path)&&!onLockedVolume(path))value.locked=true;/* a file the host keeps locked (the Finder's Locked, read-only) is locked here: an external locked it in another VM */metadata.put(key,value);return value;}
+	private Metadata metadataFor(File path) throws IOException {String key=canonical(path).getPath();Metadata value=metadata.get(key);if(value!=null){value.modificationDate=macDate(path.lastModified());return value;}long created=path.lastModified();try{created=Files68k.times(path)[0];}catch(IOException ignored){}value=new Metadata(macDate(created),macDate(path.lastModified()),path.isDirectory()?directoryId(path):fileNumberOf(path));/* externals see the host's Finder info too: MacroMind's PlayMovie takes only files whose type is 'VWMD' */{byte[] info=FinderInfo68k.read(path);if(info!=null)System.arraycopy(info,0,value.finderInfo,0,16);}value.hostType=MacApp68k.u4(value.finderInfo,0);if(pictureViews()&&PictureFile68k.isHostImageType(value.hostType)&&path.isFile()){value.finderInfo[0]='P';value.finderInfo[1]='I';value.finderInfo[2]='C';value.finderInfo[3]='T';}if(persistent&&HostFileAttributes68k.locked(path)&&!onLockedVolume(path))value.locked=true;/* a file the host keeps locked (the Finder's Locked, read-only) is locked here: an external locked it in another VM */metadata.put(key,value);return value;}
 	private int fileNumber(File path) throws IOException {return metadataFor(path).fileNumber;}
 	int fileNumberFor(File path) throws IOException {return fileNumber(path);}
 	/** The file in {@code directory} whose file number this session is {@code number} (a file renamed since its number was handed out), or null. */
@@ -1322,8 +1369,8 @@ final class FileManager68k {
 		return null;
 	}
 	/** The creation date GetVolInfo reports for the volume holding {@code path} (alias records carry it and QuickTime's data handlers compare it). */
-	int volumeCreationDateFor(File path) throws IOException {int index=volumeIndexFor(path);File volume=index<0?root:volumes.get(index);if(volume==null)return 0;return macDate(Files.readAttributes(volume.toPath(),BasicFileAttributes.class).creationTime().toMillis());}
-	private ResourceFork resourceForkFor(File path) throws IOException {String key=canonical(path).getPath();ResourceFork value=resourceForks.get(key);if(value!=null)return value;File storage=TempFiles.createFile("hyperzebra-rsrc-",".bin");byte[] contents=ResourceFile68k.readForkBytes(path,null);if(contents!=null&&contents.length>0)Files.write(storage.toPath(),contents);value=new ResourceFork(storage);resourceForks.put(key,value);return value;}
+	int volumeCreationDateFor(File path) throws IOException {int index=volumeIndexFor(path);File volume=index<0?root:volumes.get(index);if(volume==null)return 0;return macDate(Files68k.times(volume)[0]);}
+	private ResourceFork resourceForkFor(File path) throws IOException {String key=canonical(path).getPath();ResourceFork value=resourceForks.get(key);if(value!=null)return value;File storage=UiHost.get().tempFilesCreateFile("hyperzebra-rsrc-",".bin");byte[] contents=ResourceFile68k.readForkBytes(path,null);if(contents!=null&&contents.length>0)Files68k.write(storage,contents);value=new ResourceFork(storage);resourceForks.put(key,value);return value;}
 	/** The MacBinary file in {@code directory} whose header carries {@code name} ("Name.bin" first, then any container in the folder). */
 	private File macBinaryNamed(File directory,String name) throws IOException {
 		if(directory==null||name==null)return null;
@@ -1380,18 +1427,18 @@ final class FileManager68k {
 		view=new HostView(stamp);views.put(key,view);
 		int type=typeOf(path);
 		if(pictureViews()&&PictureFile68k.isHostImageType(hostTypeOf(path))&&path.length()>0&&path.length()<=PictureFile68k.LIMIT){
-			byte[] host=Files.readAllBytes(path.toPath()),program=PictureFile68k.toProgram(host);
+			byte[] host=Files68k.read(path),program=PictureFile68k.toProgram(host);
 			if(program!=null){
-				File storage=TempFiles.createFile("hyperzebra-pict-",".bin");Files.write(storage.toPath(),program);
+				File storage=UiHost.get().tempFilesCreateFile("hyperzebra-pict-",".bin");Files68k.write(storage,program);
 				view.storage=storage;view.picture=true;view.original=program;
 				if(Mac68kApi.TRACE)System.err.println("[file] picture view of "+path+" ("+host.length+" -> "+program.length+" bytes of PICT)");
 			}
 		}
 		else if((type==TEXT_TYPE||type==0)&&path.length()>0&&path.length()<=TextFile68k.LIMIT&&!ProgramFiles.wrote(key,stamp)){
-			byte[] host=Files.readAllBytes(path.toPath());TextFile68k.Form form=TextFile68k.sniff(host,type==TEXT_TYPE);
+			byte[] host=Files68k.read(path);TextFile68k.Form form=TextFile68k.sniff(host,type==TEXT_TYPE);
 			if(form!=null){
 				byte[] program=TextFile68k.toProgram(host,form,encoding);
-				File storage=TempFiles.createFile("hyperzebra-text-",".bin");Files.write(storage.toPath(),program);
+				File storage=UiHost.get().tempFilesCreateFile("hyperzebra-text-",".bin");Files68k.write(storage,program);
 				view.storage=storage;view.form=form;view.original=program;
 				if(Mac68kApi.TRACE)System.err.println("[file] text view of "+path+" ("+(form.utf8?"UTF-8":"legacy")+(form.bom?" BOM":"")+", "+(form.newline.equals("\n")?"LF":form.newline.equals("\r\n")?"CRLF":"CR")+", "+host.length+" -> "+program.length+" bytes)");
 			}
@@ -1426,22 +1473,22 @@ final class FileManager68k {
 	 */
 	private void promoteNewText(OpenFile open) throws IOException {
 		if(typeOf(open.path)!=TEXT_TYPE||open.file.length()>TextFile68k.LIMIT)return;
-		byte[] program=Files.readAllBytes(open.path.toPath());
+		byte[] program=Files68k.read(open.path);
 		if(!TextFile68k.looksLikeText(program)){open.binary=true;return;}
 		if(encoding.decode(program).indexOf('\uFFFD')>=0)return; // a half-written two-byte character: look again later
 		if(TextFile68k.toHostNew(program,encoding)==null){open.binary=true;return;} // LF or CRLF line ends would not read back as written (MacSSH's known_hosts, kept open): its own bytes, recorded at Close
 		String key=canonical(open.path).getPath();HostView stale=views.get(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();
 		HostView view=new HostView(0);view.form=new TextFile68k.Form(true,false,"\n");view.original=new byte[0];view.open=1;
-		view.storage=TempFiles.createFile("hyperzebra-text-",".bin");Files.write(view.storage.toPath(),program);
-		long mark=open.file.getFilePointer();open.file.close();open.file=new RandomAccessFile(view.storage,"rw");open.file.seek(mark);
+		view.storage=UiHost.get().tempFilesCreateFile("hyperzebra-text-",".bin");Files68k.write(view.storage,program);
+		long mark=open.file.getFilePointer();open.file.close();open.file=openFork(view.storage,true);open.file.seek(mark);
 		views.put(key,view);open.view=view;open.fresh=false;untypedNewFiles.remove(key);
 		if(Mac68kApi.TRACE)System.err.println("[file] "+open.path+" is a new text file: kept as UTF-8 from now on");
 	}
 	/** The host file gets what the program wrote to its converted copy, back in the host file's own form (nothing when the program left the text as it was). */
 	private void writeBack(OpenFile open) throws IOException {
-		HostView view=open.view;byte[] program=Files.readAllBytes(view.storage.toPath());
+		HostView view=open.view;byte[] program=Files68k.read(view.storage);
 		if(!Arrays.equals(program,view.original)){
-			if(view.picture)writePicture(open.path,program);else Files.write(open.path.toPath(),TextFile68k.toHost(program,view.form,encoding));
+			if(view.picture)writePicture(open.path,program);else Files68k.write(open.path,TextFile68k.toHost(program,view.form,encoding));
 			view.original=program;}
 		view.stamp=hostStamp(open.path);view.synced=System.nanoTime();open.dirty=false;
 	}
@@ -1454,8 +1501,8 @@ final class FileManager68k {
 		if(picture!=null)try{image=pictureRenderer.apply(program);}catch(RuntimeException e){image=null;}
 		if(image==null&&picture!=null)image=PictureFile68k.renderWithHost(program);
 		Metadata value=metadataFor(path);byte[] info;
-		if(image!=null){Files.write(path.toPath(),PictureFile68k.png(image));info=PictureFile68k.savedFinderInfo(value.finderInfo,PictureFile68k.PNGF,MacApp68k.u4(PictureFile68k.PNG_FINDER_INFO,4));}
-		else{Files.write(path.toPath(),program);info=PictureFile68k.savedFinderInfo(value.finderInfo,PictureFile68k.PICT,0x3F3F3F3F);}
+		if(image!=null){Files68k.write(path,PictureFile68k.png(image));info=PictureFile68k.savedFinderInfo(value.finderInfo,PictureFile68k.PNGF,MacApp68k.u4(PictureFile68k.PNG_FINDER_INFO,4));}
+		else{Files68k.write(path,program);info=PictureFile68k.savedFinderInfo(value.finderInfo,PictureFile68k.PICT,0x3F3F3F3F);}
 		value.hostType=MacApp68k.u4(info,0);
 		if(persistent)FinderInfo68k.write(path,info);
 		if(image!=null){byte[] shown=info.clone();shown[0]='P';shown[1]='I';shown[2]='C';shown[3]='T';value.finderInfo=shown;} // the program keeps seeing a PICT
@@ -1476,11 +1523,11 @@ final class FileManager68k {
 		if(!(type==TEXT_TYPE&&utf8TextFiles)&&!(type==PictureFile68k.PICT&&pictureViews())){untypedNewFiles.add(key);if(Mac68kApi.TRACE)System.err.println("[file] "+path+" closed as a new file of type "+AppleEvents68k.fourcc(type)+": conversion waits for its type");return;} // untyped, or typed as something else for now: some programs retype an exported PICT after closing it
 		untypedNewFiles.remove(key);
 		for(OpenFile other:files.values())if(!other.resourceFork&&canonical(other.path).getPath().equals(key))return; // still open elsewhere: its close converts
-		byte[] program=Files.readAllBytes(path.toPath());
+		byte[] program=Files68k.read(path);
 		if(type==PictureFile68k.PICT){if(PictureFile68k.pictureOf(program)!=null){writePicture(path,program);ProgramFiles.record(key,ProgramFiles.CONVERTED);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();}return;}
 		byte[] host=TextFile68k.toHostNew(program,encoding);
 		if(host==null||Arrays.equals(host,program))return;
-		Files.write(path.toPath(),host);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();
+		Files68k.write(path,host);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();
 		ProgramFiles.record(key,ProgramFiles.CONVERTED);
 		utf8NewFiles.put(key,new byte[][]{program,host});
 		if(Mac68kApi.TRACE)System.err.println("[file] "+path+" written as UTF-8 ("+program.length+" -> "+host.length+" bytes)");
@@ -1497,8 +1544,8 @@ final class FileManager68k {
 		for(OpenFile other:files.values())if(!other.resourceFork&&canonical(other.path).getPath().equals(key))return;
 		if(written!=null){
 			utf8NewFiles.remove(key);
-			if(Arrays.equals(Files.readAllBytes(path.toPath()),written[1])){
-				Files.write(path.toPath(),written[0]);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();
+			if(Arrays.equals(Files68k.read(path),written[1])){
+				Files68k.write(path,written[0]);HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();
 				if(Mac68kApi.TRACE)System.err.println("[file] "+path+" retyped "+AppleEvents68k.fourcc(typeOf(path))+": the program's own bytes again");
 				return;
 			}
@@ -1507,11 +1554,11 @@ final class FileManager68k {
 		// call has a VM of its own, so G-XCollection's MtWriteFile and MtSetFTC "ttro" never share the note above): from now on the
 		// program reads it as it is, so it holds the bytes the program read, as on a Mac (MtCopyFile/MtSwapFile copied UTF-8 mojibake)
 		if(oldType!=TEXT_TYPE||path.length()==0||path.length()>TextFile68k.LIMIT||ProgramFiles.wrote(key,hostStamp(path)))return;
-		byte[] host=Files.readAllBytes(path.toPath());TextFile68k.Form form=TextFile68k.sniff(host,true);
+		byte[] host=Files68k.read(path);TextFile68k.Form form=TextFile68k.sniff(host,true);
 		if(form==null)return;
 		byte[] program=TextFile68k.toProgram(host,form,encoding);
 		if(Arrays.equals(program,host))return;
-		Files.write(path.toPath(),program);ProgramFiles.record(key,hostStamp(path));
+		Files68k.write(path,program);ProgramFiles.record(key,hostStamp(path));
 		HostView stale=views.remove(key);if(stale!=null&&stale.storage!=null)stale.storage.delete();
 		if(Mac68kApi.TRACE)System.err.println("[file] "+path+" retyped "+AppleEvents68k.fourcc(typeOf(path))+": now the program's form of its text");
 	}
@@ -1535,7 +1582,7 @@ final class FileManager68k {
 		if(resourceLength==0&&fork==null&&header==null)resourceLength=ResourceFile68k.AppleDouble.forkLength(ResourceFile68k.AppleDouble.findSidecar(path)); // AppleDouble sidecar (Windows, Linux, fork-less volumes)
 		return new long[]{dataLength,resourceLength};
 	}
-	private File dataForkFor(File path) throws IOException {ResourceFile68k.MacBinary mb=macBinaryFor(path);if(mb==null){HostView view=viewFor(path);return view!=null?view.storage:path;}String key=canonical(path).getPath();File storage=dataForks.get(key);if(storage!=null)return storage;storage=TempFiles.createFile("hyperzebra-data-",".bin");Files.write(storage.toPath(),mb.dataFork);dataForks.put(key,storage);return storage;}
+	private File dataForkFor(File path) throws IOException {ResourceFile68k.MacBinary mb=macBinaryFor(path);if(mb==null){HostView view=viewFor(path);return view!=null?view.storage:path;}String key=canonical(path).getPath();File storage=dataForks.get(key);if(storage!=null)return storage;storage=UiHost.get().tempFilesCreateFile("hyperzebra-data-",".bin");Files68k.write(storage,mb.dataFork);dataForks.put(key,storage);return storage;}
 	private long rangeStart(RandomAccessFile file,int pb) throws IOException,M68kCpuException {int mode=memory.readWord(pb+IO_POS_MODE)&3,offset=memory.readLong(pb+IO_POS_OFFSET);return mode==0?file.getFilePointer():mode==1?offset:mode==2?file.length()+offset:file.getFilePointer()+offset;}
 	private String rangeKey(OpenFile open) throws IOException {return open.path.getCanonicalPath()+(open.resourceFork?"\0R":"\0D");}
 	private boolean isRangeLocked(OpenFile open,int reference,long start,long end) throws IOException {if(end<=start)return false;List<RangeLock> locks=rangeLocks.get(rangeKey(open));if(locks!=null)for(RangeLock value:locks)if(value.reference!=reference&&value.overlaps(start,end))return true;return false;}
@@ -1647,7 +1694,7 @@ final class FileManager68k {
 	private static boolean isAscii(byte[] bytes){for(byte b:bytes)if(b<0)return false;return true;}
 	/** HFS names are case-insensitive. Normalization also makes names extracted as NFC/NFD interchangeable on Linux. */
 	private static boolean sameMacName(String a,String b){
-		return Normalizer.normalize(a,Normalizer.Form.NFC).equalsIgnoreCase(Normalizer.normalize(b,Normalizer.Form.NFC));
+		return Platform.get().normalize(a,UnicodeNorm.Form.NFC).equalsIgnoreCase(Platform.get().normalize(b,UnicodeNorm.Form.NFC));
 	}
 	private static File resolveHostComponent(File directory,String name){
 		File exact=new File(directory,name);if(exact.exists())return exact;
@@ -1688,7 +1735,7 @@ final class FileManager68k {
 	static String unarchiverName(String name){
 		boolean ascii=true;for(int i=0;i<name.length();i++)if(name.charAt(i)>=0x80){ascii=false;break;}
 		if(ascii)return null;
-		try{return new String(name.getBytes(java.nio.charset.StandardCharsets.UTF_8),"x-MacRoman");}catch(java.io.UnsupportedEncodingException e){return null;}
+		try{return new String(name.getBytes(java.nio.charset.StandardCharsets.UTF_8),Platform.get().charset("x-MacRoman"));}catch(RuntimeException e){return null;}
 	}
 	/**
 	 * The reverse of {@link #unarchiverName}: the name a host file "Br√∏derbund MooV" had in the archive ("Brøderbund MooV",
@@ -1719,10 +1766,12 @@ final class FileManager68k {
 			byte[] bytes=StackTextEncoding.ROMAN.encode(hostName);
 			String utf8=java.nio.charset.StandardCharsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
 				.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT).decode(java.nio.ByteBuffer.wrap(bytes)).toString();
-			return isAscii(utf8)||utf8.equals(hostName)?null:Normalizer.normalize(utf8,Normalizer.Form.NFC);
+			return isAscii(utf8)||utf8.equals(hostName)?null:Platform.get().normalize(utf8,UnicodeNorm.Form.NFC);
 		}catch(java.nio.charset.CharacterCodingException|RuntimeException e){return null;}
 	}
-	/** {@code name} in {@code directory}: the file of that name, else the one an archive tool named as {@link #unarchiverName} does; null when neither exists. */
+	/** {@code name} in {@code directory}: the file of that name, else the one an archive tool named as {@link #unarchiverName} does;
+	 *  else one whose name differs only in case, as HFS names do not (a case-sensitive file system: the browser player's, Linux -
+	 *  The Haunted House's Movie XCMD asks for "witch.movie", the file is Witch.movie); null when none exists. */
 	static File existingOrUnarchived(File directory,String name){
 		if(directory==null||name==null)return null;
 		File exact=new File(directory,name);if(exact.exists())return exact;
@@ -1732,6 +1781,9 @@ final class FileManager68k {
 			File f=new File(directory,other);if(f.exists())return f;
 			String otherUnpacked=unarchiverName(other);if(otherUnpacked!=null&&(f=new File(directory,otherUnpacked)).exists())return f;
 		}
+		if(unsafe(name)||name.indexOf('/')>=0)return null;
+		File[] entries=directory.listFiles();
+		if(entries!=null)for(File entry:entries)if(!entry.getName().startsWith("._")&&sameMacName(entry.getName(),name))return entry;
 		return null;
 	}
 	/** One component of a path: the host entry of that name, else the long host name whose short HFS form ({@link #shortHfsName})
@@ -1840,19 +1892,19 @@ final class FileManager68k {
 	/** Whether the program may write through this open file: asked for (once) at the first write when it was opened without the permission. */
 	private boolean mayWrite(OpenFile open){
 		if(!open.writable||!mayWriteProgram(open))return false;
-		if(open.askAtWrite){if(!Sandbox.allowFile(open.path,Sandbox.Access.WRITE,requester))return false;open.askAtWrite=false;}
+		if(open.askAtWrite){if(!Sandbox68k.allowFile(open.path,Sandbox68k.Access.WRITE,requester))return false;open.askAtWrite=false;}
 		if(open.readOnlyCopy){if(!HostFileAttributes68k.makeWritable(open.path))return false;
-			if(open.reopenAtWrite!=null)try{long mark=open.file.getFilePointer();RandomAccessFile file=new RandomAccessFile(open.reopenAtWrite,"rw");open.file.close();open.file=file;open.file.seek(mark);}catch(IOException e){return false;}
+			if(open.reopenAtWrite!=null)try{long mark=open.file.getFilePointer();RandomAccessFile file=openFork(open.reopenAtWrite,true);open.file.close();open.file=file;open.file.seek(mark);}catch(IOException e){return false;}
 			open.readOnlyCopy=false;open.reopenAtWrite=null;}
 		return true;
 	}
 	/** Taking a program away or swapping it is changing it, the way Code 9811 hid originals behind infected copies: see {@link ProgramGuard68k}. */
-	private void guardProgram(File path){if(ProgramGuard68k.isProgram(path))Sandbox.checkProgramChange(path,requester);}
+	private void guardProgram(File path){if(ProgramGuard68k.isProgram(path))Sandbox68k.checkProgramChange(path,requester);}
 	/** The first write into a program's forks, past the Resource Manager, is one question; a program's own data fork is its own. */
 	private boolean mayWriteProgram(OpenFile open){
 		if(!open.programChecked){
 			open.programChecked=true;
-			open.programRefused=open.path!=null&&ProgramGuard68k.isProgram(open.path)&&(open.resourceFork||!Sandbox.isProgramOf(requester,open.path))&&!Sandbox.allowProgramChange(open.path,requester);
+			open.programRefused=open.path!=null&&ProgramGuard68k.isProgram(open.path)&&(open.resourceFork||!Sandbox68k.isProgramOf(requester,open.path))&&!Sandbox68k.allowProgramChange(open.path,requester);
 		}
 		return !open.programRefused;
 	}

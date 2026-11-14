@@ -563,23 +563,16 @@ final class QuickTimeVideo {
 			for(int y=0;y<j.height;y++){int line=first+y*step;if(line>=height)break;System.arraycopy(j.rgb,y*j.width,frame,line*width,Math.min(width,j.width));}
 			return;
 		}
-		java.util.Iterator<javax.imageio.ImageReader> readers=javax.imageio.ImageIO.getImageReadersByFormatName("jpeg");
-		if(!readers.hasNext())throw new IOException("no JPEG reader");
-		javax.imageio.ImageReader reader=readers.next();
-		BufferedImage image;
-		try(javax.imageio.stream.ImageInputStream in=javax.imageio.ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(b,off,len))){
-			reader.setInput(in,true,true);image=reader.read(0);
-		}catch(IOException|RuntimeException e){return;} // a damaged image: the picture stays
-		finally{reader.dispose();}
-		java.awt.image.Raster r=image.getRaster();int bands=r.getNumBands();int[] px=new int[bands];
-		boolean bgr=image.getType()==BufferedImage.TYPE_3BYTE_BGR;
-		for(int y=0;y<r.getHeight();y++){
-			int line=first+y*step;if(line>=height)break;
-			for(int x=0;x<Math.min(width,r.getWidth());x++){
-				r.getPixel(x,y,px);
-				frame[line*width+x]=bands==1?px[0]*0x010101:bgr||bands>=3?px[0]<<16|px[1]<<8|px[2]:0;
-			}
-		}
+		// one the own decoder does not read (progressive, arithmetic coding): Java's JPEG reader on the desktop
+		// (QuickTimeVideoImageIO, found by name); in the browser player the picture stays
+		if(JPEG_FALLBACK!=null)JPEG_FALLBACK.decode(b,off,len,frame,width,height,first,step);
+	}
+	/** A JPEG the own decoder does not read, into lines first, first + step ... of the frame */
+	interface JpegFallback{void decode(byte[] b,int off,int len,int[] frame,int width,int height,int first,int step) throws IOException;}
+	private static final JpegFallback JPEG_FALLBACK=findJpegFallback();
+	private static JpegFallback findJpegFallback(){
+		try{return (JpegFallback)Class.forName("QuickTimeVideoImageIO").getDeclaredConstructor().newInstance();}
+		catch(ReflectiveOperationException|RuntimeException|LinkageError e){return null;}
 	}
 
 	/** A 16-bit xRRRRRGGGGGBBBBB pixel as 24-bit colour (each 5-bit component repeated into 8 bits). */

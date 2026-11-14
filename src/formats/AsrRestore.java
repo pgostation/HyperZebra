@@ -3,13 +3,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 
 /** An in-place "restore" of a disk image onto a volume folder, standing in for Apple Software Restore (see Toolbox68k.launch). */
-final class AsrRestore {
+class AsrRestore {
 	private AsrRestore(){}
 
 	/** Mounts {@code image} and copies the files of its root into {@code target}, replacing items of the same name (folders merge). */
 	static void restore(File image,File target,String requester) throws IOException {
 		if(target==null||!target.isDirectory())throw new IOException("no target volume");
-		if(!Sandbox.allowFile(target,Sandbox.Access.WRITE,requester))throw new IOException("write refused");
+		if(!Sandbox68k.allowFile(target,Sandbox68k.Access.WRITE,requester))throw new IOException("write refused");
 		DiskImages.Mounted m=DiskImages.mount(image,null);
 		File[] items=m.folder.listFiles();
 		if(items==null)throw new IOException("empty image");
@@ -30,7 +30,7 @@ final class AsrRestore {
 			if(children!=null)for(File c:children){String n=c.getName();if(n.startsWith("._")||n.equals(".DS_Store"))continue;copy(c,new File(to,n));}
 			return;
 		}
-		if(to.exists()){to.setWritable(true);Files.delete(to.toPath());}
-		WorkingCopies.copyFile(from,to);
+		if(to.exists()){to.setWritable(true);Files68k.delete(to);}
+		UiHost.get().workingCopiesCopyFile(from,to);
 	}
 }

@@ -94,7 +94,7 @@ final class CommToolbox68k {
 		Tool(Kind kind,String name,File file){this.kind=kind;this.name=name;this.file=file;}
 	}
 	private final List<Tool> tools=new ArrayList<Tool>();private boolean scanned;
-	private static final Charset MAC_ROMAN=Charset.forName("x-MacRoman");
+	private static final Charset MAC_ROMAN=Platform.get().charset("x-MacRoman");
 	private static Kind kindOf(int bundle){return bundle==CLASS_CM?CM:bundle==CLASS_TM?TM:bundle==CLASS_FT?FT:null;}
 	/** The installed tools, found once: Extensions, then a Communications Folder, then the System Folder itself. */
 	private void scan(){

@@ -25,11 +25,12 @@ import javax.sound.midi.Transmitter;
  * {@link #SYNTH} (outputs: the Java synthesizer), {@link #NONE}, {@link #AUTO} (inputs: the first hardware input) or a
  * device name as {@link #outputDeviceNames()} / {@link #inputDeviceNames()} list them.
  */
-final class MidiHost68k {
+class MidiHost68k {
 	static final int MODEM=0,PRINTER=1;
 	static final String SYNTH="synth",NONE="none",AUTO="auto";
 	/** Streams of raw MIDI arriving from the host (a complete message each: status byte first, system exclusive whole). */
-	interface Listener { void received(int port,byte[] message); }
+	/** (MidiPorts68k.Listener: the 68K VM hears through it) */
+	interface Listener extends MidiPorts68k.Listener {}
 
 	private static final String[] outputChoice={SYNTH,SYNTH},inputChoice={AUTO,NONE};
 	/** What each port is opened on now (null = nothing opened yet), to reopen only when the choice changed. */
@@ -38,7 +39,7 @@ final class MidiHost68k {
 	private static final MidiDevice[] outputDevices=new MidiDevice[2],inputDevices=new MidiDevice[2];
 	private static final Transmitter[] transmitters=new Transmitter[2];
 	private static Synthesizer synthesizer;
-	private static final List<Listener> listeners=new CopyOnWriteArrayList<Listener>();
+	private static final List<MidiPorts68k.Listener> listeners=new CopyOnWriteArrayList<MidiPorts68k.Listener>();
 	/** Test hook: when set, every port's output goes here instead of a device (see App68kMidiManagerTest). */
 	static volatile Receiver testReceiver;
 
@@ -166,11 +167,11 @@ final class MidiHost68k {
 	// ------------------------------------------------------------------ input
 
 	/** The first listener opens the inputs the preferences name; they close again with the last listener. */
-	static synchronized void addListener(Listener l){
+	static synchronized void addListener(MidiPorts68k.Listener l){
 		if(!listeners.contains(l))listeners.add(l);
 		openInputs();
 	}
-	static synchronized void removeListener(Listener l){
+	static synchronized void removeListener(MidiPorts68k.Listener l){
 		listeners.remove(l);
 		if(listeners.isEmpty())for(int port=0;port<2;port++)closeInput(port);
 	}
@@ -192,7 +193,7 @@ final class MidiHost68k {
 			if(!device.isOpen())device.open();
 			Transmitter t=device.getTransmitter();
 			t.setReceiver(new Receiver(){
-				@Override public void send(MidiMessage message,long timeStamp){byte[] bytes=message.getMessage();if(bytes.length==0)return;for(Listener l:listeners)l.received(port,bytes);}
+				@Override public void send(MidiMessage message,long timeStamp){byte[] bytes=message.getMessage();if(bytes.length==0)return;for(MidiPorts68k.Listener l:listeners)l.received(port,bytes);}
 				@Override public void close(){}
 			});
 			inputDevices[port]=device;transmitters[port]=t;openedInputName[port]=name;
@@ -207,7 +208,7 @@ final class MidiHost68k {
 		openedInput[port]=null;openedInputName[port]=null;
 	}
 	/** Feeds a message in as if the port's input had received it (tests, and anything else on the host that wants to play). */
-	static void inject(int port,byte[] message){for(Listener l:listeners)l.received(port,message);}
+	static void inject(int port,byte[] message){for(MidiPorts68k.Listener l:listeners)l.received(port,message);}
 
 	static String hex(byte[] b){StringBuilder s=new StringBuilder();for(byte x:b)s.append(String.format("%02X ",x&0xff));return s.toString().trim();}
 }

@@ -184,7 +184,7 @@ public class HyperZebra{
 					@Override
 					public void handleAbout(com.apple.eawt.ApplicationEvent e) {
 					//showAbout();
-						//new GDialog(null, AppName+" "+PCARD.longVersion,
+						//new GDialog(null, AppName+" "+HZ.longVersion,
 						//		null,"OK",null,null);
 						try {
 							TTalk.doScriptforMenu("about this");

@@ -4,9 +4,6 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
 
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 /**
  * HyperCard's Copy Card / Paste Card: the card (its parts, script, picture, paint layers, shapes and the text of its
@@ -49,10 +46,10 @@ final class CardClipboard {
 		if(bg!=null && bg.layers!=null) for(PaintLayer l : bg.layers) if(l.fileName!=null) keep(l.fileName);
 	}
 
-	private interface XmlPart { void write(XMLStreamWriter writer) throws Exception; }
+	private interface XmlPart { void write(XmlOut writer) throws Exception; }
 	private static String xmlOf(XmlPart part) throws Exception {
 		StringWriter out = new StringWriter();
-		XMLStreamWriter writer = XMLOutputFactory.newInstance().createXMLStreamWriter(out);
+		XmlOut writer = Platform.get().xmlOut(out);
 		part.write(writer);
 		writer.flush();
 		return XmlText.encodeControlChars(out.toString()); // binary in a field (MACBOY Organiser's cards): not valid XML 1.0
@@ -67,9 +64,9 @@ final class CardClipboard {
 	 *  script duplicates a background (HC J-2.3, HyperPiece++ バックグラウンドを複製する). */
 	private static OBackground pasteBackground(OStack st, OBackground from) throws Exception {
 		OBackground bg = new OBackground(st);
-		XMLStreamReader reader = XmlText.decodingReader(XmlSafe.input().createXMLStreamReader(new StringReader(bgXml)));
+		XmlIn reader = XmlText.decodingReader(Platform.get().xmlIn(new StringReader(bgXml)));
 		while(reader.hasNext()){
-			if(reader.next()==XMLStreamReader.START_ELEMENT && reader.getLocalName().equals("background")) break;
+			if(reader.next()==XmlIn.START_ELEMENT && reader.getLocalName().equals("background")) break;
 		}
 		bg.readXML(reader);
 		bg.id = st.newCardOrBgId();
@@ -92,9 +89,9 @@ final class CardClipboard {
 		OStack st = after.stack;
 		OCard cd = new OCard(st);
 		try{
-			XMLStreamReader reader = XmlText.decodingReader(XmlSafe.input().createXMLStreamReader(new StringReader(xml)));
+			XmlIn reader = XmlText.decodingReader(Platform.get().xmlIn(new StringReader(xml)));
 			while(reader.hasNext()){
-				if(reader.next()==XMLStreamReader.START_ELEMENT && reader.getLocalName().equals("card")) break;
+				if(reader.next()==XmlIn.START_ELEMENT && reader.getLocalName().equals("card")) break;
 			}
 			cd.readXML(reader);
 		}catch(Exception e){

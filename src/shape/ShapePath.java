@@ -102,5 +102,5 @@ final class ShapePath {
 		}
 		return p;
 	}
-	static String trim(double n){return Double.toString(Math.rint(n*1000)/1000);}
+	static String trim(double n){return Platform.get().doubleToString(HzMath.rint(n*1000)/1000);}
 }

@@ -6,7 +6,6 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.text.Normalizer;
 import java.util.*;
 import java.util.zip.CRC32;
 
@@ -28,7 +27,7 @@ import java.util.zip.CRC32;
  * file names or keys a program looks things up by, or whose ^0 / %d placeholders did not come through, stay original -
  * the translation of what the program shows (VMTranslation) still handles those as they are drawn.
  */
-final class ResourceTranslation {
+class ResourceTranslation {
 	private ResourceTranslation(){}
 
 	/** Languages the System's own scripts can show: Japanese (a KanjiTalk System), and those Mac OS Roman holds. */
@@ -88,7 +87,7 @@ final class ResourceTranslation {
 			byte[] d;try{d=r.originalData();}catch(RuntimeException e){continue;}
 			crc.update(ResourceFile68k.typeName(r.type).getBytes(StandardCharsets.ISO_8859_1));crc.update(r.id>>>8);crc.update(r.id);crc.update(d);n++;
 		}
-		if(n==0){String id=LauncherStore.identity(program);crc.update((id==null?program.getPath():id).getBytes(StandardCharsets.UTF_8));}
+		if(n==0){String id=UiHost.get().launcherStoreIdentity(program);crc.update((id==null?program.getPath():id).getBytes(StandardCharsets.UTF_8));}
 		return String.format("%08x",crc.getValue());
 	}
 
@@ -167,7 +166,7 @@ final class ResourceTranslation {
 		meta.append("program=").append(LauncherStore.displayName(program)).append('\n');
 		meta.append("from=").append(t.from()).append("\nto=").append(to).append("\nengine=").append(t.config.engine).append('\n');
 		meta.append("encoding=").append(b.encoding.name()).append("\nprogramEncoding=").append(programEncoding.name()).append('\n');
-		meta.append("made=").append(java.time.LocalDateTime.now().withNano(0)).append('\n');
+		meta.append("made=").append(LocalTime68k.isoNow()).append('\n');
 		for(ResourceFile68k.Resource r:out.values()){
 			ResourceFile68k.Resource own=rf.get(r.type,r.id);
 			meta.append(ResourceFile68k.typeName(r.type)).append('\t').append(r.id).append('\t').append(crc(own.originalData())).append('\n');
@@ -175,7 +174,7 @@ final class ResourceTranslation {
 		}
 		file.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc(META),META_ID,"HyperZebra",0,meta.toString().getBytes(StandardCharsets.UTF_8)));
 		file.write();
-		Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.REPLACE_EXISTING);
+		Files68k.move(tmp,target,true);
 		built.file=target;built.resources=out.size();
 		LauncherStore.AppSettings s=LauncherStore.enabled?LauncherStore.get().settingsFor(program):null;
 		String need=systemLanguage(b.encoding);
@@ -229,7 +228,7 @@ final class ResourceTranslation {
 			for(ResourceFile68k.Resource r:rf.all()){
 				String type=ResourceFile68k.typeName(r.type);
 				if(type.equals("PICT")){ // the text in a picture, read by Tesseract when translating ahead (PictTranslation)
-					if(!PictureTranslation.enabledFor(program))continue;
+					if(!UiHost.get().pictureTranslationEnabledFor(program))continue;
 					try{
 						if(pictureVocabulary==null)pictureVocabulary=PictTranslation.vocabulary(rf,programEncoding);
 						Object[] p=PictTranslation.translated(r.originalData(),t,programEncoding,pictureVocabulary,text->translate(VMTranslation.Kind.TEXT,text,false));
@@ -779,16 +778,16 @@ final class ResourceTranslation {
 
 	/** The text in the System's script; letters it has no accented forms of lose their accents; null when it cannot be written. */
 	static byte[] encode(String text,StackTextEncoding encoding){
-		text=Normalizer.normalize(text,Normalizer.Form.NFC); // バ as one character: a decomposed ハ + ゛ has no Shift-JIS form
+		text=Platform.get().normalize(text,UnicodeNorm.Form.NFC); // バ as one character: a decomposed ハ + ゛ has no Shift-JIS form
 		try{return encoding.encode(text);}catch(CharacterCodingException e){/* below */}
 		StringBuilder b=new StringBuilder();
-		String nfd=Normalizer.normalize(text,Normalizer.Form.NFD);
+		String nfd=Platform.get().normalize(text,UnicodeNorm.Form.NFD);
 		for(int i=0;i<nfd.length();i++){ // accents off Latin letters only (never a kana's voicing mark)
 			char c=nfd.charAt(i);
 			if(Character.getType(c)==Character.NON_SPACING_MARK&&b.length()>0&&Character.UnicodeScript.of(b.charAt(b.length()-1))==Character.UnicodeScript.LATIN)continue;
 			b.append(c);
 		}
-		String plain=Normalizer.normalize(b.toString(),Normalizer.Form.NFC);
+		String plain=Platform.get().normalize(b.toString(),UnicodeNorm.Form.NFC);
 		if(encoding==StackTextEncoding.JAPANESE)plain=plain.replace('•','・').replace("®","(R)").replace("™","(TM)").replace('·','・'); // KanjiTalk's own forms
 		try{return encoding.encode(plain);}catch(CharacterCodingException e){return null;}
 	}
@@ -933,14 +932,14 @@ final class ResourceTranslation {
 	 * disk now is copied to Translations/Resources/Backups first (once a session), so the original texts can be had back.
 	 */
 	static void backUp(ResourceFile68k file){
-		if(file.file==null||!backedUp.add(LauncherStore.identity(file.file)))return;
+		if(file.file==null||!backedUp.add(UiHost.get().launcherStoreIdentity(file.file)))return;
 		try{
 			byte[] fork=ResourceFile68k.readForkBytes(file.file,null);
 			if(fork==null)return;
 			File dir=new File(directory(),"Backups");dir.mkdirs();
-			String stamp=java.time.LocalDateTime.now().withNano(0).toString().replace(':','-');
+			String stamp=LocalTime68k.isoNow().toString().replace(':','-');
 			File copy=new File(dir,safeName(file.file.getName())+" "+stamp+".rsrc");
-			Files.write(copy.toPath(),fork);
+			Files68k.write(copy,fork);
 			System.err.println("[68K] "+file.file.getName()+" changes a translated resource of its own: its resources were backed up to "+copy);
 		}catch(IOException e){System.err.println("[68K] cannot back up the resources of "+file.file.getName()+": "+e.getMessage());}
 	}

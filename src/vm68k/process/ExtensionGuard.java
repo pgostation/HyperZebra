@@ -19,7 +19,7 @@ import java.util.Set;
  * The first run takes what is there as the user's, but for what {@link VirusScan68k} knows. Only code counts: extensions keep their
  * settings in their own files.
  */
-final class ExtensionGuard {
+class ExtensionGuard {
 	private ExtensionGuard(){}
 
 	private static final int CFRG=ResourceFile68k.fourcc("cfrg"),THNG=ResourceFile68k.fourcc("thng");
@@ -28,13 +28,13 @@ final class ExtensionGuard {
 	/** Infected files the user chose to load, this session. */
 	private static final Set<String> keptInfected=Collections.synchronizedSet(new HashSet<String>());
 
-	static File folder(){return new File(AppPaths.stateDirectory(),".vm-guard");}
+	static File folder(){return new File(UiHost.get().appPathsStateDirectory(),".vm-guard");}
 	private static File list(){return new File(folder(),"extensions.sha256");}
 
 	/** Of the extensions about to load in {@code program}, the ones that stay out. */
 	static synchronized Set<File> review(List<File> extensions,String program){
 		Set<File> held=new HashSet<File>();
-		if(Sandbox.allowsEverything())return held;
+		if(Sandbox68k.allowsEverything())return held;
 		boolean first=!list().isFile();
 		Set<String> known=first?new HashSet<String>():read();
 		List<File> unknown=new ArrayList<File>();List<String> codes=new ArrayList<String>();
@@ -43,9 +43,9 @@ final class ExtensionGuard {
 			try{
 				ResourceFile68k rf=ResourceFile68k.open(file);
 				VirusScan68k.Finding found=VirusScan68k.scan(rf,file.getName());
-				String path=Sandbox.canonical(file);
+				String path=Sandbox68k.canonical(file);
 				if(found!=null&&!keptInfected.contains(path)){
-					if(!refused.contains(path)&&Sandbox.allowInfectedExtension(file.getName(),found.name))keptInfected.add(path);
+					if(!refused.contains(path)&&Sandbox68k.allowInfectedExtension(file.getName(),found.name))keptInfected.add(path);
 					else{refused.add(path);held.add(file);continue;}
 				}
 				code=digest(file,rf);
@@ -59,14 +59,14 @@ final class ExtensionGuard {
 		if(unknown.isEmpty())return held;
 		StringBuilder names=new StringBuilder();
 		for(File file:unknown)names.append(names.length()==0?"":"\n").append(file.getName());
-		if(Sandbox.allowNewExtensions(program,names.toString()))write(codes,false);
+		if(Sandbox68k.allowNewExtensions(program,names.toString()))write(codes,false);
 		else{refused.addAll(codes);held.addAll(unknown);}
 		return held;
 	}
 
 	/** The user put this extension in place (a drop on the launcher). */
 	static synchronized void approve(File file){
-		if(Sandbox.allowsEverything())return;
+		if(Sandbox68k.allowsEverything())return;
 		try{String code=digest(file,ResourceFile68k.open(file));if(code!=null&&list().isFile()&&!read().contains(code))write(Collections.singletonList(code),false);}
 		catch(IOException|RuntimeException e){System.err.println("[extensions] can't note "+file+": "+e);}
 	}

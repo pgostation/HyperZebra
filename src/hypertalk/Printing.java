@@ -135,10 +135,10 @@ class Printing {
 			Graphics2D g = img.createGraphics();
 			g.setColor(Color.white); g.fillRect(0, 0, ow, oh);
 			g.scale(k/screen, k/screen);
-			boolean saveCapturing = PCARD.capturingEffect;
-			PCARD.capturingEffect = true;
+			boolean saveCapturing = HZ.capturingEffect;
+			HZ.capturingEffect = true;
 			try{ PCARD.pc.mainPane.printAll(g); }
-			finally{ PCARD.capturingEffect = saveCapturing; g.dispose(); }
+			finally{ HZ.capturingEffect = saveCapturing; g.dispose(); }
 			holder[0] = img;
 		};
 		if(SwingUtilities.isEventDispatchThread()) r.run();

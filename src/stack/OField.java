@@ -25,9 +25,6 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.text.Style;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyleContext;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 
 public class OField extends OObject implements Cloneable {
@@ -38,6 +35,8 @@ public class OField extends OObject implements Cloneable {
 	OCard cardView = null;
 	OBackground bkgd = null;
 	MyTextArea fld = null;
+	/** The view the core reads and sets the text selection through (the desktop's MyTextArea; the headless core's own). */
+	FieldView view(){ return UiHost.get().fieldView(this); }
 	MyScrollPane scrollPane = null;
 	
 	//プロパティ
@@ -82,7 +81,7 @@ public class OField extends OObject implements Cloneable {
 	boolean outlineStyle=false;
 	int outlineLevel=1;//最初に開いておく階層の数(0なら全部閉じる)
 	String selectedPath="";//JSONのアウトラインで選択中の項目("weather.days.2")
-	FieldOutline.Data.Node clickNode;//最後にクリックした項目(the clickText)
+	FieldOutlineData.Node clickNode;//最後にクリックした項目(the clickText)
 	
 	ArrayList<styleClass> styleList;
 	
@@ -108,15 +107,15 @@ public class OField extends OObject implements Cloneable {
 		String text = getText();
 		if(outlineStyle){
 			//アウトライン: 選択中の項目の見出し(字下げのタブを除く)、JSONなら値
-			FieldOutline.Data.Tree tree = FieldOutline.Data.parse(text);
+			FieldOutlineData.Tree tree = FieldOutlineData.parse(text);
 			StringBuilder sb = new StringBuilder();
 			try{
 				if(tree.json){
-					FieldOutline.Data.Node n = selectedPath.isEmpty() ? null : tree.find(selectedPath);
+					FieldOutlineData.Node n = selectedPath.isEmpty() ? null : tree.find(selectedPath);
 					if(n!=null) sb.append(n.text());
 				}
 				else for(int row : selectedRows){
-					FieldOutline.Data.Node n = tree.atLine(row);
+					FieldOutlineData.Node n = tree.atLine(row);
 					if(n==null) continue;
 					if(sb.length()>0) sb.append('\n');
 					sb.append(n.label);
@@ -126,7 +125,7 @@ public class OField extends OObject implements Cloneable {
 		}
 		if(tableStyle && selectedRows.length>0){
 			//表: 選択中の行(複数なら改行区切り)
-			String[] lines = FieldTable.Data.lines(text);
+			String[] lines = FieldTableData.lines(text);
 			StringBuilder sb = new StringBuilder();
 			for(int row : selectedRows){
 				if(row<1 || row>lines.length) continue;
@@ -144,11 +143,12 @@ public class OField extends OObject implements Cloneable {
 				return str;
 			}
 		}
-		//表示中のフィールドなら実際の選択範囲(select コマンドやマウス選択)を優先する
-		if(fld!=null && fld.getSelectionEnd()>fld.getSelectionStart()){
-			String t = fld.getText();
-			int s0 = Math.max(0, Math.min(fld.getSelectionStart(), t.length()));
-			int e0 = Math.max(s0, Math.min(fld.getSelectionEnd(), t.length()));
+		//表示中のフィールドなら実際の選択範囲(select コマンドやマウス選択)を優先する。ブラウザのプレーヤーは Swing の
+		//テキスト域(fld)がなく、選択はビューだけが持つ(Year Calendar 2.1: select word … of a locked field / the selection)
+		if(UiHost.get().fieldHasView(this) && view().getSelectionEnd()>view().getSelectionStart()){
+			String t = view().getText();
+			int s0 = Math.max(0, Math.min(view().getSelectionStart(), t.length()));
+			int e0 = Math.max(s0, Math.min(view().getSelectionEnd(), t.length()));
 			return t.substring(s0, e0);
 		}
 		//selectedStart/Endはテキスト変更後に範囲外になっていることがある
@@ -179,28 +179,10 @@ public class OField extends OObject implements Cloneable {
 		if(h==oldLeft && v==oldTop) StackSpeed.unchanged(); //HyperCard draws nothing for it (speed limit)
 		left=h;
 		top=v;
-		if(fld!=null){
-			final int newLeft=left;
-			final int newTop=top;
-			final int fieldWidth=width;
-			final int fieldHeight=height;
-			PCARD.runOnEDTWhenShown(this, PCARD.EDT_BOUNDS, () -> {
-				JComponent component=getComponent();
-				if(component==null) return;
-				component.setBounds(newLeft, newTop, fieldWidth, fieldHeight);
-				if(!PCARD.lockedScreen) {
-					if(Math.abs(newLeft-oldLeft)<fieldWidth && Math.abs(newTop-oldTop)<fieldHeight)
-						PCARD.repaintLogicalRect(Math.min(newLeft,oldLeft), Math.min(newTop,oldTop), fieldWidth+Math.abs(newLeft-oldLeft), fieldHeight+Math.abs(newTop-oldTop));
-					else {
-						PCARD.repaintLogicalRect(newLeft, newTop, fieldWidth, fieldHeight);
-						PCARD.repaintLogicalRect(oldLeft, oldTop, fieldWidth, fieldHeight);
-					}
-				}
-			}, this::applyBounds);
-		}
+		UiHost.get().setTopLeftView181(this, h, v, oldLeft, oldTop);
 		((OCardBase)parent).changed = true;
 		((OCardBase)parent).movePanelPeers(this, h-oldLeft, v-oldTop);
-		CardWindow68k.partMoved(this, oldTop, oldLeft, oldTop+height, oldLeft+width); //an external's drawing there goes
+		UiHost.get().cardWindow68kPartMoved(this, oldTop, oldLeft, oldTop+height, oldLeft+width); //an external's drawing there goes
 	}
 	public void setRect(int v1, int v2, int v3, int v4) {
 		final int oldLeft=left;
@@ -211,23 +193,9 @@ public class OField extends OObject implements Cloneable {
 		top=v2;
 		width=v3-v1;
 		height=v4-v2;
-		if(fld!=null){
-			final int newLeft=left;
-			final int newTop=top;
-			final int newWidth=width;
-			final int newHeight=height;
-			PCARD.runOnEDTWhenShown(this, PCARD.EDT_BOUNDS, () -> {
-				JComponent component=getComponent();
-				if(component==null) return;
-				component.setBounds(newLeft, newTop, newWidth, newHeight);
-				if(!PCARD.lockedScreen) {
-					PCARD.repaintLogicalRect(newLeft, newTop, newWidth, newHeight);
-					PCARD.repaintLogicalRect(oldLeft, oldTop, oldWidth, oldHeight);
-				}
-			}, this::applyBounds);
-		}
+		UiHost.get().setRectView213(this, v1, v2, v3, v4, oldLeft, oldTop, oldWidth, oldHeight);
 		((OCardBase)parent).changed = true;
-		CardWindow68k.partMoved(this, oldTop, oldLeft, oldTop+oldHeight, oldLeft+oldWidth); //an external's drawing there goes
+		UiHost.get().cardWindow68kPartMoved(this, oldTop, oldLeft, oldTop+oldHeight, oldLeft+oldWidth); //an external's drawing there goes
 	}
 	public void setTextByInputarea(String in) {
 		splicedText = null;
@@ -236,7 +204,7 @@ public class OField extends OObject implements Cloneable {
 		((OCardBase)parent).changed = true;
 	}
 	/** The text this field's Swing component was last given (by setText or typing); null when unknown. */
-	private volatile String shownText;
+	volatile String shownText;
 	/** What a script's put does to the style runs (HC 2.2 and J-2.3 measured, probe group Pan Field Style): put into the whole
 	 *  field drops them all (the text takes the field's own style; PUT_ALL); put into/before/after a chunk, or before/after the
 	 *  field, keeps the runs of the text it does not replace, and the new text takes the style of the character after it, at
@@ -258,8 +226,11 @@ public class OField extends OObject implements Cloneable {
 	 *  lining the old and new texts up could pick the wrong one of repeated characters. Read once by the next setText. */
 	private static final ThreadLocal<int[]> exactChange = new ThreadLocal<int[]>();
 	static void changeForNextText(int[] change){ if(change==null) exactChange.remove(); else exactChange.set(change); }
+	/** Typing (the player's field view): characters [start, oldEnd) became insLen typed ones; the runs follow as TextEdit's
+	 *  (typedRuns), not as a script's put. Read once by the next setText. */
+	static void typedChangeForNextText(int start, int oldEnd, int insLen){ exactChange.set(new int[]{start, oldEnd, insLen, 1}); }
 	public void setText(String in) {
-		GUI.dropSelectedRange();
+		UiHost.get().gUIDropSelectedRange();
 		TTalk.putIntoField(this); //a script's put closes this field if it is open
 		Integer edit = putEdit.get();
 		putEdit.remove();
@@ -268,7 +239,8 @@ public class OField extends OObject implements Cloneable {
 		String before = styleList!=null && !styleList.isEmpty() && exact!=null && edit==null && in!=null ? getText() : null;
 		if(before!=null && exact[0]>=0 && exact[0]<=exact[1] && exact[1]<=before.length() &&
 				before.length()-(exact[1]-exact[0])+exact[2]==in.length()){
-			ArrayList<styleClass> spliced = splicedRuns(styleList, before.length(), exact[0], exact[1], exact[2], true);
+			ArrayList<styleClass> spliced = exact.length>3 && exact[3]==1 ? typedRuns(before.length(), exact[0], exact[1], exact[2])
+				: splicedRuns(styleList, before.length(), exact[0], exact[1], exact[2], true);
 			styleList = spliced.isEmpty() ? null : spliced;
 			splicedText = in;
 		}
@@ -282,28 +254,7 @@ public class OField extends OObject implements Cloneable {
 		if(in!=null && fld!=null && cardView==null && in.equals(shownText) && in.equals(super.getText()) &&
 				!hadRuns && (styleList==null || styleList.isEmpty())) return;
 		setText2(in);
-		if(fld!=null) {
-			Runnable updateAndRepaint = () -> {
-				int scroll = 0;
-				if(scrollPane!=null) scroll = scrollPane.getVerticalScrollBar().getValue();
-				String text = getText();
-				//put keeps the field's scroll (HyperCard J-2.3: DicSGML puts its 332-line index into a scrolling field at
-				//scroll 0 and shows its top); the caret's catching up later (invokeLater) scrolled to the end
-				applyingText = true;
-				try{ fld.keepScrollWhile(() -> fld.setText(text)); }
-				finally{ applyingText = false; }
-				shownText = text;
-				if(scrollPane!=null) scrollPane.getVerticalScrollBar().setValue(scroll);
-				if(!PCARD.lockedScreen) {
-					PCARD.repaintLogicalRect(left, top, width, height);
-				}
-			};
-			//スクリプト実行スレッドから直接Swingコンポーネントのテキストを更新して
-			//すぐに再描画すると、EDT側の描画処理と競合して文字が描画されない
-			//（フィールドが真っ白のまま）ことがあるため、EDT上でまとめて同期実行する。
-			//lock screen 中も保留しない: select・選択範囲・行の位置などはスクリプトスレッドから部品を直接読む
-			PCARD.runOnEDT(updateAndRepaint);
-		}
+		UiHost.get().setTextView284(this, in);
 		((OCardBase)parent).changed = true;
 	}
 	public void setText2(String in) {
@@ -394,19 +345,19 @@ public class OField extends OObject implements Cloneable {
 	}
 	/** (EDT) The components show the visibility the field has now. */
 	private void applyVisible(){
-		if(fld!=null) fld.setVisible(isShown());
-		if(scrollPane!=null) scrollPane.setVisible(isShown());
+		UiHost.get().applyVisibleView375(this);
+		UiHost.get().applyVisibleView376(this);
 	}
 	/** Its panel was shown or hidden, or it joined or left one: the components follow isShown. */
 	@Override void applyShown(){
 		if(fld==null) return;
-		PCARD.runOnEDTWhenShown(this, PCARD.EDT_VISIBLE, () -> {
+		Host.get().runOnEDTWhenShown(this, Host.EDT_VISIBLE, () -> {
 			applyVisible();
-			if(!PCARD.lockedScreen) PCARD.repaintLogicalRect(left, top, width, height);
+			if(!HZ.lockedScreen) Host.get().repaintLogicalRect(left, top, width, height);
 		}, this::applyVisible);
 	}
 	/** (EDT) The component has the rectangle the field has now. */
-	private void applyBounds(){
+	void applyBounds(){
 		JComponent component=getComponent();
 		if(component!=null) component.setBounds(left, top, width, height);
 	}
@@ -415,10 +366,10 @@ public class OField extends OObject implements Cloneable {
 		super.setVisible(in);
 		if(fld!=null)
 		{
-			PCARD.runOnEDTWhenShown(this, PCARD.EDT_VISIBLE, () -> {
+			Host.get().runOnEDTWhenShown(this, Host.EDT_VISIBLE, () -> {
 				applyVisible();
-				if(!PCARD.lockedScreen)
-					PCARD.repaintLogicalRect(left, top, width, height);
+				if(!HZ.lockedScreen)
+					Host.get().repaintLogicalRect(left, top, width, height);
 			}, this::applyVisible);
 		}
 	}
@@ -427,59 +378,37 @@ public class OField extends OObject implements Cloneable {
 		if(fld!=null)
 		{
 			fld.setEnabled(in);
-			if(!PCARD.lockedScreen) {
-				PCARD.repaintLogicalRect(left, top, width, height);
+			if(!HZ.lockedScreen) {
+				Host.get().repaintLogicalRect(left, top, width, height);
 			}
 		}
 		((OCardBase)parent).changed = true;
 	}
 	//find で見つけた文字列の枠。HyperCardでは選択(selection)とは別物なので、
 	//JTextAreaの選択ではなくハイライトで表示する
-	private static OField foundBoxField;
-	private static Object foundBoxTag;
-	void showFoundBox(int start, int end) {
-		clearFoundBox();
-		if(fld==null) return;
-		try{
-			foundBoxTag = fld.getHighlighter().addHighlight(start, end,
-				new javax.swing.text.DefaultHighlighter.DefaultHighlightPainter(new Color(0, 0, 0, 48)));
-			foundBoxField = this;
-			fld.repaint();
-		}catch(javax.swing.text.BadLocationException e){
-			foundBoxTag = null;
-		}
-	}
-	static void clearFoundBox() {
-		if(foundBoxField!=null && foundBoxField.fld!=null && foundBoxTag!=null){
-			foundBoxField.fld.getHighlighter().removeHighlight(foundBoxTag);
-			foundBoxField.fld.repaint();
-		}
-		foundBoxField = null;
-		foundBoxTag = null;
-	}
+	static OField foundBoxField;
+	static Object foundBoxTag;
+	void showFoundBox(int start, int end) { UiHost.get().showFoundBox(this, start, end); }
+	static void clearFoundBox() { UiHost.get().clearFoundBox(); }
 
 	public void setSelectedLine(int in) {
+		boolean changed = in!=selectedLine;
 		selectedLine=in;
 		selectedStart=0;
 		selectedEnd=0;
 		if(tableStyle || outlineStyle) setSelectedRows(in>0 ? new int[]{in} : new int[0]);
 		if(fld!=null)
 		{
-			PCARD.repaintLogicalRect(left, top, width, height);
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
+		//HyperCard hilites the list's line in its copy of the card and copies the field into the window: an external that colours
+		//that copy (ColorizeHC) shows the new line (ColorizeHC Technical Scripts: the drawing mode chosen did not show)
+		if(changed) TUtil.partChangedOnScreen(this);
 	}
 	public void setScroll(int in) {
 		scroll=in;
-		if(scrollPane!=null) {
-			scrollPane.getVerticalScrollBar().setValue(MyScrollPane.toViewScroll(in));
-			//a pane not laid out with the text yet keeps the scroll for its layout (MyScrollPane.followScroll); else the bar's limit applies
-			if(MyScrollPane.textLaidOut(scrollPane)) scroll=MyScrollPane.toLogicalScroll(scrollPane.getVerticalScrollBar().getValue());
-			if(fld!=null)
-			{
-				PCARD.repaintLogicalRect(left, top, width, height);
-			}
-		}
+		UiHost.get().setScrollView455(this, in);
 	}
 	/** 表の選択行(1起点)。表示中なら表にも反映する */
 	void setSelectedRows(int[] rows) {
@@ -488,22 +417,16 @@ public class OField extends OObject implements Cloneable {
 		selectedRows = sorted;
 		selectedLine = sorted.length>0 ? sorted[0] : 0;
 		if(sorted.length==0) selectedColumn = 0;
-		FieldTable table = table();
-		if(table!=null) PCARD.runOnEDT(table::showSelection);
-		FieldOutline outline = outline();
-		if(outline!=null) PCARD.runOnEDT(outline::showSelection);
+		UiHost.get().showFieldSelection(this);
 	}
 	/** JSONのアウトラインの選択(selectedPath)。表示中ならアウトラインにも反映する */
 	void setSelectedPath(String path) {
 		selectedPath = path==null ? "" : path;
 		selectedRows = new int[0];
 		selectedLine = 0;
-		FieldOutline outline = outline();
-		if(outline!=null) PCARD.runOnEDT(outline::showSelection);
+		UiHost.get().showOutlineSelection(this);
 	}
-	FieldOutline outline() {
-		return scrollPane instanceof FieldOutline ? (FieldOutline)scrollPane : null;
-	}
+	FieldOutline outline() { return UiHost.get().outline(this); }
 	/** 表の選択を"line 2 of card field 1" / "line 2 to 4 of …"(連続していなければ先頭の行)で */
 	String tableSelectedLine(String fieldRef) {
 		int[] rows = selectedRows;
@@ -512,16 +435,9 @@ public class OField extends OObject implements Cloneable {
 		if(rows.length==1 || !contiguous) return "line "+rows[0]+" of "+fieldRef;
 		return "line "+rows[0]+" to "+rows[rows.length-1]+" of "+fieldRef;
 	}
-	FieldTable table() {
-		return scrollPane instanceof FieldTable ? (FieldTable)scrollPane : null;
-	}
+	FieldTable table() { return UiHost.get().table(this); }
 	/** 表の見た目(フォント・色・列幅・罫線・選択の方式)をプロパティから描き直す */
-	void refreshTable() {
-		FieldTable table = table();
-		if(table!=null) PCARD.runOnEDT(() -> { table.applyAppearance(); table.reload(); });
-		FieldOutline outline = outline();
-		if(outline!=null) PCARD.runOnEDT(() -> { outline.applyAppearance(); outline.reload(); });
-	}
+	void refreshTable() { UiHost.get().refreshTable(this); }
 	/**
 	 * The style as Field Info's Style menu and the style property choose it: 0 transparent, 1 opaque, 2 rectangle, 3 shadow,
 	 * 4 scrolling, 5 table, 6 outline. A field that becomes a table or an outline gets the scrolling field's frame (one that
@@ -541,41 +457,12 @@ public class OField extends OObject implements Cloneable {
 		if(parent instanceof OCardBase) ((OCardBase)parent).changed = true;
 	}
 	/** tableStyleの切り替え: 表示中なら部品を作り直す(重なり順はそのまま) */
-	void rebuildComponent() {
-		if(fld==null) return;
-		PCARD.runOnEDT(() -> {
-			JComponent old = getComponent();
-			if(old==null || PCARD.pc==null || PCARD.pc.mainPane==null) return;
-			java.awt.Container pane = old.getParent();
-			int z = pane==null ? -1 : pane.getComponentZOrder(old);
-			if(pane!=null) pane.remove(old);
-			FieldTable table = table();
-			if(table!=null) table.dispose();
-			FieldOutline outline = outline();
-			if(outline!=null) outline.dispose();
-			if(scrollPane!=null && card!=null && card.paneList!=null) card.paneList.remove(scrollPane);
-			removeListener();
-			fld.fldData = null;
-			fld = null;
-			scrollPane = null;
-			buildOField(this);
-			JComponent now = getComponent();
-			if(now!=null && now.getParent()!=null && z>=0)
-				now.getParent().setComponentZOrder(now, Math.min(z, now.getParent().getComponentCount()-1));
-			if(!PCARD.lockedScreen) PCARD.repaintLogicalRect(left, top, width, height);
-		});
-	}
+	void rebuildComponent() { UiHost.get().rebuildComponent(this); }
 	/** The Swing component takes a new font on the event thread: set from the script thread, its views were rebuilt while the
 	 *  caret's queued repaint measured them (JHUG C.A.P.S. vol.2 "flap": NPE in PlainView.updateMetrics, host null) */
-	public void showFont(Font font) {
-		MyTextArea c = fld;
-		if(c!=null) PCARD.runOnEDT(() -> c.setFont(font));
-	}
+	public void showFont(Font font) { UiHost.get().showFont(this, font); }
 	/** setLineWrap on the event thread, as showFont */
-	public void showLineWrap(boolean wrap) {
-		MyTextArea c = fld;
-		if(c!=null) PCARD.runOnEDT(() -> c.setLineWrap(wrap));
-	}
+	public void showLineWrap(boolean wrap) { UiHost.get().showLineWrap(this, wrap); }
 	public void setTextSize(int in) {
 		if(in<1) return;
 		textSize = in;
@@ -583,15 +470,15 @@ public class OField extends OObject implements Cloneable {
 		textHeight = in + in/3;
 		if(fld!=null)
 		{
-			showFont(OObject.stackFont(textFont, textStyle & 0x03, textSize*PCARD.scale()));
-			PCARD.repaintLogicalRect(left, top, width, height);
+			UiHost.get().showFieldFont(this, textFont, textStyle & 0x03, textSize*Host.get().scale());
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		refreshTable();
 		((OCardBase)parent).changed = true;
 	}
 	public void setTextHeight(int in) {
 		textHeight = in;
-		if(fld!=null) fld.repaint();
+		if(fld!=null) view().repaint();
 		refreshTable();
 		((OCardBase)parent).changed = true;
 	}
@@ -600,15 +487,15 @@ public class OField extends OObject implements Cloneable {
 		if(fld!=null)
 		{
 			if(hilite){
-				fld.setSelectionStart(0);
-				fld.setSelectionEnd(fld.getText().length()-1);
+				view().setSelectionStart(0);
+				view().setSelectionEnd(view().getText().length()-1);
 			}
 			else{
-				fld.setSelectionStart(0);
-				fld.setSelectionEnd(0);
+				view().setSelectionStart(0);
+				view().setSelectionEnd(0);
 			}
-			if(!PCARD.lockedScreen) {
-				PCARD.repaintLogicalRect(left, top, width, height);
+			if(!HZ.lockedScreen) {
+				Host.get().repaintLogicalRect(left, top, width, height);
 			}
 		}
 		((OCardBase)parent).changed = true;
@@ -616,26 +503,21 @@ public class OField extends OObject implements Cloneable {
 	public void setTextFont(String in) {
 		textFont = in;
 		if(fld != null){
-			showFont(OObject.stackFont(textFont, textStyle & 0x03, textSize*PCARD.scale()));
+			UiHost.get().showFieldFont(this, textFont, textStyle & 0x03, textSize*Host.get().scale());
 		}
 		refreshTable();
-		if(!PCARD.lockedScreen) {
-			PCARD.repaintLogicalRect(left, top, width, height);
+		if(!HZ.lockedScreen) {
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
 	}
 	public void setWideMargins(boolean in) {
 		wideMargins = in;
 		applyMargin();
-		if(fld!=null) fld.repaint();
+		if(fld!=null) view().repaint();
 		if(parent instanceof OCardBase) ((OCardBase)parent).changed = true;
 	}
-	void applyMargin() {
-		if(fld==null) return;
-		int margin = textMargin(PCARD.scale(), wideMargins);
-		int topMargin = textTopMargin(PCARD.scale(), wideMargins);
-		fld.setMargin(new Insets(topMargin, margin, topMargin, margin));
-	}
+	void applyMargin() { UiHost.get().applyMargin(this); }
 	/**
 	 * HyperCardのフィールドは、rectの左から3px・上から1pxの位置にテキストを置く(右端はrect.right-4)。
 	 * 以前は余白0で描いていたため、実機より3px左・1px上にずれ、隣接するフィールド同士の
@@ -667,7 +549,20 @@ public class OField extends OObject implements Cloneable {
 		CLASSIC_METRICS.put("helvetica", new int[][]{{9,8,3},{10,9,3},{12,10,4},{14,11,4},{18,14,4},{24,20,5}});
 		CLASSIC_METRICS.put("osaka", new int[][]{{9,10,2},{10,11,3},{12,12,4},{14,14,5}});
 	}
-	private static int[] classicMetrics(String font, int size) {
+	/** descent+leading of the classic Osaka suitcase (9:2 10:3 12:4 14:5 18:8 24:10; between them interpolated, above them in
+	 *  proportion): Hiragino, which stands in for it, carries a leading the bitmap Osaka never had. Button names
+	 *  (FullButtonName.drop) and the browser player's renderer use it. */
+	private static final int[][] OSAKA_DROP = {{9,2},{10,3},{12,4},{14,5},{18,8},{24,10}};
+	static int osakaDrop(int size) {
+		int[] below = OSAKA_DROP[0], above = OSAKA_DROP[OSAKA_DROP.length-1];
+		for(int[] e : OSAKA_DROP){ if(e[0]<=size) below = e; if(e[0]>=size){ above = e; break; } }
+		if(below[0]==above[0]) return below[1];
+		if(size<below[0]) return below[1];
+		if(size>above[0]) return Math.round(size*above[1]/(float)above[0]);
+		return below[1]+Math.round((size-below[0])*(above[1]-below[1])/(float)(above[0]-below[0]));
+	}
+
+	static int[] classicMetrics(String font, int size) {
 		//no font name: a field made here (create field) - HyperCard gives a new field Geneva
 		int[][] sizes = CLASSIC_METRICS.get(font==null || font.isEmpty() ? "geneva" : font.toLowerCase(java.util.Locale.ROOT));
 		if(sizes!=null) for(int[] e : sizes) if(e[0]==size) return new int[]{e[1], e[2]};
@@ -693,12 +588,10 @@ public class OField extends OObject implements Cloneable {
 		return isOsaka(font) ? size : fm.getAscent();
 	}
 	private static boolean isOsaka(String font) {return font!=null && font.equalsIgnoreCase("Osaka");}
-	private static final java.awt.Graphics2D METRICS = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB).createGraphics();
 	/** The distance between the field's lines in card pixels, as drawn: textHeight when fixed, else the font's own line height. */
 	int lineHeight() {
 		if(fixedLineHeight) return fixedRowHeight();
-		java.awt.FontMetrics fm = METRICS.getFontMetrics(OObject.stackFont(textFont, textStyle&0x03, textSize));
-		return Math.max(1, naturalLineHeight(textFont, textSize, 1, fm));
+		return UiHost.get().fieldLineHeight(textFont, textStyle, textSize);
 	}
 
 	static class TextStyleSpec {
@@ -743,7 +636,7 @@ public class OField extends OObject implements Cloneable {
 	}
 	/** color: the run's text colour 0xRRGGBB, -1 for the field's */
 	void applyTextStyle(int start, int end, String font, int size, int style, int color) {
-		GUI.dropSelectedRange();
+		UiHost.get().gUIDropSelectedRange();
 		String text = getText();
 		start = Math.max(0, Math.min(start, text.length()));
 		end = Math.max(start, Math.min(end, text.length()));
@@ -763,7 +656,7 @@ public class OField extends OObject implements Cloneable {
 		OBgFieldData data = cardFieldData(true);
 		if(data!=null){ data.styleList = styleList; data.card.changed = true; }
 		useMyDraw = true;
-		if(fld!=null) fld.repaint();
+		if(fld!=null) view().repaint();
 		if(parent instanceof OCardBase) ((OCardBase)parent).changed = true;
 	}
 
@@ -812,7 +705,7 @@ public class OField extends OObject implements Cloneable {
 		styleList = updated.isEmpty() ? null : updated;
 		OBgFieldData data = cardFieldData(false);
 		if(data!=null){ data.styleList = styleList; data.card.changed = true; }
-		if(fld!=null) fld.repaint();
+		if(fld!=null) view().repaint();
 	}
 
 	/**
@@ -834,10 +727,29 @@ public class OField extends OObject implements Cloneable {
 		if(styleList==null || styleList.isEmpty()) return;
 		String oldText = getText();
 		int[] change = textChange(oldText, newText, false);
-		ArrayList<styleClass> spliced = splicedRuns(styleList, oldText.length(), change[0], change[1], change[2], false);
+		ArrayList<styleClass> spliced = typedRuns(oldText.length(), change[0], change[1], change[2]);
 		styleList.clear(); //in place: the card's bgfldList entry holds this list too
 		styleList.addAll(spliced);
 		splicedText = newText;
+	}
+	/** TextEdit's null scrap: where typing last deleted text (Swing's replaceSelection removes, then inserts) and the style id
+	 *  of its first character (null = the field's own); -1 when none. */
+	private int nullScrapAt = -1;
+	private Integer nullScrapStyle;
+	/** The runs once typing turned old characters [start, oldEnd) into insLen new ones, as TextEdit: typed over a selection the
+	 *  new text takes the style of its first character, also when the selection went first (deleted, then typed at the same
+	 *  place: the null scrap); at an insertion point that of the character before (HyperCard RTF: "Times" in italic selected
+	 *  and typed over came out plain). */
+	private ArrayList<styleClass> typedRuns(int oldLength, int start, int oldEnd, int insLen) {
+		ArrayList<styleClass> sorted = new ArrayList<styleClass>(styleList);
+		sorted.sort((a,b) -> Integer.compare(a.textPosition, b.textPosition));
+		boolean scrap = insLen>0 && oldEnd==start && start==nullScrapAt;
+		Integer scrapStyle = nullScrapStyle;
+		if(insLen==0 && oldEnd>start){ nullScrapAt = start; nullScrapStyle = runAt(sorted, start); }
+		else nullScrapAt = -1;
+		if(insLen>0 && (scrap || oldEnd>start))
+			return splicedRuns(styleList, oldLength, start, oldEnd, insLen, false, true, scrap ? scrapStyle : runAt(sorted, start));
+		return splicedRuns(styleList, oldLength, start, oldEnd, insLen, false);
 	}
 	/** The text preserveStylesForTextChange last moved the runs for (setText then leaves them) */
 	private String splicedText;
@@ -873,9 +785,13 @@ public class OField extends OObject implements Cloneable {
 	 *  change keeps its style also when a run began inside the replaced characters ("AAAbbb" with "bbb" bold, "Ab" replaced:
 	 *  the "bb" left became plain). */
 	static ArrayList<styleClass> splicedRuns(ArrayList<styleClass> runs, int oldLength, int start, int oldEnd, int insLen, boolean takeNext) {
+		return splicedRuns(runs, oldLength, start, oldEnd, insLen, takeNext, false, null);
+	}
+	/** given: the new characters take style id {@code style} (null = the field's own) */
+	static ArrayList<styleClass> splicedRuns(ArrayList<styleClass> runs, int oldLength, int start, int oldEnd, int insLen, boolean takeNext, boolean given, Integer style) {
 		ArrayList<styleClass> sorted = new ArrayList<styleClass>(runs);
 		sorted.sort((a,b) -> Integer.compare(a.textPosition, b.textPosition));
-		Integer inserted = takeNext || start==0 ? (oldLength==0 ? null : runAt(sorted, Math.min(oldEnd, oldLength-1))) : runAt(sorted, start-1);
+		Integer inserted = given ? style : takeNext || start==0 ? (oldLength==0 ? null : runAt(sorted, Math.min(oldEnd, oldLength-1))) : runAt(sorted, start-1);
 		Integer after = oldEnd<oldLength ? runAt(sorted, oldEnd) : null;
 		int delta = insLen-(oldEnd-start), newLength = oldLength+delta;
 		ArrayList<styleClass> out = new ArrayList<styleClass>();
@@ -903,20 +819,12 @@ public class OField extends OObject implements Cloneable {
 
 	public void setColor(Color col) {
 		color=col;
-		if(fld!=null)
-		{
-			fld.setForeground(col);
-			fld.repaint();
-		}
+		UiHost.get().setColorView887(this, col);
 		refreshTable();
 	}
 	public void setBgColor(Color col) {
 		bgColor=col;
-		if(fld!=null)
-		{
-			fld.setBackground(col);
-			fld.repaint();
-		}
+		UiHost.get().setBgColorView896(this, col);
 		refreshTable();
 	}
 	
@@ -933,14 +841,14 @@ public class OField extends OObject implements Cloneable {
 	
 
 	@SuppressWarnings("unchecked")
-	public XMLStreamReader readXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readXML(XmlIn reader) throws Exception {
 		boolean firstSelectedInt = true;
 		this.textStyle=0;
 		
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamReader.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName().intern();
 	            	if(elm.equals("id")){ this.id = Integer.valueOf(reader.getElementText()); }
 	            	else if(elm.equals("visible")){ this.setVisible(XMLRead.bool(reader));reader.next(); }
@@ -954,7 +862,7 @@ public class OField extends OObject implements Cloneable {
 	            		int right=0, bottom=0;
 	    	            while(reader.hasNext()){
 	    	            	int eventType2 = reader.next();
-	    	            	if (eventType2 == XMLStreamReader.START_ELEMENT) {
+	    	            	if (eventType2 == XmlIn.START_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("left")){
 	    		            		this.left = Integer.valueOf(reader.getElementText());
@@ -968,7 +876,7 @@ public class OField extends OObject implements Cloneable {
 	    		            	else if(elm2.equals("bottom")){ bottom = Integer.valueOf(reader.getElementText()); }
 	    		            	else System.out.println("Part_Type: " + reader.getLocalName());
 	    	            	}
-	    	            	else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+	    	            	else if (eventType2 == XmlIn.END_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("rect")){
 	    		            		this.width = right - this.left;
@@ -982,14 +890,14 @@ public class OField extends OObject implements Cloneable {
     	            	int red=0, green=0, blue=0;
 	    	            while(reader.hasNext()){
 	    	            	int eventType2 = reader.next();
-	    	            	if (eventType2 == XMLStreamReader.START_ELEMENT) {
+	    	            	if (eventType2 == XmlIn.START_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("red")){ red = Integer.valueOf(reader.getElementText());}
 	    		            	else if(elm2.equals("green")){ green = Integer.valueOf(reader.getElementText());}
 	    		            	else if(elm2.equals("blue")){ blue = Integer.valueOf(reader.getElementText()); }
 	    		            	else System.out.println("Part_Type: " + reader.getLocalName());
 	    	            	}
-	    	            	else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+	    	            	else if (eventType2 == XmlIn.END_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("color")){
 	    		            		this.color = new Color(red/256, green/256, blue/256);
@@ -1073,12 +981,12 @@ public class OField extends OObject implements Cloneable {
 	            		int runTextPosition = 0, runStyleId = 0;
 	    	            while(reader.hasNext()){
 	    	            	int eventType2 = reader.next();
-	    	            	if (eventType2 == XMLStreamReader.START_ELEMENT) {
+	    	            	if (eventType2 == XmlIn.START_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("textPosition")){ runTextPosition = Integer.valueOf(reader.getElementText()); }
 	    		            	else if(elm2.equals("styleId")){ runStyleId = Integer.valueOf(reader.getElementText()); }
 	    	            	}
-	    	            	else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+	    	            	else if (eventType2 == XmlIn.END_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("run")){
 	    		            		runs.add(new styleClass(runTextPosition, runStyleId));
@@ -1095,7 +1003,7 @@ public class OField extends OObject implements Cloneable {
 	            		name = reader.getElementText();
 	            	}
 				else if(elm.equals("panel")){ panelId = XMLRead.panelId(reader.getElementText()); }
-	            	else if(elm.equals("osaScript")) osaScript = OsaScript.readXML(reader);
+	            	else if(elm.equals("osaScript")) osaScript = UiHost.get().readOsaScript(reader);
 	            	else if(elm.equals("script"))
 	            	{
 	            		String scrStr = reader.getElementText();
@@ -1121,7 +1029,7 @@ public class OField extends OObject implements Cloneable {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamReader.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("part")){
 	            		break;
@@ -1135,7 +1043,7 @@ public class OField extends OObject implements Cloneable {
 	}
 
 	
-	public void writeXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeXML(XmlOut writer) throws XmlException {
         writer.writeStartElement("part");
         writer.writeCharacters("\n\t\t\t");
 
@@ -1496,7 +1404,7 @@ public class OField extends OObject implements Cloneable {
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
 
-        if(osaScript!=null) osaScript.writeXML(writer, "\n\t\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
+        if(osaScript!=null) UiHost.get().writeOsaScript(osaScript, writer, "\n\t\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
 
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
@@ -1625,114 +1533,7 @@ public class OField extends OObject implements Cloneable {
 	
 	
 	static void buildOField(OField ofld)
-	{
-		//swingのテキストコンポーネントを追加
-		ofld.fld = new MyTextArea(ofld.getText());
-
-		ofld.fld.fldData = ofld;
-		ofld.addListener();
-
-		//上のnew MyTextArea(ofld.getText())で既にテキストは設定済みであり、ここでの
-		//setTextは本来不要な二重設定だった。しかしこの時点では直前のaddListener()で
-		//ドキュメントリスナー(GUI_fldDocument)が既に取り付けられているため、この
-		//setTextが「全文削除→全文挿入」のドキュメントイベントを発生させてしまい、
-		//GUI_fldDocument.changedUpdate→preserveStylesForTextChangeが呼ばれて
-		//フィールドのstyleList(部分的な文字装飾)がカードを開く/表示するたびに
-		//消えてしまっていた(シャドウなどのスタイルが表示上だけ消える不具合の原因)。
-		ofld.fld.setForeground(ofld.color);
-		ofld.fld.setBackground(ofld.bgColor);
-		ofld.fld.setBounds(ofld.left, ofld.top, ofld.width, ofld.height); 
-		//ofld.fld.setSelectionColor(ofld.selectColor);
-		
-		//the host's family for the font, or its stand-in (a font only the stack's own FONT strike has, as Uli Kusterer's Sempach,
-		//is drawn with the host's default face: card text is never drawn from bitmap strikes)
-		ofld.fld.setFont(OObject.stackFont(ofld.textFont, ofld.textStyle, ofld.textSize*PCARD.scale()));
-		if(ofld.textHeight==0){
-			ofld.textHeight = ofld.fld.getLineHeight();
-		}
-		ofld.fld.setVisible(ofld.isShown());
-		//lockTextだけでなく、現在のツールとピーク状態も考慮して決める
-		//(フィールドツール選択中にカードが作り直されても、テキストが
-		//選択できる状態に戻ってしまわないようにする)
-		ofld.updateTextEditable();
-		ofld.fld.setLineWrap(!ofld.dontWrap);
-		//while it is edited Swing lays the text out: at word breaks, as the own drawing and HyperCard wrap (Parts of Speech's
-		//typed "between, down" broke as "do" / "wn")
-		ofld.fld.setWrapStyleWord(true);
-		if(ofld.selectedStart>0 && ofld.selectedEnd>0) {
-			ofld.fld.setSelectionStart(ofld.selectedStart);
-			ofld.fld.setSelectionEnd(ofld.selectedEnd);
-		}
-		Style s = StyleContext.getDefaultStyleContext().getStyle(StyleContext.DEFAULT_STYLE);
-		switch(ofld.textAlign){
-			case 0:break;
-			case 1:StyleConstants.setAlignment(s, StyleConstants.ALIGN_CENTER);break;
-			case 2:StyleConstants.setAlignment(s, StyleConstants.ALIGN_RIGHT);break;
-		}
-		StyleConstants.setComponent(s, ofld.fld);
-		//(0標準) 1透明 2不透明 3長方形 4シャドウ 5スクロール
-		switch(ofld.style) {
-		case 1:
-			ofld.fld.setOpaque(false);
-			break;
-		case 2:
-			ofld.fld.setBorder(new EmptyBorder(1,1,1,1));
-			break;
-		case 3:
-			ofld.fld.setBorder(new RectangleFieldBorder(ofld));
-			break;
-		case 4:
-			//枠と影はHyperCardと同じ形(ShadowFieldBorder)。影の欠けた角からはカードが見えるので不透明にしない
-			ofld.fld.setBorder(new ShadowFieldBorder(ofld));
-			ofld.fld.setOpaque(false);
-			break;
-		} 
-		if(ofld.autoSelect) ofld.fld.setOpaque(false);
-		ofld.applyMargin();
-
-		if(ofld.outlineStyle) {
-			//アウトライン: 表と同じく、テキストはMyTextAreaに持たせたまま木を部品として置く
-			FieldOutline outline = new FieldOutline(ofld);
-			outline.setBounds(ofld.left, ofld.top, ofld.width, ofld.height);
-			outline.setVisible(ofld.isShown());
-			PCARD.pc.mainPane.add(outline);
-			ofld.card.paneList.add(outline);
-			ofld.scrollPane = outline;
-			MyScrollPane.followScroll(outline, ofld);
-		}
-		else if(ofld.tableStyle) {
-			//表: テキストはMyTextAreaに持たせたまま(画面には出さない)、表を部品として置く
-			FieldTable table = new FieldTable(ofld);
-			table.setBounds(ofld.left, ofld.top, ofld.width, ofld.height);
-			table.setVisible(ofld.isShown());
-			PCARD.pc.mainPane.add(table);
-			ofld.card.paneList.add(table);
-			ofld.scrollPane = table;
-			MyScrollPane.followScroll(table, ofld);
-		}
-		else if(ofld.style<=4) {
-			PCARD.pc.mainPane.add(ofld.fld);
-		}
-		else {
-			MyScrollPane scrollpane = new MyScrollPane();
-			scrollpane.fldData=ofld;
-			//the view starts at the viewport's origin, not at the field's place on the card: a field above or left of the card
-			//(HCSTG PUGO's -9,-5) was a viewport position of 9,5 - its text 9px left and 5px up, and its scroll 5
-			ofld.fld.setLocation(0, 0);
-			scrollpane.setViewportView(ofld.fld);
-			scrollpane.setBounds(ofld.left, ofld.top, ofld.width, ofld.height);
-			scrollpane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-			scrollpane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-			scrollpane.getVerticalScrollBar().setUnitIncrement(Math.max(1, (int)Math.round(Math.max(1, ofld.textHeight)*Math.max(1, PCARD.scale()))));
-			scrollpane.setVisible(ofld.isShown());
-			PCARD.pc.mainPane.add(scrollpane);
-			ofld.card.paneList.add(scrollpane);
-			ofld.scrollPane = scrollpane;
-			MyScrollPane.followScroll(scrollpane, ofld);
-			
-    		ofld.fld.revalidate();
-		}
-	}
+	{ UiHost.get().buildOField(ofld); }
     
 	
     //テキストを編集・選択できるのは、ブラウズツールで、ユーザーレベル2以上で、かつピーク中でなく、
@@ -1743,36 +1544,24 @@ public class OField extends OObject implements Cloneable {
     //・shift+opt+cmdのピーク中も同様。編集可能なままだとSwingのキャレットが先に
     //  クリックに反応してしまい、スクリプトエディタを開く操作にならない。
     //enabled(=lockTextの代用)自体は変更せず、表示上の編集可否だけを切り替える。
-    void updateTextEditable(){
-		if(fld==null) return;
-		//ユーザーレベル1(ブラウズ)ではロックされていないフィールドにも入力できない(HyperCard)
-		boolean editable = !enabled && PCARD.editMode==0 && AuthTool.tool==null && StackProtection.effectiveUserLevel()>=2;
-		fld.setEditable(editable);
-		fld.setFocusable(editable);
-		//表・アウトラインはテキスト欄を画面に出さないので、部品の方にも入力の可否を知らせる
-		//(フィールドツールで作り直された部品は、ブラウズツールに戻っても入力できないままだった)
-		FieldTable table = table();
-		if(table!=null) PCARD.runOnEDT(table::editableChanged);
-		FieldOutline outline = outline();
-		if(outline!=null) PCARD.runOnEDT(outline::editableChanged);
-	}
+    void updateTextEditable(){ UiHost.get().updateTextEditable(this); }
     /** Whether a table's cells or an outline's items can be typed into now: unlocked, the browse tool (no paint tool either),
      *  user level 2 or more (HyperCard: level 1 types nothing). */
     boolean textEditable(){
-		return !enabled && PCARD.editMode==0 && AuthTool.tool==null && (PCARD.pc==null || PCARD.pc.tool==null)
-			&& StackProtection.effectiveUserLevel()>=2;
+		return !enabled && HZ.editMode==0 && !Host.get().authToolActive() && (!Host.get().hasCardWindow() || !Host.get().paintToolActive())
+			&& UiHost.get().stackProtectionEffectiveUserLevel()>=2;
 	}
 
     //現在のカードと背景の全フィールドに、上のルールを適用し直す。
     //ツールの切り替え時とピークの開始・終了時に呼ぶ。
     static void updateAllTextEditable(){
-		if(PCARD.pc==null || PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return;
-		for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
-			PCARD.pc.stack.curCard.fldList.get(i).updateTextEditable();
+		if(!Host.get().hasCardWindow() || HZ.stack()==null || HZ.stack().curCard==null) return;
+		for(int i=0; i<HZ.stack().curCard.fldList.size(); i++){
+			HZ.stack().curCard.fldList.get(i).updateTextEditable();
 		}
-		if(PCARD.pc.stack.curCard.bg!=null){
-			for(int i=0; i<PCARD.pc.stack.curCard.bg.fldList.size(); i++){
-				PCARD.pc.stack.curCard.bg.fldList.get(i).updateTextEditable();
+		if(HZ.stack().curCard.bg!=null){
+			for(int i=0; i<HZ.stack().curCard.bg.fldList.size(); i++){
+				HZ.stack().curCard.bg.fldList.get(i).updateTextEditable();
 			}
 		}
 	}
@@ -1798,7 +1587,6 @@ public class OField extends OObject implements Cloneable {
 		docListener = null;
 	}
     
-    static fldOutlineListen fldOutlineListen = new fldOutlineListen();
     void addListener(MouseListener listener){
 		fld.addMouseListener(listener);
     }
@@ -1824,7 +1612,7 @@ public class OField extends OObject implements Cloneable {
     static int[] hitTestClick(OField field, int localX, int localY){
     	int[] r = {-1, 0, 0};
     	if(field==null || field.fld==null) return r;
-    	String now = field.fld.getText();
+    	String now = field.view().getText();
     	if(field.fld.hitBoxesText==null || !field.fld.hitBoxesText.equals(now)) field.fld.refreshHitBoxes();
     	java.util.ArrayList<int[]> boxes = field.fld.hitBoxes;
     	if(boxes==null) return r;
@@ -1858,7 +1646,7 @@ class fldOutlineListen implements MouseListener {
 
     public void mouseClicked(MouseEvent e) {
     	//フィールドのピークは Command-Option-Shift。キーの押しっぱなしが残っていただけの普通のクリックでは開かない
-    	if(GUI.isPeekClick(e)) ScriptEditor.openScriptEditor(PCARD.pc.stack.pcard, ((MyTextArea)e.getSource()).fldData);
+    	if(GUI.isPeekClick(e)) ScriptEditor.openScriptEditor(HZ.stack().pcard, ((MyTextArea)e.getSource()).fldData);
 		GUI.endPeek();
     }
 	
@@ -1881,7 +1669,7 @@ class MyScrollPane extends JScrollPane {
 	
 	MyScrollPane(){
 		super();
-		this.setDoubleBuffered(PCARD.useDoubleBuffer);
+		this.setDoubleBuffered(HZ.useDoubleBuffer);
 		//スクロールは画面の絵を写してずらす(BLIT)のではなく描き直す。カードの部品は重なるのに、カードのパネルは重ならない前提の
 		//最適化描画なので、Swingはフィールドの上に載ったボタンやカードの絵まで一緒に写してずらし、描き直さなかった
 		//(スクロールバーやホイールでスクロールすると上のボタンがテキストと一緒に流れた)。描き直しはカードのパネルから重なり順どおりに描く
@@ -1890,12 +1678,12 @@ class MyScrollPane extends JScrollPane {
 
 	@Override
 	public void paint(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paint(g);
 	}
 
 	static int toViewScroll(int logicalScroll){
-		return PCARD.toPhysical(logicalScroll);
+		return Host.get().toPhysical(logicalScroll);
 	}
 
 	/**
@@ -1952,24 +1740,24 @@ class MyScrollPane extends JScrollPane {
 	}
 
 	static int toLogicalScroll(int viewScroll){
-		return PCARD.toLogicalLength(viewScroll);
+		return Host.get().toLogicalLength(viewScroll);
 	}
 
 	//2倍拡大表示モードでは、呼び出し元は今まで通り論理座標(x,y,w,h)を渡してよい。
 	//実際のSwing上のサイズ・位置だけをここで拡大率倍する。
 	@Override
 	public void setBounds(int x, int y, int width, int height){
-		Rectangle physical = PCARD.toPhysical(x, y, width, height);
+		Rectangle physical = Host.get().toPhysical(x, y, width, height);
 		super.setBounds(physical.x, physical.y, physical.width, physical.height);
 	}
 
 	@Override
     protected void paintComponent(Graphics g) {
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && fldData.parent.objectType.equals("card")) return;
+		if(HZ.editBackground && fldData.parent.objectType.equals("card")) return;
 		if(!isVisible()||
-			fldData.card!=PCARD.pc.stack.curCard||
-			(PCARD.lockedScreen && !PCARD.capturingEffect))
+			fldData.card!=HZ.stack().curCard||
+			(HZ.lockedScreen && !HZ.capturingEffect))
 		{
 			/*for(int i=0; i<getComponentCount(); i++){
 				getComponent(i).setVisible(false);
@@ -1990,14 +1778,14 @@ class MyScrollPane extends JScrollPane {
 			}
 		}*/
         super.paintComponent(g);
-		if(AuthTool.tool!=null && FieldGUI.gui.target == this){
+		if(Host.get().authToolActive() && FieldGUI.gui.target == this){
 			FieldGUI.drawSelectBorder(this);
 		}
     }
 }
 
 
-class MyTextArea extends JTextArea {
+class MyTextArea extends JTextArea implements FieldView { //(FieldView: its JTextComponent methods, for the core's selection code)
 	/** The style runs as they are now, without the holes a concurrent change leaves (null when there are none). */
 	private static java.util.ArrayList<styleClass> styleSnapshot(java.util.ArrayList<styleClass> live) {
 		if(live==null) return null;
@@ -2013,7 +1801,7 @@ class MyTextArea extends JTextArea {
 
 	/** The stack of the field this area shows (a card read from another stack's clone may not carry one). */
 	private OStack fieldStack(){
-		return fldData.card!=null && fldData.card.stack!=null ? fldData.card.stack : PCARD.pc.stack;
+		return fldData.card!=null && fldData.card.stack!=null ? fldData.card.stack : HZ.stack();
 	}
 
 	/**
@@ -2040,7 +1828,7 @@ class MyTextArea extends JTextArea {
 	private boolean fitShowsFirstRow;
 	/** The field's own lines wider than a field that does not wrap */
 	private final java.util.BitSet fitWideLines = new java.util.BitSet();
-	//独自描画(paintComponent)の倍率。0ならカードの拡大率(PCARD.scale())に従う。
+	//独自描画(paintComponent)の倍率。0ならカードの拡大率(Host.get().scale())に従う。
 	//ペイントのテキストツールはfldData.textSizeやsetBoundsRawに物理サイズを直接
 	//入れ、確定時は論理サイズの一時レイヤーへ描くので、カードの2倍表示に
 	//引きずられないよう1に固定する(引きずられると確定した文字が2倍の大きさになる)。
@@ -2160,7 +1948,7 @@ class MyTextArea extends JTextArea {
 
 			//underline: none under an empty run (the rest of an underlined run after its return starts the next line, and a
 			//zero-length drawLine still paints its first pixel: XTernal Collection's Infos headings left a dot before each line)
-			if(seg.width>0 && OField.drawsUnderline(textStyle, PCARD.showGroups)){
+			if(seg.width>0 && OField.drawsUnderline(textStyle, HZ.showGroups)){
 				g.drawLine(lft,top,lft+seg.width,top);
 				if((textStyle&8)>0 || (textStyle&16)>0){
 					g.setColor(seg.color);
@@ -2235,20 +2023,46 @@ class MyTextArea extends JTextArea {
 	private void drawText(Graphics g, String str, int x, int y){
 		if(ClassicGlyphs.needsAppleShape(g, str)){ ClassicGlyphs.drawString(g, str, x, y, this::drawText); return; }
 		if(Boolean.FALSE.equals(textAntialias) && g instanceof Graphics2D && !str.isEmpty()){
-			Graphics2D g2 = (Graphics2D)g;
-			Object aa = g2.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
-			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-			g2.fill(g2.getFont().createGlyphVector(g2.getFontRenderContext(), str).getOutline(x, y));
-			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, aa==null ? RenderingHints.VALUE_ANTIALIAS_DEFAULT : aa);
+			drawUnsmoothed((Graphics2D)g, str, x, y);
 			return;
 		}
 		g.drawString(str, x, y);
+	}
+	/** Unsmoothed text (the paint text tool with Antialias off): every device pixel the glyphs cover at least 80/255 of is the
+	 *  colour, the others are left (closest to HyperCard J-2.3's Geneva 9-10 bitmaps: 96 lost bold E's middle bar, 64 ran
+	 *  the letters together). Filling the outlines without antialiasing (pixel centres) broke Geneva 9-10 up, as its
+	 *  strokes are thinner than a pixel ("GUFSS DISTRIRUTION" on Hyper-Wordle's Stats card); the browser player's
+	 *  HzPaint uses the same share. */
+	static final int UNSMOOTHED_COVERAGE = 80;
+	static void drawUnsmoothed(Graphics2D g2, String str, int x, int y){
+		java.awt.Shape outline = g2.getFont().createGlyphVector(g2.getFontRenderContext(), str).getOutline(x, y);
+		java.awt.geom.AffineTransform at = g2.getTransform();
+		java.awt.Shape dev = at.createTransformedShape(outline);
+		Rectangle b = dev.getBounds();
+		if(b.isEmpty()) return;
+		b.grow(1, 1);
+		java.awt.image.BufferedImage m = new java.awt.image.BufferedImage(b.width, b.height, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+		Graphics2D mg = m.createGraphics();
+		mg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		mg.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+		mg.translate(-b.x, -b.y);
+		mg.setColor(Color.BLACK);
+		mg.fill(dev);
+		mg.dispose();
+		Color c = g2.getColor()!=null ? g2.getColor() : Color.BLACK;
+		int rgb = c.getRGB() | 0xFF000000;
+		int[] px = m.getRGB(0, 0, b.width, b.height, null, 0, b.width);
+		for(int i=0; i<px.length; i++) px[i] = (px[i]>>>24) >= UNSMOOTHED_COVERAGE ? rgb : 0;
+		m.setRGB(0, 0, b.width, b.height, px, 0, b.width);
+		g2.setTransform(new java.awt.geom.AffineTransform());
+		try{ g2.drawImage(m, b.x, b.y, null); }
+		finally{ g2.setTransform(at); }
 	}
 	/** The whole magnification the own drawing works at: the card's when whole; a fractional one (125% etc.) draws at 1x
 	 *  under a scaling transform ({@link #paintTransformed}), so the lines wrap as at 1x. */
 	int drawScale(){
 		if(fixedScale>0) return fixedScale;
-		double scale = PCARD.scale();
+		double scale = Host.get().scale();
 		return DisplayZoom.whole(scale) ? (int)scale : 1;
 	}
 	//スクロールフィールドで、独自描画(paintComponent)が実際に必要とする
@@ -2375,7 +2189,7 @@ class MyTextArea extends JTextArea {
 
 	MyTextArea(String str){
 		super(str);
-		this.setDoubleBuffered(PCARD.useDoubleBuffer);
+		this.setDoubleBuffered(HZ.useDoubleBuffer);
 		//拡大した下描き(magnifiesUnscaledPaint)のキャレットはSwingのキャレットとは位置が違うので、動いたら全体を描き直す
 		addCaretListener(e -> {
 			if(magnifiesUnscaledPaint()) repaint();
@@ -2396,7 +2210,7 @@ class MyTextArea extends JTextArea {
 
 	@Override
 	public void paint(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paint(g);
 	}
 
@@ -2427,7 +2241,7 @@ class MyTextArea extends JTextArea {
 		if(getParent() instanceof JViewport){
 			super.setBounds(x, y, width, height);
 		}else{
-			Rectangle physical = PCARD.toPhysical(x, y, width, height);
+			Rectangle physical = Host.get().toPhysical(x, y, width, height);
 			super.setBounds(physical.x, physical.y, physical.width, physical.height);
 		}
 	}
@@ -2532,7 +2346,7 @@ class MyTextArea extends JTextArea {
 	private void paintLineSeparators(Graphics g) {
 		if(fldData==null) return;
 		//Swingが描く編集中のフィールドは拡大率が整数でなくても拡大したフォントで描くので、線もその間隔で引く
-		double scale = fixedScale>0 || paintTransform!=1 ? drawScale() : PCARD.scale();
+		double scale = fixedScale>0 || paintTransform!=1 ? drawScale() : Host.get().scale();
 		paintLineSeparators(g, scale, fldData.width, fldData.height, fldData.fixedRowHeight(),
 			fldData.wideMargins, fldData.style, fldData.fixedLineHeight, fldData.showLines, fldData.color, fldData.bgColor);
 	}
@@ -2730,7 +2544,7 @@ class MyTextArea extends JTextArea {
 	/** The inside of a shadow field's frame in the coordinates this paint draws in (logical when drawn at 1x and magnified). */
 	private Rectangle shadowInterior(){
 		if(paintTransform!=1 || paintingUnscaled) return ShadowFieldBorder.interior(fldData.width, fldData.height, 1);
-		return ShadowFieldBorder.interior(getWidth(), getHeight(), Math.max(1, PCARD.scale()));
+		return ShadowFieldBorder.interior(getWidth(), getHeight(), Math.max(1, Host.get().scale()));
 	}
 
 	/** The card's fractional magnification the own drawing is done under (1 when whole or a fixed scale is set). */
@@ -2738,7 +2552,7 @@ class MyTextArea extends JTextArea {
 	/** Whether this paint is the own drawing at a fractional card magnification (see {@link #drawScale}). */
 	private boolean paintsTransformed(){
 		if(fixedScale>0 || paintTransform!=1 || fldData==null) return false;
-		if(DisplayZoom.whole(PCARD.scale())) return false;
+		if(DisplayZoom.whole(Host.get().scale())) return false;
 		return ownDrawn();
 	}
 	/** Whether the field is drawn by its own drawing: always but while Swing's text area edits a field without style runs.
@@ -2753,7 +2567,7 @@ class MyTextArea extends JTextArea {
 	}
 	/** The own drawing at 1x, magnified by the card's fractional scale; hit boxes are then given in window pixels. */
 	private void paintTransformed(Graphics2D g){
-		double s = PCARD.scale();
+		double s = Host.get().scale();
 		Graphics2D g2 = (Graphics2D)g.create();
 		g2.scale(s, s);
 		g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -2777,9 +2591,9 @@ class MyTextArea extends JTextArea {
 		if(magnifiesUnscaledPaint() && g instanceof Graphics2D){ paintUnscaledThenMagnify(g); return; }
 		if(paintsTransformed() && g instanceof Graphics2D){ paintTransformed((Graphics2D)g); return; }
 		if(PCARD.pc.bit != 1 && fldData.card!=null) return;
-		if(PaintTool.editBackground && fldData.parent!=null && fldData.parent.objectType.equals("card")) return;
-		if(fldData!=null && fldData.card!=null && fldData.card.objectType.equals("cd") && fldData.card!=PCARD.pc.stack.curCard) return;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect && !measuringHitBoxes) return;
+		if(HZ.editBackground && fldData.parent!=null && fldData.parent.objectType.equals("card")) return;
+		if(fldData!=null && fldData.card!=null && fldData.card.objectType.equals("cd") && fldData.card!=HZ.stack().curCard) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect && !measuringHitBoxes) return;
 		if(fldData!=null && fldData.style==4 && !paintingInsideFrame){
 			//シャドウ: 枠の内側だけをフィールドの色で塗り、文字も枠の内側に切り取る(HyperCardと同じ)
 			Rectangle inside = shadowInterior();
@@ -3041,7 +2855,7 @@ class MyTextArea extends JTextArea {
 							//rest is still in readingStr (the last word of the text wrapping past the bottom counts)
 							if(inked && fldData.style!=5 && lineTop+textHeight>(fldData.height+2)*drawScale && (readingStr.length()>0 || inkAfter(displayText, i+1)))
 								fitPastBottom(hardLine, firstRow);
-						}else if(inked && translated==null && !StackStrikeFont.isStackFont(g.getFont()) && PCARD.pc.stack.createdByVersion!=null && PCARD.pc.stack.createdByVersion.length()>0 && PCARD.pc.stack.createdByVersion.charAt(0)=='2' &&
+						}else if(inked && translated==null && !StackStrikeFont.isStackFont(g.getFont()) && HZ.stack().createdByVersion!=null && HZ.stack().createdByVersion.length()>0 && HZ.stack().createdByVersion.charAt(0)=='2' &&
 								fldData.style!=5 && !smallfont && lineTop+textHeight>(fldData.height+4)*drawScale && inkAfter(displayText, i+1)){
 							//the next row's box (lineTop), not its baseline (top): a two-line Osaka 12 field 33 high whose second row
 							//ends on the bottom (記憶！直感！神経衰弱！'s score line) shrank to 11 and its space-padded labels slid
@@ -3184,7 +2998,7 @@ class MyTextArea extends JTextArea {
     			//訳を描いたときのクリック位置は、元のテキストの同じ行の中の位置に直す(the clickLine / the clickChunk)
     			if(translated!=null) for(int[] b : hitBoxes) b[0] = translated.original(b[0]);
     			if(!measuringFit && !measuringHitBoxes && !paintingUnscaled && fldData.card!=null && isFocusOwner()) paintOwnSelection(g);
-    			if(!measuringFit && AuthTool.tool!=null && FieldGUI.gui.target == this){
+    			if(!measuringFit && Host.get().authToolActive() && FieldGUI.gui.target == this){
     				FieldGUI.drawSelectBorder(this);
     			}
     			return;
@@ -3213,7 +3027,7 @@ class MyTextArea extends JTextArea {
 		if(fldData!=null){
 			paintLineSeparators(g);
 		}
-		if(AuthTool.tool!=null && FieldGUI.gui.target == this){
+		if(Host.get().authToolActive() && FieldGUI.gui.target == this){
 			FieldGUI.drawSelectBorder(this);
 		}
     }
@@ -3222,9 +3036,9 @@ class MyTextArea extends JTextArea {
 	protected void paintBorder(Graphics g){
 		if(!isVisible()) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && fldData.parent!=null && fldData.parent.objectType.equals("card")) return;
-		if(fldData!=null && fldData.card!=null && fldData.card.objectType.equals("cd") && fldData.card!=PCARD.pc.stack.curCard) return;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.editBackground && fldData.parent!=null && fldData.parent.objectType.equals("card")) return;
+		if(fldData!=null && fldData.card!=null && fldData.card.objectType.equals("cd") && fldData.card!=HZ.stack().curCard) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paintBorder(g);
 	}
 }

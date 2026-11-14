@@ -142,6 +142,8 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 	private static final int WATCH=(int)Long.parseLong(System.getProperty("hzppc.watch","0"),16);private int watchValue;
 	/** Debug aid: -Dhzppc.backtrace=NativeName[|Name...] (or *) prints the PowerPC callers (saved LRs along the stack back chain) at each call. */
 	private static final String BACKTRACE=System.getProperty("hzppc.backtrace");
+	/** Debug aid: -Dhzppc.callsat=NativeName turns the call trace (commands.txt `ppccalls on`) on at that native's first call. */
+	private static final String CALLS_AT=System.getProperty("hzppc.callsat");
 	/** For the trace: the rectangle a QuickDraw *Rect/Plot call draws, SetClip's region bounds, RGB colours, an FSp call's FSSpec. */
 	private String traceRect(String name,PpcCpu c){
 		try{
@@ -180,6 +182,7 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 		if(WATCH!=0)checkWatch("before",index,c);
 		boolean trace=TRACE&&traced(index);
 		if(trace){String n=nativeNames.get(index);System.err.printf("[ppc] %s(%08X %08X %08X %08X %08X) lr=%08X%s%n",n,c.r[3],c.r[4],c.r[5],c.r[6],c.r[7],c.lr,traceRect(n,c));}
+		if(CALLS_AT!=null&&!PpcCpu.CALL_TRACE&&CALLS_AT.equals(nativeNames.get(index)))PpcCpu.CALL_TRACE=true;
 		if(BACKTRACE!=null&&(BACKTRACE.equals("*")||("|"+BACKTRACE+"|").contains("|"+nativeNames.get(index)+"|")))System.err.println("[ppc] "+nativeNames.get(index)+" called from "+backtrace(c));
 		cpu68.traps++;
 		if(trace){String n=nativeNames.get(index);traceGestaltResponse=n.equals("Gestalt")?c.r[4]:0;traceOut=n.equals("GetPortBounds")||n.startsWith("PMGet")&&n.contains("Rect")||n.equals("PMGetResolution")?c.r[4]:n.equals("SectRect")||n.equals("UnionRect")?c.r[5]:n.equals("InsetRect")||n.equals("OffsetRect")?c.r[3]:0;}
@@ -959,9 +962,20 @@ final class PpcRuntime implements PpcCpu.Natives,PpcCpu.Scheduler {
 			java.util.Arrays.sort(files);
 			for(File f:files)if(f.isFile()&&!f.equals(this.file)&&!f.getName().startsWith("."))candidates.add(f);}
 		// a file named like the library first (SoundSprocketLib next to the program)
+		candidates.removeIf(PpcRuntime::isOpenTransportFile);
 		for(File f:candidates)if(f.getName().equals(name)){Fragment fr=loadLibraryFrom(f,name);if(fr!=null)return fr;}
 		for(File f:candidates){if(f.length()<64)continue;Fragment fr=loadLibraryFrom(f,name);if(fr!=null)return fr;}
 		return null;
+	}
+	/**
+	 * A file of Apple's Open Transport (creator 'otan': the "Open Transport" extension, OpenTpt Remote Access). Open Transport is
+	 * native here ({@link OpenTransport}); the libraries in those files are its kernel's clients (OTATalkClientLib, OTKernelLib ...)
+	 * and import private functions it does not have. A Mac OS 9.1 System Folder's OTATalkClientLib bound to them and HP LaserJet
+	 * Utility jumped to a NIL TVector at start-up; without the file the library is missing and its functions answer 0.
+	 */
+	static boolean isOpenTransportFile(File f){
+		byte[] info=FinderInfo68k.read(f);
+		return info!=null&&info.length>=8&&info[4]=='o'&&info[5]=='t'&&info[6]=='a'&&info[7]=='n';
 	}
 	private Fragment loadLibraryFrom(File file,String name) throws IOException,M68kException {
 		ResourceFile68k rf;

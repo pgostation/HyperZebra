@@ -19,7 +19,7 @@ import java.util.Locale;
  * quits, and - for copies a crash left behind - at the next start. "Extract" writes the same tree into a folder the user
  * chooses, as ordinary writable files.
  */
-final class DiskImages {
+class DiskImages {
 	private DiskImages(){}
 
 	/** A mounted image: its volume name as programs see it and the host folder that holds the volume. */
@@ -71,7 +71,7 @@ final class DiskImages {
 	 */
 	static Mounted mount(File image,Progress progress) throws IOException {
 		Mounted existing=mountedFrom(image);if(existing!=null)return existing;
-		File root=new File(cacheRoot(),Long.toString(ProcessHandle.current().pid()));
+		File root=new File(cacheRoot(),Long.toString(Toolbox68k.PARTS.pid()));
 		synchronized(DiskImages.class){if(!purged){purged=true;purgeStale();}}
 		installCleanup();
 		try(DiskImage disk=DiskImage.open(image)){
@@ -166,15 +166,15 @@ final class DiskImages {
 			@Override public void applicationLaunched(MacApp68k app){}
 			@Override public void applicationFinished(MacApp68k app){Thread t=new Thread(DiskImages::deleteReleased,"Disk image cleanup");t.setDaemon(true);t.start();}
 		});
-		Runtime.getRuntime().addShutdownHook(new Thread(()->deleteTree(processFolder()),"Disk image cleanup at quit"));
+		Toolbox68k.PARTS.atQuit(()->deleteTree(processFolder()),"Disk image cleanup at quit");
 	}
-	private static File processFolder(){return new File(cacheRoot(),Long.toString(ProcessHandle.current().pid()));}
+	private static File processFolder(){return new File(cacheRoot(),Long.toString(Toolbox68k.PARTS.pid()));}
 
 	/**
 	 * At start-up (in the background): copies left by a HyperZebra that did not quit normally. Cheap when there are none.
 	 */
 	static void purgeStaleInBackground(){
-		if(!new File(AppPaths.stateDirectory(),".Disk Images").isDirectory())return;
+		if(!new File(UiHost.get().appPathsStateDirectory(),".Disk Images").isDirectory())return;
 		Thread t=new Thread(()->{synchronized(DiskImages.class){if(!purged){purged=true;purgeStale();}}},"Disk image cleanup at start");
 		t.setDaemon(true);t.start();
 	}
@@ -183,7 +183,7 @@ final class DiskImages {
 	static long sizeOf(File f){
 		if(!f.exists())return 0;
 		if(f.isFile()){long n=f.length();if(ResourceFile68k.nativeForks())n+=ResourceFile68k.nativeForkLength(f);return n;}
-		long n=0;File[] children=f.listFiles();if(children!=null)for(File c:children)if(!Files.isSymbolicLink(c.toPath()))n+=sizeOf(c);return n;
+		long n=0;File[] children=f.listFiles();if(children!=null)for(File c:children)if(!Files68k.isSymbolicLink(c))n+=sizeOf(c);return n;
 	}
 	/**
 	 * Unmounts every disk and deletes every extracted copy that nothing uses: this process's, and any another HyperZebra left.
@@ -213,7 +213,7 @@ final class DiskImages {
 	 */
 	private static void purgeStale(){
 		File[] slots=cacheRoot().listFiles();if(slots==null)return;
-		long self=ProcessHandle.current().pid();
+		long self=Toolbox68k.PARTS.pid();
 		for(File slot:slots){
 			long pid;try{pid=Long.parseLong(slot.getName());}catch(NumberFormatException e){deleteTree(slot);continue;}
 			if(pid==self){ // this process: only what no mounted or still-used disk lives in
@@ -221,7 +221,7 @@ final class DiskImages {
 				for(File disk:disks)if(!inUseHere(disk))deleteTree(disk);
 				continue;
 			}
-			if(!ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false))deleteTree(slot);
+			if(!Toolbox68k.PARTS.alive(pid))deleteTree(slot);
 		}
 	}
 
@@ -234,7 +234,7 @@ final class DiskImages {
 	}
 
 	/** Where mounted volumes live: hidden in the state directory (programs and the File Manager skip dot folders). */
-	static File cacheRoot(){return new File(AppPaths.stateDirectory(),".Disk Images");}
+	static File cacheRoot(){return new File(UiHost.get().appPathsStateDirectory(),".Disk Images");}
 
 	// ------------------------------------------------------------------ names
 
@@ -340,7 +340,7 @@ final class DiskImages {
 			byte[] fork=e.resourceLength>0?volume.readFork(e,true):null;
 			writeMacInfo(target,fork,e.finderInfo);
 			setDates(target,e.created,e.modified);
-			if(readOnly)target.setWritable(false,false);
+			if(readOnly)Files68k.setWritable(target,false,false);
 			if(readOnly&&e.attributes!=0)fileAttributes.put(canonical(target).getPath(),e.attributes);
 			if(e.id>0)fileIds.put(canonical(target).getPath(),e.id);
 			done[0]++;
@@ -356,13 +356,13 @@ final class DiskImages {
 		}
 		if((fork==null||fork.length==0)&&!info)return;
 		byte[] fi=new byte[32];System.arraycopy(finderInfo,0,fi,0,16);
-		Files.write(ResourceFile68k.AppleDouble.sidecarOf(file).toPath(),ResourceFile68k.AppleDouble.build(fork==null?new byte[0]:fork,fi));
+		Files68k.write(ResourceFile68k.AppleDouble.sidecarOf(file),ResourceFile68k.AppleDouble.build(fork==null?new byte[0]:fork,fi));
 	}
 	/** Host dates from Mac dates (local seconds since 1904, the image's own: not the VM clock's shift); 0 leaves a date alone. */
 	private static void setDates(File file,int created,int modified){
 		try{
-			if(modified!=0)Files.setLastModifiedTime(file.toPath(),FileTime.fromMillis(hostMillis(modified)));
-			if(created!=0)Files.setAttribute(file.toPath(),"basic:creationTime",FileTime.fromMillis(hostMillis(created)));
+			if(modified!=0)Files68k.setModified(file,hostMillis(modified));
+			if(created!=0)Files68k.setCreated(file,hostMillis(created));
 		}catch(IOException|RuntimeException ignored){}
 	}
 	static long hostMillis(int macDate){return (Integer.toUnsignedLong(macDate)-2_082_844_800L-Toolbox68k.localOffsetSeconds())*1000L;}
@@ -374,7 +374,7 @@ final class DiskImages {
 		if(f==null||!f.exists())return;
 		if(!fileAttributes.isEmpty()){String prefix=canonical(f).getPath();fileAttributes.keySet().removeIf(k->k.equals(prefix)||k.startsWith(prefix+File.separator));}
 		if(!fileIds.isEmpty()){String prefix=canonical(f).getPath();fileIds.keySet().removeIf(k->k.equals(prefix)||k.startsWith(prefix+File.separator));}
-		if(f.isDirectory()&&!Files.isSymbolicLink(f.toPath())){File[] children=f.listFiles();if(children!=null)for(File c:children)deleteTree(c);}
+		if(f.isDirectory()&&!Files68k.isSymbolicLink(f)){File[] children=f.listFiles();if(children!=null)for(File c:children)deleteTree(c);}
 		f.setWritable(true);f.delete();
 	}
 
@@ -434,7 +434,7 @@ final class DiskImages {
 			for(File c:children){
 				if(c.isDirectory()){folders.add(c);continue;}
 				if(isInvisible(c))continue;
-				boolean match=program?MacApp68k.isApplication(c)&&!isSystemSoftware(c):OStack.looksLikeHyperCardStack(c.getPath());
+				boolean match=program?UiHost.get().macApp68kIsApplication(c)&&!isSystemSoftware(c):OStack.looksLikeHyperCardStack(c.getPath());
 				if(match){found=c;count++;}
 			}
 			if(count==1)return found;

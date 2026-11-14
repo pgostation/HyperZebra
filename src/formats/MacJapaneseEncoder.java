@@ -16,7 +16,7 @@ import java.util.Map;
  * encoder does not know how to re-encode.
  */
 final class MacJapaneseEncoder {
-	private static final Charset SHIFT_JIS = Charset.forName("Shift_JIS");
+	private static final Charset SHIFT_JIS = Platform.get().charset("Shift_JIS");
 	private static final Map<String, Integer> OVERRIDES = buildReverseOverrides();
 	/**
 	 * Characters the standard encoder would get wrong or lose, checked first:
@@ -72,7 +72,7 @@ final class MacJapaneseEncoder {
 			//a kana and its combining (han)dakuten, as macOS file names and pasted text spell them (NFD): one Shift-JIS character
 			//(Miko's jcharToNum of a decomposed "ガ" was カ's code)
 			if(i+codePointLength < value.length() && isCombiningMark(value.charAt(i+codePointLength))) {
-				String composed = java.text.Normalizer.normalize(value.substring(i, i+codePointLength+1), java.text.Normalizer.Form.NFC);
+				String composed = Platform.get().normalize(value.substring(i, i+codePointLength+1), UnicodeNorm.Form.NFC);
 				if(composed.length() == 1 && shiftJisEncoder.canEncode(composed.charAt(0))) {
 					if(runStart < i) writeRun(out, value, runStart, i, replace);
 					writeRun(out, composed, 0, 1, replace);
@@ -147,9 +147,8 @@ final class MacJapaneseEncoder {
 		CharBuffer input = CharBuffer.wrap(value, start, end);
 		java.nio.charset.CharsetEncoder encoder = SHIFT_JIS.newEncoder();
 		if(replace) {
-			encoder.onMalformedInput(CodingErrorAction.REPLACE)
-				.onUnmappableCharacter(CodingErrorAction.REPLACE)
-				.replaceWith(new byte[]{(byte)'?'});
+			Platform.questionMarks(encoder.onMalformedInput(CodingErrorAction.REPLACE)
+				.onUnmappableCharacter(CodingErrorAction.REPLACE));
 		} else {
 			encoder.onMalformedInput(CodingErrorAction.REPORT)
 				.onUnmappableCharacter(CodingErrorAction.REPORT);

@@ -25,7 +25,7 @@ import javax.print.attribute.standard.PageRanges;
  * through a PrinterJob. The draft loop is reported (bJDocLoop = 0) so programs draw pages directly; PrPicFile has
  * nothing left to do.
  */
-final class PrintManager68k {
+class PrintManager68k {
 	private static final int PRINT_ERR=0x944,NO_ERR=0,I_PR_ABORT=-128,I_IO_ABORT=-27,I_MEM_FULL=-108;
 	/** prStl.wDev: the device is a QuickDraw printer (bDevCItoh, the ImageWriter's family), not a LaserWriter (bDevLaser $03xx). The pages are
 	 *  QuickDraw drawing captured into a bitmap, so a program told it prints to a PostScript device sends its page as PostScript PicComments

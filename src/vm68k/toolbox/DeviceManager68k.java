@@ -12,7 +12,7 @@ import java.util.Map;
  * Drivers the VM provides natively (.Sony, .Sound, .IPP, the display driver...) keep their refNums outside
  * the table; FileSystem68k answers those before asking here.
  */
-final class DeviceManager68k {
+class DeviceManager68k {
 	static final int UTABLE_BASE=0x11c,UNIT_NTRY_CNT=0x1d2,JIODONE=0x8fc;
 	/** System 7 starts with 64 unit table entries (IM Devices 1-33: 48 on earlier systems; grown by programs through UTableBase). */
 	static final int UNIT_COUNT=64;
@@ -288,7 +288,7 @@ final class DeviceManager68k {
 			// returned with the request still in progress and work queued to finish it (a deferred task): the caller waits, as the
 			// ROM's synchronous calls spin on ioResult, while interrupt-time work runs; that work's IODone fills in the result
 			if(returned&&memory.readWord(pb+16)==1&&tb.deferredTasksPending()){
-				for(int i=0;i<10000&&memory.readWord(pb+16)==1;i++){tb.runInterruptWork();if(!tb.deferredTasksPending()&&memory.readWord(pb+16)==1)Thread.onSpinWait();}
+				for(int i=0;i<10000&&memory.readWord(pb+16)==1;i++){tb.runInterruptWork();if(!tb.deferredTasksPending()&&memory.readWord(pb+16)==1)Toolbox68k.PARTS.spinWait();}
 				if(memory.readWord(pb+16)!=1)result=(short)memory.readWord(pb+16);
 			}
 		}finally{

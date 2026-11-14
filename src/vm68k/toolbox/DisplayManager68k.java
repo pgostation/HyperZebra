@@ -31,14 +31,14 @@ final class DisplayManager68k {
 	private List<int[]> modes(){
 		int[] full=tb.app==null?new int[]{640,480}:tb.app.fullScreen();
 		List<int[]> sizes=new ArrayList<int[]>();
-		for(int[] m:PpcGameSprockets.MODE_SIZES)if(m[0]<=full[0]&&m[1]<=full[1]&&!(m[0]==full[0]&&m[1]==full[1])&&!(m[0]==640&&m[1]==400))sizes.add(m);
+		for(int[] m:Ppc68k.modeSizes())if(m[0]<=full[0]&&m[1]<=full[1]&&!(m[0]==full[0]&&m[1]==full[1])&&!(m[0]==640&&m[1]==400))sizes.add(m);
 		sizes.add(full);
 		sizes.sort((a,b)->Long.compare((long)a[0]*a[1],(long)b[0]*b[1]));
 		return sizes;
 	}
 	/** The index of the mode of the screen the program has now, or -1. */
 	private int currentMode(List<int[]> modes){
-		java.awt.Rectangle screen=MacAppHost.screenBounds();
+		java.awt.Rectangle screen=UiHost.get().macAppHostScreenBounds();
 		for(int i=0;i<modes.size();i++)if(modes.get(i)[0]==screen.width&&modes.get(i)[1]==screen.height)return i;
 		return -1;
 	}

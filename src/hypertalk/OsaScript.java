@@ -1,9 +1,6 @@
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 /**
  * An object script compiled by an OSA scripting component: HyperCard 2.2 and later let an object's scripting language be
@@ -83,7 +80,7 @@ final class OsaScript {
 	}
 
 	/** {@code <osaScript language="ascr">base64</osaScript>}, written after the object's {@code <script>}. */
-	void writeXML(XMLStreamWriter writer, String indentAfter) throws XMLStreamException {
+	void writeXML(XmlOut writer, String indentAfter) throws XmlException {
 		writer.writeStartElement("osaScript");
 		writer.writeAttribute("language", subtype());
 		writer.writeCharacters(Base64.getEncoder().encodeToString(data));
@@ -92,7 +89,7 @@ final class OsaScript {
 	}
 
 	/** Reads the element written by {@link #writeXML}; null when its content is not a WOSA record. */
-	static OsaScript readXML(XMLStreamReader reader) throws XMLStreamException {
+	static OsaScript readXML(XmlIn reader) throws XmlException {
 		String text = reader.getElementText();
 		byte[] b;
 		try{

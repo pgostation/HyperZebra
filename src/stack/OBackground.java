@@ -4,9 +4,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 import javax.imageio.ImageIO;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 
 public class OBackground extends OCardBase {
@@ -149,16 +146,16 @@ public class OBackground extends OCardBase {
 	
 
 	@SuppressWarnings("unchecked")
-	public XMLStreamReader readXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readXML(XmlIn reader) throws Exception {
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamReader.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName().intern();
 	            	if(elm.equals("id")){ id = Integer.valueOf(reader.getElementText()); }
 	            	else if(elm.equals("filler1")){ filler1 = reader.getElementText(); }
 	            	else if(elm.equals("bitmap")){ bitmapName = reader.getElementText(); }
-	            	else if(elm.equals("paintLayer")){ layers.add(PaintLayer.readXML(reader)); }
+	            	else if(elm.equals("paintLayer")){ { PaintLayer layer = UiHost.get().readPaintLayer(reader); if(layer!=null) layers.add(layer); } }
 				else if(elm.equals("shape")){ shapeList.add(OShape.readXML(reader,this)); }
 				else if(elm.equals("panel")){ readPanel(reader); }
 	            	else if(elm.equals("cantDelete")){ cantDelete = XMLRead.bool(reader);reader.next(); }
@@ -170,7 +167,7 @@ public class OBackground extends OCardBase {
 	            	else if(elm.equals("name")){ 
 	            		name = reader.getElementText();
 	            	}
-	            	else if(elm.equals("osaScript")) osaScript = OsaScript.readXML(reader);
+	            	else if(elm.equals("osaScript")) osaScript = UiHost.get().readOsaScript(reader);
 	            	else if(elm.equals("script"))
 	            	{
 	            		String scrStr = reader.getElementText();
@@ -186,7 +183,7 @@ public class OBackground extends OCardBase {
 	            		int partid=0;
 	    	            while(reader.hasNext()){
 	    	            	int eventType2 = reader.next();
-	    	            	if (eventType2 == XMLStreamReader.START_ELEMENT) {
+	    	            	if (eventType2 == XmlIn.START_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("id")){ partid = Integer.valueOf(reader.getElementText()); }
 	    		            	else if(elm2.equals("type")){
@@ -207,7 +204,7 @@ public class OBackground extends OCardBase {
     		    	            	break;
 	    		            	}
 	    	            	}
-	    	            	else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+	    	            	else if (eventType2 == XmlIn.END_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("part")){
 	    		            		break;
@@ -221,7 +218,7 @@ public class OBackground extends OCardBase {
 			ArrayList<styleClass> contentStyles = new ArrayList<styleClass>();
 		            while(reader.hasNext()){
 			int eventType2 = reader.next();
-			if (eventType2 == XMLStreamReader.START_ELEMENT) {
+			if (eventType2 == XmlIn.START_ELEMENT) {
 				String elm2 = reader.getLocalName();
 				if(elm2.equals("layer")){ layer = reader.getElementText(); }
 				else if(elm2.equals("id")){ partid = Integer.valueOf(reader.getElementText()); }
@@ -244,7 +241,7 @@ public class OBackground extends OCardBase {
 					int offset = 0;
 				            while(reader.hasNext()){
 					int eventType3 = reader.next();
-					if (eventType3 == XMLStreamReader.START_ELEMENT) {
+					if (eventType3 == XmlIn.START_ELEMENT) {
 						String elm3 = reader.getLocalName();
 						if(elm3.equals("offset")){ offset = Integer.valueOf(reader.getElementText()); }
 						else if(elm3.equals("id")){
@@ -256,7 +253,7 @@ public class OBackground extends OCardBase {
 							System.out.println("Element Text: " + reader.getElementText());
 						}
 					}
-					else if (eventType3 == XMLStreamReader.END_ELEMENT) {
+					else if (eventType3 == XmlIn.END_ELEMENT) {
 						String elm3 = reader.getLocalName();
 						if(elm3.equals("stylerun")){
 							contentStyles.add(new styleClass(offset, styleid));
@@ -271,7 +268,7 @@ public class OBackground extends OCardBase {
 					System.out.println("Element Text: " + reader.getElementText());
 				}
 			}
-			else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+			else if (eventType2 == XmlIn.END_ELEMENT) {
 				String elm2 = reader.getLocalName();
 			if(elm2.equals("content")){
 				if(contentField!=null && !contentStyles.isEmpty())
@@ -288,7 +285,7 @@ public class OBackground extends OCardBase {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamReader.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("background")){
 	            		break;
@@ -302,7 +299,7 @@ public class OBackground extends OCardBase {
 	}
 	
 	
-	public void writeXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeXML(XmlOut writer) throws XmlException {
         writer.writeStartElement("background");
         writer.writeCharacters("\n\t\t");
 
@@ -312,7 +309,7 @@ public class OBackground extends OCardBase {
         writer.writeCharacters("\n\t\t");
 
         writer.writeStartElement("bitmap");
-        writer.writeCharacters(bitmapName);
+        writer.writeCharacters(bitmapName==null ? "" : bitmapName); //(a card the player made: New Card leaves it null)
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
         //追加のペイントレイヤー(pictの上、下から順)
@@ -419,7 +416,7 @@ public class OBackground extends OCardBase {
         writer.writeEndElement();
         writer.writeCharacters("\n\t");
         
-        if(osaScript!=null) osaScript.writeXML(writer, "\n\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
+        if(osaScript!=null) UiHost.get().writeOsaScript(osaScript, writer, "\n\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
 
         writer.writeEndElement();
         writer.writeCharacters("\n\t");
@@ -509,6 +506,7 @@ public class OBackground extends OCardBase {
 			for(int k=0; k<partsList.size(); k++){
 				if(partsList.get(k).id == content.partId){
 					OObject part = partsList.get(k);
+					if(part instanceof OField) HCData.decodeOneByteFonts(content, ((OField)part).textFont, stack);
 					part.setText(content.text);
 					if(part.objectType.equals("field") && !content.styles.isEmpty()){
 						OField fld = (OField)part;
@@ -573,72 +571,7 @@ public class OBackground extends OCardBase {
 	
 	
 	private static OBackground buildOBackground(OBackground bg)
-	{
-		bg.picture = new OPicture(bg);
-		//追加のペイントレイヤーの画像
-		bg.loadLayerImages();
-
-		//bgの場合はピクチャがなくても白で必ず描画しなくてはいけない
-		bg.label = MyLabel.getMyBgLabel(bg);
-		bg.label.setBounds(0,0,bg.stack.width,bg.stack.height);
-		PCARD.pc.mainPane.add(bg.label);
-		
-		//ピクチャ読み込み(pbm)
-		if(bg.bitmapName!=null){
-			String path = (bg.stack.file.getParent()+File.separatorChar+bg.bitmapName);
-			bg.pict = PictureFile.loadPbmCached(path);
-			if(bg.pict==null){//読み込まれるまで待つ
-				for(int i=0; HCData.threadList!=null&&i<HCData.threadList.size(); i++){
-					Thread p = HCData.threadList.get(i);
-					if(p!=null && p.getName().equals(bg.bitmapName)){
-						HCData.startIfNew(p);
-						long lastLength = -1;
-						File file = new File(path);
-						for(int j=0; !file.exists() && j<50 || p.isAlive() || lastLength!=file.length(); j++){
-							lastLength = file.length();
-							try {
-								Thread.sleep(50);
-							} catch (InterruptedException e) {
-								e.printStackTrace();
-							}
-						}
-					}
-				}
-				if(new File(path).exists() && !new File(path).isDirectory()){
-					try {
-						bg.pict = PictureCache.readShared(new File(path), "imageio", StackProtection::readImage);
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-			}
-			if(bg.pict!=null){
-				//bg.showPict = true;
-			}
-			return bg;
-		}
-		
-		//ピクチャ読み込み
-		File file=new File(bg.stack.file.getParent()+"/resource/bgp"+bg.id+".png");
-		//bg.showPict = false;
-		bg.label = MyLabel.getMyBgLabel(bg);//bgはこれ以上後ろがないのでラベル必須
-		bg.label.setBounds(0,0,bg.stack.width,bg.stack.height);
-		PCARD.pc.mainPane.add(bg.label);
-		try {
-			if(file.exists()) {
-				bg.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
-				//bg.showPict = true;
-			} else {
-				file=new File(bg.stack.file.getParent()+"/resource/bgp"+bg.id+".jpeg");
-				bg.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
-				//bg.showPict = true;
-			}
-		} catch (Exception err1) {
-			//err1.printStackTrace();
-		}
-		
-		return bg;
-	}
+	{ return UiHost.get().buildOBackground(bg); }
 }
 
 

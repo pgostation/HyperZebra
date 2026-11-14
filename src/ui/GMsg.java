@@ -65,6 +65,21 @@ public class GMsg extends JDialog {
 				int right = getWidth()-getInsets().right;
 				for(int x=getInsets().left; x<right; x+=2) g.fillRect(x, y, 1, 1);
 			}
+			/**
+			 * Gaining focus keeps the insertion point: the Mac look's caret selects all of a one-line field that gains focus
+			 * with it at the start or the end, so a focus coming late from the card (the box shown by a script) made a
+			 * script's next type replace what it had typed ("34" then "5" gave "5"), and a blind-typed second letter
+			 * replace the first. Showing the box selects all itself (componentShown), as HyperCard does.
+			 */
+			@Override
+			protected void processFocusEvent(java.awt.event.FocusEvent e) {
+				javax.swing.text.Caret c = getCaret();
+				int dot = c==null ? -1 : c.getDot(), mark = c==null ? -1 : c.getMark();
+				super.processFocusEvent(e);
+				c = getCaret();
+				if(e.getID()==java.awt.event.FocusEvent.FOCUS_GAINED && c!=null && dot>=0 && dot==mark && (c.getDot()!=dot || c.getMark()!=mark))
+					setCaretPosition(Math.min(dot, getDocument().getLength()));
+			}
 		};
 		StartupWork.whenFontsRead(() -> area.setFont(messageFont()));
 		area.setMargin(new Insets(0,0,0,0));
@@ -304,7 +319,8 @@ class GMsgListener implements KeyListener {
 				if(str.indexOf("\n")>=0) str = str.substring(0,str.indexOf("\n"));
 				String res = null;
 				try{
-					res = TTalk.doScriptforMenu(str);
+					//an expression's value goes into the message box (TTalk.messageBoxLine; queued: when it has run)
+					res = TTalk.messageBoxLine(str, null);
 				}catch(xTalkException e1){
 					e1.printStackTrace();
 					Object[] options = { "OK" };

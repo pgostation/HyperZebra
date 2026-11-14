@@ -77,14 +77,14 @@ final class ShapeEditor {
 		}catch(Exception e){JOptionPane.showMessageDialog(PCARD.pc,International.tc("shape","Could not import SVG: ")+e.getMessage(),International.tc("shape","Import SVG"),JOptionPane.ERROR_MESSAGE);}
 	}
 	static void deleteSelected(){if(!active(selected))return;AuthoringUndo.Snapshot before=AuthoringUndo.capture();OCardBase owner=(OCardBase)selected.parent;owner.shapeList.remove(selected);owner.changed=true;if(selected.view!=null&&selected.view.getParent()!=null)selected.view.getParent().remove(selected.view);ShapeTool.select(null);PCARD.pc.mainPane.repaint();AuthoringUndo.commit(before);}
-	static boolean active(OShape shape){if(shape==null||PCARD.pc==null||PCARD.pc.stack==null||PCARD.pc.stack.curCard==null||!(shape.parent instanceof OCardBase))return false;OCard card=PCARD.pc.stack.curCard;return (shape.parent==card&&!PaintTool.editBackground||shape.parent==card.getBg())&&((OCardBase)shape.parent).shapeList.contains(shape);}
-	static OCardBase owner(){if(PCARD.pc==null||PCARD.pc.stack==null||PCARD.pc.stack.curCard==null)return null;return PaintTool.editBackground?PCARD.pc.stack.curCard.bg:PCARD.pc.stack.curCard;}
+	static boolean active(OShape shape){if(shape==null||PCARD.pc==null||PCARD.pc.stack==null||PCARD.pc.stack.curCard==null||!(shape.parent instanceof OCardBase))return false;OCard card=PCARD.pc.stack.curCard;return (shape.parent==card&&!HZ.editBackground||shape.parent==card.getBg())&&((OCardBase)shape.parent).shapeList.contains(shape);}
+	static OCardBase owner(){if(PCARD.pc==null||PCARD.pc.stack==null||PCARD.pc.stack.curCard==null)return null;return HZ.editBackground?PCARD.pc.stack.curCard.bg:PCARD.pc.stack.curCard;}
 	private static int nextId(OCardBase owner){int id=1;while(true){boolean used=false;for(OShape s:owner.shapeList)if(s.id==id){used=true;break;}if(!used)return id;id++;}}
 	static void copySelected(){
 		if(!active(selected))return;
 		try{
 			java.io.StringWriter text=new java.io.StringWriter();
-			javax.xml.stream.XMLStreamWriter writer=javax.xml.stream.XMLOutputFactory.newFactory().createXMLStreamWriter(text);
+			XmlOut writer=Platform.get().xmlOut(text);
 			writer.writeStartElement("hyperzebra-shape");selected.writeXML(writer);writer.writeEndElement();writer.close();
 			java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(text.toString()),null);
 		}catch(Exception e){throw new IllegalStateException(e);}
@@ -94,12 +94,9 @@ final class ShapeEditor {
 		try{
 			Object data=java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().getData(java.awt.datatransfer.DataFlavor.stringFlavor);
 			if(!(data instanceof String text)||!text.startsWith("<hyperzebra-shape>"))return;
-			javax.xml.stream.XMLInputFactory factory=javax.xml.stream.XMLInputFactory.newFactory();
-			factory.setProperty(javax.xml.stream.XMLInputFactory.SUPPORT_DTD,false);
-			factory.setProperty("javax.xml.stream.isSupportingExternalEntities",false);
-			javax.xml.stream.XMLStreamReader reader=factory.createXMLStreamReader(new java.io.StringReader(text));
+			XmlIn reader=Platform.get().xmlIn(new java.io.StringReader(text));
 			OShape shape=null;
-			try{while(reader.hasNext())if(reader.next()==javax.xml.stream.XMLStreamConstants.START_ELEMENT&&reader.getLocalName().equals("shape")){shape=OShape.readXML(reader,owner());break;}}
+			try{while(reader.hasNext())if(reader.next()==XmlIn.START_ELEMENT&&reader.getLocalName().equals("shape")){shape=OShape.readXML(reader,owner());break;}}
 			finally{reader.close();}
 			if(shape==null)return;
 			AuthoringUndo.Snapshot before=AuthoringUndo.capture();

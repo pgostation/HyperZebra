@@ -28,7 +28,7 @@ final class StyledFont68k extends Font {
 	 */
 	final int fixedAdvance;
 	private static final boolean[] ONE_BYTE=new boolean[0x10000];
-	static{byte[] all=new byte[256];for(int i=0;i<256;i++)all[i]=(byte)i;String roman=new String(all,java.nio.charset.Charset.forName("x-MacRoman"));
+	static{byte[] all=new byte[256];for(int i=0;i<256;i++)all[i]=(byte)i;String roman=new String(all,Platform.get().charset("x-MacRoman"));
 		for(int i=0x20;i<roman.length();i++)ONE_BYTE[roman.charAt(i)]=true;ONE_BYTE[0x7f]=false;}
 	/** Bold asked of a plain base (a host family without a bold face): every glyph is drawn again one pixel right, as QuickDraw does. */
 	private final boolean smear;

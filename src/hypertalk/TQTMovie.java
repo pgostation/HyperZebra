@@ -59,35 +59,12 @@ public class TQTMovie {
 
 	//変換済みムービーのアセット（フレーム画像・フレームレート・音声）。
 	//同じファイルを何度開いても変換し直さずに済むよう、ファイルパスをキーにキャッシュする。
-	static class MovieAsset {
-		BufferedImage[] frames; //空なら映像なし
-		double fps;
+	//自前のデコーダで読むもの(MovieData)に、ffmpegで取り出した音声とQuickTime Music(MIDIシーケンス)を足したもの
+	static class MovieAsset extends MovieData {
 		File audioFile; //nullなら音声なし（ffmpegで取り出した音声）
-		QuickTimeSound.Pcm sound; //自前でデコードした音声（あればaudioFileより優先）
-		Mp3Decoder.Stream mp3; //MP3ファイル(MPEG audio Layer III): 再生しながら自前でデコードする
-		boolean hasAudio(){return sound!=null||audioFile!=null||mp3!=null;}
-		QuickTimeVideo video; //自前でデコードする映像（あればframesの代わり）
-		boolean hasVideo(){return video!=null||(frames!=null&&frames.length>0);}
-		int frameWidth(){return video!=null?video.width():frames[0].getWidth();}
-		int frameHeight(){return video!=null?video.height():frames[0].getHeight();}
-		/** Frames (video samples of the first video track, or the converted frames). */
-		int frameCount(){return video!=null?video.frameCount():frames==null?0:frames.length;}
-		/** Frames a second: the converted rate, or the video's average. */
-		double frameRate(){
-			if(video!=null){long ms=video.durationMillis();return ms>0?Math.max(1,video.frameCount())*1000.0/ms:10.0;}
-			return fps>0?fps:10.0;
-		}
-		/** The picture at {@code ms} milliseconds into the movie (the same image while the frame does not change). */
-		BufferedImage frameAtMillis(long ms){
-			if(video!=null){synchronized(video){try{return video.frameAt(ms*video.timeScale()/1000L);}catch(IOException e){System.err.println("QTMovie: "+e.getMessage());return video.lastFrame();}}}
-			if(frames==null||frames.length==0)return null;
-			return frames[(int)Math.max(0,Math.min(frames.length-1,(long)(ms/1000.0*frameRate())))];
-		}
+		@Override boolean hasAudio(){return super.hasAudio()||audioFile!=null;}
 		/** The movie's sound as a stream: our own decoding, else ffmpeg's extraction. */
 		AudioInputStream audioStream() throws Exception {return sound!=null?sound.stream():mp3!=null?mp3.pcm(0):AudioSystem.getAudioInputStream(audioFile);}
-		Sequence musicSequence; //QuickTime Music Architecture ('musi')
-		int timeScale; //ムービーヘッダ('mvhd')の時間スケール(0なら不明)
-		int duration;  //同じくtimeScale単位の長さ
 		boolean converted; //ffmpegでの変換を試みたか（結果が空でも再試行しない）
 	}
 	private static final HashMap<String,MovieAsset> assetCache = new HashMap<String,MovieAsset>();
@@ -121,7 +98,6 @@ public class TQTMovie {
 		long positionMs; // where a paused movie stands (converted movies; the guest keeps its own time)
 		String name;
 		int id;
-		boolean direct; // QTMovie OpenMovie,direct: drawn straight onto the card (no window frame), clicks belong to the card
 	}
 	private static int movieIdSeq = 0;
 	/** The default time scale of a QuickTime movie (units per second) when the file does not say. */
@@ -134,42 +110,6 @@ public class TQTMovie {
 	}
 	private static final HashMap<String,Playback> active = new HashMap<String,Playback>();
 	private static int handleSeq = 0;
-
-	//----------------------------------------------------------
-	//QTMovie OpenMovie,<mode>,"<名前>","<左,上>"[,loop]
-	//----------------------------------------------------------
-	public static String openMovie(String name, int x, int y, boolean loop){
-		return openMovie(name,x,y,loop,null);
-	}
-
-	/** {@code mode} "direct": the XCMD draws the movie straight into the card window at card position x,y, so it has no
-	 *  window frame or title bar and clicks on it are clicks on the card (Hyper Lemon closes its movies in mouseUp). */
-	public static String openMovie(String name, int x, int y, boolean loop, String mode){
-		File movieFile = findMovieFile(name);
-		if(movieFile==null){
-			System.out.println("QTMovie: \""+name+"\"が見つかりません");
-			return newHandle();
-		}
-		boolean direct=mode!=null && mode.trim().equalsIgnoreCase("direct");
-		if(!direct)return openMovieFile(movieFile,name,x,y,loop,false);
-		String handle=openMovieFile(movieFile,name,x,y,loop,false,"rect",true);
-		Playback pb=active.get(handle);
-		if(pb!=null){pb.direct=true;if(pb.window!=null)forwardClicksToCard(pb.window);}
-		return handle;
-	}
-
-	/** A direct movie's clicks go to the card underneath it, as when the XCMD draws into the card window. */
-	private static void forwardClicksToCard(final GPictWindow window){
-		MouseAdapter forward=new MouseAdapter(){
-			@Override public void mousePressed(MouseEvent event){redispatch(event);}
-			@Override public void mouseReleased(MouseEvent event){redispatch(event);}
-			@Override public void mouseClicked(MouseEvent event){redispatch(event);}
-			@Override public void mouseDragged(MouseEvent event){redispatch(event);}
-			private void redispatch(MouseEvent event){redispatchToWindow(event,PCARD.pc);}
-		};
-		window.label.addMouseListener(forward);
-		window.label.addMouseMotionListener(forward);
-	}
 
 	/** Hands a click on a direct movie to the card window at the same screen point. It goes to the window itself, whose lightweight
 	 *  dispatcher picks the part under the point as for a real click (a button or field with listeners, else the window, where GUI
@@ -314,7 +254,7 @@ public class TQTMovie {
 			public void mouseReleased(MouseEvent event) { movieMouseMessage(pb,"mouseUpInMovie",event); }
 			@Override
 			public void mouseClicked(MouseEvent event) {
-				if(!pb.direct && movieCanCloseOnClick(pb.loop, pb.finished)) dispose(handle);
+				if(movieCanCloseOnClick(pb.loop, pb.finished)) dispose(handle);
 			}
 		});
 	}
@@ -632,25 +572,6 @@ public class TQTMovie {
 			if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null)
 				TTalk.CallMessage("closeMovie",new String[]{pb.name,Integer.toString(pb.id)},PCARD.pc.stack.curCard);
 		}
-	}
-
-	//----------------------------------------------------------
-	//ファイル探索（.hzbフォルダ、またはその親フォルダ＝変換前スタックと同じ場所）
-	//----------------------------------------------------------
-	private static File findMovieFile(String name){
-		if(name==null || name.isEmpty() || PCARD.pc.stack==null || PCARD.pc.stack.file==null) return null;
-		File hzbDir = PCARD.pc.stack.file.getParentFile();
-		if(hzbDir==null) return null;
-		File[] candidateDirs = { hzbDir, StackBundle.folderAround(PCARD.pc.stack.file) };
-		for(File dir : candidateDirs){
-			if(dir==null || !dir.isDirectory()) continue;
-			File[] files = dir.listFiles();
-			if(files==null) continue;
-			for(File f : files){
-				if(f.isFile() && f.getName().equalsIgnoreCase(name)) return f;
-			}
-		}
-		return null;
 	}
 
 	/** The file's data begins with a Standard MIDI File header ("MThd", length 6). */

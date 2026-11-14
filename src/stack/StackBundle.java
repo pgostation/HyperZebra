@@ -74,7 +74,7 @@ final class StackBundle {
 		if(f==null || !f.isFile()) return false;
 		byte[] head = new byte[30+MIME_ENTRY.length()+MIME_TYPE.length()];
 		int n;
-		try(InputStream in = new FileInputStream(f)){ n = in.readNBytes(head, 0, head.length); }
+		try(InputStream in = new FileInputStream(f)){ n = Platform.readNBytes(in, head, 0, head.length); }
 		catch(IOException e){ return false; }
 		if(n<4 || head[0]!='P' || head[1]!='K' || head[2]!=3 || head[3]!=4) return false;
 		if(hasHzbExtension(f)) return true;

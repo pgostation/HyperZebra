@@ -6,7 +6,6 @@ import java.util.TreeSet;
 
 import javax.swing.JDialog;
 import javax.swing.JFrame;
-import javax.swing.JMenu;
 
 public class OObject {
 	/**
@@ -18,14 +17,14 @@ public class OObject {
 	 * family for them and the stack has the font itself ({@link StackStrikeFont}).
 	 */
 	static java.awt.Font stackFont(String name,int style,int size){
-		java.awt.Font own=StackStrikeFont.font(name,style,size);
+		java.awt.Font own=UiHost.get().stackStrikeFont(name,style,size);
 		if(own!=null)return own;
 		return new java.awt.Font(hostFamily(name),style,size);
 	}
 	/** A stack font at a size that may be fractional (a point size times a magnification such as 1.25). */
 	static java.awt.Font stackFont(String name,int style,double size){
-		if(size==Math.rint(size))return stackFont(name,style,(int)size);
-		java.awt.Font own=StackStrikeFont.font(name,style,size);
+		if(size==HzMath.rint(size))return stackFont(name,style,(int)size);
+		java.awt.Font own=UiHost.get().stackStrikeFont(name,style,size);
 		if(own!=null)return own;
 		return new java.awt.Font(hostFamily(name),style,(int)size).deriveFont((float)size);
 	}
@@ -52,21 +51,7 @@ public class OObject {
 	 * ("CB Futura CondensedBold", "B Helvetica Bold", "I Times Italic"), the family is the host's Futura (Magellan at Venus's
 	 * title was drawn from the stack's FONT strike instead). The longest family found as whole words, 4 letters at least.
 	 */
-	private static String containedFamily(String name){
-		String lower=name.toLowerCase();
-		String best=null;
-		for(String f:java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames()){
-			String fl=f.toLowerCase();
-			if(fl.length()<4 || (best!=null && fl.length()<=best.length())) continue;
-			int i=lower.indexOf(fl);
-			if(i<0 || (i>0 && Character.isLetterOrDigit(name.charAt(i-1)))) continue;
-			int e=i+fl.length();
-			//the word ends there: a space, the end, or a capital starting the style ("FuturaBold")
-			if(e<name.length() && Character.isLetterOrDigit(name.charAt(e)) && !Character.isUpperCase(name.charAt(e))) continue;
-			best=f;
-		}
-		return best;
-	}
+	private static String containedFamily(String name){ return UiHost.get().containedFamily(name); }
 	private static final String[] JAPANESE_GOTHIC={"Hiragino Kaku Gothic ProN","Hiragino Sans","Hiragino Kaku Gothic Pro","Meiryo","MS Gothic","Noto Sans CJK JP","Noto Sans JP"};
 	/**
 	 * A host family for a classic Mac font the host does not have. Java turned such a name into its sans-serif Dialog: on
@@ -92,11 +77,7 @@ public class OObject {
 		}
 		return null;
 	}
-	private static String availableFamily(String... candidates){
-		String[] families=java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames();
-		for(String c:candidates)for(String f:families)if(f.equalsIgnoreCase(c))return f;
-		return null;
-	}
+	private static String availableFamily(String... candidates){ return UiHost.get().availableFamily(candidates); }
 	OObject parent=null;
 	String objectType="";
 	int id;
@@ -115,6 +96,8 @@ public class OObject {
 	ArrayList<String>[] stringList;
 	/** The compiled blocks of this script (TalkJit); dropped with the script. */
 	TalkJit.ScriptCode jit;
+	TalkWasmStatements.Cache wasmStatements;
+	TalkWasmLoops.Cache wasmLoops;
 	/** {@link hypertalk.TTalk}'s first declaring line of the words of each handler, by script line; for the lines of scopeOf */
 	java.util.HashMap<String,Integer>[] scopeLines;
 	Object scopeOf;
@@ -153,7 +136,8 @@ public class OObject {
 		handlerList = null;
 		controlCache = null;
 		jit = null;
-		TalkJit.scriptEpoch++;
+		wasmStatements = null; wasmLoops = null;
+		HZ.scriptEpoch++;
 	}
 	
 	public int getLeft(){
@@ -262,9 +246,9 @@ public class OObject {
 		}
 		if(parent!=null && parent.objectType.equals("background")){
 			OCard viewCard = ((OBackground)parent).viewCard;
-			if(viewCard==null && PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null &&
-				PCARD.pc.stack.curCard.bgid==parent.id){
-				viewCard = PCARD.pc.stack.curCard;
+			if(viewCard==null && Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().curCard!=null &&
+				HZ.stack().curCard.bgid==parent.id){
+				viewCard = HZ.stack().curCard;
 			}
 			if(viewCard!=null) return viewCard;
 		}
@@ -272,7 +256,7 @@ public class OObject {
 	}
 	/** スタックのパス: "<volume>:<folder>:…:<stack>" (TTalk.macStackPath) */
 	String stackPathName(){
-		File file = StackBundle.host(((OStack)this).file); //a stack file (.hzb ZIP) is where its file is, not its working folder
+		File file = UiHost.get().stackBundleHost(((OStack)this).file); //a stack file (.hzb ZIP) is where its file is, not its working folder
 		if(file==null) return name;
 		return TTalk.macStackPath(file.getPath());
 	}
@@ -360,7 +344,8 @@ public class OObject {
 		handlerLineList = null;
 		controlCache = null;
 		jit = null;
-		TalkJit.scriptEpoch++;
+		wasmStatements = null; wasmLoops = null;
+		HZ.scriptEpoch++;
 		if(getClass()==OStack.class){
 			((OStack)this).changed = true;
 		}
@@ -411,8 +396,8 @@ class OMenubar extends OObject {
 	//the visible of menuBar は実際のメニューバーの表示状態
 	@Override
 	public boolean getVisible(){
-		if(PCARD.pc==null || PCARD.pc.getJMenuBar()==null) return super.getVisible();
-		return PCARD.pc.getJMenuBar().isVisible();
+		Boolean shown = UiHost.get().menuBarShown();
+		return shown==null ? super.getVisible() : shown;
 	}
 }
 
@@ -424,10 +409,34 @@ class OWindow extends OObject {
 	JDialog dlog;
 	TMP3 mp3;
 	GPictWindow gpw;
+	/** A Picture or Palette window of the browser player (PictureWindows), else null */
+	PictureWindows.Pict pict;
 	String movieHandle;
-	private Rectangle unzoomedBounds;
-	private boolean zoomed;
+	Rectangle unzoomedBounds;
+	boolean zoomed;
 	
+	/** The card window of a player without Swing (the browser's, PlayerLoop): `the width of card window` and the like */
+	static OWindow cardWindowWithoutFrame() {
+		OWindow w = new OWindow();
+		w.objectType = "window";
+		w.name = "cd";
+		cdwindow = w;
+		list.add(w);
+		return w;
+	}
+	private OWindow() {}
+
+	/** The script's object for a Picture or Palette window of the browser player, listed */
+	static OWindow ofPicture(PictureWindows.Pict p) {
+		OWindow w = new OWindow();
+		w.objectType = "window";
+		w.pict = p;
+		w.name = p.name;
+		w.id = nextWindowId++;
+		list.add(w);
+		return w;
+	}
+
 	//メイン
 	public OWindow(JFrame inframe, boolean isCdWindow) {
     	objectType="window";
@@ -478,7 +487,7 @@ class OWindow extends OObject {
 
 	/** window ID n */
 	static OWindow findById(int id) {
-		for(OWindow w : list) if((w.gpw!=null || w.movieHandle!=null) && w.id==id) return w;
+		for(OWindow w : list) if((w.gpw!=null || w.pict!=null || w.movieHandle!=null) && w.id==id) return w;
 		return null;
 	}
 
@@ -493,10 +502,10 @@ class OWindow extends OObject {
 	boolean isMovie() { return movieHandle!=null; }
 
 	/** A window of the Picture XCMD (picture N of HyperCard 2.4): a picture window that is neither a palette nor a movie. */
-	boolean isPicture() { return movieHandle==null && gpw!=null && !gpw.isPaletteWindow() && gpw.isDisplayable(); }
+	boolean isPicture() { return UiHost.get().isPicture(this); }
 
 	/** the number of movies / movie N: the Movie XCMD's windows in the order they were opened */
-	static ArrayList<OWindow> movies() { return TQTMovie.scriptWindows(); }
+	static ArrayList<OWindow> movies() { return UiHost.get().tQTMovieScriptWindows(); }
 
 	/** the number of pictures / picture N: the Picture XCMD's windows in the order they were opened */
 	static ArrayList<OWindow> pictures() {
@@ -514,7 +523,7 @@ class OWindow extends OObject {
 			int n = Integer.parseInt(ref);
 			return n>=1 && n<=all.size() ? all.get(n-1) : null;
 		}
-		if(movie) return TQTMovie.findScriptWindow(ref);
+		if(movie) return UiHost.get().tQTMovieFindScriptWindow(ref);
 		for(OWindow w : all) if(ref.equalsIgnoreCase(w.name)) return w;
 		return null;
 	}
@@ -525,51 +534,14 @@ class OWindow extends OObject {
 		return null;
 	}
 
-	static OWindow findPaletteWindow(String name) {
-		for(int i=list.size()-1; i>=0; i--){
-			OWindow window = list.get(i);
-			if(window.gpw==null) continue;
-			if(window.gpw.isPaletteWindow() && !window.gpw.isDisplayable()){
-				list.remove(i);
-				continue;
-			}
-			if(GPictWindow.samePaletteName(window.gpw.isPaletteWindow(), window.name, name)){
-				return window;
-			}
-		}
-		return null;
-	}
+	static OWindow findPaletteWindow(String name) { return UiHost.get().findPaletteWindow(name); }
 	
-	public void Command(String cmdStr) throws xTalkException {
-		if(movieHandle!=null){
-			//send "play" / "pause" / "rewind" / "stepFwd" / "stepRev" / "idle" to movie N (HyperCard 2.4 Movie XCMD commands)
-			String c = cmdStr.trim();
-			int sp = c.indexOf(' ');
-			String verb = (sp<0 ? c : c.substring(0,sp)).toLowerCase(java.util.Locale.ROOT);
-			switch(verb){
-				case "play": TQTMovie.play(movieHandle); break;
-				case "pause": TQTMovie.pause(movieHandle); break;
-				case "rewind": TQTMovie.rewind(movieHandle); break;
-				case "stepfwd": TQTMovie.step(movieHandle, 1); break;
-				case "steprev": TQTMovie.step(movieHandle, -1); break;
-				case "idle": TQTMovie.idle(movieHandle); break;
-				case "resizetomovie": case "preroll": case "showposter": case "cancelaction": break; //nothing to do here
-				default: System.out.println("Movie window: command not handled here: "+cmdStr); break; //findText, nudge, rotate…: the movie shows without them
-			}
-			return;
-		}
-		if(mp3!=null){
-			if(cmdStr.equalsIgnoreCase("Play")){
-				mp3.mp3play();
-			}
-		}
-	}
+	public void Command(String cmdStr) throws xTalkException { UiHost.get().Command(this, cmdStr); }
 
 	/** Whether the window is showing (hide/show window set the real window, not the flag). */
 	@Override public boolean getVisible(){
-		if(frame!=null) return frame.isVisible();
-		if(dlog!=null) return dlog.isVisible();
-		if(gpw!=null) return gpw.isVisible();
+		if(pict!=null) return pict.visible;
+		if(frame!=null || dlog!=null || gpw!=null) return UiHost.get().windowShowing(this);
 		return super.getVisible();
 	}
 
@@ -577,49 +549,9 @@ class OWindow extends OObject {
 		return zoomed;
 	}
 
-	public void setZoomed(boolean in) throws xTalkException {
-		if(this != cdwindow || frame == null || frame != PCARD.pc){
-			throw new xTalkException("Cannot set zoomed on this window");
-		}
-		if(in == zoomed) return;
-
-		if(in){
-			unzoomedBounds = new Rectangle(frame.getBounds());
-			frame.setExtendedState(Frame.NORMAL);
-			if(PCARD.pc.stack!=null) PCARD.pc.stack.windowNominal = null; //zoomed: the whole card
-			PCARD.pc.setNewBounds();
-			zoomed = true;
-		}
-		else{
-			frame.setExtendedState(Frame.NORMAL);
-			if(unzoomedBounds != null){
-				frame.setBounds(unzoomedBounds);
-			}
-			zoomed = false;
-		}
-	}
+	public void setZoomed(boolean in) throws xTalkException { UiHost.get().setZoomed(this, in); }
 	
-	public void Close() {
-		if(this==cdwindow){
-			//close window "スタック名" / close card window: スタックを閉じる(クローズボックスと同じ経路)
-			PCARD.closeStackFromCloseBox();
-			return;
-		}
-		if(movieHandle!=null){
-			TQTMovie.dispose(movieHandle); //closes the picture window too
-			list.remove(this);
-			return;
-		}
-		if(gpw!=null){
-			if(gpw.isPaletteWindow()) gpw.closePalette(); //closePaletteを送る
-			else { gpw.dispose(); list.remove(this); }
-			return;
-		}
-		if(mp3!=null){
-			mp3.mp3stop();
-	    	list.remove(this);
-		}
-	}
+	public void Close() { UiHost.get().Close(this); }
 
 	void removeMovieRegistration(){list.remove(this);}
 }
@@ -643,16 +575,16 @@ class OXWindow extends OObject {
 	/** The external window titled {@code name}, or null (no external keeps one). */
 	static OXWindow find(String name){
 		// "" too: TrueIdle's window has no title, and its documented way to stop it is close window ""
-		if(name==null||!Xcmd68k.hasWindowSessions())return null;
-		Xcmd68k.ExternalWindow w=Xcmd68k.findWindow(name);
-		return w==null?null:new OXWindow(w);
+		if(name==null||!UiHost.get().xcmd68kHasWindowSessions())return null;
+		Xcmd68k.ExternalWindow w=UiHost.get().xcmd68kFindWindow(name);
+		return w==null?null:UiHost.get().newXWindow(w);
 	}
 
 	/** The external window whose id (WindowPtr) is {@code id}, or null. */
 	static OXWindow findById(int id){
-		if(!Xcmd68k.hasWindowSessions())return null;
-		Xcmd68k.ExternalWindow w=Xcmd68k.findWindowById(id);
-		return w==null?null:new OXWindow(w);
+		if(!UiHost.get().xcmd68kHasWindowSessions())return null;
+		Xcmd68k.ExternalWindow w=UiHost.get().xcmd68kFindWindowById(id);
+		return w==null?null:UiHost.get().newXWindow(w);
 	}
 
 	private WindowManager68k.Window record(){return external.session.xwindows.record(external.window);}
@@ -797,7 +729,7 @@ class OMsg extends OObject {
 
 	/** Whether the message box is shown (the field was never updated, so "the visible of msg" was always true) */
 	@Override public boolean getVisible(){
-		return GMsg.msg!=null ? GMsg.msg.isVisible() : super.getVisible();
+		return UiHost.get().msgExists() ? UiHost.get().msgVisible() : super.getVisible();
 	}
 }
 
@@ -811,8 +743,7 @@ class OToolWindow extends OObject {
 
 	/** Whether the Tools palette is shown ("get the visible of tool window": ShowDialog XCMD's PICT Maker card) */
 	@Override public boolean getVisible(){
-		PCARD pc = PCARD.pc;
-		return pc!=null && pc.toolbar!=null && pc.toolbar.tb!=null && pc.toolbar.tb.isVisible();
+		return UiHost.get().toolPaletteVisible();
 	}
 }
 
@@ -878,20 +809,20 @@ class OStackWindow extends OObject {
 	}
 	static OStackWindow named(String n) {
 		if(n==null || n.trim().isEmpty()) return null;
-		n=java.text.Normalizer.normalize(n.trim(), java.text.Normalizer.Form.NFC);
+		n=Platform.get().normalize(n.trim(), UnicodeNorm.Form.NFC);
 		if(n.toLowerCase(java.util.Locale.ROOT).endsWith(".hzb")) n=n.substring(0, n.length()-4);
 		synchronized(TTalk.windowStacks){
 			for(String k : TTalk.windowStacks.keySet()){
 				String title=TTalk.windowStackTitles.get(k);
 				if(title==null) title=k.substring(k.lastIndexOf(':')+1);
-				title=java.text.Normalizer.normalize(title, java.text.Normalizer.Form.NFC);
+				title=Platform.get().normalize(title, UnicodeNorm.Form.NFC);
 				if(title.equalsIgnoreCase(n)) return new OStackWindow(k, title);
 			}
 		}
 		return null;
 	}
-	@Override public boolean getVisible(){ return GStackWindow.isShown(key); }
-	@Override public void setVisible(boolean visible){ GStackWindow.setShown(key, visible); }
+	@Override public boolean getVisible(){ return UiHost.get().gStackWindowIsShown(key); }
+	@Override public void setVisible(boolean visible){ UiHost.get().gStackWindowSetShown(key, visible); }
 	@Override public String getShortName(){ return "window \""+name+"\""; }
 }
 
@@ -909,16 +840,10 @@ class OPattern extends OObject {
 		return "pattern "+(index+1);
 	}
 	PatButton button(){
-		return PCARD.pc==null ? null : PCARD.pc.pat;
+		return UiHost.get().patternButton();
 	}
-	java.awt.image.BufferedImage image(){
-		PatButton b=button();
-		return (b==null || index<0 || index>=b.patterns.length) ? null : b.patterns[index];
-	}
-	void setImage(java.awt.image.BufferedImage image){
-		PatButton b=button();
-		if(b!=null) b.store(index, image);
-	}
+	java.awt.image.BufferedImage image(){ return UiHost.get().image(this); }
+	void setImage(java.awt.image.BufferedImage image){ UiHost.get().setImage(this, image); }
 }
 
 class OPicture extends OObject {
@@ -937,17 +862,17 @@ class OPicture extends OObject {
 	@Override
 	public void setVisible(boolean in){
 		parent.showPict = in;
-		if(PCARD.lockedScreen==false){
-			parent.stack.pcard.repaint();
+		if(HZ.lockedScreen==false){
+			UiHost.get().repaintStackFrame(parent.stack);
 		}
 	}
 }
 
 class OMenu extends OObject {
-	JMenu menu;
+	MMenu menu;
 
 	//メイン
-	public OMenu(JMenu menu) {
+	public OMenu(MMenu menu) {
     	objectType="menu";
     	this.menu = menu;
     	this.name = TTalk.scriptMenuName(menu);
@@ -964,35 +889,35 @@ class OMenu extends OObject {
 }
 
 
-//menuItem N of menu X。実体は PCARD.pc.menu.mb 側のJMenuItem
+//menuItem N of menu X。実体は MenuNodes.get().cardMenuBar() 側のJMenuItem
 class OMenuItem extends OObject {
-	JMenu menu;
+	MMenu menu;
 	int index; //ポップアップ内の位置(0始まり、区切り線も数える)
 
-	public OMenuItem(JMenu menu, int index) {
+	public OMenuItem(MMenu menu, int index) {
 		objectType="menuItem";
 		this.menu = menu;
 		this.index = index;
-		javax.swing.JMenuItem mi = item();
+		MMenuItem mi = item();
 		this.name = mi==null ? "-" : TTalk.scriptMenuItemText(menu, mi);
 	}
 
-	javax.swing.JMenuItem item() {
+	MMenuItem item() {
 		if(menu==null || index<0 || index>=menu.getPopupMenu().getComponentCount()) return null;
-		java.awt.Component c = menu.getPopupMenu().getComponent(index);
-		return (c instanceof javax.swing.JMenuItem) ? (javax.swing.JMenuItem)c : null;
+		MComponent c = menu.getPopupMenu().getComponent(index);
+		return (c instanceof MMenuItem) ? (MMenuItem)c : null;
 	}
 
 	/** The separator at this position ("-" item), or null */
-	java.awt.Component separator() {
+	MComponent separator() {
 		if(menu==null || index<0 || index>=menu.getPopupMenu().getComponentCount()) return null;
-		java.awt.Component c = menu.getPopupMenu().getComponent(index);
-		return (c instanceof javax.swing.JMenuItem) ? null : c;
+		MComponent c = menu.getPopupMenu().getComponent(index);
+		return (c instanceof MMenuItem) ? null : c;
 	}
 
 	@Override
 	public String getShortName(){
-		javax.swing.JMenuItem mi = item();
+		MMenuItem mi = item();
 		return mi==null ? "-" : TTalk.scriptMenuItemText(menu, mi);
 	}
 }

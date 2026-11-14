@@ -12,7 +12,7 @@ import java.util.Map;
  * the native components (the QuickTime movie controller, the graphics importers and the music components of the native
  * Movie Toolbox, absent when a real QuickTime extension is installed).
  */
-final class Components68k {
+class Components68k {
 	static final int BAD_COMPONENT_INSTANCE=0x80008001,BAD_COMPONENT_SELECTOR=0x80008002,INVALID_COMPONENT_ID=-3000,VALID_INSTANCES_EXIST=-3001,COMPONENT_NOT_CAPTURED=-3002,COMPONENT_DONT_REGISTER=-3003,UNRESOLVED_COMPONENT_DLL=-3004;
 	// ComponentDescription.componentFlags / thng componentRegisterFlags
 	static final int CMP_WANTS_REGISTER_MESSAGE=0x80000000,CMP_FAST_DISPATCH=0x40000000,CMP_IS_MISSING=0x20000000;
@@ -50,7 +50,9 @@ final class Components68k {
 		boolean fromResource(){return codeType!=0;}
 	}
 	/** A Java-implemented component: called with the instance, the selector and the address of params[0] of the ComponentParameters block. */
-	interface Native{int call(int instance,int what,int params) throws M68kException;default void closed(int instance){}}
+	interface Native{int call(int instance,int what,int params) throws M68kException;default void closed(int instance){}
+		/** What GetComponentVersion answers (kComponentVersionSelect). */
+		default int version(){return 0x00010001;}}
 	final class Instance {final int id;final Component component;int storage,error,a5;Instance(int id,Component c){this.id=id;component=c;}}
 	private final Toolbox68k tb;
 	private final M68kMemory memory;
@@ -62,7 +64,12 @@ final class Components68k {
 	private final Map<Integer,Integer> records=new HashMap<Integer,Integer>(); // component/instance id -> internal record in guest memory (selectors $23/$25)
 	static final int CM_VERSION=8; // what QuickTime 4's own Component Manager patch reports (Gestalt 'cpnt', selector $19)
 
-	Components68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;if(!tb.guestQuickTime){movieController();GraphicsImporter68k.register(this,tb);PictureCompression68k.register(this,tb);DecompressSequence68k.registerBase(this);QuickTimeMusic68k.register(this,tb);MovieImport68k.register(this,tb);}}
+	Components68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;if(!tb.guestQuickTime)Toolbox68k.PARTS.quickTimeComponents(this,tb);}
+	/** The native QuickTime components (Toolbox68kDesktopParts: the desktop's VMs have them) */
+	/** The browser player's QuickTime: the movie controller and the base decompression sequences, without the graphics importers,
+	 *  compressors, music and movie import of the desktop's registerQuickTime */
+	void registerMovieController(){movieController();DecompressSequence68k.registerBase(this);}
+	void registerQuickTime(){movieController();GraphicsImporter68k.register(this,tb);PictureCompression68k.register(this,tb);DecompressSequence68k.registerBase(this);QuickTimeMusic68k.register(this,tb);MovieImport68k.register(this,tb);}
 
 	/**
 	 * The Component Manager's own routines are pascal calls (Components.h): the caller reserves the result
@@ -305,8 +312,7 @@ final class Components68k {
 		c.codeHandle=h;c.entry=memory.readLong(h);
 		if(c.powerPC){ // a PEF container: prepared in place, as GetMemFragment does for a code resource
 			PpcRuntime rt=tb.powerPcRuntime();
-			PpcRuntime.Fragment f=rt==null?null:rt.tryLoadMemoryFragment(c.entry,tb.api.handleSize(h),describe(c));
-			c.entry=f==null?0:f.instance.main();
+			c.entry=Ppc68k.componentMain(rt,c.entry,tb.api.handleSize(h),describe(c));
 			if(c.entry==0){System.err.println("[68K "+tb.app.name+"] component "+describe(c)+": PowerPC code "+ResourceFile68k.typeName(c.codeType)+" "+c.codeId+" could not be prepared");return 0;}
 		}
 		if(Mac68kApi.TRACE)System.err.println("[68K] component "+describe(c)+" code "+ResourceFile68k.typeName(c.codeType)+" "+c.codeId+" at $"+Integer.toHexString(c.entry)+" size "+tb.api.handleSize(h));
@@ -483,17 +489,18 @@ final class Components68k {
 		callStack.push(self); // a further delegation down the chain still names the original instance
 		try{return callEntry(target.component,params,target.storage);}finally{callStack.pop();}
 	}
+	private static int nativeVersion(Component c){return c.handler!=null?c.handler.version():0x00010001;}
 	/** Dispatches a ComponentParameters block to the instance's component. */
 	int invoke(int ci,int params) throws M68kException {
 		Instance i=instances.get(ci);
 		int what=(short)memory.readWord(params+2);
 		if(i==null){Component c=byId.get(ci);
 			if(c!=null){ // calls on a Component (not an instance): version/canDo, and routines a component answers without storage (DataHCanUseDataRef)
-				if(c.isNative())return what==SEL_CAN_DO?1:what==SEL_VERSION?0x00010001:what<0?0:BAD_COMPONENT_SELECTOR;
+				if(c.isNative())return what==SEL_CAN_DO?1:what==SEL_VERSION?nativeVersion(c):what<0?0:BAD_COMPONENT_SELECTOR;
 				return entry(c)==0?BAD_COMPONENT_SELECTOR:callWithoutInstance(c,params);}
 			return BAD_COMPONENT_INSTANCE;}
 		if(i.component.isNative()){
-			if(what==SEL_CAN_DO)return 1;if(what==SEL_VERSION)return 0x00010001;if(what<0)return 0;
+			if(what==SEL_CAN_DO)return 1;if(what==SEL_VERSION)return nativeVersion(i.component);if(what<0)return 0;
 			return i.component.handler!=null?i.component.handler.call(ci,what,params+4):tb.quickTime.controllerCall(ci,what,params+4);
 		}
 		callStack.push(ci);
@@ -546,7 +553,7 @@ final class Components68k {
 			// convention. The fragment's main symbol is the routine descriptor a Power Mac's Component Manager calls (Apple's
 			// components export one, uppComponentRoutineProcInfo), or plain code's transition vector.
 			if(c.powerPC){PpcRuntime rt=tb.powerPcRuntime();int[] args={params,storage};
-				return rt.isRoutineDescriptor(c.entry)?rt.callUniversal(c.entry,COMPONENT_ROUTINE_PROC_INFO,args):rt.cpu.call(c.entry,args);}
+				return Ppc68k.callComponent(rt,c.entry,COMPONENT_ROUTINE_PROC_INFO,args);}
 			if((c.flags&CMP_FAST_DISPATCH)!=0){
 				int paramSize=memory.readByte(params+1);
 				cpu.a[7]-=4;cpu.pushLong(storage);int storageSlot=cpu.a[7];

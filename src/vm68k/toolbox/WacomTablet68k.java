@@ -40,8 +40,8 @@ final class WacomTablet68k {
 	/** Whether ".Wacom" opens: the host has a pen tablet reader (macOS/Windows with Java 22+), -Dhz68k.tablet=false turns it off. */
 	static boolean available(){
 		if("false".equals(System.getProperty("hz68k.tablet")))return false;
-		TabletInput.start();
-		return TabletInput.available;
+		UiHost.get().tabletInputStart();
+		return UiHost.get().tabletAvailable();
 	}
 
 	/** Control/Status on the driver (trap $A004/$A005); returns the result code. */
@@ -81,7 +81,7 @@ final class WacomTablet68k {
 	void refresh(int tick){
 		if(record==0)return;
 		try{
-			boolean near=TabletInput.penNear,eraser=near&&TabletInput.penNearEraser;
+			boolean near=UiHost.get().tabletPenNear(),eraser=near&&UiHost.get().tabletPenNearEraser();
 			int device=near?(eraser?DEVICE_ERASER:DEVICE_PEN):0;
 			memory.writeByte(record+40,device);
 			if(device!=lastDevice){
@@ -89,12 +89,12 @@ final class WacomTablet68k {
 				if(device!=0&&tb.events!=null)tb.events.postOsEvent(PROXIMITY_MESSAGE);
 				lastDevice=device;
 			}
-			float[] tilt=near?TabletInput.latestTilt():null;
+			float[] tilt=near?UiHost.get().tabletInputLatestTilt():null;
 			if(tilt!=null)lastTilt=tilt;
 			if(!near)lastTilt=null;
 			memory.writeWord(record+80,lastTilt==null?0:clampTilt(lastTilt[0]));
 			memory.writeWord(record+82,lastTilt==null?0:clampTilt(lastTilt[1]));
-			float p=near?TabletInput.latest():0f;
+			float p=near?UiHost.get().tabletInputLatest():0f;
 			if(Float.isNaN(p))p=lastPressure;else lastPressure=p;
 			int mouse=memory.readLong(0x830),v=mouse>>16,h=(short)mouse;
 			memory.writeByte(record+52,near?0x80:0);

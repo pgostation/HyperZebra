@@ -25,8 +25,6 @@ import javax.swing.AbstractButton;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComponent;
-import javax.swing.JMenu;
-import javax.swing.JMenuItem;
 import javax.swing.JToggleButton;
 import javax.swing.border.EmptyBorder;
 
@@ -36,7 +34,7 @@ public class TUtil {
 	//classic Mac OSがQuickDraw内蔵で提供していた標準カーソル（1=Ibeam, 2=cross, 3=plus, 4=watch）。
 	//スタック自身のリソースフォークには含まれない（Toolboxが直接持っていたため）ので、
 	//現行OSのカーソルに読み替える。
-	private static final HashMap<Integer,Integer> CLASSIC_MAC_CURSOR_IDS = new HashMap<Integer,Integer>();
+	static final HashMap<Integer,Integer> CLASSIC_MAC_CURSOR_IDS = new HashMap<Integer,Integer>();
 	static {
 		CLASSIC_MAC_CURSOR_IDS.put(0, Cursor.DEFAULT_CURSOR);   //arrow
 		CLASSIC_MAC_CURSOR_IDS.put(1, Cursor.TEXT_CURSOR);      //iBeam
@@ -53,7 +51,7 @@ public class TUtil {
 	private static final java.util.LinkedHashMap<BufferedImage,Object[]> customCursors = new java.util.LinkedHashMap<>(16, 0.75f, true){
 		@Override protected boolean removeEldestEntry(java.util.Map.Entry<BufferedImage,Object[]> e){ return size()>64; }
 	};
-	private static Cursor noneCursor;
+	static Cursor noneCursor;
 
 	static synchronized Cursor customCursor(BufferedImage bi, Point hotSpot){
 		Object[] c = customCursors.get(bi);
@@ -100,7 +98,7 @@ public class TUtil {
 	 * set cursor to watch), otherwise the host cursor {@code predefined}.
 	 */
 	static Cursor hyperCardCursor(int id, int predefined){
-		OStack stack = PCARD.pc==null ? null : PCARD.pc.stack;
+		OStack stack = !Host.get().hasCardWindow() ? null : HZ.stack();
 		Object[] c = stack==null || stack.rsrc==null ? null : stack.rsrc.stackCursor(id);
 		if(c==null) return Cursor.getPredefinedCursor(predefined);
 		return customCursor((BufferedImage)c[0], (Point)c[1]);
@@ -109,7 +107,7 @@ public class TUtil {
 	/** The browse tool's cursor (CURS 128 of the stack, else the host hand). */
 	static Cursor browseCursor(){ return hyperCardCursor(128, Cursor.HAND_CURSOR); }
 
-	private static final HashMap<String,String> compatibilityProperties = new HashMap<String,String>();
+	static final HashMap<String,String> compatibilityProperties = new HashMap<String,String>();
 	/** reset printing: the print properties back to HyperCard's defaults (大福帳 resets them before it prints). */
 	static void resetPrinting(){
 		compatibilityProperties.put("printmargins", "0,0,0,0"); //HyperCardの既定値
@@ -159,23 +157,14 @@ public class TUtil {
 	}
 
 	/** The ticks: the same count as an external's TickCount (Toolbox68k.tickCount, 16_666_667 ns a tick from the same origin). */
+	/** one tick (1/60 s) in nanoseconds: the ticks and wait N ticks count with it */
+	static final long TICK_NANOS = 16_666_667L;
+	/** the ticks, on the clock wait uses (Platform: the player's host clock in the browser) */
 	static long currentTicks() {
-		return System.nanoTime() / 16_666_667L;
+		return Math.floorDiv(Platform.get().nanoTime(), TICK_NANOS);
 	}
 
-	static Point getCardOriginOnScreen() {
-		if(PCARD.pc.mainPane==null){ //テスト(カードウインドウなし)
-			return new Point(PCARD.pc.getX()+PCARD.pc.getInsets().left, PCARD.pc.getY()+PCARD.pc.getInsets().top);
-		}
-		if(PCARD.pc.mainPane.isShowing()){
-			//from the frame's own bounds: the native window's place (getLocationOnScreen) lags a setBounds just made
-			//(set the rect of this card moves the window and the script reads the card window's rect right after)
-			Point p = javax.swing.SwingUtilities.convertPoint(PCARD.pc.mainPane, 0, 0, PCARD.pc);
-			return new Point(PCARD.pc.getX()+p.x, PCARD.pc.getY()+p.y);
-		}
-		Point origin = windowOrigin();
-		return new Point(origin.x+PCARD.pc.mainPane.getX(), origin.y+PCARD.pc.mainPane.getY());
-	}
+	static Point getCardOriginOnScreen() { return UiHost.get().getCardOriginOnScreen(); }
 
 	/**
 	 * The card window's rect in global (screen) coordinates, as HyperCard gives it: the part of the card the window shows,
@@ -183,49 +172,11 @@ public class TUtil {
 	 * which nothing sets, so "the rect of the card window" was 0,0,0,0 and a stack that sets the window from it (Slot Machine:
 	 * set the rect of the card window to item 1 of r, item 2 of r, item 1 of r + 336, item 4 of r) shrank it to its title bar.
 	 */
-	static java.awt.Rectangle cardWindowRect() {
-		Point origin = getCardOriginOnScreen();
-		if(PCARD.pc.mainPane!=null){
-			//a window smaller than the card shows it from its scroll: the window starts that far into the card
-			Point s = PCARD.pc.cardScroll();
-			origin = new Point(origin.x+PCARD.toPhysical(s.x), origin.y+PCARD.toPhysical(s.y));
-		}
-		int w, h;
-		if(PCARD.pc.mainPane!=null){
-			java.awt.Rectangle visible = PCARD.pc.mainPane.getVisibleRect();
-			w = visible.width; h = visible.height;
-			if(w<=0 || h<=0 || !PCARD.pc.mainPane.isShowing()){
-				w = PCARD.pc.stack!=null ? PCARD.toPhysical(PCARD.pc.stack.width) : PCARD.pc.mainPane.getWidth();
-				h = PCARD.pc.stack!=null ? PCARD.toPhysical(PCARD.pc.stack.height) : PCARD.pc.mainPane.getHeight();
-			}
-		}else{
-			w = PCARD.pc.getWidth(); h = PCARD.pc.getHeight();
-		}
-		return new java.awt.Rectangle(origin.x, origin.y, w, h);
-	}
+	static java.awt.Rectangle cardWindowRect() { return UiHost.get().cardWindowRect(); }
 
 	/** Moves/sizes the card window so that the card part it shows is {@code r} (global coordinates); the frame keeps its
 	 *  title bar, menu bar and borders around it. */
-	static void setCardWindowRect(java.awt.Rectangle r) {
-		java.awt.Rectangle now = cardWindowRect();
-		java.awt.Rectangle frame = PCARD.pc.getBounds();
-		int chromeW = frame.width-now.width, chromeH = frame.height-now.height;
-		int w = Math.max(1, r.width), h = Math.max(1, r.height);
-		OStack st = PCARD.pc.stack;
-		if(st!=null && (w!=now.width || h!=now.height)){
-			//HyperCard 2.4: the card window shows at most the card, and its width is a multiple of 16 (200 -> 208, 193 -> 192).
-			//That size stays the window's own: a later bigger card is shown in it (OStack.windowNominal)
-			int lw = PCARD.toLogical(w), lh = PCARD.toLogical(h);
-			lw = lw>=st.width ? st.width : Math.max(16, Math.min(st.width, (lw+8)/16*16));
-			lh = Math.max(1, Math.min(lh, st.height));
-			st.windowNominal = new java.awt.Dimension(lw, lh);
-			w = PCARD.toPhysical(lw);
-			h = PCARD.toPhysical(lh);
-		}
-		//laid out at once: the script reads the rect (and sets the scroll within it) right after
-		final java.awt.Rectangle b = new java.awt.Rectangle(r.x-(now.x-frame.x), r.y-(now.y-frame.y), w+chromeW, h+chromeH);
-		PCARD.runOnEDT(() -> { PCARD.pc.setBounds(b); PCARD.pc.validate(); });
-	}
+	static void setCardWindowRect(java.awt.Rectangle r) { UiHost.get().setCardWindowRect(r); }
 
 	/** Geometry properties of the card window (left, top, right, bottom, width, height, rect, loc/topLeft, bottomRight), or null.
 	 *  The loc of a window is its top-left corner (HyperCard). */
@@ -338,20 +289,20 @@ public class TUtil {
 	 *  (the screenRect, the card window's rect), so a script that sets the card window to its card size and centres it in the
 	 *  screenRect (Myst Preview: width 544, loc (item 3 of the screenRect - 544) div 2) gets the whole card, centred. */
 	static java.awt.Rectangle toLogicalGlobal(java.awt.Rectangle r) {
-		int left = PCARD.toLogical(r.x), top = PCARD.toLogical(r.y);
-		return new java.awt.Rectangle(left, top, PCARD.toLogical(r.x+r.width)-left, PCARD.toLogical(r.y+r.height)-top);
+		int left = Host.get().toLogical(r.x), top = Host.get().toLogical(r.y);
+		return new java.awt.Rectangle(left, top, Host.get().toLogical(r.x+r.width)-left, Host.get().toLogical(r.y+r.height)-top);
 	}
 	/** The screen pixels of a rectangle in the scripts' global coordinates ({@link #toLogicalGlobal}). */
 	static java.awt.Rectangle toPhysicalGlobal(java.awt.Rectangle r) {
-		int left = PCARD.toPhysical(r.x), top = PCARD.toPhysical(r.y);
-		return new java.awt.Rectangle(left, top, PCARD.toPhysical(r.x+r.width)-left, PCARD.toPhysical(r.y+r.height)-top);
+		int left = Host.get().toPhysical(r.x), top = Host.get().toPhysical(r.y);
+		return new java.awt.Rectangle(left, top, Host.get().toPhysical(r.x+r.width)-left, Host.get().toPhysical(r.y+r.height)-top);
 	}
 
 	/** set the loc/topLeft of window "Message" (ぺいんと+ puts its palettes back) or of another of HyperZebra's windows: its top
 	 *  left at (h, v) of the card window, the message box as "set the loc of msg" places it */
 	static void placeDialogWindow(java.awt.Window w, int h, int v) {
 		Point o = w==GMsg.msg ? getCardOriginOnScreen() : windowOrigin();
-		w.setLocation(o.x+PCARD.toPhysical(h), o.y+PCARD.toPhysical(v));
+		w.setLocation(o.x+Host.get().toPhysical(h), o.y+Host.get().toPhysical(v));
 	}
 
 	/** set loc of the tool window が位置を決めた直後の show では既定の位置へ戻さない */
@@ -384,9 +335,7 @@ public class TUtil {
 		return r;
 	}
 
-	static Point windowOrigin() {
-		return new Point(PCARD.pc.getX()+PCARD.pc.getInsets().left, PCARD.pc.getY()+PCARD.pc.chromeTop());
-	}
+	static Point windowOrigin() { return UiHost.get().windowOrigin(); }
 
 	/** スタックを移動したときの初期化: userModify は別のスタックへ行くと false に戻る(HyperCard) */
 	static void resetStackProperties() {
@@ -399,7 +348,7 @@ public class TUtil {
 		throw new xTalkException("{0} requires true or false", name);
 	}
 
-	private static int propertyInteger(String name, String value) throws xTalkException {
+	static int propertyInteger(String name, String value) throws xTalkException {
 		try{
 			return (int)Double.parseDouble(value);
 		}catch(NumberFormatException err){
@@ -424,9 +373,9 @@ public class TUtil {
 	/** The textFont of the paint text: HyperCard's own font until a script sets one (HC J-2.3 answers Osaka, also after
 	 *  set textFont to empty), Geneva on a Roman system. */
 	static String paintTextFont() {
-		String font = PCARD.pc.textFont;
+		String font = UiHost.get().paintTextFontSetting();
 		if(font!=null && !font.isEmpty()) return font;
-		OStack st = PCARD.pc.stack;
+		OStack st = HZ.stack();
 		return st!=null && st.legacyTextEncoding==StackTextEncoding.JAPANESE ? "Osaka" : "Geneva";
 	}
 
@@ -467,8 +416,11 @@ public class TUtil {
 	 *  right of a line's last character (also below the text) gives that line's return, or the place after the last
 	 *  character, as {pos, pos+1, 1}: HyperCard J-2.3 / 2.4 answer "char 12 to 12 of card field 1" and an empty clickText. */
 	static int[] clickedTextRange(OField field) throws Exception {
-		String text = field.fld.getText();
-		int[] hit = OField.hitTestClick(field, GUI.clickFieldLocalX, GUI.clickFieldLocalY);
+		return clickedTextRange(field, field.view().getText(), OField.hitTestClick(field, GUI.clickFieldLocalX, GUI.clickFieldLocalY), Host.get().hasCardWindow());
+	}
+	/** clickedTextRange for a hit already made ({character, right of it, lines below}, OField.hitTestClick's form: the browser
+	 *  player's comes from CardRenderer.hitClick); jpWords: a Japanese stack's words also end where 1- and 2-byte characters meet */
+	static int[] clickedTextRange(OField field, String text, int[] hit, boolean jpWords) {
 		int pos = hit[0];
 		if(pos<0 || pos>=text.length()) return null;
 		if(text.charAt(pos)=='\n') return new int[]{pos, pos+1, 1}; //空行
@@ -476,34 +428,44 @@ public class TUtil {
 		//Groupスタイルの空白はグループの一部、そうでない空白はその1文字で clickText は空(HyperCard J-2.3、probe F Click Space)。
 		//以前は空白で clickChunk が空になり、京大カードの mouseDown の get the textStyle of chunkClicked がエラーになっていた
 		boolean group = (field.textStyleAt(pos).style & GROUP_STYLE)!=0;
-		if(!group && Character.isWhitespace(text.charAt(pos))) return new int[]{pos, pos+1, 1};
+		if(!group && clickSpace(text.charAt(pos))) return new int[]{pos, pos+1, 1};
 		int start=pos, end=pos+1;
 		if(group){
 			while(start>0 && text.charAt(start-1)!='\n' && (field.textStyleAt(start-1).style & GROUP_STYLE)!=0) start--;
 			while(end<text.length() && text.charAt(end)!='\n' && (field.textStyleAt(end).style & GROUP_STYLE)!=0) end++;
 		}else{
 			//日本語のスタックでは1バイト文字と2バイト文字の境目でも語が切れる(HyperCard J の word と同じ)
-			boolean jp = PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.legacyTextEncoding==StackTextEncoding.JAPANESE;
+			boolean jp = jpWords && HZ.stack()!=null && HZ.stack().legacyTextEncoding==StackTextEncoding.JAPANESE;
 			boolean wide = TTalk.isDoubleByteChar(text.charAt(pos));
-			while(start>0 && !Character.isWhitespace(text.charAt(start-1)) && !(jp && TTalk.isDoubleByteChar(text.charAt(start-1))!=wide)) start--;
-			while(end<text.length() && !Character.isWhitespace(text.charAt(end)) && !(jp && TTalk.isDoubleByteChar(text.charAt(end))!=wide)) end++;
+			while(start>0 && !clickSpace(text.charAt(start-1)) && !(jp && TTalk.isDoubleByteChar(text.charAt(start-1))!=wide)) start--;
+			while(end<text.length() && !clickSpace(text.charAt(end)) && !(jp && TTalk.isDoubleByteChar(text.charAt(end))!=wide)) end++;
 		}
 		return new int[]{start, end};
+	}
+
+	/** A space that ends the clicked word. The ideographic space is not one: in HyperCard J-2.3 a click anywhere on "攻　撃"
+	 *  (the space too) gives the clickText "攻　撃", although word 1 of it is "攻" (ブレイヴパーソン's battle commands "攻　撃" and
+	 *  status "体　力" are tested with "is"; HZ gave "攻" and the attack command did nothing). */
+	private static boolean clickSpace(char c){
+		return c!='　' && Character.isWhitespace(c);
 	}
 
 	/** the clickLine of a plain field: the line of the clicked character; below the text HyperCard J-2.3 / 2.4 go on counting
 	 *  lines of the field's line height ("line 4" under two lines), a list field (autoSelect) stays on its last line. */
 	static String clickedLineRef(OField field){
-		String text = field.fld.getText();
-		int[] hit = OField.hitTestClick(field, GUI.clickFieldLocalX, GUI.clickFieldLocalY);
+		return clickedLineRef(field, field.view().getText(), OField.hitTestClick(field, GUI.clickFieldLocalX, GUI.clickFieldLocalY),
+			GUI.clickByScript, Host.get().toLogical(GUI.clickFieldLocalY));
+	}
+	/** clickedLineRef for a hit already made (clickedTextRange's); localY: the click below the field's top, card pixels */
+	static String clickedLineRef(OField field, String text, int[] hit, boolean byScript, int localY){
 		int line = 1;
 		if(hit[0]>=0){
 			for(int i=0; i<hit[0] && i<text.length(); i++) if(text.charAt(i)=='\n') line++;
-			if(!field.autoSelect || GUI.clickByScript) line += hit[2]; //click at below a list: "line 4" (HC J-2.3 probe D Click List)
+			if(!field.autoSelect || byScript) line += hit[2]; //click at below a list: "line 4" (HC J-2.3 probe D Click List)
 		}else{
 			//まだ描かれていない(当たり判定の箱が無い)フィールド: 行の高さで数える
 			int lineHeight = field.lineHeight();
-			line = Math.max(1, (PCARD.toLogical(GUI.clickFieldLocalY) - OField.textTopMargin(1, field.wideMargins))/lineHeight + 1);
+			line = Math.max(1, (localY - OField.textTopMargin(1, field.wideMargins))/lineHeight + 1);
 			int lineCount = 1;
 			for(int i=0; i<text.length(); i++) if(text.charAt(i)=='\n') lineCount++;
 			if(field.autoSelect && line>lineCount) line = lineCount;
@@ -516,9 +478,9 @@ public class TUtil {
 	static String fieldSelectedLineRef(OField f){
 		if(f.tableStyle || f.outlineStyle) return f.tableSelectedLine(fieldNumberRef(f));
 		if(f.getSelectedLine()>0) return "line "+f.getSelectedLine()+(f.autoSelect ? " to "+f.getSelectedLine() : "")+" of "+fieldNumberRef(f);
-		if(f.fld!=null && f.fld.getSelectionEnd()>f.fld.getSelectionStart()){
+		if(UiHost.get().fieldHasView(f) && f.view().getSelectionEnd()>f.view().getSelectionStart()){
 			String text = f.getText();
-			int s0 = f.fld.getSelectionStart(), e0 = f.fld.getSelectionEnd();
+			int s0 = f.view().getSelectionStart(), e0 = f.view().getSelectionEnd();
 			int first=1, last=1;
 			for(int i=0; i<text.length() && i<e0; i++){ if(text.charAt(i)=='\n'){ if(i<s0) first++; if(i<e0-1) last++; } }
 			return first==last && !f.autoSelect ? "line "+first+" of "+fieldNumberRef(f) : "line "+first+" to "+last+" of "+fieldNumberRef(f);
@@ -565,31 +527,26 @@ public class TUtil {
 	 *  the screen is not locked - also when it was visible already: a 68K external that hooked that copy (ColorizeHC) draws
 	 *  its pictures there. G'S LAIR adds the monsters' pictures and then shows their buttons, which its saved battle card
 	 *  has visible: the first battle stayed black. */
-	private static boolean partRedrawnByExternal(OObject part){
-		PCARD pc = PCARD.pc;
-		if(PCARD.lockedScreen || pc==null || pc.stack==null || pc.stack.curCard==null || pc.mainPane==null) return false;
-		OCard cd = pc.stack.curCard;
-		if(part.parent!=cd && part.parent!=cd.bg) return false;
-		return Xcmd68k.cardDrawingHooked(pc.stack);
-	}
+	static boolean partRedrawnByExternal(OObject part){ return UiHost.get().partRedrawnByExternal(part); }
 
 	/** Shows or hides a part ({@code change}) as HyperCard does: when an external draws the card window on HyperCard's copy
 	 *  (see {@link #partRedrawnByExternal}) the window goes from the old picture straight to what the external draws on the
 	 *  copy. Swing painted the part in between (its repaint) with the external's old drawing over it: G'S LAIR's opaque white
 	 *  monster button flashed white at every show of the blinking after a hit. */
 	private static void showOrHidePart(OObject part, Runnable change){
+		UiHost.get().partShownOrHidden(part);
 		if(!partRedrawnByExternal(part)){
 			change.run();
 			//the copy puts the card back over what an external drew in that rectangle (UxMaruPeke's ○×)
-			if(!PCARD.lockedScreen && PCARD.pc!=null && PCARD.pc.stack!=null && (part.parent==PCARD.pc.stack.curCard || PCARD.pc.stack.curCard!=null && part.parent==PCARD.pc.stack.curCard.bg))
-				CardWindow68k.partCopied(part.top, part.left, part.top+part.height, part.left+part.width);
+			if(!HZ.lockedScreen && Host.get().hasCardWindow() && HZ.stack()!=null && (part.parent==HZ.stack().curCard || HZ.stack().curCard!=null && part.parent==HZ.stack().curCard.bg))
+				UiHost.get().cardWindow68kPartCopied(part.top, part.left, part.top+part.height, part.left+part.width);
 			return;
 		}
-		CardWindow68k.holdScreen();
+		UiHost.get().cardWindow68kHoldScreen();
 		try{
 			change.run();
-			Xcmd68k.redrawHookedCards(PCARD.pc.stack, part.top, part.left, part.top+part.height, part.left+part.width);
-		}finally{ CardWindow68k.releaseScreen(); }
+			UiHost.get().xcmd68kRedrawHookedCards(HZ.stack(), part.top, part.left, part.top+part.height, part.left+part.width);
+		}finally{ UiHost.get().cardWindow68kReleaseScreen(); }
 	}
 
 	/** Properties whose change HyperCard draws by copying the part's rectangle of its card into the window (see
@@ -601,13 +558,13 @@ public class TUtil {
 		"widemargins", "locktext", "autohilite");
 	/** When a hooked card was last redrawn for a part change and when a part last changed (System.nanoTime), the parts'
 	 *  rectangle still to redraw, its stack. */
-	private static long partRedrawnAt, partChangedAt;
-	private static java.awt.Rectangle pendingPartRedraw;
-	private static OStack pendingPartStack;
-	private static java.util.concurrent.ScheduledExecutorService partRedrawTimer;
+	static long partRedrawnAt, partChangedAt;
+	static java.awt.Rectangle pendingPartRedraw;
+	static OStack pendingPartStack;
+	static java.util.concurrent.ScheduledExecutorService partRedrawTimer;
 	/** Changes this close together (a repeat loop of puts) are drawn together, once: a tick, a refresh of the Mac's screen
 	 *  (ColorHCテクニカル's bird walked at 24 frames a second with 40 ms, at the screen's rate in HyperCard). */
-	private static final long PART_REDRAW_INTERVAL_MS = 17;
+	static final long PART_REDRAW_INTERVAL_MS = 17;
 
 	static void partChangedOnScreen(OObject part){ partChangedOnScreen(part, null); }
 	/**
@@ -622,36 +579,13 @@ public class TUtil {
 	 * A change on the event thread (the user scrolled a field) is drawn from the timer's thread: the external's session may be
 	 * held by a call that waits for the event thread.
 	 */
-	static void partChangedOnScreen(OObject part, java.awt.Rectangle before){
-		if(part==null || !(part instanceof OButton || part instanceof OField) || !Xcmd68k.hasSessions() || !partRedrawnByExternal(part)) return;
-		if(javax.swing.SwingUtilities.isEventDispatchThread()){ partRedrawTimer().execute(() -> partChangedOnScreen(part, before)); return; }
-		OStack stack = PCARD.pc.stack;
-		java.awt.Rectangle r = new java.awt.Rectangle(part.left, part.top, Math.max(1, part.width), Math.max(1, part.height));
-		if(before!=null && !before.isEmpty() && !before.equals(r)) r = r.union(before);
-		java.awt.Rectangle draw = null;
-		synchronized(TUtil.class){
-			long t = System.nanoTime();
-			partChangedAt = t;
-			java.awt.Rectangle all = pendingPartRedraw==null || pendingPartStack!=stack ? r : pendingPartRedraw.union(r);
-			if(t-partRedrawnAt >= PART_REDRAW_INTERVAL_MS*1_000_000L){
-				draw = all; partRedrawnAt = t; pendingPartRedraw = null; pendingPartStack = null;
-			}else{
-				boolean schedule = pendingPartRedraw==null;
-				pendingPartRedraw = all; pendingPartStack = stack;
-				if(schedule) schedulePartRedraw(PART_REDRAW_INTERVAL_MS);
-			}
-		}
-		if(draw==null) return;
-		CardWindow68k.holdScreen();
-		try{ Xcmd68k.redrawHookedCards(stack, draw.y, draw.x, draw.y+draw.height, draw.x+draw.width); }
-		finally{ CardWindow68k.releaseScreen(); }
-	}
-	private static synchronized java.util.concurrent.ScheduledExecutorService partRedrawTimer(){
+	static void partChangedOnScreen(OObject part, java.awt.Rectangle before){ UiHost.get().partChangedOnScreen(part, before); }
+	static synchronized java.util.concurrent.ScheduledExecutorService partRedrawTimer(){
 		if(partRedrawTimer==null) partRedrawTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(task -> {
 			Thread th = new Thread(task, "HyperZebra part redraw"); th.setDaemon(true); return th; });
 		return partRedrawTimer;
 	}
-	private static void schedulePartRedraw(long ms){
+	static void schedulePartRedraw(long ms){
 		partRedrawTimer().schedule(TUtil::flushPartRedraw, Math.max(1, ms), java.util.concurrent.TimeUnit.MILLISECONDS);
 	}
 	/** The timer: the parts left to redraw, once the script has changed none for an interval (until then its next change draws them). */
@@ -664,13 +598,13 @@ public class TUtil {
 			r = pendingPartRedraw; stack = pendingPartStack; pendingPartRedraw = null; pendingPartStack = null; partRedrawnAt = System.nanoTime();
 		}
 		//locked since (unlock screen redraws the whole card), or another stack now
-		if(PCARD.lockedScreen || PCARD.pc==null || PCARD.pc.stack!=stack) return;
-		try{ Xcmd68k.redrawHookedCards(stack, r.y, r.x, r.y+r.height, r.x+r.width); }
+		if(HZ.lockedScreen || !Host.get().hasCardWindow() || HZ.stack()!=stack) return;
+		try{ UiHost.get().xcmd68kRedrawHookedCards(stack, r.y, r.x, r.y+r.height, r.x+r.width); }
 		catch(RuntimeException e){ System.err.println("[xcmd] the card's redraw failed: "+e); }
 	}
 
 	private static StackTextEncoding scriptEncoding(){
-		OStack st = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack st = Host.get().hasCardWindow() ? HZ.stack() : null;
 		return st!=null && st.legacyTextEncoding!=null ? st.legacyTextEncoding : HCData.currentEncoding;
 	}
 
@@ -722,22 +656,22 @@ public class TUtil {
 
 	/** The selection is the message box's: no field has one and a script selected its text */
 	static boolean messageBoxSelected(){
-		return GMsg.msg!=null && GMsg.msg.isVisible() && GMsg.area!=null && (GMsg.area.getSelectionEnd()>GMsg.area.getSelectionStart() || GMsg.msg.typedInto());
+		return UiHost.get().msgExists() && UiHost.get().msgVisible() && UiHost.get().msgHasArea() && (UiHost.get().msgSelectionEnd()>UiHost.get().msgSelectionStart() || UiHost.get().msgTypedInto());
 	}
 
 	static OField findFocusedOrClickedField(){
-		OField found = GUI.clickField;
+		OField found = HZ.clickField;
 		//select コマンドやクリックで決まったフィールドを優先する(フォーカスの移動は非同期なので)
-		if(found!=null && found.fld!=null) return found;
-		for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
-			OField field = PCARD.pc.stack.curCard.fldList.get(i);
+		if(found!=null && UiHost.get().fieldHasView(found)) return found;
+		for(int i=0; i<HZ.stack().curCard.fldList.size(); i++){
+			OField field = HZ.stack().curCard.fldList.get(i);
 			JComponent compo = field.getComponent();
-			if(compo!=null && compo.isFocusOwner()) found = field;
+			if(UiHost.get().focusOwner(compo)) found = field;
 		}
-		for(int i=0; i<PCARD.pc.stack.curCard.bg.fldList.size(); i++){
-			OField field = PCARD.pc.stack.curCard.bg.fldList.get(i);
+		for(int i=0; i<HZ.stack().curCard.bg.fldList.size(); i++){
+			OField field = HZ.stack().curCard.bg.fldList.get(i);
 			JComponent compo = field.getComponent();
-			if(compo!=null && compo.isFocusOwner()) found = field;
+			if(UiHost.get().focusOwner(compo)) found = field;
 		}
 		return found;
 	}
@@ -748,9 +682,41 @@ public class TUtil {
 		return field!=null && field.isListField() ? null : field;
 	}
 
+	/** The number of controlKey for Control and a key: a letter's control code (Control-A 1 … Control-Z 26, as [ \\ ] ^ _ give
+	 *  27-31), another key's own character code (Control-8 is 56). HyperWrite's controlKey handler picks its menu items by it
+	 *  (2 Bold, 3 Copy, 46 for Control-period …). c is the key's character or, on the desktop, its key code (the same for these). */
+	static int controlKeyNumber(int c){
+		if(c>='a' && c<='z') return c-96;
+		if(c>='@' && c<='_') return c-64;
+		return c;
+	}
+
+	private static final String[] STYLE_MENU_ITEMS = {"plain","bold","italic","underline","outline","shadow","condense","extend","group"};
+	/** doMenu of an item of HyperCard's Style menu (Plain, Bold … Group) on the selected text, as choosing it: Plain takes every
+	 *  style off, another one comes off when every selected character has it, else every one gets it (HyperWrite's Style menu
+	 *  sends doMenu "Bold" after select). False for another item or without selected text. */
+	static boolean styleSelectedText(String item){
+		if(item==null) return false;
+		String it = item.trim().toLowerCase(java.util.Locale.ROOT);
+		int k = java.util.Arrays.asList(STYLE_MENU_ITEMS).indexOf(it);
+		if(k<0) return false;
+		OField field = selectionField();
+		if(field==null || !UiHost.get().fieldHasView(field)) return false;
+		int start = field.view().getSelectionStart(), end = field.view().getSelectionEnd();
+		if(end<=start) return false;
+		final int bit = k==0 ? 0 : 1<<(k-1);
+		boolean all = true;
+		for(int pos=start; pos<end && all; pos++) if((field.textStyleAt(pos).style&bit)==0) all = false;
+		final boolean off = all;
+		field.restyleText(start, end, spec -> spec.style = bit==0 ? 0 : off ? spec.style&~bit : spec.style|bit);
+		if(field.view().getSelectionStart()!=start || field.view().getSelectionEnd()!=end) field.view().select(start, end);
+		field.view().repaint();
+		return true;
+	}
+
 	/** A number followed at once by a character that is neither a letter, a digit, a space nor HyperTalk punctuation */
 	private static final java.util.regex.Pattern NUMBER_THEN_STRAY_SIGN =
-		java.util.regex.Pattern.compile("[0-9][^\\s\\p{L}\\p{N}_.,+\\-*/^&=<>≠≤≥()\"]");
+		java.util.regex.Pattern.compile(Platform.get().regex("[0-9][^\\s\\p{L}\\p{N}_.,+\\-*/^&=<>≠≤≥()\"]"));
 
 	/** math functions that read their arguments as numbers (TTalk.rawArgsFor) */
 	private static final java.util.Set<String> RAW_NUMBER_ARGS = new java.util.HashSet<String>(java.util.Arrays.asList(
@@ -827,9 +793,52 @@ public class TUtil {
 		if(t.indexOf('.')<0 || !TTalk.isNumberString(t)) return null;
 		try{
 			double d = Double.parseDouble(t);
-			if(d!=Math.rint(d) || Math.abs(d)>=1e15) return null;
+			if(d!=HzMath.rint(d) || Math.abs(d)>=1e15) return null;
 			return Long.toString((long)d);
 		}catch(NumberFormatException e){ return null; }
+	}
+
+	private static void arguments(String name, String[] params, int min, int max, String usage) throws xTalkException {
+		int n = params==null ? 0 : params.length;
+		if(n<min || n>max) throw new xTalkException("Wrong number of arguments for {0}: {1}", name, usage);
+	}
+
+	/** TalkBinary's functions, or null for another name */
+	static Result binaryFunction(String message, String[] params) throws xTalkException {
+		String value;
+		switch(message){
+			case "bytetonum": arguments("byteToNum", params, 1, 1, "byteToNum(byte)"); value = Integer.toString(TalkBinary.byteToNum(params[0])); break;
+			case "numtobyte": arguments("numToByte", params, 1, 1, "numToByte(number)"); value = TalkBinary.numToByte(params[0]); break;
+			case "binaryencode": value = TalkBinary.binaryEncode(params==null ? new String[0] : params); break;
+			case "binarydecode": throw new xTalkException("Wrong number of arguments for {0}: {1}", "binaryDecode", "binaryDecode(format, data, var1, …)");
+			case "base64encode": arguments("base64Encode", params, 1, 1, "base64Encode(data)"); value = TalkBinary.base64Encode(params[0]); break;
+			case "base64decode": arguments("base64Decode", params, 1, 1, "base64Decode(text)"); value = TalkBinary.base64Decode(params[0]); break;
+			case "compress": arguments("compress", params, 1, 1, "compress(data)"); value = TalkBinary.compress(params[0]); break;
+			case "decompress": arguments("decompress", params, 1, 1, "decompress(data)"); value = TalkBinary.decompress(params[0]); break;
+			case "md5digest": arguments("md5Digest", params, 1, 1, "md5Digest(data)"); value = TalkBinary.digest(params[0], "MD5"); break;
+			case "sha1digest": arguments("sha1Digest", params, 1, 1, "sha1Digest(data)"); value = TalkBinary.digest(params[0], "SHA-1"); break;
+			case "messagedigest": arguments("messageDigest", params, 2, 2, "messageDigest(data, \"SHA-256\")"); value = TalkBinary.digest(params[0], params[1]); break;
+			case "textencode": arguments("textEncode", params, 1, 2, "textEncode(text, \"UTF-8\")"); value = TalkBinary.textEncode(params[0], params.length>1 ? params[1] : "native"); break;
+			case "textdecode": arguments("textDecode", params, 1, 2, "textDecode(data, \"UTF-8\")"); value = TalkBinary.textDecode(params[0], params.length>1 ? params[1] : "native"); break;
+			case "byteoffset": {
+				arguments("byteOffset", params, 2, 3, "byteOffset(find, data [, skip])");
+				int skip = 0;
+				if(params.length>2){ try{ skip = (int)Math.floor(Double.parseDouble(params[2].trim())); }catch(NumberFormatException e){ throw new xTalkException("A number is required here: {0}", params[2]); } }
+				value = Integer.toString(TalkBinary.byteOffset(params[0], params[1], skip));
+				break;
+			}
+			case "imagetoarray": arguments("imageToArray", params, 1, 1, "imageToArray(URL \"binfile:photo.png\")"); value = TalkBinary.imageToArray(params[0]); break;
+			case "imagefilter": value = UiHost.get().talkImage("imageFilter", params); break;
+			case "imagecombine": value = UiHost.get().talkImage("imageCombine", params); break;
+			case "imagecreate": value = UiHost.get().talkImage("imageCreate", params); break;
+			case "imagesize": arguments("imageSize", params, 1, 1, "imageSize(data)"); value = UiHost.get().talkImage("imageSize", params); break;
+			case "arraytoimage": arguments("arrayToImage", params, 1, 2, "arrayToImage(pixels [, \"png\"])"); value = TalkBinary.arrayToImage(params[0], params.length>1 ? params[1] : "png"); break;
+			default: return null;
+		}
+		Result result = new Result();
+		result.theResult = value;
+		result.ret = 0;
+		return result;
 	}
 
 	private static Result callSystemFunction1(String message, String[] params, OObject target, MemoryData memData, boolean isFunc)
@@ -863,7 +872,7 @@ public class TUtil {
 				if(o instanceof OStack) st = (OStack)o;
 				else if(o instanceof OCardBase) st = ((OCardBase)o).stack;
 			}
-			if(st==null && PCARD.pc!=null) st = PCARD.pc.stack;
+			if(st==null && Host.get().hasCardWindow()) st = HZ.stack();
 			result.theResult=StackLanguages.localizedText(st, params[0], java.util.Arrays.copyOfRange(params, 1, params.length));
 			result.ret=0;
 			return result;
@@ -877,6 +886,9 @@ public class TUtil {
 			result.ret=0;
 			return result;
 		}
+		//binary data (LiveCode's functions; TalkBinary). Not in TTalk.funcSet: a stack's own handler of the name comes first
+		Result binary = binaryFunction(message, params);
+		if(binary != null) return binary;
 		if(message.equals("replacetext")) {
 			if(params==null || params.length!=3) throw new xTalkException("replaceText requires three arguments: a string, a regular expression and replacement text");
 			result.theResult=TalkRegex.replaceText(params[0], params[1], params[2]);
@@ -912,7 +924,7 @@ public class TUtil {
 				if(params[0].equals("∞")) v = Double.MAX_VALUE;
 				else throw new xTalkException("A number is required here");
 			}
-			result.theResult = int32Saturated(Math.rint(v));
+			result.theResult = int32Saturated(HzMath.rint(v));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("abs")){
@@ -926,7 +938,7 @@ public class TUtil {
 			if(v-(int)v == 0){
 				result.theResult = Integer.toString((int)(v>0?v:-v));
 			}else{
-				result.theResult = Double.toString(v>0?v:-v);
+				result.theResult = Platform.get().doubleToString(v>0?v:-v);
 			}
 			result.ret = 0;
 		}
@@ -952,7 +964,7 @@ public class TUtil {
 			if(v-(int)v == 0){
 				result.theResult = Integer.toString((int)v);
 			}else{
-				result.theResult = Double.toString(v);
+				result.theResult = Platform.get().doubleToString(v);
 			}
 			result.ret = 0;
 		}
@@ -978,7 +990,7 @@ public class TUtil {
 			if(v-(int)v == 0){
 				result.theResult = Integer.toString((int)v);
 			}else{
-				result.theResult = Double.toString(v);
+				result.theResult = Platform.get().doubleToString(v);
 			}
 			result.ret = 0;
 		}
@@ -999,7 +1011,7 @@ public class TUtil {
 			if(v-(int)v == 0){
 				result.theResult = Integer.toString((int)v);
 			}else{
-				result.theResult = Double.toString(v);
+				result.theResult = Platform.get().doubleToString(v);
 			}
 			result.ret = 0;
 		}
@@ -1025,7 +1037,7 @@ public class TUtil {
 			if(v-(int)v == 0){
 				result.theResult = Integer.toString((int)v);
 			}else{
-				result.theResult = Double.toString(v);
+				result.theResult = Platform.get().doubleToString(v);
 			}
 			result.ret = 0;
 		}
@@ -1052,7 +1064,7 @@ public class TUtil {
 				if(params[0].equals("∞")) v = Double.MAX_VALUE;
 				else throw new xTalkException("A number is required here");
 			}
-			result.theResult = Double.toString((Math.sqrt(v)));
+			result.theResult = Platform.get().doubleToString((Math.sqrt(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("sin")){
@@ -1063,7 +1075,7 @@ public class TUtil {
 				if(params[0].equals("∞")) v = Double.MAX_VALUE;
 				else throw new xTalkException("A number is required here");
 			}
-			result.theResult = Double.toString((Math.sin(v)));
+			result.theResult = Platform.get().doubleToString((Math.sin(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("cos")){
@@ -1074,7 +1086,7 @@ public class TUtil {
 				if(params[0].equals("∞")) v = Double.MAX_VALUE;
 				else throw new xTalkException("A number is required here");
 			}
-			result.theResult = Double.toString((Math.cos(v)));
+			result.theResult = Platform.get().doubleToString((Math.cos(v)));
 			result.ret = 0;
 		}
 		else if(message.equalsIgnoreCase("tan")){
@@ -1085,7 +1097,7 @@ public class TUtil {
 				if(params[0].equals("∞")) v = Double.MAX_VALUE;
 				else throw new xTalkException("A number is required here");
 			}
-			result.theResult = Double.toString((Math.tan(v)));
+			result.theResult = Platform.get().doubleToString((Math.tan(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("atan")){
@@ -1096,7 +1108,7 @@ public class TUtil {
 				if(params[0].equals("∞")) v = Double.MAX_VALUE;
 				else throw new xTalkException("A number is required here");
 			}
-			result.theResult = Double.toString((Math.atan(v)));
+			result.theResult = Platform.get().doubleToString((Math.atan(v)));
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("chartonum")){
@@ -1175,7 +1187,7 @@ public class TUtil {
 			//base /= 1.0+(rate*(periods-(int)periods));
 			
 			double base = (1-1/Math.pow((1+rate),periods))/rate;
-			result.theResult = Double.toString(base);
+			result.theResult = Platform.get().doubleToString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("compound")){
@@ -1184,7 +1196,7 @@ public class TUtil {
 			double rate = Double.valueOf(params[0]);
 			double periods = Double.valueOf(params[1]);
 			double base = Math.pow((1+rate),periods);
-			result.theResult = Double.toString(base);
+			result.theResult = Platform.get().doubleToString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("exp")){
@@ -1192,7 +1204,7 @@ public class TUtil {
 			if(params.length<1) throw new xTalkException("An argument is required");
 			double v = Double.valueOf(params[0]);
 			double base = Math.exp(v);
-			result.theResult = Double.toString(base);
+			result.theResult = Platform.get().doubleToString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("exp1")){
@@ -1200,7 +1212,7 @@ public class TUtil {
 			if(params.length<1) throw new xTalkException("An argument is required");
 			double v = Double.valueOf(params[0]);
 			double base = Math.exp(v);
-			result.theResult = Double.toString(base-1.0);
+			result.theResult = Platform.get().doubleToString(base-1.0);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("ln")){
@@ -1208,7 +1220,7 @@ public class TUtil {
 			if(params.length<1) throw new xTalkException("An argument is required");
 			double v = Double.valueOf(params[0]);
 			double base = Math.log(v);
-			result.theResult = Double.toString(base);
+			result.theResult = Platform.get().doubleToString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("ln1")){
@@ -1216,7 +1228,7 @@ public class TUtil {
 			if(params.length<1) throw new xTalkException("An argument is required");
 			double v = Double.valueOf(params[0]);
 			double base = Math.log(1.0+v);
-			result.theResult = Double.toString(base);
+			result.theResult = Platform.get().doubleToString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("exp2")){
@@ -1224,7 +1236,7 @@ public class TUtil {
 			if(params.length<1) throw new xTalkException("An argument is required");
 			double v = Double.valueOf(params[0]);
 			double base = Math.pow(2,v);
-			result.theResult = Double.toString(base);
+			result.theResult = Platform.get().doubleToString(base);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("log2")){
@@ -1232,7 +1244,7 @@ public class TUtil {
 			if(params.length<1) throw new xTalkException("An argument is required");
 			double v = Double.valueOf(params[0]);
 			double base = Math.log(v)/Math.log(2);
-			result.theResult = Double.toString(base);
+			result.theResult = Platform.get().doubleToString(base);
 			result.ret = 0;
 		}
 		else return CallSystemFunction2(message, params, target, memData, isFunc, result);
@@ -1252,7 +1264,8 @@ public class TUtil {
 				//HyperCardのoffsetは大文字小文字を区別しない(Romanのスタックではアクセント記号も: offset("ü","Muller") = 2, HC 2.4)
 				boolean marks = TTalk.marksIgnored();
 				String needle = marks ? TTalk.withoutMarks(params[0]) : params[0], hay = marks ? TTalk.withoutMarks(params[1]) : params[1];
-				int off = needle.isEmpty() ? -1 : hay.toLowerCase(java.util.Locale.ROOT).indexOf(needle.toLowerCase(java.util.Locale.ROOT));
+				//(a Japanese stack folds only A-Z: offset("ａｂｃ","ＸＡＢＣ") = 0 in HyperCard J-2.3, TTalk.foldCase)
+				int off = needle.isEmpty() ? -1 : TTalk.foldCase(hay).indexOf(TTalk.foldCase(needle));
 				if(off>=0) result.theResult = Integer.toString(off+1);
 				else result.theResult = "0";
 				result.ret = 0;
@@ -1266,26 +1279,19 @@ public class TUtil {
 			long nanos = System.nanoTime();
 			result.theResult = (nanos/1_000_000L) + "." + String.format("%03d", (nanos/1000L)%1000L);
 		}
-		else if(0==message.compareTo("voices")){
-			//the voices (HyperCard 2.3 speech): the voices of the speech engine of this computer (empty when there is none)
-			String sp = Speech.programName();
-			result.theResult = sp!=null && Sandbox.allowOther(Sandbox.scriptRequester(), Sandbox.RUN_PROGRAM, sp) ? Speech.voices() : "";
-		}
-		else if(0==message.compareTo("speech")){
-			result.theResult = Speech.speechState();
-		}
+		else if(UiHost.get().speechFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("seconds") || 0==message.compareTo("secs")){
 			result.theResult = Long.toString(HCDateTime.toMacSeconds(HCDateTime.now()));
 		}
 		else if(0==message.compareTo("short version")){
-			result.theResult = PCARD.version;
+			result.theResult = HZ.version;
 		}
 		else if(0==message.compareTo("version")){
-			result.theResult = PCARD.version;
+			result.theResult = HZ.version;
 		}
 		else if(0==message.compareTo("long version")){
 			//HyperCard: 8桁の版コード("02308000" for 2.3)。HyperZebra 3.0.0 → "03008000"
-			result.theResult = PCARD.hcVersionCode(PCARD.longVersion);
+			result.theResult = HZ.hcVersionCode(HZ.longVersion);
 		}
 		else if(0==message.compareTo("systemname")){
 			result.theResult = System.getProperty("os.name");
@@ -1303,116 +1309,14 @@ public class TUtil {
 		else if(0==message.compareTo("javavmversion")){
 			result.theResult = System.getProperty("java.vm.version");
 		}
-		else if(0==message.compareTo("mouseclick")){
-			//外部ウィンドウ(ムービー等)へのクリックもハンドラ実行中はキューに残り、the mouseClick が取る(Myst Preview の PlayLogo)
-			String v = GUI.mouseClicked || GUI.takeHeldPress() || Xcmd68k.hasSessions() && Xcmd68k.takeWindowClick() ||
-				TTalk.takeQueuedClick() ?"true":"false";
-			GUI.mouseClicked = false;//一度読んだらfalseに戻る
-			result.theResult = v;
-		}
-		else if(0==message.compareTo("mouse")){
-			result.theResult = GUI.takeMouseState()?"down":"up";
-		}
-		else if(0==message.compareTo("mouseh")){
-	        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
-	        result.theResult = Integer.toString(PCARD.toLogical(pointerInfo.getLocation().x-getCardOriginOnScreen().x));
-		}
-		else if(0==message.compareTo("mousev")){
-	        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
-	        result.theResult = Integer.toString(PCARD.toLogical(pointerInfo.getLocation().y-getCardOriginOnScreen().y));
-		}
-		else if(0==message.compareTo("mouseloc")){
-			//カードの左上起点のマウス座標
-	        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
-	        result.theResult = Integer.toString(PCARD.toLogical(pointerInfo.getLocation().x-getCardOriginOnScreen().x))+","+
-			Integer.toString(PCARD.toLogical(pointerInfo.getLocation().y-getCardOriginOnScreen().y));
-		}
-		else if(0==message.compareTo("clickh")){
-			result.theResult = Integer.toString(GUI.clickH);
-		}
-		else if(0==message.compareTo("clickv")){
-			result.theResult = Integer.toString(GUI.clickV);
-		}
-		else if(0==message.compareTo("clickloc")){
-			//カードの左上起点のクリック座標
-			result.theResult = Integer.toString(GUI.clickH)+","+Integer.toString(GUI.clickV);
-		}
-		else if(0==message.compareTo("clickline")){
-			//最後にクリックしたフィールドの行: "line 2 of card field 1"(名前があっても番号の形、HyperCard J-2.3 / 2.4)
-			OField field = GUI.clickTextField;
-			if(field!=null && field.fld!=null && !field.outlineStyle && !field.tableStyle) result.theResult = clickedLineRef(field);
-			else result.theResult = GUI.clickLine;
-		}
-		else if(0==message.compareTo("clickchunk")){
-			//最後にクリックした語(Groupスタイルなら連続するグループ全体)を指すチャンク式。
-			//"char 5 to 7 of card field 1"(名前があっても番号の形、HyperCard J-2.3 / 2.4)
-			result.theResult = "";
-			OField field = GUI.clickTextField;
-			if(field!=null && field.outlineStyle){
-				//アウトライン: クリックした項目の行(字下げしたテキストのとき)
-				if(field.clickNode!=null && field.clickNode.line>0) result.theResult = "line "+field.clickNode.line+" of "+field.getShortName();
-			}
-			else if(field!=null && field.tableStyle){
-				//表: クリックしたセル
-				if(field.clickRow>0 && field.clickColumn>0) result.theResult = "item "+field.clickColumn+" of line "+field.clickRow+" of "+field.getShortName();
-			}
-			else if(field!=null && field.fld!=null && !GUI.clickOnOtherCard()){
-				try{
-					int[] r = clickedTextRange(field);
-					if(r!=null) result.theResult = "char "+(r[0]+1)+" to "+r[1]+" of "+fieldNumberRef(field);
-				}catch(Exception e){}
-			}
-		}
-		else if(0==message.compareTo("clicktext")){
-			//最後にクリックした語(Groupスタイルなら連続するグループ全体)
-			result.theResult = "";
-			OField field = GUI.clickTextField;
-			if(field!=null && field.outlineStyle){
-				//アウトライン: クリックした項目の見出し(JSONなら値)
-				if(field.clickNode!=null) result.theResult = field.clickNode.text();
-			}
-			else if(field!=null && field.tableStyle){
-				if(field.clickRow>0 && field.clickColumn>0){
-					java.util.List<String[]> rows = FieldTable.Data.parseRows(field.getText());
-					if(field.clickRow<=rows.size()){
-						String[] cells = rows.get(field.clickRow-1);
-						result.theResult = field.clickColumn<=cells.length ? cells[field.clickColumn-1] : "";
-					}
-				}
-			}
-			else if(field!=null && GUI.clickOnOtherCard()){
-				if(GUI.clickTextAtClick!=null) result.theResult = GUI.clickTextAtClick;
-			}
-			else if(field!=null && field.fld!=null){
-				try{
-					int[] r = clickedTextRange(field);
-					if(r!=null && r.length==2) result.theResult = field.fld.getText().substring(r[0], r[1]);
-				}catch(Exception e){}
-			}
-		}
-		else if(0==message.compareTo("commandkey")||0==message.compareTo("cmdkey")){
-			GUI.noteKeyPoll();
-			if(GUI.key[14]>=1) result.theResult = "down"; else result.theResult = "up";
-		}
-		else if(0==message.compareTo("optionkey")){
-			GUI.noteKeyPoll();
-			if(GUI.key[12]>=1) result.theResult = "down"; else result.theResult = "up";
-		}
-		else if(0==message.compareTo("shiftkey")){
-			GUI.noteKeyPoll();
-			if(GUI.key[11]>=1) result.theResult = "down"; else result.theResult = "up";
-		}
-		else if(0==message.compareTo("controlkey")){
-			GUI.noteKeyPoll();
-			if(GUI.key[13]>=1) result.theResult = "down"; else result.theResult = "up";
-		}
+		else if(UiHost.get().inputFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("heapspace")){
-			long freesize = Runtime.getRuntime().maxMemory()-(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory());
+			long freesize = Platform.get().maxMemory()-(Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory());
 			//a long integer as HyperCard's (its heap is part of a partition): an external reading it with StrToLong wrapped past 2^32.
 			//Steady while memory is plentiful: Java's own allocations moved it by megabytes between two reads, so a stack that
 			//measures what a command took (Cannons and Castles: AddColor install) saw noise
 			if(freesize>=256L*1024*1024) freesize = Integer.MAX_VALUE;
-			result.theResult = Long.toString(Math.max(0, Math.min(freesize, Integer.MAX_VALUE)-(PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.addColorHeapBytes : 0)));
+			result.theResult = Long.toString(Math.max(0, Math.min(freesize, Integer.MAX_VALUE)-(Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().addColorHeapBytes : 0)));
 		}
 		else if(0==message.compareTo("stackspace")){
 			//HyperCardのスタック領域の残り。ハンドラの呼び出しの深さに応じて減る値にする
@@ -1427,63 +1331,15 @@ public class TUtil {
 				String name = params[0];
 				where = diskFolder(name);
 				if(where==null) throw new xTalkException("No such disk: {0}", name);
-			}else if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.file!=null){
-				where = StackBundle.folderAround(PCARD.pc.stack.file); //the disk the stack is on (a stack file's, not its working folder's)
-				if(where==null) where = PCARD.pc.stack.file;
+			}else if(Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().file!=null){
+				where = UiHost.get().stackBundleFolderAround(HZ.stack().file); //the disk the stack is on (a stack file's, not its working folder's)
+				if(where==null) where = HZ.stack().file;
 			}else{
 				where = new File(".");
 			}
-			result.theResult = Long.toString(where.getFreeSpace());
+			result.theResult = Long.toString(Platform.get().freeSpace(where));
 		}
-		else if(0==message.compareTo("clipboard")){
-			//the clipboard (HyperCard 2.4; Hyped's Clipboard accessory: put the clipboard into cd fld 1): the text on the
-			//clipboard, empty when it holds no text
-			String text = "";
-			try{
-				java.awt.datatransfer.Transferable t = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null);
-				if(t!=null && t.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.stringFlavor)){
-					text = ((String)t.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor)).replace("\r\n", "\n").replace('\r', '\n');
-				}
-			}catch(Exception e){
-				text = "";
-			}
-			result.theResult = text;
-		}
-		else if(0==message.compareTo("fontexists") && isFunc){
-			//FontExists(<font name>[,<point size>]): an XFCN of HyperCard 2.4's Home stack that stacks call without carrying it
-			//(Living Labyrinth: if not fontExists("Times"); MailStack: if fontExists("Charcoal")). HyperZebra's Home has none, so
-			//it is answered here from the fonts of the Font menu (a stack's or Home's own FontExists runs instead when there is one)
-			String name = params.length>0 ? params[0].trim() : "";
-			boolean found = false;
-			if(!name.isEmpty()){
-				for(java.awt.Component c : TTalk.fontMenu().getMenuComponents()){
-					if(c instanceof javax.swing.JMenuItem && name.equalsIgnoreCase(((javax.swing.JMenuItem)c).getText())){ found = true; break; }
-				}
-			}
-			result.theResult = Boolean.toString(found);
-		}
-		else if(0==message.compareTo("screenrect")){
-			//カードウィンドウを表示しているモニタの矩形(複数モニタ)
-			java.awt.Rectangle r = null;
-			if(PCARD.pc!=null && PCARD.pc.isShowing()){
-				java.awt.Rectangle win = PCARD.pc.getBounds();
-				long best = -1;
-				for(java.awt.GraphicsDevice gd : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()){
-					java.awt.Rectangle b = gd.getDefaultConfiguration().getBounds();
-					java.awt.Rectangle in = b.intersection(win);
-					long area = in.isEmpty() ? 0 : (long)in.width*in.height;
-					if(area>best){ best = area; r = b; }
-				}
-			}
-			if(r==null){
-				Dimension d = Toolkit.getDefaultToolkit().getScreenSize();
-				r = new java.awt.Rectangle(0, 0, d.width, d.height);
-			}
-			r = toLogicalGlobal(r); //the screen the zoomed card window is on, at the card's scale
-			ExternalFrame frame = currentFrame();
-			if(frame!=null) r = frame.screen();
-			result.theResult = r.x+","+r.y+","+(r.x+r.width)+","+(r.y+r.height);
-		}
+		else if(UiHost.get().screenFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("windows")){
 			String windowsStr="";
 			/*Frame[] frame = PCARD.getFrames();
@@ -1517,11 +1373,7 @@ public class TUtil {
 		else if(0==message.compareTo("numberformat")){
 			result.theResult = TTalk.numberFormatPattern;
 		}
-		else if(0==message.compareTo("sound")){
-			String name = TTalk.sound().name;
-			if(name.equals("")) name = "done";
-			result.theResult = name;
-		}
+		else if(UiHost.get().soundFunction(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("long time")){
 			result.theResult = HCDateTime.format(HCDateTime.now(), "long time");
 		}
@@ -1548,49 +1400,46 @@ public class TUtil {
 			//the destination (HyperCard 2.2): the full path of the stack HyperCard is going to (HyperCard Help's closeStack
 			//keeps its help functions in use only when going to another help stack); otherwise this stack
 			result.theResult = TTalk.destinationStack!=null ? TTalk.destinationStack :
-				(PCARD.pc.stack==null || PCARD.pc.stack.path==null ? "" : PCARD.pc.stack.stackPathName());
+				(HZ.stack()==null || HZ.stack().path==null ? "" : HZ.stack().stackPathName());
 		}
-		else if(0==message.compareTo("stacks")){
-			//開いているスタックのパス(カードウインドウのスタック、続いて自分のウインドウにある他のスタックを前から順に)。
-			//HyperCardと同じくlong nameと同じコロン区切り(ちんちろり〜〜んは":"で区切って名前を取り出す)
-			//one line per stack, each with its return (HC J-2.3 probe Objects: "the stacks" ends with return, like the windows)
-			StringBuilder stacks = new StringBuilder();
-			if(PCARD.pc.stack.path!=null) stacks.append(PCARD.pc.stack.stackPathName()).append('\n');
-			for(String other : TTalk.windowStackPaths()) stacks.append(java.text.Normalizer.normalize(TTalk.macStackPath(other), java.text.Normalizer.Form.NFC)).append('\n');
-			result.theResult = stacks.toString();
-		}
-		else if(0==message.compareTo("suspended")){
-			result.theResult = PCARD.pc.isFocused()?"false":"true";
-		}
+		else if(UiHost.get().stacksFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("foundline")){
 			//見つかった文字列を含む行(findが失敗していれば空)
-			if(PCARD.pc.foundObject==null){
+			if(HZ.foundObject==null){
 				result.theResult = "";
 			}
 			else {
-				String text = TTalk.Evalution(PCARD.pc.foundObject, memData, null, null);
+				String text = TTalk.Evalution(HZ.foundObject, memData, null, null);
 				int line = 1;
-				for(int i=0; i<PCARD.pc.foundIndex && i<text.length(); i++){
+				for(int i=0; i<HZ.foundIndex && i<text.length(); i++){
 					if(text.charAt(i)=='\n') line++;
 				}
-				result.theResult = "line "+line+" of "+PCARD.pc.foundObject;
+				result.theResult = "line "+line+" of "+HZ.foundObject;
 			}
 		}
 		else if(0==message.compareTo("foundtext")){
-			result.theResult = PCARD.pc.foundObject==null || PCARD.pc.foundText==null ? "" : PCARD.pc.foundText;
+			result.theResult = HZ.foundObject==null || HZ.foundText==null ? "" : HZ.foundText;
+			if(!result.theResult.isEmpty()){
+				//the text now at the found place: put "コレ" into the foundChunk changes it (HC J-2.3 probe A Kotoba)
+				try{
+					String now = TTalk.Evalution(HZ.foundObject, memData, null, null);
+					int e = Math.min(now.length(), HZ.foundIndex+HZ.foundText.length());
+					if(HZ.foundIndex>=0 && HZ.foundIndex<e) result.theResult = now.substring(HZ.foundIndex, e);
+				}catch(Exception ex){}
+			}
 		}
 		else if(0==message.compareTo("foundchunk")){
-			if(PCARD.pc.foundObject==null){
+			if(HZ.foundObject==null){
 				result.theResult = "";
 			}
 			else{
 				//char は1始まり
-				result.theResult = "char "+(PCARD.pc.foundIndex+1)+" to "+
-				(PCARD.pc.foundIndex+PCARD.pc.foundText.length())+" of "+PCARD.pc.foundObject;
+				result.theResult = "char "+(HZ.foundIndex+1)+" to "+
+				(HZ.foundIndex+HZ.foundText.length())+" of "+HZ.foundObject;
 			}
 		}
 		else if(0==message.compareTo("foundfield")){
-			result.theResult = PCARD.pc.foundObject==null ? "" : PCARD.pc.foundObject;
+			result.theResult = HZ.foundObject==null ? "" : HZ.foundObject;
 		}
 		else if(0==message.compareTo("paramcount")){
 			if(memData.params==null) result.theResult = "0";
@@ -1635,35 +1484,7 @@ public class TUtil {
 	private static Result CallSystemFunction3(String message, String[] params, OObject target, MemoryData memData, boolean isFunc, Result result)
 		throws xTalkException
 	{
-		if(0==message.compareTo("tool")){
-			if(PCARD.pc.tool!=null){
-				if(PCARD.pc.tool.getClass()==SelectTool.class) result.theResult = PCARD.pc.tool==TTalk.selectToolWentLasso ? "lasso tool" : "select tool";
-				else if(PCARD.pc.tool.getClass()==LassoTool.class) result.theResult = "lasso tool";
-				else if(PCARD.pc.tool.getClass()==SmartSelectTool.class) result.theResult = "magicwand tool";
-				else if(PCARD.pc.tool.getClass()==PencilTool.class) result.theResult = "pencil tool";
-				else if(PCARD.pc.tool.getClass()==BrushTool.class) result.theResult = "brush tool";
-				else if(PCARD.pc.tool.getClass()==PaintBucketTool.class) result.theResult = "bucket tool";
-				else if(PCARD.pc.tool.getClass()==LineTool.class) result.theResult = "line tool";
-				else if(PCARD.pc.tool.getClass()==RectTool.class) result.theResult = "rectangle tool";
-				else if(PCARD.pc.tool.getClass()==RoundRectTool.class) result.theResult = "round rect tool";
-				else if(PCARD.pc.tool.getClass()==OvalTool.class) result.theResult = "oval tool";
-				else if(PCARD.pc.tool.getClass()==CurveTool.class) result.theResult = "curve tool";
-				else if(PCARD.pc.tool.getClass()==TypeTool.class) result.theResult = "text tool";
-				else if(PCARD.pc.tool.getClass()==EraserTool.class) result.theResult = "eraser tool";
-				else if(PCARD.pc.tool.getClass()==SprayTool.class) result.theResult = "spray tool"; //HyperCard J-2.3 names (probe H Expr ChooseNames)
-				else if(PCARD.pc.tool.getClass()==RegPolyTool.class) result.theResult = "regular polygon tool";
-				else if(PCARD.pc.tool.getClass()==PolyTool.class) result.theResult = "polygon tool";
-				else if(PCARD.pc.tool.getClass()==EyedropperTool.class) result.theResult = "eyedropper tool";
-				else if(PCARD.pc.tool.getClass()==SmudgeTool.class) result.theResult = "smudge tool";
-				else if(PCARD.pc.tool.getClass()==StampTool.class) result.theResult = "stamp tool";
-			}
-			else if(AuthTool.tool!=null){
-				if(AuthTool.tool.getClass()==ButtonTool.class) result.theResult = "button tool";
-				else if(AuthTool.tool.getClass()==FieldTool.class) result.theResult = "field tool";
-				else if(AuthTool.tool instanceof ShapeTool) result.theResult = "shape tool";
-			}
-			else result.theResult = "browse tool";
-		}
+		if(UiHost.get().toolFunction(message, params, target, memData, isFunc, result)){}
 		else if((0==message.compareTo("selectedtext") || 0==message.compareTo("selectedline") || 0==message.compareTo("selectedlines")) &&
 				params!=null && params.length>0 && params[0].length()>0){
 			//the selectedText/selectedLine of <listField|popupButton>; selectedLines is selectedLine (HC J-2.3: word 2 of
@@ -1692,126 +1513,58 @@ public class TUtil {
 		else if(0==message.compareTo("selectedtext") ||
 				0==message.compareTo("selection"))
 		{
-			if(GUI.clickField!=null && GUI.clickField.fld!=null){
+			if(HZ.clickField!=null && UiHost.get().fieldHasView(HZ.clickField)){
 				//select コマンドやクリックで決まったフィールドを優先する(フォーカスの移動は非同期なので、直前に
 				//フォーカスのあった別のフィールドの選択を返していた: select line 2 of cd fld "F2" の後に "bc")
-				result.theResult = GUI.clickField.isListField() ? "" : GUI.clickField.getSelectedText();
+				result.theResult = HZ.clickField.isListField() ? "" : HZ.clickField.getSelectedText();
 				if(result.theResult==null) result.theResult = "";
 				result.ret = 0; //selectedText() called as a function checks it (スクリプト書き換え)
 				return result;
 			}
 			//入力フォーカスのあるフィールドを検索して選択テキストを返す
 			//cd
-			for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
-				OField field = PCARD.pc.stack.curCard.fldList.get(i);
+			for(int i=0; i<HZ.stack().curCard.fldList.size(); i++){
+				OField field = HZ.stack().curCard.fldList.get(i);
 				JComponent compo = field.getComponent();
-				if(compo!=null && compo.isFocusOwner()){
+				if(UiHost.get().focusOwner(compo)){
 					result.theResult = field.getSelectedText();
 				}
 			}
 			//bg
-			for(int i=0; i<PCARD.pc.stack.curCard.bg.fldList.size(); i++){
-				OField field = PCARD.pc.stack.curCard.bg.fldList.get(i);
+			for(int i=0; i<HZ.stack().curCard.bg.fldList.size(); i++){
+				OField field = HZ.stack().curCard.bg.fldList.get(i);
 				JComponent compo = field.getComponent();
-				if(compo!=null && compo.isFocusOwner()){
+				if(UiHost.get().focusOwner(compo)){
 					result.theResult = field.getSelectedText();
 				}
 			}
 			if(result.theResult==null){
-				result.theResult = messageBoxSelected() ? GMsg.area.getSelectedText() : "";
+				result.theResult = messageBoxSelected() ? UiHost.get().msgSelectedText() : "";
 			}
 		}
 		else if(0==message.compareTo("selectedchunk")){
 			//現在選択中のテキストを指すチャンク式
 			result.theResult = "";
 			OField field = selectionField();
-			if((field==null || field!=GUI.clickField && field.fld!=null && field.fld.getSelectionEnd()==field.fld.getSelectionStart()) && messageBoxSelected()){
+			if((field==null || field!=HZ.clickField && UiHost.get().fieldHasView(field) && field.view().getSelectionEnd()==field.view().getSelectionStart()) && messageBoxSelected()){
 				//select text of msg (HC J-2.3: "char 1 to 4 of message box")
-				result.theResult = "char "+(GMsg.area.getSelectionStart()+1)+" to "+GMsg.area.getSelectionEnd()+" of message box";
+				result.theResult = "char "+(UiHost.get().msgSelectionStart()+1)+" to "+UiHost.get().msgSelectionEnd()+" of message box";
 				return result;
 			}
-			if(field!=null && field.fld!=null){
-				int start = field.fld.getSelectionStart();
-				int end = field.fld.getSelectionEnd();
+			if(field!=null && UiHost.get().fieldHasView(field)){
+				int start = field.view().getSelectionStart();
+				int end = field.view().getSelectionEnd();
 				if(end>start){
 					//HyperCard J-2.3: "char 19 to 19 of card field 1"(名前があっても番号の形。selectedField/selectedLine と同じ)
 					result.theResult = "char "+(start+1)+" to "+end+" of "+fieldNumberRef(field);
 				}
-				else if(field==GUI.clickField){
+				else if(field==HZ.clickField){
 					//挿入ポイント(select before/after …)は "char N+1 to N" の形
 					result.theResult = "char "+(start+1)+" to "+start+" of "+fieldNumberRef(field);
 				}
 			}
 		}
-		else if(0==message.compareTo("selectedline")){
-			//現在選択中のテキストを含む行(選択が無ければ空)
-			result.theResult = "";
-			OField field = selectionField();
-			if(field!=null && field.fld!=null){
-				int start = field.fld.getSelectionStart();
-				int end = field.fld.getSelectionEnd();
-				if(end>start){
-					String text = field.getText();
-					int firstLine = 1;
-					int lastLine = 1;
-					for(int i=0; i<text.length() && i<end; i++){
-						if(text.charAt(i)=='\n'){
-							if(i<start) firstLine++;
-							if(i<end-1) lastLine++;
-						}
-					}
-					//the line it starts on, however far it goes (HC J-2.3: select line 2 to 3 of cd fld 1 gives "line 2 of card field 1")
-					result.theResult = "line "+firstLine+" of "+fieldNumberRef(field);
-				}
-				else if(field==GUI.clickField){
-					//挿入ポイントだけ(select after line 2 of …)でもその行(HyperCard J-2.3: "line 2 of card field 4")
-					String text = field.getText();
-					int line = 1;
-					for(int i=0; i<text.length() && i<start; i++) if(text.charAt(i)=='\n') line++;
-					result.theResult = "line "+line+" of "+fieldNumberRef(field);
-				}
-			}
-		}
-		else if(0==message.compareTo("selectedfield")){
-			//現在選択中のテキストのあるフィールド: "card field N" / "bkgnd field N"(番号形式、HyperCard)
-			result.theResult = "";
-			OField field = selectionField();
-			//挿入ポイントだけでもそのフィールド(HyperCard J-2.3 / 2.4: select after char 2 of … → "card field 3")
-			if(field!=null && field.fld!=null && (field.fld.getSelectionEnd()>field.fld.getSelectionStart() || field==GUI.clickField)){
-				result.theResult = fieldNumberRef(field);
-			}
-		}
-		else if(0==message.compareTo("selectedloc")){
-			//現在選択中のテキストの中央位置(カード座標)
-			result.theResult = "";
-			//HyperCard: 選択範囲(または挿入ポイント)の左端と下端(カード座標)。挿入ポイントだけでも返す
-			OField field = selectionField();
-			if(field!=null && field.fld!=null && (field.fld.isFocusOwner() || field==GUI.clickField)){
-				int start = field.fld.getSelectionStart();
-				try{
-					Rectangle2D r1 = field.fld.modelToView2D(start);
-					double scale = PCARD.scale();
-					double left = r1.getX(), top = r1.getY();
-					if(field.scrollPane!=null) top -= MyScrollPane.toViewScroll(field.scroll); //where it shows
-					if(field.textAlign!=0){
-						//the view lays every line out from the left
-						double lineLeft = field.fld.modelToView2D(javax.swing.text.Utilities.getRowStart(field.fld, start)).getX();
-						double lineRight = field.fld.modelToView2D(javax.swing.text.Utilities.getRowEnd(field.fld, start)).getX();
-						double room = field.fld.getWidth()-2*lineLeft-(lineRight-lineLeft);
-						left += field.textAlign==1 ? room/2 : room;
-					}
-					int x = (int)(left/scale) + field.left;
-					int y = (int)((top+r1.getHeight())/scale) + field.top;
-					if(field.scroll==0 && (field.styleList==null || field.styleList.isEmpty())){
-						//the rows as the field draws them, the view's may be taller (selectedLoc is how a script measures a line)
-						int margin = OField.textTopMargin(1, field.wideMargins);
-						long row = Math.round((r1.getY()/scale-margin)/(r1.getHeight()/scale));
-						y = field.top+margin+(int)(row+1)*field.lineHeight();
-					}
-					result.theResult = x+","+y;
-				}catch(Exception e){}
-			}
-		}
+		else if(UiHost.get().selectionFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("selectedbutton")){
 			//the selectedButton of [bg] family N: そのファミリーでハイライトされているボタン
 			if(params==null || params.length<1) throw new xTalkException("selectedButton requires a family number");
@@ -1828,11 +1581,11 @@ public class TUtil {
 			String num = w[k].replace("\"", "").trim();
 			try{ family = Integer.parseInt(num); }catch(NumberFormatException e){ throw new xTalkException("The family number is not a number: {0}", w[k]); }
 			if(family<1 || family>15) throw new xTalkException("family must be between 1 and 15: {0}", family);
-			OCard ownerCard = PCARD.pc.stack.curCard;
+			OCard ownerCard = HZ.stack().curCard;
 			//of <card>: that card's buttons (the card's id comes as the second parameter)
 			if(params.length>=2){
 				try{
-					OCard c = PCARD.pc.stack.GetCardbyId(Integer.parseInt(params[1].trim()));
+					OCard c = HZ.stack().GetCardbyId(Integer.parseInt(params[1].trim()));
 					if(c!=null) ownerCard = c;
 				}catch(NumberFormatException e){}
 			}
@@ -1846,26 +1599,13 @@ public class TUtil {
 					if(b.group==family && b.getHilite()){
 						result.theResult = (bg ? "background button " : "card button ")+(i+1);
 						//of <card>: the card is named too (HyperCard J-2.3: card button 10 of card id 2817)
-						if(params.length>=2 && ownerCard!=PCARD.pc.stack.curCard) result.theResult += " of card id "+ownerCard.id;
+						if(params.length>=2 && ownerCard!=HZ.stack().curCard) result.theResult += " of card id "+ownerCard.id;
 						break;
 					}
 				}
 			}
 		}
-		else if(0==message.compareTo("programs")){
-			//実行中のアプリケーション(macOSではSystem Eventsに問い合わせる)。先頭は自分自身
-			java.util.List<String> progs = new java.util.ArrayList<String>();
-			progs.add(PCARD.AppName);
-			if(System.getProperty("os.name","").toLowerCase().contains("mac")){
-				try{
-					Process p = new ProcessBuilder("osascript", "-e", "tell application \"System Events\" to get name of every process whose background only is false").start();
-					String out = new String(p.getInputStream().readAllBytes(), "UTF-8").trim();
-					p.waitFor();
-					for(String n : out.split(",")){ n = n.trim(); if(!n.isEmpty() && !progs.contains(n)) progs.add(n); }
-				}catch(Exception e){}
-			}
-			result.theResult = String.join("\n", progs);
-		}
+		else if(UiHost.get().programsFunction(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("numtochar"))
 		{
 			int i = Integer.valueOf(params[0]);
@@ -1895,139 +1635,12 @@ public class TUtil {
 		//
 		//プロパティも関数と同じ扱い。こいつらはsetできる。
 		//
-		else if(0==message.compareTo("userlevel")){
-			result.theResult = Integer.toString(StackProtection.effectiveUserLevel());
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("scripttextfont")){
-			result.theResult = PCARD.scriptFont;
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("scripttextsize")){
-			result.theResult = Integer.toString(PCARD.scriptFontSize);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("systemlang")){
-			result.theResult = International.englishName(PCARD.pc.lang); //"Japanese"/"English"(以前の版と同じ英語の名前)
-			result.ret = 0;
-		}
+		else if(UiHost.get().settingsFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("dragspeed")){
 			result.theResult = Integer.toString(TTalk.dragspeed);
 			result.ret = 0;
 		}
-		else if(0==message.compareTo("editbkgnd")){
-			result.theResult = Boolean.toString(PaintTool.editBackground);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("filled")){
-			result.theResult = Boolean.toString(PCARD.pc.fill);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("centered")){
-			result.theResult = Boolean.toString(PaintTool.drawCentered);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("multiple")){
-			result.theResult = Boolean.toString(PaintTool.drawMultiple);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("multispace")){
-			result.theResult = Integer.toString(PaintTool.multiSpace);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("polysides")){
-			result.theResult = Integer.toString(PaintTool.regPolySides);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("gradient")){
-			//塗りの種類(GradButton): off / linear / radial
-			GradButton g = PCARD.pc.grad;
-			result.theResult = g==null ? "off" : g.kind()==0 ? "off" : g.kind()==1 ? "linear" : g.kind()==2 ? "radial" : "texture";
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("filltexture")){
-			//テクスチャ塗りに使うテクスチャの名前(内蔵名 / custom / none)
-			result.theResult = PaintTexture.currentName;
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("gradientangle")){
-			GradButton g = PCARD.pc.grad;
-			result.theResult = Integer.toString(g==null ? 0 : GToolOptions.AngleDial.normalize((int)Math.round(Math.toDegrees(g.angle))));
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("filltolerance")){
-			result.theResult = Integer.toString(PaintTool.fillTolerancePercent);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushsize")){
-			result.theResult = Integer.toString(PaintTool.brushSize);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushhardness")){
-			result.theResult = Integer.toString(PaintTool.brushHardness);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("smudgestrength")){
-			result.theResult = Integer.toString(PaintTool.smudgeStrength);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("stampsource")){
-			//スタンプの写し元(未指定なら空)
-			result.theResult = StampTool.source==null ? "" : StampTool.source.x+","+StampTool.source.y;
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushopacity")){
-			result.theResult = Integer.toString(PaintTool.brushOpacity);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushspacing")){
-			result.theResult = Integer.toString(PaintTool.brushSpacing);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushstabilization") || 0==message.compareTo("brushstabilizer")){
-			result.theResult = Integer.toString(PaintTool.brushStabilization);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushpressure")){
-			//ペンの筆圧を何に効かせるか: size / opacity / size,opacity / none
-			result.theResult = PaintTool.pressureSize ? (PaintTool.pressureOpacity ? "size,opacity" : "size") : (PaintTool.pressureOpacity ? "opacity" : "none");
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("penpressure")){
-			//ペンタブレットの今の筆圧(0〜100、浮かせていれば0)。最近ペンが使われていなければ空
-			TabletInput.start();
-			float p = TabletInput.latest();
-			result.theResult = Float.isNaN(p) ? "" : Integer.toString(Math.round(p*100));
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("zoom")){
-			//ペイントの表示倍率(%)。100が実寸、800がFatBits
-			result.theResult = Integer.toString(PaintTool.zoomPercent(PCARD.pc));
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("zoomorigin")){
-			//拡大表示で左上に見えているカード座標
-			result.theResult = PaintTool.viewLeftOf(PCARD.pc)+","+PaintTool.viewTopOf(PCARD.pc);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("powerkeys")){
-			result.theResult = Boolean.toString(PaintTool.powerKeys);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("gridsize")){
-			//描画グリッドの大きさ(Options > Drawing Grid Size)
-			result.theResult = Integer.toString(PaintTool.drawingGridSize);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("paintlayer")){
-			//編集中のレイヤー番号(1=Card Paint/Background Paint、2〜=追加レイヤー)
-			result.theResult = Integer.toString(PCARD.pc.mainImg==null ? 1 : PCARD.pc.activeLayer()+1);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("paintlayercount")){
-			result.theResult = Integer.toString(PaintLayers.count(PCARD.pc));
-			result.ret = 0;
-		}
+		else if(UiHost.get().paintFunctions(message, params, target, memData, isFunc, result)){}
 		else return CallSystemFunction4(message, params, target, memData, isFunc, result);
 		result.ret = 0;
 		if(result.theResult==null) result.theResult = "";
@@ -2037,70 +1650,14 @@ public class TUtil {
 	private static Result CallSystemFunction4(String message, String[] params, OObject target, MemoryData memData, boolean isFunc, Result result)
 		throws xTalkException
 	{
-		if(0==message.compareTo("layername")){
-			result.theResult = PCARD.pc.mainImg==null ? "" : PaintLayers.nameOf(PCARD.pc, PCARD.pc.activeLayer());
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("layeropacity") || 0==message.compareTo("layerblend") ||
-				0==message.compareTo("layervisible") || 0==message.compareTo("layeralphalock") || 0==message.compareTo("layerclip")){
-			PaintLayer l = PCARD.pc.mainImg==null ? null : PCARD.pc.activePaintLayer();
-			if(0==message.compareTo("layeropacity")) result.theResult = l==null ? "100" : Integer.toString(l.opacity);
-			else if(0==message.compareTo("layerblend")) result.theResult = l==null ? "Normal" : PaintLayer.blendName(l.blend);
-			else if(0==message.compareTo("layervisible")) result.theResult = l==null ? "true" : Boolean.toString(l.visible);
-			else if(0==message.compareTo("layeralphalock")) result.theResult = l==null ? "false" : Boolean.toString(l.alphaLock);
-			else result.theResult = l==null ? "false" : Boolean.toString(l.clipToBelow);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("symmetry")){
-			//対称描画(Options > Symmetry): none / vertical / horizontal / quadrant / radial
-			result.theResult = PaintTool.symmetryName();
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("symmetryaxes")){
-			result.theResult = Integer.toString(PaintTool.symmetryAxes);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("symmetrycenter")){
-			//中心の座標。未設定ならキャンバスの中心
-			java.awt.image.BufferedImage sfc = PCARD.pc.getSurface();
-			if(sfc==null) sfc = PCARD.pc.stack==null ? null : PCARD.pc.stack.curCard==null ? null : PCARD.pc.stack.curCard.pict;
-			float cx = PaintTool.symmetryCenterX, cy = PaintTool.symmetryCenterY;
-			if(cx<0 || cy<0){
-				if(sfc!=null){ cx = sfc.getWidth()/2f; cy = sfc.getHeight()/2f; }
-				else if(PCARD.pc.stack!=null){ cx = PCARD.pc.stack.width/2f; cy = PCARD.pc.stack.height/2f; }
-				else { cx = 0; cy = 0; }
-			}
-			result.theResult = Math.round(cx)+","+Math.round(cy);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("grid")){
-			result.theResult = Boolean.toString(PaintTool.drawingGrid);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("linesize")){
-			result.theResult = TTalk.numFormat.format(PaintTool.lineSize);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("pattern") || 0==message.compareTo("brushpattern") ||
-				0==message.compareTo("penpattern") || 0==message.compareTo("fillpattern")){
-			result.theResult = PCARD.pc.pat==null ? "1" : Integer.toString(PCARD.pc.pat.pattern+1);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushcolor") || 0==message.compareTo("pencolor")){
-			result.theResult = paintColorText(PCARD.pc.fore==null ? Color.BLACK : PCARD.pc.fore.color);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("brushbackcolor") || 0==message.compareTo("penbackcolor")){
-			result.theResult = paintColorText(PCARD.pc.back==null ? Color.WHITE : PCARD.pc.back.color);
-			result.ret = 0;
-		}
+		if(UiHost.get().paintLayerFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("language")){
 			//スクリプトの言語(HyperCard J-2.3 でも "English")。HyperZebra の表示言語(PCARD.pc.lang)ではない
 			result.theResult = "English";
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("lockscreen")){
-			result.theResult = Boolean.toString(PCARD.lockedScreen);
+			result.theResult = Boolean.toString(HZ.lockedScreen);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("lockmessages")){
@@ -2111,31 +1668,20 @@ public class TUtil {
 			result.theResult = Boolean.toString(TTalk.lockErrorDialogs);
 			result.ret = 0;
 		}
-		else if(0==message.compareTo("messagewatcher")){
-			result.theResult = Boolean.toString(MessageWatcher.watcherWindow!=null && MessageWatcher.watcherWindow.isVisible());
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("variablewatcher")){
-			result.theResult = Boolean.toString(VariableWatcher.watcherWindow!=null && VariableWatcher.watcherWindow.isVisible());
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("debugger")){
-			result.theResult = Boolean.toString(ScriptDebugger.paused);
-			result.ret = 0;
-		}
+		else if(UiHost.get().watcherFunctions(message, params, target, memData, isFunc, result)){}
 		else if(0==message.compareTo("stacksinuse")){
 			//start using しているスタックのパス(メッセージパス順、return区切り)。カレントスタック自身は含まない
 			StringBuilder sb = new StringBuilder();
-			if(PCARD.pc.stack!=null && PCARD.pc.stack.usingStacks!=null){
-				for(OStack u : PCARD.pc.stack.usingStacks){
+			if(HZ.stack()!=null && HZ.stack().usingStacks!=null){
+				for(OStack u : HZ.stack().usingStacks){
 					if(u==null || u.path==null) continue;
 					String path = TTalk.stackIdentityPath(u.path);
 					//Homeスタック(./home)はメッセージパスの一部で、stacksInUseには含まれない
-					if(u==PCARD.home || path.equals(TTalk.stackIdentityPath("./home"))) continue;
+					if(u==HZ.home || path.equals(TTalk.stackIdentityPath("./home"))) continue;
 					if(sb.length()>0) sb.append('\n');
 					//Mac paths, as the stacks gives them (UxDeleteFile compares each line with the stack's path: "File is busy" instead
 					//of "Stack is in using" when the line was the host path of the .hzb)
-					sb.append(java.text.Normalizer.normalize(u.file!=null ? u.stackPathName() : TTalk.macStackPath(u.path), java.text.Normalizer.Form.NFC));
+					sb.append(Platform.get().normalize(u.file!=null ? u.stackPathName() : TTalk.macStackPath(u.path), UnicodeNorm.Form.NFC));
 				}
 			}
 			result.theResult = sb.toString();
@@ -2145,14 +1691,7 @@ public class TUtil {
 			result.theResult = paintTextFont();
 			result.ret = 0;
 		}
-		else if(0==message.compareTo("textsize")){
-			result.theResult = Integer.toString(PCARD.pc.textSize);
-			result.ret = 0;
-		}
-		else if(0==message.compareTo("textstyle")){
-			result.theResult = textStyleName(PCARD.pc.textStyle);
-			result.ret = 0;
-		}
+		else if(UiHost.get().paintTextFunctions(message, params, target, memData, isFunc, result)){}
 		else if(compatibilityProperties.containsKey(message)){
 			result.theResult = compatibilityProperties.get(message);
 			result.ret = 0;
@@ -2188,7 +1727,7 @@ public class TUtil {
 		}
 		//a function call is never one of HyperCard's messages: Palette("Install",…) is the stack's own XFCN (PaletteXFCN's
 		//tear-off palette never appeared: the call ended in the built-in palette command)
-		if(isFunc && TXcmd.externalOwner(message, "function")!=null){
+		if(isFunc && UiHost.get().tXcmdExternalOwner(message, "function")!=null){
 			return callExternalOrFunction(message, params, target, memData, isFunc, result);
 		}
 		//a 68K external named like one of HyperCard's own messages takes it as the message passes the stack, before
@@ -2197,8 +1736,8 @@ public class TUtil {
 		//HyperCard's own Picture XCMD), Palette too when it names a PLTE resource as HyperCard's palette does; another
 		//external named Palette is the stack's own (Palette Stack's pltt XCMD: Palette "G","Logo","LogoPal")
 		if(!isFunc && !message.equalsIgnoreCase("picture") && !(message.equalsIgnoreCase("palette") && namesPlteResource(params)) &&
-				TXcmd.runnable68kExternal(message, "command")){
-			Result taken = TXcmd.CallExternalCommand(message, params, target, memData, false, result);
+				UiHost.get().tXcmdRunnable68kExternal(message, "command")){
+			Result taken = UiHost.get().tXcmdCallExternalCommand(message, params, target, memData, false, result);
 			if(taken.ret==0) return taken;
 			result = new Result();
 			result.ret = 1;
@@ -2294,7 +1833,7 @@ public class TUtil {
 		}
 		else if(0==message.compareTo("doMenu")){
 			//メニュー選択がスクリプトに捕まえられなかった: 組み込みのメニュー動作/menuMessage
-			GMenuBrowse.doMenu(params.length>0 ? params[0] : "", params.length>1 ? params[1] : null);
+			UiHost.get().doMenu(params.length>0 ? params[0] : "", params.length>1 ? params[1] : null);
 			result.ret = 0;
 		}
 		else if(0==message.compareTo("arrowKey")){
@@ -2302,7 +1841,13 @@ public class TUtil {
 			//textArrows が true でフィールド編集中なら Swing 側が挿入ポイントを動かすので何もしない
 			OField caret = findFocusedOrClickedField();
 			boolean textArrows = compatibilityProperty("textArrows").equalsIgnoreCase("true");
-			if(!(textArrows && caret!=null && caret.fld!=null && caret.fld.isFocusOwner())){
+			if(textArrows && caret!=null && caret.fld!=null && caret.view().isFocusOwner()){
+				//(the desktop: Swing has moved it)
+			}else if(textArrows && caret!=null && caret.fld==null && caret==TTalk.openField && UiHost.get().fieldHasView(caret)){
+				//the browser player has no Swing view: the open field's insertion point moves here (Sedit3.1's set textArrows
+				//to true: the arrows went to the card, go next, and the selection was lost)
+				UiHost.get().moveCaretInView(null, message, params[0], memData, caret);
+			}else{
 				TTalk.arrowKeyNavigation(params[0]);
 			}
 			result.ret = 0;
@@ -2314,144 +1859,8 @@ public class TUtil {
 			//キーボードコマンドが最後まで届いた: 組み込み動作はコマンド側(TTalk.keyboardCommand)で行う
 			result.ret = 0;
 		}
-		else if(message.equalsIgnoreCase("picture")){
-			//HomeスタックのXCMD
-			//no source (picture "部品1",,rect,false: まさの冒険's ending): HyperCard's default is a file; a resource of that
-			//name is looked for after it, as HyperZebra did before
-			boolean defaultSource = !(params.length>=2 && params[1].trim().length()>0);
-			String typeStr = defaultSource ? "file" : params[1];
-			String windowType = "rect";
-			if(params.length>=3 && params[2].length()>0){
-				windowType = params[2];
-			}
-			boolean visible = true;
-			if(params.length>=4 && params[3].length()>0){
-				visible = params[3].equalsIgnoreCase("true");
-			}
-			BufferedImage bi = null;
-			String windowName = params[0];
-			if(defaultSource){
-				File around = StackBundle.folderAround(PCARD.pc.stack.file);
-				File beside = new File(around, params[0]);
-				if(!beside.isFile()){ File other = TTalk.expandShortHfsNames(beside); if(other!=null) beside = other; }
-				if(!beside.isFile() && !new File(TTalk.convertFromMacPath(params[0])).isFile()) typeStr = "resource";
-			}
-			if(typeStr.equalsIgnoreCase("resource")){
-				//リソースを探す(名前、無ければID)。ウィンドウ名はリソース名(無名ならID)。
-				//picture 128,resourceの後でそのウィンドウを操作する場合がある
-				//名前で見つけたPICTはそのまま使う(IDで引き直すと、Homeの名前とこのスタックのIDが重なったとき別の絵になる)
-				Rsrc rsrc = PCARD.pc.stack.rsrc;
-				Rsrc.rsrcClass named = rsrc.findByNameAll(params[0],"PICT");
-				if(named!=null){
-					bi = rsrc.getImage(params[0],"PICT"); //the window keeps the name as the script wrote it (HC J-2.3: openPicture "sutame" for PICT "Sutame")
-				}
-				else if(params[0].trim().matches("-?[0-9]+")){
-					int rsrcid = Integer.parseInt(params[0].trim());
-					bi = rsrc.getImage(rsrcid,"PICT");
-					String rsrcName = rsrc.getNameAll(rsrcid,"PICT");
-					if(rsrcName!=null && rsrcName.length()>0) windowName = rsrcName;
-					//a PICT without a name: the window is "PICT ID n" (Power Tools Resource Mover "View")
-					else if(bi!=null) windowName = "PICT ID "+rsrcid;
-				}
-			}
-			else if(typeStr.equalsIgnoreCase("clipboard")){
-				//picture "Clipboard","clipboard": the picture on the clipboard (Readymade Buttons)
-				try{
-					java.awt.datatransfer.Transferable t = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null);
-					if(t!=null && t.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.imageFlavor)){
-						java.awt.Image img = (java.awt.Image)t.getTransferData(java.awt.datatransfer.DataFlavor.imageFlavor);
-						if(img instanceof BufferedImage) bi = (BufferedImage)img;
-						else if(img!=null && img.getWidth(null)>0){
-							bi = new BufferedImage(img.getWidth(null), img.getHeight(null), BufferedImage.TYPE_INT_ARGB);
-							java.awt.Graphics2D g = bi.createGraphics(); g.drawImage(img, 0, 0, null); g.dispose();
-						}
-					}
-				}catch(Exception e){ bi = null; }
-			}
-			else if(typeStr.equalsIgnoreCase("file")){
-				//ファイルを探す(スタックのフォルダ、次に指定されたパスそのもの)。PICT でも PNG/JPEG/GIF でもよい
-				File around = StackBundle.folderAround(PCARD.pc.stack.file); //beside the stack (a stack file's folder, not its working folder)
-				String path = (around+File.separator+params[0]);
-				if(!new File(path).exists()){
-					//the name in the other encoding (BRAVE: "picture "レオン",file" for the host file "ÉåÉIÉì", its Shift-JIS bytes read as Mac OS Roman)
-					File other = TTalk.expandShortHfsNames(new File(path));
-					if(other!=null && other.isFile()) path = other.getPath();
-				}
-				bi = loadPictureFile(path);
-				if(bi==null) bi = loadPictureFile(TTalk.convertFromMacPath(params[0]));
-				//":fix:Flower.pic": a partial path from the folder open file uses (UDI UxGetFileIcon demo buttons)
-				if(bi==null) bi = loadPictureFile(TTalk.resolveFilePath(params[0]));
-				//HyperCard's search path for documents (A-OK!: ":A-OK! Graphics:" in the global documents, picture "Earth Path Indicator",file)
-				if(bi==null) for(File folder : TTalk.searchPathFolders("documents")){
-					File found = new File(folder, params[0]);
-					if(found.isFile()){ bi = loadPictureFile(found.getPath()); if(bi!=null) break; }
-				}
-				//ウィンドウ名はファイル名(パスは含めない)
-				String fileName = new File(TTalk.convertFromMacPath(params[0])).getName();
-				if(!fileName.isEmpty()) windowName = fileName;
-			}
-			if(bi!=null){
-				//the text in the picture translated (PictureTranslation) when the stack is
-				if(!typeStr.equalsIgnoreCase("clipboard")) bi = PictureTranslation.shown(PCARD.pc.stack, bi);
-				GPictWindow gpw = new GPictWindow(PCARD.pc, windowName, bi, windowType, visible);
-				gpw.enablePictureMessages();
-				new OWindow(gpw);
-				//openPicture <window name> before the next statement (HyperCard J-2.3 measured; Express Yourself keeps the name
-				//its on openPicture is given and moves that window right after the picture command)
-				GPictWindow.sendPictureMessage("openPicture", windowName);
-			}
-			//Picture XCMD: a picture it cannot show sets the result (Power Tools Resource Mover "View",
-			//Readymade Buttons: if "Couldn't display picture" is in the result)
-			else result.theResult = "Couldn't display picture.";
-			result.ret = 0;
-		}
-		else if(message.equalsIgnoreCase("palette")){
-			//HomeスタックのXCMD
-			if(params.length<1 || params[0].length()==0){
-				throw new xTalkException("palette requires a palette name");
-			}
-			OWindow existingWindow = OWindow.findPaletteWindow(params[0]);
-			if(existingWindow!=null){
-				if(params.length>=2){
-					Point location = parsePaletteLocation(params[1]);
-					//locationはカード基準の論理座標なので、実画面座標に足す前にscale()倍する。
-					if(location!=null){
-						existingWindow.gpw.setLocation(paletteLocationOnScreen(
-							getCardOriginOnScreen(), new Point(PCARD.toPhysical(location.x), PCARD.toPhysical(location.y))));
-					}
-				}
-				existingWindow.gpw.setVisible(true);
-				existingWindow.gpw.toFront();
-				result.ret = 0;
-				return result;
-			}
-			//PLTEリソースを探す
-			boolean found = false;
-			for(int i=0; i<PCARD.pc.stack.rsrc.plteList.size(); i++){
-				Rsrc.PlteClass plte = PCARD.pc.stack.rsrc.plteList.get(i);
-				if(plte.name.equalsIgnoreCase(params[0])){
-					BufferedImage bi = PCARD.pc.stack.rsrc.getImage(plte.pictId,"PICT");
-					if(bi==null){
-						bi = PCARD.pc.stack.rsrc.getImage(plte.id,"PICT");
-					}
-					if(bi!=null){
-						bi = PictureTranslation.shown(PCARD.pc.stack, bi); //its text translated when the stack is
-						// Some PICT resources retain their QuickDraw origin as transparent
-						// top/left canvas space, while others are already normalized.
-						openPaletteWindow(plte, normalizePaletteImage(bi, plte.pictHV), params);
-					}
-					else{
-						result.theResult = "Error: PICT not found.";
-					}
-					found = true;
-					break;
-				}
-			}
-			//palette "Navigator" (MailReader and ~120 other stacks): HyperCard's own PLTE 128, for stacks without one
-			if(!found && params[0].trim().equalsIgnoreCase(NavigatorPalette.NAME))
-				openPaletteWindow(NavigatorPalette.plte(PCARD.pc.stack.rsrc), NavigatorPalette.image(), params);
-			result.ret = 0;
-		}
+		else if(message.equalsIgnoreCase("picture")){ return UiHost.get().pictureCommand(message, params, target, memData, isFunc, result); }
+		else if(message.equalsIgnoreCase("palette")){ return UiHost.get().paletteCommand(message, params, target, memData, isFunc, result); }
 		else{
 			return callExternalOrFunction(message, params, target, memData, isFunc, result);
 		}
@@ -2459,6 +1868,8 @@ public class TUtil {
 		return result;
 	}
 
+	/** One of HyperCard's own messages (openStack, mouseUp…), lower case */
+	static boolean isSystemMessage(String lowerName) { return SYSTEM_MESSAGE_NAMES.contains(lowerName); }
 	private static final java.util.Set<String> SYSTEM_MESSAGE_NAMES = java.util.Set.of(
 		"arrowkey", "closebackground", "closecard", "closefield", "closemovie", "closepalette", "closepicture", "openpicture",
 		"closestack", "commandkeydown", "controlkey", "deletebackground", "deletebutton", "deletecard",
@@ -2475,7 +1886,7 @@ public class TUtil {
 	private static boolean namesPlteResource(String[] params) {
 		if(params==null || params.length<1 || params[0]==null || params[0].isEmpty()) return false; //HyperCard's needs a name
 		if(OWindow.findPaletteWindow(params[0])!=null) return true;
-		OStack st = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack st = Host.get().hasCardWindow() ? HZ.stack() : null;
 		if(st==null || st.rsrc==null) return true;
 		for(Rsrc.PlteClass plte : st.rsrc.plteList) if(plte.name!=null && plte.name.equalsIgnoreCase(params[0])) return true;
 		return false;
@@ -2490,13 +1901,13 @@ public class TUtil {
 	private static Result callExternalOrFunction(String message, String[] params, OObject target, MemoryData memData, boolean isFunc, Result result)
 		throws xTalkException
 	{
-		if(TXcmd.externalOwner(message, isFunc ? "function" : "command")!=null) //the open stack's, a using stack's or Home's
+		if(UiHost.get().tXcmdExternalOwner(message, isFunc ? "function" : "command")!=null) //the open stack's, a using stack's or Home's
 		{
-			return TXcmd.CallExternalCommand(message,params, target, memData, isFunc, result);
+			return UiHost.get().tXcmdCallExternalCommand(message,params, target, memData, isFunc, result);
 		}
 		else if(!isFunc && (message.equalsIgnoreCase("addcolor") || message.equalsIgnoreCase("movie"))){
 			//AddColor は HyperCard 2.2 以降、Movie は HyperCard 2.4 が自前で持つ XCMD(スタック側にリソースは無い): 組み込みの実装へ
-			return TXcmd.CallExternalCommand(message,params, target, memData, isFunc, result);
+			return UiHost.get().tXcmdCallExternalCommand(message,params, target, memData, isFunc, result);
 		}
 		else if(!isFunc && homeUserLevelHandler(message)){
 			result.ret = 0;
@@ -2505,7 +1916,7 @@ public class TUtil {
 			result = CallSystemFunction(message.toLowerCase(), params, target, memData, isFunc);
 			if(result.ret!=0){
 				System.out.println("未定義の関数:"+message);
-				throw new xTalkException(OsaScript.cantUnderstand(message, target));
+				throw new xTalkException(UiHost.get().osaScriptCantUnderstand(message, target));
 			}
 		}
 		return result;
@@ -2521,12 +1932,12 @@ public class TUtil {
 	 */
 	private static boolean homeUserLevelHandler(String message){
 		if(message.equalsIgnoreCase("setUserLevelFive")){
-			homeSavedUserLevel = StackProtection.effectiveUserLevel();
-			PCARD.userLevel = 5;
+			homeSavedUserLevel = UiHost.get().stackProtectionEffectiveUserLevel();
+			HZ.userLevel = 5;
 		}
 		else if(message.equalsIgnoreCase("restoreUserLevel")){
 			if(homeSavedUserLevel==null) return true;
-			PCARD.userLevel = homeSavedUserLevel;
+			HZ.userLevel = homeSavedUserLevel;
 		}
 		else if(message.equalsIgnoreCase("getHomeInfo")){
 			//HyperCard 1.x/2.x Home: re-applies the User Preferences card (user level etc.); stacks call it in
@@ -2534,7 +1945,7 @@ public class TUtil {
 			applyHomePreferences();
 		}
 		else return false;
-		GMenu.enforceUserLevel();
+		UiHost.get().enforceUserLevel();
 		return true;
 	}
 
@@ -2552,7 +1963,7 @@ public class TUtil {
 			try { if(levelField!=null) level = Math.max(1, Math.min(5, Integer.parseInt(levelField.getText().trim()))); }
 			catch(NumberFormatException e){ /* HyperZebra's level */ }
 			OButton b = prefs.GetBtn("Power Keys");
-			if(b!=null) PaintTool.setPowerKeys(b.getHilite());
+			if(b!=null) UiHost.get().paintToolSetPowerKeys(b.getHilite());
 			b = prefs.GetBtn("Text Arrows");
 			if(b==null) b = prefs.GetBtn("Arrow Keys in Text"); //HyperCard 2.x Home's name
 			if(b!=null) compatibilityProperties.put("textarrows", Boolean.toString(b.getHilite()));
@@ -2562,7 +1973,7 @@ public class TUtil {
 			TTalk.setGlobal("UserName", name==null ? "" : name.getText());
 			for(String card: HomeStack.PATH_CARDS) TTalk.setGlobal(card, homePaths(home, card));
 		}
-		PCARD.userLevel = level;
+		HZ.userLevel = level;
 	}
 	/** The background field "Paths" of Home's search path card {@code card}; empty when there is none. */
 	private static String homePaths(OStack home, String card){
@@ -2590,56 +2001,16 @@ public class TUtil {
 	}
 
 	/** Opens a palette window for {@code plte} at params[1] (card coordinates; HyperCard's 10,20 without) and sends openPalette. */
-	private static void openPaletteWindow(Rsrc.PlteClass plte, BufferedImage image, String[] params) {
-		//ウィンドウ作成(見た目とボタンはPLTEの内容からGPictWindowが組み立てる)
-		GPictWindow gpw = new GPictWindow(PCARD.pc, plte, image);
-		OWindow window = new OWindow(gpw);
-		//位置はカードの左上基準。省略時はHyperCardと同じく10,20
-		Point location = params.length>=2 ? parsePaletteLocation(params[1]) : null;
-		if(location==null) location = new Point(10,20);
-		gpw.setLocation(paletteLocationOnScreen(
-			getCardOriginOnScreen(), new Point(PCARD.toPhysical(location.x), PCARD.toPhysical(location.y))));
-		gpw.setVisible(true);
-		if(PCARD.pc.stack.curCard!=null){
-			TTalk.CallMessage("openPalette", new String[]{params[0], Integer.toString(window.id)}, PCARD.pc.stack.curCard);
-		}
-	}
+	private static void openPaletteWindow(Rsrc.PlteClass plte, BufferedImage image, String[] params) { UiHost.get().openPaletteWindow(plte, image, params); }
 
 	static java.awt.Rectangle paletteButtonBounds(java.awt.Rectangle source, Point pictOrigin) {
 		return new java.awt.Rectangle(source.x-pictOrigin.x, source.y-pictOrigin.y,
 			source.width, source.height);
 	}
 
-	static BufferedImage normalizePaletteImage(BufferedImage source, Point pictOrigin) {
-		if(source==null || pictOrigin==null || pictOrigin.x<=0 && pictOrigin.y<=0 ||
-			pictOrigin.x<0 || pictOrigin.y<0 || pictOrigin.x>=source.getWidth() ||
-			pictOrigin.y>=source.getHeight()) return source;
-
-		int minX = source.getWidth();
-		int minY = source.getHeight();
-		for(int y=0; y<source.getHeight(); y++){
-			for(int x=0; x<source.getWidth(); x++){
-				if((source.getRGB(x, y)>>>24)!=0){
-					if(x<minX) minX=x;
-					if(y<minY) minY=y;
-				}
-			}
-		}
-		// Do not crop an already-normalized PICT merely because its PLTE
-		// resource uses absolute coordinates for buttons.
-		if(minX<pictOrigin.x || minY<pictOrigin.y) return source;
-
-		int width = source.getWidth()-pictOrigin.x;
-		int height = source.getHeight()-pictOrigin.y;
-		BufferedImage normalized = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-		java.awt.Graphics2D graphics = normalized.createGraphics();
-		graphics.drawImage(source, -pictOrigin.x, -pictOrigin.y, null);
-		graphics.dispose();
-		return normalized;
-	}
+	static BufferedImage normalizePaletteImage(BufferedImage source, Point pictOrigin) { return UiHost.get().normalizePaletteImage(source, pictOrigin); }
 	
 	
-	static SendMsgListener sendMsgListener = tutil.new SendMsgListener();
 
 	/** パレットのボタンが押された: そのメッセージ(複数行も可)をスクリプトスレッドで実行する */
 	static void sendPaletteMessage(String message){
@@ -2661,7 +2032,7 @@ public class TUtil {
 	//偶数丸め
 	/** SANE(HyperCard)と同じ「.5は偶数側へ」の丸め。負数や2^31を超える値でも正しく丸める */
 	static long IEEE_Round(double v){
-		return (long)Math.rint(v);
+		return (long)HzMath.rint(v);
 	}
 
 	//整数値のdoubleを指数表記や".0"なしの文字列にする(trunc/round用)
@@ -2676,10 +2047,10 @@ public class TUtil {
 	 *  or an absolute path. null when there is no such disk */
 	static File diskFolder(String name){
 		if(name==null || name.isEmpty()) return null;
-		if(name.equalsIgnoreCase(FileSystem68k.BOOT_VOLUME_NAME)) return QuickTimeService.systemFolder().getParentFile();
+		if(name.equalsIgnoreCase(FileSystem68k.BOOT_VOLUME_NAME)) return UiHost.get().quickTimeServiceSystemFolder().getParentFile();
 		if(name.equalsIgnoreCase("Home")) return new File(System.getProperty("user.home"));
 		if(name.equalsIgnoreCase("Macintosh HD")) return new File(File.listRoots()!=null && File.listRoots().length>0 ? File.listRoots()[0].getPath() : "/");
-		for(DiskImages.Mounted m : DiskImages.mounted()) if(m.name.equalsIgnoreCase(name) && m.folder.isDirectory()) return m.folder;
+		File mountedDisk = UiHost.get().mountedDiskFolder(name); if(mountedDisk!=null) return mountedDisk;
 		File[] roots = File.listRoots();
 		if(roots!=null) for(File root : roots){ if(name.equalsIgnoreCase(root.getPath().replace("\\","").replace(":",""))) return root; }
 		File volume = new File(name.startsWith("/") ? name : "/Volumes/"+name);
@@ -2687,35 +2058,22 @@ public class TUtil {
 	}
 
 	/** picture <file>,file / open picture: a PICT file or one Java reads (PNG, JPEG, GIF…). null when the file is neither */
-	static BufferedImage loadPictureFile(String path){
-		File f = new File(path);
-		if(!f.isFile()) return null;
-		try{
-			BufferedImage bi = ImageIO.read(f);
-			if(bi!=null) return bi;
-		}catch(IOException | RuntimeException e){ /* not an image Java knows */ }
-		try{ return PictureFile.loadPICT(path); }
-		catch(RuntimeException e){ return null; } //a file that is not a PICT parses to nonsense sizes
-	}
+	static BufferedImage loadPictureFile(String path){ return UiHost.get().loadPictureFile(path); }
 
 	/** カードウインドウ基準の論理座標で見た、picture/paletteウインドウの位置 */
 	static java.awt.Rectangle pictureWindowRect(GPictWindow gpw){
 		Point origin = gpw.isPaletteWindow() ? getCardOriginOnScreen() : windowOrigin();
-		return new java.awt.Rectangle(PCARD.toLogical(gpw.getX()-origin.x), PCARD.toLogical(gpw.getY()-origin.y), PCARD.toLogicalLength(gpw.getWidth()), PCARD.toLogicalLength(gpw.getHeight()));
+		return new java.awt.Rectangle(Host.get().toLogical(gpw.getX()-origin.x), Host.get().toLogical(gpw.getY()-origin.y), Host.get().toLogicalLength(gpw.getWidth()), Host.get().toLogicalLength(gpw.getHeight()));
 	}
 
 	/** The message box in the card-window coordinates "set the loc of msg" uses. */
-	static java.awt.Rectangle messageBoxRect(){
-		Point origin = getCardOriginOnScreen();
-		//the text box without the title bar, as big as HyperCard's for the scripts that lay out around it (HC J-2.3: 472 by 35)
-		return new java.awt.Rectangle(PCARD.toLogical(GMsg.msg.getX()-origin.x), PCARD.toLogical(GMsg.msg.getY()-origin.y), 472, 35);
-	}
+	static java.awt.Rectangle messageBoxRect(){ return UiHost.get().messageBoxRect(); }
 
 	/** loc/rect/left/…/visible of HyperCard's Scroll/FatBits windoids: kept, nothing is shown. False for another property. */
 	private static boolean setHcWindowProperty(OHcWindow w, String prpty, String value) throws xTalkException {
 		//answer/ask: a side or corner set alone moves the dialog from where it would come up now
-		if(w.isDialog() && !w.placed && !prpty.equals("visible") && PCARD.pc!=null && PCARD.pc.stack!=null){
-			java.awt.Point at = w.dialogTopLeft(PCARD.pc.stack.width, PCARD.pc.stack.height);
+		if(w.isDialog() && !w.placed && !prpty.equals("visible") && Host.get().hasCardWindow() && HZ.stack()!=null){
+			java.awt.Point at = w.dialogTopLeft(HZ.stack().width, HZ.stack().height);
 			w.left = at.x; w.top = at.y;
 		}
 		if(w.isDialog() && !prpty.equals("visible")) w.placed = true;
@@ -2757,36 +2115,7 @@ public class TUtil {
 	}
 
 	/** picture/paletteウインドウのプロパティ。該当しなければnull */
-	static String getPictureWindowProperty(GPictWindow gpw, String prpty){
-		java.awt.Rectangle r = pictureWindowRect(gpw);
-		switch(prpty){
-			case "left": return Integer.toString(r.x);
-			case "top": return Integer.toString(r.y);
-			case "right": return Integer.toString(r.x+r.width);
-			case "bottom": return Integer.toString(r.y+r.height);
-			case "topleft": return r.x+","+r.y;
-			case "botright": case "bottomright": return (r.x+r.width)+","+(r.y+r.height);
-			case "loc": case "location": return r.x+","+r.y; //the loc of a window is its top-left corner (HyperTalk Reference), as set loc puts it
-			case "rect": case "rectangle": return r.x+","+r.y+","+(r.x+r.width)+","+(r.y+r.height);
-			case "width": return Integer.toString(r.width);
-			case "height": return Integer.toString(r.height);
-			case "visible": return Boolean.toString(gpw.isVisible());
-			case "dithering": return Boolean.toString(gpw.dithering);
-			//the size of the picture itself, whatever the window's rect (HyperCard J-2.3; G-zone ! sizes its cards by them)
-			case "picturewidth": return gpw.label!=null && gpw.label.bi!=null ? Integer.toString(gpw.label.bi.getWidth()) : Integer.toString(r.width);
-			case "pictureheight": return gpw.label!=null && gpw.label.bi!=null ? Integer.toString(gpw.label.bi.getHeight()) : Integer.toString(r.height);
-			case "globalloc": return PCARD.toLogical(gpw.getX())+","+PCARD.toLogical(gpw.getY()); //screen coordinates (HyperCard 2.2 picture windows), as the screenRect's
-			case "globalrect": return PCARD.toLogical(gpw.getX())+","+PCARD.toLogical(gpw.getY())+","+(PCARD.toLogical(gpw.getX())+r.width)+","+(PCARD.toLogical(gpw.getY())+r.height);
-		}
-		if(gpw.isPaletteWindow()){
-			switch(prpty){
-				case "hilitedbutton": return Integer.toString(gpw.getHilitedButton());
-				case "commands": return gpw.paletteCommands();
-				case "buttoncount": return Integer.toString(gpw.paletteButtonCount());
-			}
-		}
-		return null;
-	}
+	static String getPictureWindowProperty(GPictWindow gpw, String prpty){ return UiHost.get().getPictureWindowProperty(gpw, prpty); }
 
 	//---- pattern Nのプロパティ(画像オブジェクト風の語彙) ----
 	// width/height … ドット数(ppatの規則で8/16/32/64)
@@ -2794,82 +2123,9 @@ public class TUtil {
 	// text         … 1行1段、1ドット1文字("1"=前景インク、"0"=背景インク。色付きの
 	//                ドットは明るさで丸める)。HyperCardのPATと同じ感覚で書ける
 	// number/name  … 番号と"pattern N"
-	static String getPatternProperty(OPattern op, String prpty) throws xTalkException {
-		java.awt.image.BufferedImage img = op.image();
-		if(img==null) throw new xTalkException("No such pattern");
-		int w=img.getWidth(), h=img.getHeight();
-		if(prpty.equals("width")) return Integer.toString(w);
-		if(prpty.equals("height")) return Integer.toString(h);
-		if(prpty.equals("number")) return Integer.toString(op.index+1);
-		if(prpty.equals("name") || prpty.equals("short name") || prpty.equals("long name")) return op.getShortName();
-		if(prpty.equals("imagedata")){
-			StringBuilder sb = new StringBuilder(w*h*4);
-			for(int y=0;y<h;y++) for(int x=0;x<w;x++){
-				int c = img.getRGB(x,y);
-				sb.append((char)0).append((char)((c>>16)&0xFF)).append((char)((c>>8)&0xFF)).append((char)(c&0xFF));
-			}
-			return sb.toString();
-		}
-		if(prpty.equals("text")){
-			StringBuilder sb = new StringBuilder();
-			for(int y=0;y<h;y++){
-				if(y>0) sb.append('\n');
-				for(int x=0;x<w;x++){
-					int c = img.getRGB(x,y);
-					int a=(c>>>24)&0xFF, lum=(((c>>16)&255)*299+((c>>8)&255)*587+(c&255)*114)/1000;
-					sb.append(a>=128 && lum<128 ? '1' : '0');
-				}
-			}
-			return sb.toString();
-		}
-		return null;
-	}
+	static String getPatternProperty(OPattern op, String prpty) throws xTalkException { return UiHost.get().getPatternProperty(op, prpty); }
 
-	static void setPatternProperty(OPattern op, String prpty, String value) throws xTalkException {
-		java.awt.image.BufferedImage img = op.image();
-		if(img==null) throw new xTalkException("No such pattern");
-		int w=img.getWidth(), h=img.getHeight();
-		if(prpty.equals("width") || prpty.equals("height")){
-			int n = propertyInteger(prpty, value);
-			if(n<PatButton.MIN_SIDE || n>PatButton.MAX_SIDE || (n&(n-1))!=0)
-				throw new xTalkException("{0} requires 8, 16, 32 or 64 (ppat format)", prpty);
-			int nw = prpty.equals("width") ? n : w, nh = prpty.equals("height") ? n : h;
-			java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(nw,nh,java.awt.image.BufferedImage.TYPE_INT_ARGB);
-			for(int y=0;y<nh;y++) for(int x=0;x<nw;x++) out.setRGB(x,y,img.getRGB(x%w,y%h));
-			op.setImage(out);
-			return;
-		}
-		if(prpty.equals("imagedata")){
-			if(value.length()!=w*h*4) throw new xTalkException("Incorrect imageData length ({0} bytes required)", (w*h*4));
-			java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(w,h,java.awt.image.BufferedImage.TYPE_INT_ARGB);
-			int p=0;
-			for(int y=0;y<h;y++) for(int x=0;x<w;x++){
-				int r=value.charAt(p+1)&0xFF, g=value.charAt(p+2)&0xFF, b=value.charAt(p+3)&0xFF;
-				p+=4;
-				out.setRGB(x,y,PatternEditor.normalize(0xFF000000|(r<<16)|(g<<8)|b));
-			}
-			op.setImage(out);
-			return;
-		}
-		if(prpty.equals("text")){
-			String[] rows = value.split("\r?\n|\r");
-			int nh = PatButton.ppatSide(rows.length), nw = 0;
-			for(String r : rows) nw = Math.max(nw, r.trim().length());
-			nw = PatButton.ppatSide(nw);
-			java.awt.image.BufferedImage out = new java.awt.image.BufferedImage(nw,nh,java.awt.image.BufferedImage.TYPE_INT_ARGB);
-			for(int y=0;y<nh;y++){
-				String row = y<rows.length ? rows[y].trim() : "";
-				for(int x=0;x<nw;x++){
-					char ch = x<row.length() ? row.charAt(x) : '0';
-					boolean on = ch=='1' || ch=='#' || ch=='*' || ch=='X' || ch=='x';
-					out.setRGB(x,y,on ? PatternEditor.INK_FORE : PatternEditor.INK_BACK);
-				}
-			}
-			op.setImage(out);
-			return;
-		}
-		throw new xTalkException("pattern has no property {0}", prpty);
-	}
+	static void setPatternProperty(OPattern op, String prpty, String value) throws xTalkException { UiHost.get().setPatternProperty(op, prpty, value); }
 
 	//ペイントの色(brushColor/penColor=前景色、brushBackColor/penBackColor=背景色)。
 	//値はHyperZebraの他の色プロパティと同じ16bitのr,g,b。背景色は"transparent"で透明になる。
@@ -2900,14 +2156,11 @@ public class TUtil {
 		//the short/long number of an object is its number (HyperCard J-2.3; 地雷ゲーム: short number of the target + …)
 		if(prpty.endsWith(" number") && prpty.matches("(short|long|abbr|abbrev|abbreviated) number")) prpty = "number";
 		BuiltinCommandMessage.noteProperty(prpty);
-		if(obj instanceof OWindow && ((OWindow)obj).dlog instanceof VariableWatcher && (prpty.equals("hbarloc") || prpty.equals("vbarloc"))){
-			VariableWatcher w = (VariableWatcher)((OWindow)obj).dlog;
-			return Integer.toString(PCARD.toLogical(prpty.equals("hbarloc") ? w.hBarLoc() : w.vBarLoc()));
-		}
+		if(obj instanceof OWindow && UiHost.get().isVariableWatcher(((OWindow)obj).dlog) && (prpty.equals("hbarloc") || prpty.equals("vbarloc"))){ return UiHost.get().watcherBarLoc(inProperty, obj, target, memData, prpty); }
 		//the debugger's windows where they are, in the coordinates `set` places them in (the card window's)
 		if(obj instanceof OWindow && ((OWindow)obj).dlog!=null && obj!=OWindow.msgwindow){
-			java.awt.Rectangle b = ((OWindow)obj).dlog.getBounds();Point o = windowOrigin();
-			int l = PCARD.toLogical(b.x-o.x), t = PCARD.toLogical(b.y-o.y), w = PCARD.toLogical(b.width), h = PCARD.toLogical(b.height);
+			java.awt.Rectangle b = UiHost.get().dialogBounds(((OWindow)obj).dlog);Point o = windowOrigin();
+			int l = Host.get().toLogical(b.x-o.x), t = Host.get().toLogical(b.y-o.y), w = Host.get().toLogical(b.width), h = Host.get().toLogical(b.height);
 			switch(prpty){
 			case "rect": case "rectangle": return l+","+t+","+(l+w)+","+(t+h);
 			case "loc": case "location": case "topleft": return l+","+t;
@@ -2918,7 +2171,7 @@ public class TUtil {
 		}
 		if(prpty.equals("panel") && (obj instanceof OButton || obj instanceof OField || obj instanceof OShape)) return panelOfPart(obj);
 		//HyperCard 2.2+: the language of an object's script; a compiled AppleScript (OSA) one is kept but never run (OsaScript)
-		if(prpty.equals("scriptinglanguage") && hasScriptingLanguage(obj)) return obj.osaScript==null ? "HyperTalk" : obj.osaScript.languageName();
+		if(prpty.equals("scriptinglanguage") && hasScriptingLanguage(obj)) return obj.osaScript==null ? "HyperTalk" : UiHost.get().osaLanguage(obj.osaScript);
 		if(obj instanceof OShape){
 			OShape shape=(OShape)obj;
 			if(prpty.equals("number"))return Integer.toString(shape.getNumber());
@@ -2928,7 +2181,7 @@ public class TUtil {
 			if(prpty.equals("stroke"))return shape.strokeColor==null?"none":String.format("#%08X",shape.strokeColor.getRGB());
 			if(prpty.equals("strokewidth"))return Float.toString(shape.strokeWidth);
 			if(prpty.equals("opacity"))return Integer.toString(Math.round(shape.opacity*100));
-			if(prpty.equals("rotation"))return ShapeFilterPanel.num(shape.rotation);
+			if(prpty.equals("rotation"))return OShape.num(shape.rotation);
 			String value=shape.scriptProperty(prpty);if(value!=null)return value;
 		}
 		if(obj instanceof OPanel){
@@ -2951,17 +2204,17 @@ public class TUtil {
 			if(prpty.equals("datakeys")) return panel.dataKeys();
 			if(prpty.equals("script")) return panel.getScriptText();
 		}
-		if(obj==OToolWindow.toolwindow && PCARD.pc!=null && PCARD.pc.toolbar!=null && PCARD.pc.toolbar.tb!=null){
+		if(obj==OToolWindow.toolwindow && UiHost.get().toolPaletteBounds()!=null){
 			//the Tools palette where it is, in the card window's coordinates set loc/topLeft place it in (ぺいんと+ saves it)
-			java.awt.Rectangle b = PCARD.pc.toolbar.tb.getBounds();Point o = windowOrigin();
-			int l = PCARD.toLogical(b.x-o.x), t = PCARD.toLogical(b.y-o.y);
-			String v = rectProperty(new java.awt.Rectangle(l, t, PCARD.toLogical(b.width), PCARD.toLogical(b.height)), prpty);
+			java.awt.Rectangle b = UiHost.get().toolPaletteBounds();Point o = windowOrigin();
+			int l = Host.get().toLogical(b.x-o.x), t = Host.get().toLogical(b.y-o.y);
+			String v = rectProperty(new java.awt.Rectangle(l, t, Host.get().toLogical(b.width), Host.get().toLogical(b.height)), prpty);
 			if(v!=null) return v;
 		}
 		if(obj instanceof OHcWindow){ //HyperCard's Scroll/FatBits windoids: the rect a script gave them (loc = top left, as for windows)
 			OHcWindow w = (OHcWindow)obj;
 			java.awt.Point at = new java.awt.Point(w.left, w.top);
-			if(w.isDialog() && PCARD.pc!=null && PCARD.pc.stack!=null) at = w.dialogTopLeft(PCARD.pc.stack.width, PCARD.pc.stack.height);
+			if(w.isDialog() && Host.get().hasCardWindow() && HZ.stack()!=null) at = w.dialogTopLeft(HZ.stack().width, HZ.stack().height);
 			String v = rectProperty(new java.awt.Rectangle(at.x, at.y, w.width, w.height), prpty);
 			if(v!=null) return v;
 		}
@@ -2969,7 +2222,7 @@ public class TUtil {
 		//form "WILD"). The long name is the program that stands for HyperCard to externals here (PBDTGetAPPL 'WILD' finds the same):
 		//Core Collection's GetInfoBox(long name of hypercard) got "hypercard id 0" and failed with -35 (no such volume)
 		if(obj==OHyperCard.hc && isNameForm(prpty)){
-			String path = prpty.equals("long name") ? TTalk.programMacPath(FileSystem68k.macPathOf(FileSystem68k.hyperZebraProgram())) : null;
+			String path = prpty.equals("long name") ? TTalk.programMacPath(UiHost.get().fileSystem68kMacPathOf(UiHost.get().fileSystem68kHyperZebraProgram())) : null;
 			return path!=null ? path : "HyperCard";
 		}
 		if(obj==OHyperCard.hc && isIdForm(prpty)) return "WILD";
@@ -2981,7 +2234,7 @@ public class TUtil {
 		}
 		//the message window is the message box: its rect/loc/width… (HC J-2.3 measured: the rect of message window = the rect of msg,
 		//also while hidden; it was 0,0,0,0)
-		if(obj==OWindow.msgwindow && GMsg.msg!=null){
+		if(obj==OWindow.msgwindow && UiHost.get().msgExists()){
 			String v = rectProperty(messageBoxRect(), prpty);
 			if(v!=null) return v;
 		}
@@ -2994,7 +2247,7 @@ public class TUtil {
 		}
 		if(obj instanceof OXWindow) return ((OXWindow)obj).getProperty(inProperty); //68K外部ウィンドウ: 外部コマンドに xGetPropEvt
 		if(obj instanceof OWindow && prpty.equals("zoomed")) return "false";
-		if(obj instanceof OWindow && ((OWindow)obj).frame!=null && ((OWindow)obj).frame==PCARD.pc){
+		if(obj instanceof OWindow && UiHost.get().isCardWindow((OWindow)obj)){
 			String geometry = cardWindowProperty(prpty);
 			if(geometry!=null) return geometry;
 		}
@@ -3014,7 +2267,7 @@ public class TUtil {
 		}
 		if(obj instanceof OMenu){
 			OMenu om = (OMenu)obj;
-			if(prpty.equals("english name")) return PCARD.pc.intl.getEngText(om.menu.getText());
+			if(prpty.equals("english name")) return HZ.intl().getEngText(om.menu.getText());
 			if(prpty.equals("enabled")) return Boolean.toString(om.menu.isEnabled());
 		}
 		if(obj instanceof OStack && prpty.equals("usermodify")) return compatibilityProperty("userModify");
@@ -3028,15 +2281,19 @@ public class TUtil {
 			fld=(OField)obj;
 		if(obj instanceof OWindow && ((OWindow)obj).movieHandle!=null){
 			//the currTime / duration / loop / soundVolume / movie … of movie N (HyperCard 2.4 Movie XCMD)
-			String v = TQTMovie.property(((OWindow)obj).movieHandle, prpty);
+			String v = UiHost.get().tQTMovieProperty(((OWindow)obj).movieHandle, prpty);
 			if(v!=null) return v;
-			if(prpty.equals("windowstyle")) return ((OWindow)obj).gpw==null ? "windoid" : ((OWindow)obj).gpw.isUndecorated() ? "rect" : "windoid";
+			if(prpty.equals("windowstyle")) return ((OWindow)obj).gpw==null ? "windoid" : UiHost.get().pictureUndecorated(((OWindow)obj).gpw) ? "rect" : "windoid";
 		}
 		if(obj instanceof OWindow && ((OWindow)obj).gpw!=null){
 			String v = getPictureWindowProperty(((OWindow)obj).gpw, prpty);
 			if(v!=null) return v;
 		}
-		if(obj instanceof OMsg && GMsg.msg!=null){
+		if(obj instanceof OWindow && ((OWindow)obj).pict!=null){ //the browser player's Picture/Palette window
+			String v = ((OWindow)obj).pict.property(prpty);
+			if(v!=null) return v;
+		}
+		if(obj instanceof OMsg && UiHost.get().msgExists()){
 			String v = rectProperty(messageBoxRect(), prpty);
 			if(v!=null) return v;
 		}
@@ -3211,18 +2468,18 @@ public class TUtil {
 		else if(0==prpty.compareTo("selectedfield")){
 			//入力フォーカスのあるフィールドを検索
 			//cd
-			for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
-				OField field = PCARD.pc.stack.curCard.fldList.get(i);
+			for(int i=0; i<HZ.stack().curCard.fldList.size(); i++){
+				OField field = HZ.stack().curCard.fldList.get(i);
 				JComponent compo = field.getComponent();
-				if(compo!=null && compo.isFocusOwner()){
+				if(UiHost.get().focusOwner(compo)){
 					return field.getShortName();
 				}
 			}
 			//bg
-			for(int i=0; i<PCARD.pc.stack.curCard.bg.fldList.size(); i++){
-				OField field = PCARD.pc.stack.curCard.bg.fldList.get(i);
+			for(int i=0; i<HZ.stack().curCard.bg.fldList.size(); i++){
+				OField field = HZ.stack().curCard.bg.fldList.get(i);
 				JComponent compo = field.getComponent();
-				if(compo!=null && compo.isFocusOwner()){
+				if(UiHost.get().focusOwner(compo)){
 					return field.getShortName();
 				}
 			}
@@ -3342,13 +2599,13 @@ public class TUtil {
 			if(btn!=null) return Integer.toString(((OCardBase) btn.parent).GetNumberof(btn));
 			if(obj.objectType.equals("card")){
 				//スタック内でのカードの順番(1始まり)
-				OStack st = ((OCard)obj).stack!=null ? ((OCard)obj).stack : PCARD.pc.stack;
+				OStack st = ((OCard)obj).stack!=null ? ((OCard)obj).stack : HZ.stack();
 				int index = st.cardIdList==null ? -1 : st.cardIdList.indexOf(obj.id);
 				return index<0 ? "" : Integer.toString(index+1);
 			}
 			if(obj.objectType.equals("background")){
 				//HyperCard のバックグラウンド一覧での番号(1始まり、OStack.backgroundsInOrder)。カードの並びには依存しない
-				OStack st = ((OBackground)obj).stack!=null ? ((OBackground)obj).stack : PCARD.pc.stack;
+				OStack st = ((OBackground)obj).stack!=null ? ((OBackground)obj).stack : HZ.stack();
 				int n = st.GetNumberof((OBackground)obj);
 				return n<=0 ? "" : Integer.toString(n);
 			}
@@ -3369,16 +2626,16 @@ public class TUtil {
 			//the version of HyperCard は the long version と同じ8桁("02418000")、
 			//the version of stack は「作成/圧縮/最終変更時のHyperCardのバージョン,最終変更日時(秒)」の5項目。
 			//HyperCard 2.4: the [long|short] version of HyperCard / stack (the short one is "2.4.1"-style)
-			if(obj.objectType.equals("hypercard")) return prpty.equals("short version") ? PCARD.version : PCARD.hcVersionCode(PCARD.longVersion);
+			if(obj.objectType.equals("hypercard")) return prpty.equals("short version") ? HZ.version : HZ.hcVersionCode(HZ.longVersion);
 			if(obj.objectType.equals("stack")){
 				//HyperCard J-2.3: "02218000,02218000,02218000,02308000,3874211277" = 作成した版, 最後に整理した版,
 				//整理以降に変更した最も古い版, 最後に変更した版, 最終変更日時(秒)
 				OStack st = (OStack)obj;
-				String cur = PCARD.hcVersionCode(PCARD.longVersion);
-				String created = st.createdByVersion==null ? cur : PCARD.hcVersionCode(st.createdByVersion);
-				String compacted = st.lastCompactedVersion==null ? created : PCARD.hcVersionCode(st.lastCompactedVersion);
-				String first = st.firstEditedVersion==null ? compacted : PCARD.hcVersionCode(st.firstEditedVersion);
-				String last = st.changed || st.lastEditedVersion==null ? cur : PCARD.hcVersionCode(st.lastEditedVersion);
+				String cur = HZ.hcVersionCode(HZ.longVersion);
+				String created = st.createdByVersion==null ? cur : HZ.hcVersionCode(st.createdByVersion);
+				String compacted = st.lastCompactedVersion==null ? created : HZ.hcVersionCode(st.lastCompactedVersion);
+				String first = st.firstEditedVersion==null ? compacted : HZ.hcVersionCode(st.firstEditedVersion);
+				String last = st.changed || st.lastEditedVersion==null ? cur : HZ.hcVersionCode(st.lastEditedVersion);
 				Calendar modified = Calendar.getInstance();
 				if(!st.changed && st.file!=null && st.file.exists()) modified.setTimeInMillis(st.file.lastModified());
 				return created+","+compacted+","+first+","+last+","+HCDateTime.toMacSeconds(modified);
@@ -3458,13 +2715,14 @@ public class TUtil {
 			if(fld!=null) return Integer.toString(fld.scroll);
 			if(obj==OWindow.cdwindow || obj instanceof OCard){
 				//the scroll of card window: the card point at the window's top left (0,0 unless the window is smaller than the card)
-				Point s = PCARD.pc.cardScroll();
+				Point s = UiHost.get().cardScroll();
 				return s.x+","+s.y;
 			}
 			if(obj instanceof OWindow && ((OWindow)obj).gpw!=null){
 				GPictWindow gpw = ((OWindow)obj).gpw;
-				return gpw.getScrollX()+","+gpw.getScrollY();
+				return UiHost.get().pictureScroll(gpw);
 			}
+			if(obj instanceof OWindow && ((OWindow)obj).pict!=null) return ((OWindow)obj).pict.property("scroll");
 			return "";
 		}
 		else if(0==prpty.compareTo("zoomed")){
@@ -3474,8 +2732,8 @@ public class TUtil {
 		else if(0==prpty.compareTo("rate")){
 			if(obj instanceof OWindow){
 				OWindow window=(OWindow)obj;
-				if(window.movieHandle!=null) return Integer.toString(TQTMovie.rate(window.movieHandle));
-				if(window.mp3!=null) return window.mp3.isPlaying()?"1":"0";
+				if(window.movieHandle!=null) return Integer.toString(UiHost.get().tQTMovieRate(window.movieHandle));
+				if(window.mp3!=null) return UiHost.get().mp3Playing(window.mp3)?"1":"0";
 			}
 			return "";
 		}
@@ -3524,8 +2782,8 @@ public class TUtil {
 			else System.out.println("このオブジェクトにプロパティ"+prpty+"はありません");
 		}
 		else if(0==prpty.compareTo("size")){
-			OStack sizeOf = obj instanceof OStack && ((OStack)obj).file!=null ? (OStack)obj : PCARD.pc.stack;
-			File packed = StackBundle.packedOf(sizeOf.file);
+			OStack sizeOf = obj instanceof OStack && ((OStack)obj).file!=null ? (OStack)obj : HZ.stack();
+			File packed = UiHost.get().stackBundlePackedOf(sizeOf.file);
 			if(packed!=null && packed.isFile()) return Long.toString(packed.length()); //a stack file (.hzb ZIP): the file's size
 			File parent = new File(sizeOf.file.getParent());
 			long size=0;
@@ -3558,14 +2816,14 @@ public class TUtil {
 	/** The card window's / message box's id in every form: the WindowPtr externals see (HyperCard J-2.3, measured: the id, short,
 	 *  long and abbr id of card window and of message window are all its address). Null for another object. */
 	private static String hcWindowPointer(OObject obj){
-		if(obj==OWindow.cdwindow || obj instanceof OWindow && ((OWindow)obj).frame!=null && ((OWindow)obj).frame==PCARD.pc) return Integer.toString(Xcmd68k.CARD_WINDOW_RECORD);
+		if(obj==OWindow.cdwindow || obj instanceof OWindow && UiHost.get().isCardWindow((OWindow)obj)) return Integer.toString(Xcmd68k.CARD_WINDOW_RECORD);
 		if(obj==OMsg.msg || obj==OWindow.msgwindow) return Integer.toString(Xcmd68k.MESSAGE_WINDOW_RECORD);
 		return null;
 	}
 
 	//---- menuItem のプロパティ ----
 	private static String getMenuItemProperty(OMenuItem omi, String prpty) throws xTalkException {
-		JMenuItem mi = omi.item();
+		MMenuItem mi = omi.item();
 		if(mi==null){
 				//区切り線: 名前は "-"、有効/チェックはfalse
 			switch(prpty){
@@ -3573,8 +2831,8 @@ public class TUtil {
 			case "enabled": case "checkmark": return "false";
 			case "menumessage": case "menumsg": {
 				//HyperCard keeps the message given for a "-" item (put "A,-,B" into menu … with menuMsg "a,-,b": "-")
-				java.awt.Component c = omi.separator();
-				Object m = c instanceof javax.swing.JComponent ? ((javax.swing.JComponent)c).getClientProperty("menuMessage") : null;
+				MComponent c = omi.separator();
+				Object m = c!=null ? c.getClientProperty("menuMessage") : null; //(a JComponent's client property; null for another kind)
 				return m==null ? "" : m.toString();
 			}
 			case "commandchar": case "cmdchar": return "";
@@ -3584,19 +2842,19 @@ public class TUtil {
 		}
 		switch(prpty){
 		case "name": case "short name": case "abbrev name": case "long name": return TTalk.scriptMenuItemText(omi.menu, mi);
-		case "english name": return PCARD.pc.intl.getEngText(mi.getText());
+		case "english name": return HZ.intl().getEngText(mi.getText());
 		case "enabled": return Boolean.toString(mi.isEnabled());
-		case "checkmark": return Boolean.toString(mi instanceof javax.swing.JCheckBoxMenuItem && ((javax.swing.JCheckBoxMenuItem)mi).isSelected());
+		case "checkmark": return Boolean.toString(mi instanceof MCheckBoxMenuItem && ((MCheckBoxMenuItem)mi).isSelected());
 		case "menumessage": case "menumsg": { Object m = mi.getClientProperty("menuMessage"); return m==null ? "" : m.toString(); }
 		case "commandchar": case "cmdchar": {
-			javax.swing.KeyStroke ks = mi.getAccelerator();
+			MKeyStroke ks = mi.getAccelerator();
 			return ks==null ? "" : String.valueOf((char)ks.getKeyCode());
 		}
 		case "id": return Integer.toString(omi.index+1);
 		case "textstyle": { Object st = mi.getClientProperty(MENU_ITEM_STYLE); return textStyleName(st instanceof Integer ? (Integer)st : 0); }
 		case "markchar": {
 			//HyperCard 2.x: empty, the char set, or numToChar(18) (Chicago's check mark) for an item checked with checkMark
-			if(!(mi instanceof javax.swing.JCheckBoxMenuItem) || !((javax.swing.JCheckBoxMenuItem)mi).isSelected()) return "";
+			if(!(mi instanceof MCheckBoxMenuItem) || !((MCheckBoxMenuItem)mi).isSelected()) return "";
 			Object m = mi.getClientProperty(MENU_ITEM_MARK);
 			return m==null ? "\u0012" : m.toString();
 		}
@@ -3608,29 +2866,19 @@ public class TUtil {
 	private static final String MENU_ITEM_STYLE = "hzTextStyle", MENU_ITEM_MARK = "hzMarkChar";
 
 	/** The item's font for a textStyle: bold/italic/underline show, outline/shadow/condense/extend are only kept */
-	private static void applyMenuItemStyle(JMenuItem mi, int style){
-		java.awt.Font base = javax.swing.UIManager.getFont("MenuItem.font");
-		if(base==null) base = mi.getFont();
-		if(base==null) return;
-		int awt = ((style & 1)!=0 ? java.awt.Font.BOLD : 0) | ((style & 2)!=0 ? java.awt.Font.ITALIC : 0);
-		java.awt.Font f = base.deriveFont(awt);
-		if((style & 4)!=0){
-			java.util.Map<java.awt.font.TextAttribute,Object> attrs = new java.util.HashMap<>();
-			attrs.put(java.awt.font.TextAttribute.UNDERLINE, java.awt.font.TextAttribute.UNDERLINE_ON);
-			f = f.deriveFont(attrs);
-		}
-		mi.setFont(f);
+	private static void applyMenuItemStyle(MMenuItem mi, int style){
+		mi.applyTextStyle(style); //the desktop's SwingMenus shows it in the item's font
 	}
 
 	static void setMenuItemProperty(OMenuItem omi, String prpty, String value) throws xTalkException {
-		JMenuItem mi = omi.item();
+		MMenuItem mi = omi.item();
 		//a separator ("-"): HyperCard lets a loop over every item set checkMark/enabled on it too (Parara2.0's
 		//"repeat with M=6 to the number of menuItems … set the checkMark of menuItem M … to false")
 		if(mi==null && (prpty.equals("checkmark") || prpty.equals("enabled")) && omi.index>=0) return;
 		if(mi==null && omi.separator()!=null){
 			//Power Tools Menu Maker sets menuMsg/commandChar of every item, the "-" ones too
 			if(prpty.equals("menumessage") || prpty.equals("menumsg")){
-				if(omi.separator() instanceof javax.swing.JComponent) ((javax.swing.JComponent)omi.separator()).putClientProperty("menuMessage", value.trim());
+				omi.separator().putClientProperty("menuMessage", value.trim()); //(a JComponent's client property; nothing for another kind)
 				return;
 			}
 			if(prpty.equals("commandchar") || prpty.equals("cmdchar") || prpty.equals("name")) return;
@@ -3645,20 +2893,20 @@ public class TUtil {
 			break;
 		case "checkmark": {
 			boolean on = propertyBoolean("checkMark", value);
-			if(!(mi instanceof javax.swing.JCheckBoxMenuItem)){
+			if(!(mi instanceof MCheckBoxMenuItem)){
 				//普通の項目はチェック表示できないので、同じ内容のチェック項目に差し替える
-				javax.swing.JCheckBoxMenuItem cb = new javax.swing.JCheckBoxMenuItem(mi.getText());
+				MCheckBoxMenuItem cb = MCheckBoxMenuItem.create(mi.getText());
 				cb.setEnabled(mi.isEnabled());
 				cb.setAccelerator(mi.getAccelerator());
-				for(java.awt.event.ActionListener l : mi.getActionListeners()) cb.addActionListener(l);
+				cb.copyActionsFrom(mi);
 				cb.putClientProperty("menuMessage", mi.getClientProperty("menuMessage"));
 				cb.putClientProperty(MENU_ITEM_STYLE, mi.getClientProperty(MENU_ITEM_STYLE));
-				if(mi.getClientProperty(MENU_ITEM_STYLE)!=null) cb.setFont(mi.getFont());
+				if(mi.getClientProperty(MENU_ITEM_STYLE)!=null) cb.copyFontFrom(mi);
 				omi.menu.remove(omi.index);
 				omi.menu.insert(cb, omi.index);
 				mi = cb;
 			}
-			((javax.swing.JCheckBoxMenuItem)mi).setSelected(on);
+			((MCheckBoxMenuItem)mi).setSelected(on);
 			mi.putClientProperty(MENU_ITEM_MARK, null);
 			break;
 		}
@@ -3666,7 +2914,7 @@ public class TUtil {
 			//set the markChar … to "x": the item is checked (HyperCard: the checkMark is then true), empty unchecks it
 			String mark = value.isEmpty() ? "" : value.substring(0, 1);
 			setMenuItemProperty(omi, "checkmark", mark.isEmpty() ? "false" : "true");
-			JMenuItem now = omi.item();
+			MMenuItem now = omi.item();
 			if(now!=null && !mark.isEmpty() && !mark.equals("\u0012")) now.putClientProperty(MENU_ITEM_MARK, mark);
 			return;
 		}
@@ -3684,13 +2932,12 @@ public class TUtil {
 		}
 		case "commandchar": case "cmdchar":
 			if(value.isEmpty()) mi.setAccelerator(null);
-			else mi.setAccelerator(javax.swing.KeyStroke.getKeyStroke(Character.toUpperCase(value.charAt(0)),
-				java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+			else mi.setAccelerator(MenuNodes.get().menuKey(value.charAt(0)));
 			break;
 		default:
 			throw new xTalkException("Cannot set property {0} on a menuItem", prpty);
 		}
-		if(PCARD.pc.menu!=null) GMenu.menuUpdate(PCARD.pc.menu.mb);
+		if(UiHost.get().hasCardMenus()) MenuNodes.get().menuBarChanged();
 	}
 
 	/**
@@ -3698,25 +2945,7 @@ public class TUtil {
 	 * card window's coordinates, as for other windows), and the Variable Watcher's bars hBarLoc and vBarLoc (Rinaldi's GlobalMaster
 	 * demo: "Cannot set rect on this object", "Cannot interpret property hbarloc"). False for other properties.
 	 */
-	private static boolean setWatcherWindowProperty(OWindow w, String prpty, String value) throws xTalkException {
-		javax.swing.JDialog d = w.dlog;
-		switch(prpty){
-		case "rect": case "rectangle":{
-			int[] r = coordinates(value, 4, "A rectangle is required here");
-			d.setBounds(windowOrigin().x+PCARD.toPhysical(r[0]), windowOrigin().y+PCARD.toPhysical(r[1]), PCARD.toPhysical(r[2]-r[0]), PCARD.toPhysical(r[3]-r[1]));
-			return true;}
-		case "loc": case "location": case "topleft":{
-			int[] p = coordinates(value, 2, "Coordinates are required here");
-			d.setLocation(windowOrigin().x+PCARD.toPhysical(p[0]), windowOrigin().y+PCARD.toPhysical(p[1]));
-			return true;}
-		case "hbarloc": case "vbarloc":
-			if(!(d instanceof VariableWatcher)) return false;
-			int v = propertyInteger(prpty, value.trim());
-			if(prpty.equals("hbarloc")) ((VariableWatcher)d).setHBarLoc(PCARD.toPhysical(v)); else ((VariableWatcher)d).setVBarLoc(PCARD.toPhysical(v));
-			return true;
-		default: return false;
-		}
-	}
+	private static boolean setWatcherWindowProperty(OWindow w, String prpty, String value) throws xTalkException { return UiHost.get().setWatcherWindowProperty(w, prpty, value); }
 
 	/** Objects with HyperCard 2.2's scriptingLanguage property: stacks, backgrounds, cards, buttons and fields. */
 	private static boolean hasScriptingLanguage(OObject obj){
@@ -3735,7 +2964,7 @@ public class TUtil {
 			obj.setScript(obj.scriptList==null ? "" : String.join("\n", obj.scriptList));
 			return;
 		}
-		if(obj.osaScript!=null && (value.equalsIgnoreCase(obj.osaScript.languageName()) || value.equals(obj.osaScript.subtype()))) return;
+		if(obj.osaScript!=null && (value.equalsIgnoreCase(UiHost.get().osaLanguage(obj.osaScript)) || value.equals(UiHost.get().osaSubtype(obj.osaScript)))) return;
 		throw new xTalkException("Cannot set an object's script language to {0} (HyperZebra object scripts support only HyperTalk / AppleScript object scripts are not supported)", value);
 	}
 
@@ -3774,19 +3003,18 @@ public class TUtil {
 		obj = backgroundPartOfView(obj, inProperty);
 		//a part that moves is copied at its old place too
 		java.awt.Rectangle before = obj instanceof OButton || obj instanceof OField ? new java.awt.Rectangle(obj.left, obj.top, obj.width, obj.height) : null;
-		java.awt.Point windowWas = obj==OWindow.cdwindow && PCARD.pc!=null ? PCARD.pc.getLocation() : null;
+		java.awt.Point windowWas = obj==OWindow.cdwindow ? UiHost.get().cardWindowPlace() : null;
 		setPropertyNow(obj, inProperty, value);
-		if(windowWas!=null && !windowWas.equals(PCARD.pc.getLocation())) TTalk.cardWindowMoved();
+		if(windowWas!=null && !windowWas.equals(UiHost.get().cardWindowPlace())) TTalk.cardWindowMoved();
 		if(REDRAWN_PART_PROPERTIES.contains(inProperty.toLowerCase(java.util.Locale.ROOT))) partChangedOnScreen(obj, before);
 		//a stack that is not open (read on the side for "stack X", or one in use) has no autosave: HyperCard writes the change
 		//into that stack's file (HC J-2.3 measured: set the script of stack "Bare Words" from another stack, then the file holds
 		//it). The Prototyping Toolkit's set the script of stack "Background" changed a copy, and "go stack" opened the file without it
-		if(obj instanceof OStack && PCARD.pc!=null && obj!=PCARD.pc.stack){
+		if(obj instanceof OStack && Host.get().hasCardWindow() && obj!=HZ.stack()){
 			OStack other = (OStack)obj;
 			if(other.changed && other.saveXML==null && other.file!=null && other.cdCacheList!=null){
 				boolean lockChange = inProperty.equalsIgnoreCase("cantModify"); //a stack locked now is written once more with its lock
-				if(lockChange) XMLwrite.writeOnce(other);
-				else XMLwrite.withoutAutosave(other).saveStackNow();
+				UiHost.get().writeStackFile(other, lockChange);
 			}
 		}
 	}
@@ -3822,64 +3050,20 @@ public class TUtil {
 		if(obj instanceof OStackWindow && prpty.equals("visible")){ obj.setVisible(propertyBoolean("visible", value)); return; }
 		if(obj instanceof OWindow && ((OWindow)obj).dlog!=null && obj!=OWindow.msgwindow && setWatcherWindowProperty((OWindow)obj, prpty, value)) return;
 		//カードウィンドウの位置と大きさ(グローバル座標、loc は左上): 表示しているカードの部分を指定どおりにする
-		if(obj instanceof OWindow && ((OWindow)obj).frame!=null && ((OWindow)obj).frame==PCARD.pc && setCardWindowProperty(prpty, value)) return;
+		if(UiHost.get().cardWindowProperty(obj, inProperty, value, prpty)) return;
 		//set the textSize|textFont|textStyle of msg (Mono Eye): the message box's own text
-		if(obj instanceof OMsg && (prpty.equals("textsize") || prpty.equals("textfont") || prpty.equals("textstyle"))){
-			if(GMsg.area!=null){
-				java.awt.Font f = GMsg.area.getFont();
-				if(prpty.equals("textsize")) f = f.deriveFont((float)Math.max(1, propertyInteger("textSize", value.trim())*PCARD.scale()));
-				else if(prpty.equals("textfont")) f = new java.awt.Font(value.trim(), f.getStyle(), f.getSize());
-				else f = f.deriveFont(textStyleValue(value) & 0x03);
-				GMsg.area.setFont(f);
-			}
-			return;
-		}
+		if(UiHost.get().msgFontProperty(obj, inProperty, value, prpty)) return;
 		//set the top/left/right/bottom of message box (TEXTURE TIME): moves it, card-window coordinates like its loc
-		if(obj instanceof OMsg && GMsg.msg!=null && (prpty.equals("left") || prpty.equals("top") || prpty.equals("right") || prpty.equals("bottom"))){
-			int v = propertyInteger(prpty, value.trim());
-			java.awt.Rectangle r = messageBoxRect();
-			int x = prpty.equals("left") ? v : prpty.equals("right") ? v-r.width : r.x;
-			int y = prpty.equals("top") ? v : prpty.equals("bottom") ? v-r.height : r.y;
-			Point origin = getCardOriginOnScreen();
-			GMsg.msg.setLocation(origin.x+PCARD.toPhysical(x), origin.y+PCARD.toPhysical(y));
-			return;
-		}
+		if(UiHost.get().msgPlaceProperty(obj, inProperty, value, prpty)) return;
 		//globalLoc/globalRect of a picture window: screen coordinates (its loc/rect are card-window coordinates)
-		if(obj instanceof OWindow && ((OWindow)obj).gpw!=null && (prpty.equals("globalloc") || prpty.equals("globalrect"))){
-			GPictWindow gpw = ((OWindow)obj).gpw;
-			String word = value.trim().toLowerCase(java.util.Locale.ROOT);
-			if(prpty.equals("globalloc") && word.matches("[a-z]+")){
-				//set the globalLoc of window "splash" to mainscreen (AOL KwikInvoicer) / to card (Simple Sample Font Printer's
-				//splash): HyperCard J-2.3 centres the window on the main screen below the menu bar (probe Aol GlobalLoc Word: a
-				//95x65 picture at 352,277 on 800x600) for card, main, deepest, largest and any other word alike, also with the card
-				//window moved to 0,40; "screen" leaves it where it is. card here = the screen the card window is on
-				if(word.equals("screen")) return;
-				java.awt.Rectangle s = word.equals("card") ? cardWindowScreenArea() : null;
-				if(s==null) s = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
-				gpw.setLocation(s.x+(s.width-gpw.getWidth())/2, s.y+(s.height-gpw.getHeight())/2);
-				return;
-			}
-			String[] items = value.split(",");
-			int[] v = new int[items.length];
-			try{ for(int i=0; i<items.length; i++) v[i] = (int)Double.parseDouble(items[i].trim()); }
-			catch(NumberFormatException e){ throw new xTalkException("A number is required here"); }
-			if(prpty.equals("globalloc")){
-				if(v.length!=2) throw new xTalkException("Coordinates are required here");
-				gpw.setLocation(PCARD.toPhysical(v[0]), PCARD.toPhysical(v[1]));
-			}else{
-				if(v.length!=4) throw new xTalkException("A rectangle is required here");
-				gpw.setBounds(belowHostMenuBar(new java.awt.Rectangle(PCARD.toPhysical(v[0]), PCARD.toPhysical(v[1]),
-					Math.max(1,PCARD.toPhysical(v[2]-v[0])), Math.max(1,PCARD.toPhysical(v[3]-v[1])))));
-			}
-			return;
-		}
+		if(UiHost.get().pictureWindowGlobalProperty(obj, inProperty, value, prpty)) return;
 		if(obj instanceof OShape){
 			OShape shape=(OShape)obj;
 			if(prpty.equals("visible")){shape.setVisible(propertyBoolean("visible",value));return;}
 			if(prpty.equals("text")){
 				if(!shape.kind.equals("text"))throw new xTalkException("text can only be set on text shapes");
-				shape.text=value;java.awt.geom.Rectangle2D natural=shape.naturalTextBounds();
-				shape.setSize(Math.max(1,(int)Math.ceil(natural.getWidth())),Math.max(1,(int)Math.ceil(natural.getHeight())));return;
+				shape.text=value;java.awt.Dimension natural=UiHost.get().shapeTextSize(shape);
+				shape.setSize(natural.width,natural.height);return;
 			}
 			if(prpty.equals("path")){shape.pathData=value;shape.kind="bezier";shape.repaintView();((OCardBase)shape.parent).changed=true;return;}
 			if(prpty.equals("name")){shape.name=value;((OCardBase)shape.parent).changed=true;return;}
@@ -3946,30 +3130,8 @@ public class TUtil {
 			SetProperty(null, inProperty, value);
 			return;
 		}
-		if(obj instanceof OWindow && ((OWindow)obj).gpw!=null && ((OWindow)obj).gpw.isPaletteWindow() && prpty.equals("hilitedbutton")){
-			//set the hilitedButton of window "X" to n (0でどれも点灯しない)。空も0 (HC 2.4 / J-2.3 probe Hcde Err Hilited Empty:
-			//no error; TimeCache 1.6 sets it to palHi before a button was ever clicked)
-			((OWindow)obj).gpw.setHilitedButton(value.trim().isEmpty() ? 0 : propertyInteger("hilitedButton", value));
-			return;
-		}
-		if(obj instanceof OWindow && ((OWindow)obj).movieHandle!=null){
-			//set the loop / rate / soundVolume of movie N (HyperCard 2.4); currTime and audioLevel are below
-			String h = ((OWindow)obj).movieHandle;
-			if(prpty.equals("loop")){ TQTMovie.setLoop(h, propertyBoolean("loop", value)); return; }
-			if(prpty.equals("rate")){
-				double r;
-				try{ r = Double.parseDouble(value.trim()); }catch(NumberFormatException e){ throw new xTalkException("A number is required here"); }
-				TQTMovie.setRate(h, r); return;
-			}
-			if(prpty.equals("soundvolume") || prpty.equals("volume")){ TQTMovie.setVolume(h, propertyInteger("soundVolume", value)); return; }
-			if(prpty.equals("loopispalindrome") || prpty.equals("timeformat") || prpty.equals("sendmousewithinmsg") ||
-				prpty.equals("closeonfinish") || prpty.equals("dragenabled") || prpty.equals("badge") || prpty.equals("fastidle") ||
-				prpty.equals("callbackmsg") || prpty.equals("passmovieclick") || prpty.equals("dontErase".toLowerCase()) ||
-				//the controller bar and play selection (Earth 〜紅玉の森〜: set controllerVisible of window TheMovieName to false):
-				//HyperZebra's movie windows show no controller bar
-				prpty.equals("controllervisible") || prpty.equals("playselection") || prpty.equals("selectionstart") ||
-				prpty.equals("selectionend") || prpty.equals("highlight")) return; //accepted, no effect here
-		}
+		if(UiHost.get().paletteWindowProperty(obj, inProperty, value, prpty)) return;
+		if(UiHost.get().movieWindowProperty(obj, inProperty, value, prpty)) return;
 		if(obj instanceof OWindow && prpty.equals("zoomed")){
 			//the zoomed of the card window: カードウィンドウは常にカードの大きさなので何もしない
 			propertyBoolean("zoomed", value);
@@ -4024,7 +3186,7 @@ public class TUtil {
 		else if(0==prpty.compareTo("fixedlineheight")){
 			if(fld==null) throw new xTalkException("fixedLineHeight can only be set on fields");
 			fld.fixedLineHeight = propertyBoolean("fixedLineHeight", value);
-			if(fld.fld!=null) fld.fld.repaint();
+			if(fld.fld!=null) fld.view().repaint();
 			((OCardBase)fld.parent).changed = true;
 		}
 		else if(0==prpty.compareTo("multiple") || 0==prpty.compareTo("multiplelines")){
@@ -4060,15 +3222,14 @@ public class TUtil {
 			int level = propertyInteger("outlineLevel", value);
 			if(level<0) throw new xTalkException("outlineLevel must be at least 0");
 			fld.outlineLevel = level;
-			FieldOutline outline = fld.outline();
-			if(outline!=null) PCARD.runOnEDT(outline::expandToLevel);
+			UiHost.get().expandOutline(fld);
 			((OCardBase)fld.parent).changed = true;
 		}
 		else if(0==prpty.compareTo("selectedpath")){
 			if(fld==null || !fld.outlineStyle) throw new xTalkException("selectedPath can only be set on outline (outlineStyle) fields");
 			String path = value==null ? "" : value.trim();
 			if(!path.isEmpty()){
-				FieldOutline.Data.Tree tree = FieldOutline.Data.parse(fld.getText());
+				FieldOutlineData.Tree tree = FieldOutlineData.parse(fld.getText());
 				if(!tree.json) throw new xTalkException("selectedPath is for JSON outlines (use selectedLine for indented outlines)");
 				if(tree.find(path)==null) throw new xTalkException("No such item: {0}", path);
 			}
@@ -4083,7 +3244,7 @@ public class TUtil {
 		}
 		else if(0==prpty.compareTo("columnwidths")){
 			if(fld==null) throw new xTalkException("columnWidths can only be set on fields");
-			fld.columnWidths = FieldTable.Data.normalizeWidths(value);
+			fld.columnWidths = FieldTableData.normalizeWidths(value);
 			fld.refreshTable();
 			((OCardBase)fld.parent).changed = true;
 		}
@@ -4096,7 +3257,7 @@ public class TUtil {
 		else if(0==prpty.compareTo("selectedline") || 0==prpty.compareTo("selectedlines")){
 			//表の行の選択: "3" / "2,5,7" / "2 to 4" / "line 2 to 4 of …" / empty
 			if(fld==null || !(fld.tableStyle || fld.outlineStyle)) throw new xTalkException("{0} can only be set on table (tableStyle) or outline (outlineStyle) fields", inProperty);
-			int[] rows = parseRowList(value, FieldTable.Data.parseRows(fld.getText()).size());
+			int[] rows = parseRowList(value, FieldTableData.parseRows(fld.getText()).size());
 			if(fld.outlineStyle && !fld.multipleLines && rows.length>1) rows = new int[]{rows[0]};
 			fld.setSelectedRows(rows);
 		}
@@ -4111,7 +3272,7 @@ public class TUtil {
 		else if(0==prpty.compareTo("showlines")){
 			if(fld==null) throw new xTalkException("showLines can only be set on fields");
 			fld.showLines = propertyBoolean("showLines", value);
-			if(fld.fld!=null) fld.fld.repaint();
+			if(fld.fld!=null) fld.view().repaint();
 			((OCardBase)fld.parent).changed = true;
 		}
 		else if(0==prpty.compareTo("widemargins")){
@@ -4128,7 +3289,7 @@ public class TUtil {
 			if((btn==null && fld==null) || !(obj.parent instanceof OCardBase)) throw new xTalkException("partNumber can only be set on buttons and fields");
 			int n = propertyInteger("partNumber", value);
 			OCardBase owner = (OCardBase)obj.parent;
-			if(owner.setPartNumber(obj, n) && PCARD.pc!=null && PCARD.pc.mainPane!=null && !owner.restackComponents())
+			if(owner.setPartNumber(obj, n) && UiHost.get().hasCardPane() && !owner.restackComponents())
 				OCard.reloadCurrentCard();
 		}
 		else if(0==prpty.compareTo("number")){
@@ -4156,7 +3317,7 @@ public class TUtil {
 			btn.titleWidth = propertyInteger("titleWidth", value);
 			//popup(style==8)でshowNameがオンのときは、titleWidthが名前表示欄の
 			//幅として実際に画面へ反映されるので、即座に描き直す。
-			if(btn.style==8 && btn.popup!=null) btn.popup.setBounds(btn.left, btn.top, btn.width, btn.height);
+			UiHost.get().popupBoundsView(obj, inProperty, value, btn);
 			((OCardBase)btn.parent).changed = true;
 		}
 		else if(0==prpty.compareTo("textalign")){
@@ -4183,13 +3344,13 @@ public class TUtil {
 			//Swing側のフォントは物理サイズ(2倍表示モードではscale倍)で指定する
 			if(btn!=null){
 				btn.textSize = size;
-				if(btn.getComponent()!=null) btn.getComponent().setFont(OObject.stackFont(btn.textFont, btn.textStyle & 0x03, size*PCARD.scale()));
+				UiHost.get().buttonFontSizeView(obj, inProperty, value, btn, size);
 				((OCardBase)btn.parent).changed = true;
 			}
 			else if(fld!=null){
 				fld.textSize = size;
 				fld.textHeight = size + size/3; //HyperCard: textHeightは新しいサイズの既定値に戻る
-				fld.showFont(OObject.stackFont(fld.textFont, fld.textStyle & 0x03, size*PCARD.scale()));
+				UiHost.get().showFieldFont(fld, fld.textFont, fld.textStyle & 0x03, size*Host.get().scale());
 				fld.clearRunAttribute("size");
 				fld.refreshTable();
 				((OCardBase)fld.parent).changed = true;
@@ -4200,11 +3361,11 @@ public class TUtil {
 			int style = textStyleValue(value);
 			if(btn!=null){
 				btn.textStyle = style;
-				if(btn.getComponent()!=null) btn.getComponent().setFont(OObject.stackFont(btn.textFont, style & 0x03, btn.textSize*PCARD.scale()));
+				UiHost.get().buttonFontStyleView(obj, inProperty, value, btn, style);
 			}
 			else if(fld!=null){
 				fld.textStyle = style;
-				fld.showFont(OObject.stackFont(fld.textFont, style & 0x03, fld.textSize*PCARD.scale()));
+				UiHost.get().showFieldFont(fld, fld.textFont, style & 0x03, fld.textSize*Host.get().scale());
 				fld.clearRunAttribute("style");
 				fld.refreshTable();
 			}
@@ -4255,7 +3416,7 @@ public class TUtil {
 				//IDでなければアイコン名。名前でも見つからなければHyperZebra拡張の
 				//絶対URI(画像ファイル)として扱う。相対URIはtoURL()できず表示も
 				//されないので、以下の「存在しないアイコン」扱いに落とす。
-				Rsrc rsrc = btn.parent instanceof OCardBase && ((OCardBase)btn.parent).stack!=null ? ((OCardBase)btn.parent).stack.rsrc : PCARD.pc.stack.rsrc;
+				Rsrc rsrc = btn.parent instanceof OCardBase && ((OCardBase)btn.parent).stack!=null ? ((OCardBase)btn.parent).stack.rsrc : HZ.stack().rsrc;
 				iconId = rsrc.getRsrcIdAll(value,"ICON");
 				if(iconId==0){
 					try {
@@ -4302,59 +3463,16 @@ public class TUtil {
 				
 				//これではメニューを消せないので、メニューがないウィンドウを作ってそちらに移動とか？Macでは無意味だが。
 				/*if(value.equalsIgnoreCase("true")){
-					PCARD.pc.setJMenuBar(PCARD.pc.menu.mb);
+					PCARD.pc.setJMenuBar(MenuNodes.get().cardMenuBar());
 				}else{
-					PCARD.pc.setJMenuBar(new JMenuBar());
+					PCARD.pc.setJMenuBar(new MMenuBar());
 				}*/
 			}
-			else if(0==obj.objectType.compareTo("msg")){
-				boolean b = value.equalsIgnoreCase("true");
-				GMsg.msg.setVisible(b);
-				if(b && GMsg.shownByUser()){ //スクリプト中のshow msgではカードのキー入力を奪わない
-					GMsg.msg.requestFocus();
-				}
-			}
-			else if(0==obj.objectType.compareTo("tool window")){
-				if(PCARD.pc.stack!=null && PCARD.pc.toolbar!=null){
-					//スクリプトが loc を決めた(show tool window at h,v)ときはその位置のまま
-					if(!toolWindowPlaced) PCARD.pc.toolbar.tb.setBounds(Math.max(0,PCARD.pc.getX()-GToolBar.WINDOW_WIDTH-2),
-						PCARD.pc.getY()+24,GToolBar.WINDOW_WIDTH,GToolBar.WINDOW_HEIGHT);
-					toolWindowPlaced = false;
-					PCARD.pc.toolbar.tb.setVisible(value.equalsIgnoreCase("true"));
-				}
-			}
-			else if(0==obj.objectType.compareTo("pattern window")){
-				//本物のHyperCardのような独立したPatternsパレットは無いため何もしない
-				//(エラーにはしない)
-			}
+			else if(UiHost.get().windowsSetVisible(obj, inProperty, value, prpty)){}
 			else if(0==obj.objectType.compareTo("picture")){
 				obj.setVisible(value.equalsIgnoreCase("true"));
 			}
-			else if(0==obj.objectType.compareTo("window")){
-				if(((OWindow)obj).frame!=null){
-					boolean show = value.equalsIgnoreCase("true");
-					//hide window (the short name of this stack) while the mouse is down (Dot Block): the hidden window never
-					//gets the mouse-up, so "wait until the mouse is up" would never end
-					if(!show && ((OWindow)obj).frame==PCARD.pc) GUI.mouseDown = false;
-					((OWindow)obj).frame.setVisible(show);
-				}
-				else if(((OWindow)obj).dlog!=null){
-					((OWindow)obj).dlog.setVisible(value.equalsIgnoreCase("true"));
-					if(((OWindow)obj).dlog == MessageWatcher.watcherWindow){
-						MessageWatcher.watcherWindow.setTable(TTalk.talk.messageRingArray, TTalk.talk.objectRingArray, TTalk.talk.ringCnt);
-					}
-				}
-				else if(((OWindow)obj).gpw!=null){
-					((OWindow)obj).gpw.setVisible(value.equalsIgnoreCase("true"));
-				}
-				else if(((OWindow)obj).movieHandle!=null){
-					//音だけの Movie(BGM の .mov)には表示するウィンドウが無い: 状態だけ覚える(Earth 〜紅玉の森〜: show window TheMovieName)
-					obj.setVisible(propertyBoolean("visible", value));
-				}
-				else{
-					throw new xTalkException("Cannot set visible on this object?");
-				}
-			}
+			else if(UiHost.get().windowSetVisible(obj, inProperty, value, prpty)){}
 			else throw new xTalkException("Cannot set visible on this object");
 		}
 		else if(0==prpty.compareTo("enabled")){
@@ -4367,7 +3485,7 @@ public class TUtil {
 			else if(obj instanceof OMenu){
 				//(以前は value をメニュー名として渡していたため何も変わらなかった)
 				((OMenu)obj).menu.setEnabled(propertyBoolean("enabled", value));
-				GMenu.menuUpdate(PCARD.pc.menu.mb);
+				MenuNodes.get().menuBarChanged();
 			}
 			else throw new xTalkException("Cannot set enabled on this object");
 		}
@@ -4382,32 +3500,7 @@ public class TUtil {
 	throws xTalkException
 	{
 			//HyperCardのプロパティ
-			if(0==prpty.compareTo("scripttextfont")){
-				PCARD.scriptFont = value;
-			}
-			else if(0==prpty.compareTo("scripttextsize")){
-				try{
-					PCARD.scriptFontSize = Integer.valueOf(value);
-				}catch(Exception err){
-					throw new xTalkException("A number is required here");
-				}
-			}
-			else if(0==prpty.compareTo("textfont")){
-				PCARD.pc.textFont = value;
-				PCARD.runOnEDT(TypeTool::refreshLive);
-			}
-			else if(0==prpty.compareTo("textstyle")){
-				PCARD.pc.textStyle = textStyleValue(value);
-				PCARD.runOnEDT(TypeTool::refreshLive);
-			}
-			else if(0==prpty.compareTo("textsize")){
-				try{
-					PCARD.pc.textSize = (int)Double.parseDouble(value.trim()); //" 9" and "10.0" as in HyperCard J-2.3
-					PCARD.runOnEDT(TypeTool::refreshLive);
-				}catch(Exception err){
-					throw new xTalkException("A number is required here");
-				}
-			}
+			if(UiHost.get().textSettingsSetters(inProperty, value, prpty)){}
 			else if(0==prpty.compareTo("textheight")){
 				//the line height of painted text (Graph Maker: set textHeight to fontSize); kept for the text tool's lines
 				compatibilityProperties.put("textheight", Integer.toString(propertyInteger("textHeight", value.trim())));
@@ -4453,84 +3546,15 @@ public class TUtil {
 					}
 				}
 				level = Math.max(1, Math.min(5, level));
-				PCARD.userLevel = level;
+				HZ.userLevel = level;
 				//スタックの「ユーザーレベルの制限」より上にはならない(StackProtection.effectiveUserLevel)
-				GMenu.enforceUserLevel();
+				UiHost.get().enforceUserLevel();
 			}
 			else if(0==prpty.compareTo("usermodify")){
 				//true/false のみ。userModify はスタックを移動すると false に戻る(resetStackProperties)
 				compatibilityProperties.put(prpty, Boolean.toString(propertyBoolean(inProperty, value)));
 			}
-			else if(0==prpty.compareTo("powerkeys")){
-				PaintTool.setPowerKeys(propertyBoolean(inProperty, value));
-			}
-			else if(0==prpty.compareTo("cursor")){
-				Cursor cr = null;
-						/*new Cursor(Cursor.CROSSHAIR_CURSOR) ,
-						new Cursor(Cursor.DEFAULT_CURSOR) ,
-						new Cursor(Cursor.HAND_CURSOR) ,
-						new Cursor(Cursor.MOVE_CURSOR) ,
-						new Cursor(Cursor.WAIT_CURSOR) ,
-						new Cursor(Cursor.TEXT_CURSOR) ,
-						new Cursor(Cursor.SW_RESIZE_CURSOR) ,
-						new Cursor(Cursor.SE_RESIZE_CURSOR) ,
-						new Cursor(Cursor.NW_RESIZE_CURSOR) ,
-						new Cursor(Cursor.NE_RESIZE_CURSOR) ,
-						new Cursor(Cursor.N_RESIZE_CURSOR) ,
-						new Cursor(Cursor.S_RESIZE_CURSOR) ,
-						new Cursor(Cursor.W_RESIZE_CURSOR) ,
-						new Cursor(Cursor.E_RESIZE_CURSOR) ,*/
-				//名前の付いたカーソルは HyperCard では CURS の ID(hand 128, ibeam 1, cross 2, plus 3, watch 4)。
-				//スタックに同じ ID の CURS があればそれが出る(VM の HyperCard で確認)
-				if(value.equalsIgnoreCase("hand") || value.equalsIgnoreCase("browse")){
-					cr = browseCursor();
-				}else if(value.equalsIgnoreCase("watch")){
-					cr = hyperCardCursor(4, Cursor.WAIT_CURSOR);
-				}else if(value.equalsIgnoreCase("busy")){
-					cr = Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR);
-				}else if(value.equalsIgnoreCase("arrow")){
-					cr = Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR);
-				}else if(value.equalsIgnoreCase("cross")){
-					cr = hyperCardCursor(2, Cursor.CROSSHAIR_CURSOR);
-				}else if(value.equalsIgnoreCase("plus")){
-					cr = hyperCardCursor(3, Cursor.CROSSHAIR_CURSOR);
-				}else if(value.equalsIgnoreCase("ibeam")){
-					cr = hyperCardCursor(1, Cursor.TEXT_CURSOR);
-				}else if(value.equalsIgnoreCase("none")){
-					synchronized(TUtil.class){
-						if(noneCursor==null) noneCursor = Toolkit.getDefaultToolkit().createCustomCursor(
-								new BufferedImage(16,16, BufferedImage.TYPE_INT_ARGB), new Point(0, 0), "none-cursor");
-						cr = noneCursor;
-					}
-				}else{
-					//CURSは生データ(.data)のまま保存されていることがあるため、
-					//ImageIO.readではなくgetImage()経由でデコードする(Rsrc.loadImage
-					//参照)。Inside Macintoshの慣習どおり、同じIDのcrsr(カラー
-					//カーソル)があればモノクロのCURSより優先して使う(ホットスポットも
-					//同じ優先順位で取得する。Rsrc.getDisplayImage/getDisplayHotSpot参照)。
-					//名前で見つけたカーソルはIDで引き直さない(Homeの名前とこのスタックのIDが重なると別のカーソルになる)
-					Rsrc rsrc = PCARD.pc.stack.rsrc;
-					boolean named = rsrc.findByNameAll(value, "CURS")!=null;
-					int rsrcid = !named && value.matches("[0-9]+") ? Integer.valueOf(value) : 0;
-					BufferedImage bi = named ? rsrc.getDisplayImage(value, "CURS") : rsrc.getDisplayImage(rsrcid, "CURS");
-					if(bi!=null){
-						Point hotSpot = named ? rsrc.getDisplayHotSpot(value) : rsrc.getDisplayHotSpot(rsrcid);
-						//ホットスポットの記録が無いカーソル(Internet Tour の待ちカーソル)は中央。null は createCustomCursor が落ちる
-						if(hotSpot==null) hotSpot = new Point(bi.getWidth()/2, bi.getHeight()/2);
-						cr = customCursor(bi, hotSpot);
-					}else if(value.matches("[0-9]+") && CLASSIC_MAC_CURSOR_IDS.containsKey(Integer.valueOf(value))){
-						//スタックのリソースフォークには入っていない、classic Mac OS標準の
-						//システムカーソル（Toolbox内蔵）。現行OSの近いカーソルで代替する。
-						cr = Cursor.getPredefinedCursor(CLASSIC_MAC_CURSOR_IDS.get(Integer.valueOf(value)));
-					}
-					//else: 存在しないカーソルが指定された場合、HyperCardと同様にエラーには
-					//せず何もしない（現在のカーソルのまま）。
-				}
-				//同じカーソルなら設定し直さない(Component.setCursor は同じでもカーソルの更新を走らせる)
-				if(cr!=null && PCARD.pc.getCursor()!=cr)
-					PCARD.pc.setCursor(cr);
-				compatibilityProperties.put("cursor", value);
-			}
+			else if(UiHost.get().cursorSetters(inProperty, value, prpty)){}
 			else if(0==prpty.compareTo("lockscreen")){
 				if(value.equalsIgnoreCase("true")){
 					TTalk.doScriptforMenu("lock screen");
@@ -4567,249 +3591,7 @@ public class TUtil {
 			else if(0==prpty.compareTo("dragspeed")){
 				TTalk.dragspeed = propertyInteger("dragSpeed", value.trim());
 			}
-			else if(0==prpty.compareTo("editbkgnd")){
-				boolean on = propertyBoolean("editBkgnd", value);
-				//editBkgnd は userLevel 3(Painting)以上でだけ使える
-				if(on && StackProtection.effectiveUserLevel()<3) throw new xTalkException("editBkgnd requires userLevel 3 or higher");
-				PaintTool.editBackground = on;
-			}
-			else if(0==prpty.compareTo("filled")){
-				PCARD.pc.fill = propertyBoolean("filled", value);
-			}
-			else if(0==prpty.compareTo("centered")){
-				PaintTool.drawCentered = propertyBoolean("centered", value);
-				compatibilityProperties.put("centered", Boolean.toString(PaintTool.drawCentered));
-			}
-			else if(0==prpty.compareTo("multiple")){
-				PaintTool.drawMultiple = propertyBoolean("multiple", value);
-				compatibilityProperties.put("multiple", Boolean.toString(PaintTool.drawMultiple));
-				PCARD.runOnEDT(() -> GMenu.changeSelected("Options","Draw Multiple",PaintTool.drawMultiple));
-			}
-			else if(0==prpty.compareTo("multispace")){
-				//1以上。メニューは1〜9だが、HC J-2.3 は set the multiSpace to 10 も受け付けて 10 を返す(プローブ A Err MultiSpace)
-				int space = propertyInteger("multiSpace", value);
-				if(space<1) throw new xTalkException("multiSpace must be between 1 and {0}", PaintTool.MULTI_SPACE_MAX);
-				PaintTool.setMultiSpace(space);
-			}
-			else if(0==prpty.compareTo("polysides")){
-				int sides = propertyInteger("polySides", value);
-				//HyperCard J-2.3 keeps 0 and brings the others into 3..50 (-1 → 3, 2 → 3, 60 → 50; Mosaïcon: set the polysides to random (49))
-				if(sides!=0) sides = Math.max(3, Math.min(50, sides));
-				PaintTool.regPolySides = sides;
-			}
-			else if(0==prpty.compareTo("gradient")){
-				//set the gradient to off / linear / radial (グラデーションボタンと同じ)
-				String v = value.trim().toLowerCase(java.util.Locale.ROOT);
-				int kind;
-				if(v.equals("off") || v.equals("false") || v.equals("none") || v.equals("0")) kind = 0;
-				else if(v.equals("linear") || v.equals("on") || v.equals("true") || v.equals("1")) kind = 1;
-				else if(v.equals("radial") || v.equals("circular") || v.equals("2")) kind = 2;
-				else if(v.equals("texture") || v.equals("3")) kind = 3;
-				else throw new xTalkException("gradient requires off, linear, radial or texture");
-				final int k = kind;
-				PCARD.runOnEDT(() -> { if(PCARD.pc.grad!=null) PCARD.pc.grad.setKind(k); });
-			}
-			else if(0==prpty.compareTo("gradientangle")){
-				int deg = propertyInteger("gradientAngle", value);
-				PCARD.runOnEDT(() -> {
-					if(PCARD.pc.grad!=null){ PCARD.pc.grad.angle = Math.toRadians(GToolOptions.AngleDial.normalize(deg)); PCARD.pc.grad.makeIcon(); }
-				});
-			}
-			else if(0==prpty.compareTo("filltexture")){
-				//set the fillTexture to Wood / Marble / … / custom / none / 画像ファイルのパス。
-				//none以外なら塗りの種類もテクスチャにする
-				if(!PaintTexture.select(value)) throw new xTalkException("fillTexture requires a built-in texture name or an image file: {0}", value);
-				PCARD.runOnEDT(() -> { if(PCARD.pc.grad!=null) PCARD.pc.grad.setKind(PaintTexture.current==null ? 0 : 3); });
-			}
-			else if(0==prpty.compareTo("filltolerance")){
-				int t = propertyInteger("fillTolerance", value);
-				if(t<0 || t>100) throw new xTalkException("fillTolerance must be between 0 and 100");
-				PaintTool.fillTolerancePercent = t;
-			}
-			else if(0==prpty.compareTo("brushsize")){
-				int v = propertyInteger("brushSize", value);
-				if(v<1 || v>256) throw new xTalkException("brushSize must be between 1 and 256");
-				PaintTool.brushSize = v;
-				PaintTool.classicBrush = 0;
-				PCARD.runOnEDT(GToolOptions::changeCursor);
-			}
-			else if(0==prpty.compareTo("brushhardness")){
-				int v = propertyInteger("brushHardness", value);
-				if(v<0 || v>100) throw new xTalkException("brushHardness must be between 0 and 100");
-				PaintTool.brushHardness = v;
-			}
-			else if(0==prpty.compareTo("smudgestrength")){
-				int v = propertyInteger("smudgeStrength", value);
-				if(v<1 || v>100) throw new xTalkException("smudgeStrength must be between 1 and 100");
-				PaintTool.smudgeStrength = v;
-			}
-			else if(0==prpty.compareTo("stampsource")){
-				//set the stampSource to x,y (空で解除)
-				String v = value.trim();
-				if(v.length()==0){ StampTool.source = null; StampTool.offsetSet = false; }
-				else{
-					String[] parts = v.split(",");
-					if(parts.length!=2) throw new xTalkException("stampSource requires \"x,y\"");
-					try{
-						int x = Integer.parseInt(parts[0].trim()), y = Integer.parseInt(parts[1].trim());
-						StampTool.source = new java.awt.Point(x, y); StampTool.offsetSet = false;
-					}catch(NumberFormatException err){ throw new xTalkException("stampSource requires \"x,y\""); }
-				}
-				PCARD.runOnEDT(() -> { if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.repaint(); });
-			}
-			else if(0==prpty.compareTo("brushopacity")){
-				int v = propertyInteger("brushOpacity", value);
-				if(v<1 || v>100) throw new xTalkException("brushOpacity must be between 1 and 100");
-				PaintTool.brushOpacity = v;
-			}
-			else if(0==prpty.compareTo("brushspacing")){
-				int v = propertyInteger("brushSpacing", value);
-				if(v<1 || v>200) throw new xTalkException("brushSpacing must be between 1 and 200");
-				PaintTool.brushSpacing = v;
-			}
-			else if(0==prpty.compareTo("brushpressure")){
-				//set the brushPressure to size,opacity (both / none / 空も可)
-				boolean size = false, opacity = false;
-				for(String w : value.toLowerCase(java.util.Locale.ROOT).split("[,\\s]+")){
-					if(w.isEmpty() || w.equals("none") || w.equals("false")) continue;
-					else if(w.equals("size")) size = true;
-					else if(w.equals("opacity")) opacity = true;
-					else if(w.equals("both") || w.equals("true")){ size = true; opacity = true; }
-					else throw new xTalkException("brushPressure must be size, opacity, both or none");
-				}
-				PaintTool.pressureSize = size;
-				PaintTool.pressureOpacity = opacity;
-			}
-			else if(0==prpty.compareTo("penpressure")){
-				throw new xTalkException("Can't set the penPressure");
-			}
-			else if(0==prpty.compareTo("brushstabilization") || 0==prpty.compareTo("brushstabilizer")){
-				int v = propertyInteger(inProperty, value);
-				if(v<0 || v>98) throw new xTalkException("{0} must be between 0 and 98", inProperty);
-				PaintTool.brushStabilization = v;
-			}
-			else if(0==prpty.compareTo("zoom")){
-				//set the zoom to 300 (%)。25〜3200
-				float pct;
-				try{ pct = Float.parseFloat(value.trim().replace("%","")); }
-				catch(NumberFormatException err){ throw new xTalkException("zoom requires a number (%)"); }
-				if(pct<PaintTool.ZOOM_MIN*100 || pct>PaintTool.ZOOM_MAX*100)
-					throw new xTalkException("zoom must be between {0} and {1}", (int)(PaintTool.ZOOM_MIN*100), (int)(PaintTool.ZOOM_MAX*100));
-				PCARD.runOnEDT(() -> { PaintTool.owner = PCARD.pc; PaintTool.setZoom(PCARD.pc, pct/100f, -1, -1); });
-			}
-			else if(0==prpty.compareTo("zoomorigin")){
-				//set the zoomOrigin to x,y: 拡大表示の左上に来るカード座標(見える範囲に収める)
-				String[] parts = value.split(",");
-				if(parts.length!=2) throw new xTalkException("zoomOrigin requires a point (x,y)");
-				int ox, oy;
-				try{ ox = Integer.parseInt(parts[0].trim()); oy = Integer.parseInt(parts[1].trim()); }
-				catch(NumberFormatException err){ throw new xTalkException("zoomOrigin requires a point (x,y)"); }
-				PCARD.runOnEDT(() -> {
-					if(PCARD.pc.bit==1) return;
-					PCARD.pc.bitLeft = ox; PCARD.pc.bitTop = oy;
-					PaintTool.clampView(PCARD.pc);
-					PCARD.pc.mainPane.repaint();
-					FatBitsPreview.repaintFor(PCARD.pc);
-				});
-			}
-			else if(0==prpty.compareTo("grid")){
-				PaintTool.drawingGrid = propertyBoolean("grid", value);
-			}
-			else if(0==prpty.compareTo("gridsize")){
-				int size = propertyInteger("gridSize", value);
-				if(size<1 || size>PaintTool.GRID_SIZE_MAX) throw new xTalkException("gridSize must be between 1 and {0}", PaintTool.GRID_SIZE_MAX);
-				PaintTool.setDrawingGridSize(size);
-			}
-			else if(0==prpty.compareTo("paintlayer")){
-				//set the paintLayer to N / "name"
-				final String v = value;
-				final int[] found = new int[1];
-				PCARD.runOnEDT(() -> {
-					found[0] = PaintLayers.find(PCARD.pc, v);
-					if(found[0]>=0) PaintLayers.setActive(PCARD.pc, found[0]);
-				});
-				if(found[0]<0) throw new xTalkException("No such layer: {0}", value);
-			}
-			else if(0==prpty.compareTo("layername")){
-				final String v = value;
-				PCARD.runOnEDT(() -> PaintLayers.rename(PCARD.pc, v));
-			}
-			else if(0==prpty.compareTo("layeropacity")){
-				int v = propertyInteger("layerOpacity", value);
-				if(v<0 || v>100) throw new xTalkException("layerOpacity must be between 0 and 100");
-				PCARD.runOnEDT(() -> PaintLayers.setOpacity(PCARD.pc, v));
-			}
-			else if(0==prpty.compareTo("layerblend")){
-				int mode = PaintLayer.parseBlend(value);
-				if(mode<0) throw new xTalkException("layerBlend requires a blend mode name (Normal, Multiply, etc.)");
-				PCARD.runOnEDT(() -> PaintLayers.setBlend(PCARD.pc, mode));
-			}
-			else if(0==prpty.compareTo("layervisible")){
-				boolean v = propertyBoolean("layerVisible", value);
-				PCARD.runOnEDT(() -> PaintLayers.setVisible(PCARD.pc, PCARD.pc.activeLayer(), v));
-			}
-			else if(0==prpty.compareTo("layeralphalock")){
-				boolean v = propertyBoolean("layerAlphaLock", value);
-				PCARD.runOnEDT(() -> PaintLayers.setAlphaLock(PCARD.pc, v));
-			}
-			else if(0==prpty.compareTo("layerclip")){
-				boolean v = propertyBoolean("layerClip", value);
-				PCARD.runOnEDT(() -> PaintLayers.setClipToBelow(PCARD.pc, v));
-			}
-			else if(0==prpty.compareTo("symmetry")){
-				//set the symmetry to none/vertical/horizontal/quadrant/radial [N]
-				int kind = PaintTool.parseSymmetry(value);
-				if(kind<0) throw new xTalkException("symmetry requires none, vertical, horizontal, quadrant or radial");
-				PaintTool.setSymmetry(kind);
-			}
-			else if(0==prpty.compareTo("symmetryaxes")){
-				int n = propertyInteger("symmetryAxes", value);
-				if(n<PaintTool.SYMMETRY_AXES_MIN || n>PaintTool.SYMMETRY_AXES_MAX) throw new xTalkException("symmetryAxes must be between {0} and {1}", PaintTool.SYMMETRY_AXES_MIN, PaintTool.SYMMETRY_AXES_MAX);
-				PaintTool.setSymmetryAxes(n);
-				PCARD.runOnEDT(() -> { if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.repaint(); });
-			}
-			else if(0==prpty.compareTo("symmetrycenter")){
-				if(!PaintTool.setSymmetryCenter(value)) throw new xTalkException("symmetryCenter requires \"x,y\"");
-				PCARD.runOnEDT(() -> { if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.repaint(); });
-			}
-			else if(0==prpty.compareTo("linesize")){
-				try{
-					PaintTool.lineSize = Float.parseFloat(value);
-				}catch(NumberFormatException err){
-					throw new xTalkException("lineSize requires a number");
-				}
-			}
-			else if(0==prpty.compareTo("pattern") || 0==prpty.compareTo("brushpattern") ||
-					0==prpty.compareTo("penpattern") || 0==prpty.compareTo("fillpattern")){
-				//set the pattern to empty leaves the pattern as it is (HC J-2.3 measured; J-Paint's Fill/Fill_Sp menu items pass an empty pat)
-				if(value==null || value.trim().isEmpty()) return;
-				int pattern = propertyInteger(inProperty, value);
-				if(pattern<1 || pattern>40) throw new xTalkException("{0} must be between 1 and 40", inProperty);
-				if(PCARD.pc.pat!=null) PCARD.pc.pat.select(pattern-1);
-			}
-			else if(0==prpty.compareTo("brushcolor") || 0==prpty.compareTo("pencolor")){
-				final Color col = paintColorValue(inProperty, value, false);
-				if(PCARD.pc.fore!=null) PCARD.runOnEDT(() -> PCARD.pc.fore.makeIcon(col));
-			}
-			else if(0==prpty.compareTo("brushbackcolor") || 0==prpty.compareTo("penbackcolor")){
-				final Color col = paintColorValue(inProperty, value, true);
-				if(PCARD.pc.back!=null) PCARD.runOnEDT(() -> PCARD.pc.back.makeIcon(col));
-			}
-			else if(0==prpty.compareTo("messagewatcher")){
-				if(MessageWatcher.watcherWindow!=null) MessageWatcher.watcherWindow.setVisible(propertyBoolean("messageWatcher", value));
-			}
-			else if(0==prpty.compareTo("variablewatcher")){
-				if(VariableWatcher.watcherWindow!=null) VariableWatcher.watcherWindow.setVisible(propertyBoolean("variableWatcher", value));
-			}
-			else if(0==prpty.compareTo("brush")){
-				//HyperCardのブラシ形1〜32(Hyper書道は止まっている間に番号を変えて筆を太らせる)
-				int v = propertyInteger("brush", value);
-				compatibilityProperties.put("brush", Integer.toString(v)); //the brush is the number ("2.00" under numberFormat is 2)
-				if(v>=1 && v<=32){
-					PaintTool.classicBrush = v;
-					PCARD.runOnEDT(GToolOptions::changeCursor);
-				}
-			}
+			else if(UiHost.get().paintSetters(inProperty, value, prpty)){}
 			else if(0==prpty.compareTo("textalign")){
 				compatibilityProperties.put("textalign", textAlignName(textAlignValue(value)));
 			}
@@ -4887,14 +3669,19 @@ public class TUtil {
 			}
 			else if(obj.objectType.equals("menu")) {
 				OMenu om = (OMenu) obj;
-				om.menu.add(new JMenuItem(value));
+				om.menu.add(MMenuItem.create(value));
 			}
 			else throw new xTalkException("Text can only be stored in buttons and fields");
 		}
 		else if(0==prpty.compareTo("name")){
 			if(btn!=null) btn.setName(value);
 			else if(fld!=null) fld.setName(value);
-			else obj.name = value;
+			else{
+				obj.name = value;
+				//a card's or background's name is written with it (set the name of cd 1: nothing marked it, so it was kept only
+				//when something else of the stack changed too)
+				if(obj instanceof OCardBase) ((OCardBase)obj).changed = true;
+			}
 		}
 		else if(0==prpty.compareTo("left")){
 			int v;
@@ -4906,32 +3693,8 @@ public class TUtil {
 			}
 			if(btn!=null) btn.setTopLeft(v, btn.getTop());
 			else if(fld!=null) fld.setTopLeft(v, fld.getTop());
-			else if(cd!=null) PCARD.pc.stack.setTopLeft(v, PCARD.pc.stack.getTop());
-			else if(0==obj.objectType.compareTo("window")){
-				if(((OWindow)obj).frame!=null){
-					((OWindow)obj).frame.setBounds(windowOrigin().x+PCARD.toPhysical(v), ((OWindow)obj).frame.getY(), ((OWindow)obj).frame.getWidth(), ((OWindow)obj).frame.getHeight());
-				}
-				else if(((OWindow)obj).gpw!=null){
-					((OWindow)obj).gpw.setBounds(windowOrigin().x+PCARD.toPhysical(v), ((OWindow)obj).gpw.getY(), ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
-				}
-				else{
-					throw new xTalkException("Cannot set left on this object?");
-				}
-			}
-			else if(0==obj.objectType.compareTo("tool window")){
-				//set left of tool window to max(-(width of tool window+3), -left of card window) (umich Stack Dumper 3.0)
-				if(PCARD.pc.toolbar!=null && PCARD.pc.toolbar.tb!=null){
-					PCARD.pc.toolbar.tb.setLocation(windowOrigin().x+PCARD.toPhysical(v), PCARD.pc.toolbar.tb.getY());
-					toolWindowPlaced = true;
-				}
-			}
-			else if(0==obj.objectType.compareTo("msg")){
-				//set left of msg to 0 (Stack Dumper 3.0: aligned with the card window), as set topLeft
-				if(GMsg.msg!=null) GMsg.msg.setLocation(getCardOriginOnScreen().x+PCARD.toPhysical(v), GMsg.msg.getY());
-			}
-			else if(0==obj.objectType.compareTo("pattern window")){
-				//no Patterns palette of its own (as set loc)
-			}
+			else if(cd!=null) HZ.stack().setTopLeft(v, HZ.stack().getTop());
+			else if(UiHost.get().windowSetLeft(obj, inProperty, value, prpty, btn, fld, cd, v)){}
 			else throw new xTalkException("Cannot set left on this object");
 		}
 		else if(0==prpty.compareTo("top")){
@@ -4944,31 +3707,8 @@ public class TUtil {
 			}
 			if(btn!=null) btn.setTopLeft(btn.getLeft(),v);
 			else if(fld!=null) fld.setTopLeft(fld.getLeft(),v);
-			else if(cd!=null) PCARD.pc.stack.setTopLeft(PCARD.pc.stack.getLeft(),v);
-			else if(0==obj.objectType.compareTo("window")){
-				if(((OWindow)obj).frame!=null){
-					((OWindow)obj).frame.setBounds(((OWindow)obj).frame.getX(), windowOrigin().y+PCARD.toPhysical(v), ((OWindow)obj).frame.getWidth(), ((OWindow)obj).frame.getHeight());
-				}
-				else if(((OWindow)obj).gpw!=null){
-					((OWindow)obj).gpw.setBounds(((OWindow)obj).gpw.getX(), windowOrigin().y+PCARD.toPhysical(v), ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
-				}
-				else{
-					throw new xTalkException("Cannot set top on this object?");
-				}
-			}
-			else if(0==obj.objectType.compareTo("tool window")){
-				if(PCARD.pc.toolbar!=null && PCARD.pc.toolbar.tb!=null){
-					PCARD.pc.toolbar.tb.setLocation(PCARD.pc.toolbar.tb.getX(), windowOrigin().y+PCARD.toPhysical(v));
-					toolWindowPlaced = true;
-				}
-			}
-			else if(0==obj.objectType.compareTo("msg")){
-				//set top of msg to height of card window+13 (Stack Dumper 3.0)
-				if(GMsg.msg!=null) GMsg.msg.setLocation(GMsg.msg.getX(), getCardOriginOnScreen().y+PCARD.toPhysical(v));
-			}
-			else if(0==obj.objectType.compareTo("pattern window")){
-				//no Patterns palette of its own (as set loc)
-			}
+			else if(cd!=null) HZ.stack().setTopLeft(HZ.stack().getLeft(),v);
+			else if(UiHost.get().windowSetTop(obj, inProperty, value, prpty, btn, fld, cd, v)){}
 			else throw new xTalkException("Cannot set top on this object");
 		}
 		else if(0==prpty.compareTo("right")){
@@ -4981,7 +3721,7 @@ public class TUtil {
 			}
 			if(btn!=null) btn.setTopLeft(v-btn.getWidth(), btn.getTop());
 			else if(fld!=null) fld.setTopLeft(v-fld.getWidth(), fld.getTop());
-			else if(cd!=null) PCARD.pc.stack.setTopLeft(v-PCARD.pc.stack.getWidth(), PCARD.pc.stack.getTop());
+			else if(cd!=null) HZ.stack().setTopLeft(v-HZ.stack().getWidth(), HZ.stack().getTop());
 			else throw new xTalkException("Cannot set right on this object");
 		}
 		else if(0==prpty.compareTo("bottom")){
@@ -4994,7 +3734,7 @@ public class TUtil {
 			}
 			if(btn!=null) btn.setTopLeft(btn.getLeft(),v-btn.getHeight());
 			else if(fld!=null) fld.setTopLeft(fld.getLeft(),v-fld.getHeight());
-			else if(cd!=null) PCARD.pc.stack.setTopLeft(PCARD.pc.stack.getLeft(),v-PCARD.pc.stack.getHeight());
+			else if(cd!=null) HZ.stack().setTopLeft(HZ.stack().getLeft(),v-HZ.stack().getHeight());
 			else throw new xTalkException("Cannot set bottom on this object");
 		}
 		else if(0==prpty.compareTo("topleft")){
@@ -5002,36 +3742,8 @@ public class TUtil {
 			int v1 = pt[0], v2 = pt[1];
 			if(btn!=null) btn.setTopLeft(v1,v2);
 			else if(fld!=null) fld.setTopLeft(v1,v2);
-			else if(cd!=null) PCARD.pc.stack.setTopLeft(v1,v2);
-			else if(0==obj.objectType.compareTo("window")){
-				if(((OWindow)obj).frame!=null){
-					((OWindow)obj).frame.setBounds(windowOrigin().x+PCARD.toPhysical(v1), windowOrigin().y+PCARD.toPhysical(v2), ((OWindow)obj).frame.getWidth(), ((OWindow)obj).frame.getHeight());
-				}
-				else if(((OWindow)obj).gpw!=null){
-					((OWindow)obj).gpw.setBounds(windowOrigin().x+PCARD.toPhysical(v1), windowOrigin().y+PCARD.toPhysical(v2), ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
-				}
-				else if(((OWindow)obj).dlog!=null) placeDialogWindow(((OWindow)obj).dlog, v1, v2);
-				else{
-					throw new xTalkException("Cannot set topleft on this object?");
-				}
-			}
-			else if(0==obj.objectType.compareTo("tool window")){
-				//set topLeft of window "Tools" (ぺいんと+ puts its palettes back where they were): as its loc
-				if(PCARD.pc.toolbar!=null && PCARD.pc.toolbar.tb!=null){
-					PCARD.pc.toolbar.tb.setLocation(windowOrigin().x+PCARD.toPhysical(v1), windowOrigin().y+PCARD.toPhysical(v2));
-					toolWindowPlaced = true;
-				}
-			}
-			else if(0==obj.objectType.compareTo("pattern window")){
-				//no Patterns palette of its own (as set loc)
-			}
-			else if(0==obj.objectType.compareTo("msg")){
-				//set the topleft of msg to 20,355 (AOL ProTech; HC J-2.3 probe Aol Msg TopLeft)
-				if(GMsg.msg!=null){
-					Point cardOrigin = getCardOriginOnScreen();
-					GMsg.msg.setBounds(cardOrigin.x+PCARD.toPhysical(v1), cardOrigin.y+PCARD.toPhysical(v2), GMsg.msg.getWidth(), GMsg.msg.getHeight());
-				}
-			}
+			else if(cd!=null) HZ.stack().setTopLeft(v1,v2);
+			else if(UiHost.get().windowSetTopLeft(obj, inProperty, value, prpty, btn, fld, cd, v1, v2)){}
 			else throw new xTalkException("Cannot set topleft on this object");
 		}
 		else if(0==prpty.compareTo("loc") || 0==prpty.compareTo("location")){
@@ -5039,9 +3751,7 @@ public class TUtil {
 				//a picture window's loc that is no point (HyperCard J-2.3, Gradebook's showCredits: set the loc of window
 				//"credits" to card): "card" centres the window on the screen, anything else ("screen", "foo") is ignored, no error
 				if(value.trim().equalsIgnoreCase("card")){
-					GPictWindow gpw = ((OWindow)obj).gpw;
-					java.awt.Rectangle screen = PCARD.pc.getGraphicsConfiguration()!=null ? PCARD.pc.getGraphicsConfiguration().getBounds() : new java.awt.Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
-					gpw.setLocation(screen.x+(screen.width-gpw.getWidth())/2, screen.y+(screen.height-gpw.getHeight())/2);
+					UiHost.get().centrePictureWindow(obj, inProperty, value, prpty, btn, fld, cd);
 				}
 				return;
 			}
@@ -5049,36 +3759,8 @@ public class TUtil {
 			int v1 = pt[0], v2 = pt[1];
 			if(btn!=null) btn.setTopLeft(v1-btn.getWidth()/2, v2-btn.getHeight()/2);
 			else if(fld!=null) fld.setTopLeft(v1-fld.getWidth()/2, v2-fld.getHeight()/2);
-			else if(cd!=null) PCARD.pc.stack.setTopLeft(v1-PCARD.pc.stack.getWidth()/2, v2-PCARD.pc.stack.getHeight()/2);
-			else if(0==obj.objectType.compareTo("window")){
-				if(((OWindow)obj).frame==PCARD.pc){
-					((OWindow)obj).frame.setBounds(v1,v2, ((OWindow)obj).frame.getWidth(), ((OWindow)obj).frame.getHeight());
-				}
-				else if(((OWindow)obj).frame!=null){
-					((OWindow)obj).frame.setBounds(windowOrigin().x+PCARD.toPhysical(v1), windowOrigin().y+PCARD.toPhysical(v2), ((OWindow)obj).frame.getWidth(), ((OWindow)obj).frame.getHeight());
-				}
-				else if(((OWindow)obj).gpw!=null){
-					((OWindow)obj).gpw.setBounds(windowOrigin().x+PCARD.toPhysical(v1), windowOrigin().y+PCARD.toPhysical(v2), ((OWindow)obj).gpw.getWidth(), ((OWindow)obj).gpw.getHeight());
-				}
-				else if(((OWindow)obj).dlog!=null) placeDialogWindow(((OWindow)obj).dlog, v1, v2);
-			}
-			else if(0==obj.objectType.compareTo("msg")){
-				if(GMsg.msg!=null){
-					Point cardOrigin = getCardOriginOnScreen();
-					GMsg.msg.setBounds(cardOrigin.x+PCARD.toPhysical(v1), cardOrigin.y+PCARD.toPhysical(v2),
-						GMsg.msg.getWidth(), GMsg.msg.getHeight());
-				}
-			}
-			else if(0==obj.objectType.compareTo("tool window")){
-				//show tool window at 8,72 (ShowDialog XCMD スタック): パレットの左上を画面座標で置く
-				if(PCARD.pc.toolbar!=null && PCARD.pc.toolbar.tb!=null){
-					PCARD.pc.toolbar.tb.setLocation(windowOrigin().x+PCARD.toPhysical(v1), windowOrigin().y+PCARD.toPhysical(v2));
-					toolWindowPlaced = true;
-				}
-			}
-			else if(0==obj.objectType.compareTo("pattern window")){
-				//独立したPatternsパレットは無い(show で何もしないのと同じ)
-			}
+			else if(cd!=null) HZ.stack().setTopLeft(v1-HZ.stack().getWidth()/2, v2-HZ.stack().getHeight()/2);
+			else if(UiHost.get().windowSetLoc(obj, inProperty, value, prpty, btn, fld, cd, v1, v2)){}
 			/*else{
 				throw new xTalkException("Cannot set loc on this object?");
 			}*/
@@ -5094,7 +3776,7 @@ public class TUtil {
 				}
 			}
 			else if(0==obj.objectType.compareTo("msg")){
-				if(GMsg.msg!=null){
+				if(UiHost.get().msgExists()){
 					GMsg.msg.setBounds(windowOrigin().x+v1-GMsg.msg.getWidth()/2, windowOrigin().y+v2-GMsg.msg.getHeight()/2, GMsg.msg.getWidth(), GMsg.msg.getHeight());
 				}
 			}*/
@@ -5105,21 +3787,8 @@ public class TUtil {
 			int v1 = r[0], v2 = r[1], v3 = r[2], v4 = r[3];
 			if(btn!=null) btn.setRect(v1,v2,v3,v4);
 			else if(fld!=null) fld.setRect(v1,v2,v3,v4);
-			else if(cd!=null) PCARD.pc.stack.setRect(v1,v2,v3,v4);
-			else if(0==obj.objectType.compareTo("window")){
-				if(((OWindow)obj).frame==PCARD.pc){
-					((OWindow)obj).frame.setBounds(v1,v2,v3-v1,v4-v2);
-				}
-				else if(((OWindow)obj).frame!=null){
-					((OWindow)obj).frame.setBounds(windowOrigin().x+PCARD.toPhysical(v1),windowOrigin().y+PCARD.toPhysical(v2),PCARD.toPhysical(v3-v1),PCARD.toPhysical(v4-v2));
-				}
-				else if(((OWindow)obj).gpw!=null){
-					((OWindow)obj).gpw.setBounds(windowOrigin().x+PCARD.toPhysical(v1),windowOrigin().y+PCARD.toPhysical(v2),PCARD.toPhysical(v3-v1),PCARD.toPhysical(v4-v2));
-				}
-				else{
-					throw new xTalkException("Cannot set rect on this object?");
-				}
-			}
+			else if(cd!=null) HZ.stack().setRect(v1,v2,v3,v4);
+			else if(UiHost.get().windowSetRect(obj, inProperty, value, prpty, btn, fld, cd, v1, v2, v3, v4)){}
 			else throw new xTalkException("Cannot set rect on this object");
 		}
 		else if(0==prpty.compareTo("width")){
@@ -5132,7 +3801,7 @@ public class TUtil {
 			}
 			if(btn!=null) btn.setRect(btn.getLeft()+btn.getWidth()/2-v/2,btn.getTop(),btn.getLeft()+btn.getWidth()/2+(v+1)/2,btn.getTop()+btn.getHeight());
 			else if(fld!=null) fld.setRect(fld.getLeft()+fld.getWidth()/2-v/2,fld.getTop(),fld.getLeft()+fld.getWidth()/2+(v+1)/2,fld.getTop()+fld.getHeight());
-			else if(cd!=null) PCARD.pc.stack.setRect(PCARD.pc.stack.getLeft()+PCARD.pc.stack.getWidth()/2-v/2,PCARD.pc.stack.getTop(),PCARD.pc.stack.getLeft()+PCARD.pc.stack.getWidth()/2+(v+1)/2,PCARD.pc.stack.getTop()+PCARD.pc.stack.getHeight());
+			else if(cd!=null) HZ.stack().setRect(HZ.stack().getLeft()+HZ.stack().getWidth()/2-v/2,HZ.stack().getTop(),HZ.stack().getLeft()+HZ.stack().getWidth()/2+(v+1)/2,HZ.stack().getTop()+HZ.stack().getHeight());
 		}
 		else if(0==prpty.compareTo("height")){
 			int v;
@@ -5144,12 +3813,10 @@ public class TUtil {
 			}
 			if(btn!=null) btn.setRect(btn.getLeft(),btn.getTop()+btn.getHeight()/2-v/2,btn.getLeft()+btn.getWidth(),btn.getTop()+btn.getHeight()/2+(v+1)/2);
 			else if(fld!=null) fld.setRect(fld.getLeft(),fld.getTop()+fld.getHeight()/2-v/2,fld.getLeft()+fld.getWidth(),fld.getTop()+fld.getHeight()/2+(v+1)/2);
-			else if(cd!=null) PCARD.pc.stack.setRect(PCARD.pc.stack.getLeft(),PCARD.pc.stack.getTop()+PCARD.pc.stack.getHeight()/2-v/2,PCARD.pc.stack.getLeft()+PCARD.pc.stack.getWidth(),PCARD.pc.stack.getTop()+PCARD.pc.stack.getHeight()/2+(v+1)/2);
+			else if(cd!=null) HZ.stack().setRect(HZ.stack().getLeft(),HZ.stack().getTop()+HZ.stack().getHeight()/2-v/2,HZ.stack().getLeft()+HZ.stack().getWidth(),HZ.stack().getTop()+HZ.stack().getHeight()/2+(v+1)/2);
 		}
 		else if(0==prpty.compareTo("zoomed")){
-			if(0==obj.objectType.compareTo("window")){
-				((OWindow)obj).setZoomed(propertyBoolean("zoomed", value));
-			}
+			if(UiHost.get().windowSetZoomed(obj, inProperty, value, prpty, btn, fld, cd)){}
 			else throw new xTalkException("Cannot set zoomed on this object");
 		}
 		else if(0==prpty.compareTo("cantpeek")){
@@ -5176,14 +3843,7 @@ public class TUtil {
 		else if(0==prpty.compareTo("cantmodify")){
 			if(obj instanceof OStack){
 				((OStack)obj).changed = true;
-				if(PCARD.pc.stack.saveXML!=null && PCARD.pc.stack.saveXML.saveThread!=null){
-					//cantmodifyにした/外したことを保存する
-					PCARD.pc.stack.saveXML.saveThread.interrupt();
-					try {
-						Thread.sleep(100);
-					} catch (InterruptedException e) {
-					}
-				}
+				UiHost.get().saveLockNow(obj, inProperty, value, prpty, btn, fld, cd);
 				((OStack)obj).cantModify = propertyBoolean("cantModify", value);
 			}
 			else if(obj instanceof OCard){ ((OCard)obj).cantModify = propertyBoolean("cantModify", value); ((OCard)obj).changed = true; }
@@ -5218,10 +3878,10 @@ public class TUtil {
 				throw new xTalkException("A number is required here");
 			}
 			if(obj.objectType.equals("window") && ((OWindow)obj).mp3!=null) {
-				((OWindow)obj).mp3.setVolume(v);
+				UiHost.get().mp3Volume(((OWindow)obj).mp3, v);
 			}
 			else if(obj.objectType.equals("window") && ((OWindow)obj).movieHandle!=null) {
-				TQTMovie.setVolume(((OWindow)obj).movieHandle,v);
+				UiHost.get().tQTMovieSetVolume(((OWindow)obj).movieHandle,v);
 			}
 			else throw new xTalkException("Cannot set audiolevel on {0}", obj.getShortName());
 		}
@@ -5248,10 +3908,10 @@ public class TUtil {
 				throw new xTalkException("A number is required here");
 			}
 			if(obj.objectType.equals("window") && ((OWindow)obj).mp3!=null) {
-				((OWindow)obj).mp3.setTime(v);
+				UiHost.get().mp3Time(((OWindow)obj).mp3, v);
 			}
 			else if(obj.objectType.equals("window") && ((OWindow)obj).movieHandle!=null) {
-				TQTMovie.setCurrentTime(((OWindow)obj).movieHandle,v);
+				UiHost.get().tQTMovieSetCurrentTime(((OWindow)obj).movieHandle,v);
 			}
 			else throw new xTalkException("Cannot set currTime on {0}", obj.getShortName());
 		}
@@ -5281,7 +3941,7 @@ public class TUtil {
 				}catch(Exception err){
 					throw new xTalkException("A number is required here");
 				}
-				PCARD.pc.stack.setScroll(v1,v2);
+				HZ.stack().setScroll(v1,v2);
 			}
 			else if(obj==OWindow.cdwindow) {
 				//set the scroll of cd window to x*208+3,0 (RDS experiments): the part of the card the window shows
@@ -5297,11 +3957,11 @@ public class TUtil {
 				//HyperCard 2.4: kept within the card at the window's size when set, and horizontally a multiple of 16
 				//(100,50 -> 96,50; a full-size window stays at 0,0)
 				java.awt.Rectangle view = cardWindowRect();
-				int maxX = Math.max(0, PCARD.pc.stack.width-PCARD.toLogical(view.width));
-				int maxY = Math.max(0, PCARD.pc.stack.height-PCARD.toLogical(view.height));
-				PCARD.pc.stack.setScroll(Math.max(0, Math.min(v1, maxX))/16*16, Math.max(0, Math.min(v2, maxY)));
+				int maxX = Math.max(0, HZ.stack().width-Host.get().toLogical(view.width));
+				int maxY = Math.max(0, HZ.stack().height-Host.get().toLogical(view.height));
+				HZ.stack().setScroll(Math.max(0, Math.min(v1, maxX))/16*16, Math.max(0, Math.min(v2, maxY)));
 			}
-			else if(obj!=null && obj.objectType.equals("window") && ((OWindow)obj).gpw!=null) {
+			else if(obj!=null && obj.objectType.equals("window") && (((OWindow)obj).gpw!=null || ((OWindow)obj).pict!=null)) {
 				int v1, v2;
 				String[] strAry = value.split(",");
 				if(strAry.length!=2){
@@ -5315,7 +3975,8 @@ public class TUtil {
 				}catch(Exception err){
 					throw new xTalkException("A number is required here");
 				}
-				((OWindow)obj).gpw.setScroll(v1,v2);
+				if(((OWindow)obj).pict!=null) ((OWindow)obj).pict.setScroll(v1, v2);
+				else UiHost.get().pictureSetScroll(((OWindow)obj).gpw, v1, v2);
 			}
 		}
 		else if(0==prpty.compareTo("style")){
@@ -5431,9 +4092,10 @@ public class TUtil {
 			}
 			OCard.reloadCurrentCard();
 		}
+		else if(prpty.equals("dithering") && obj instanceof OWindow && ((OWindow)obj).pict!=null) propertyBoolean("dithering", value); //the browser player shows full colour
 		else if(prpty.equals("dithering") && obj instanceof OWindow && ((OWindow)obj).gpw!=null){
 			//picture windowのプロパティ(HyperCard 2.2: らんぱぶ, TK HTML Edit が set the dithering of window … to true)
-			((OWindow)obj).gpw.dithering = propertyBoolean("dithering", value);
+			UiHost.get().pictureDithering(((OWindow)obj).gpw, propertyBoolean("dithering", value));
 		}
 		else if(prpty.equals("scale")){
 			//picture windowのプロパティ
@@ -5454,9 +4116,9 @@ public class TUtil {
 			}
 			if(0==obj.objectType.compareTo("window")){
 				if(((OWindow)obj).gpw!=null){
-					((OWindow)obj).gpw.label.scale=vv;
-					((OWindow)obj).gpw.repaint();
+					UiHost.get().pictureScale(((OWindow)obj).gpw, vv);
 				}
+				else if(((OWindow)obj).pict!=null) ((OWindow)obj).pict.setScale(v); //the browser player's picture window: the picture at 2^v, the window's size kept
 				else{
 					throw new xTalkException("Cannot set scale on this object");
 				}
@@ -5705,47 +4367,7 @@ public class TUtil {
 	/** The windows in the order of "the windows" (front to back), as HyperCard 2.4 lists them: the message box, the
 	 *  watchers and the shown XCMD/palette windows, the tool and pattern windows (HyperCard lists these windoids even when
 	 *  they are hidden), and last the card window named after its stack. Each entry is {name, OObject}. */
-	static java.util.List<Object[]> windowEntries() {
-		boolean longTitles = compatibilityProperty("longWindowTitles").equalsIgnoreCase("true");
-		boolean english = PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.legacyTextEncoding!=StackTextEncoding.JAPANESE;
-		java.util.List<Object[]> list = new java.util.ArrayList<Object[]>();
-		//68K externals' windows (Movie XCMD 1.2 and other XWindows) come first, as HyperCard's XCMD windows do
-		if(Xcmd68k.hasWindowSessions()) for(Xcmd68k.ExternalWindow w : Xcmd68k.windows()){
-			OXWindow xw = new OXWindow(w);
-			if(xw.name!=null && !xw.name.isEmpty()) list.add(new Object[]{xw.name, xw});
-		}
-		if(GMsg.msg!=null) list.add(new Object[]{"Message", OMsg.msg});
-		//picture and movie windows are document windows: a hidden one is behind the windoids and palettes, in front of the card
-		//window, and one on show is the first window (HC J-2.3 probe Jhug Window Number: a picture opened hidden is window 8 of
-		//9, after show window 8 window 1; JHUG Libra Demo: picture … / set the loc of window 8 / show window 8)
-		java.util.List<Object[]> documents = new java.util.ArrayList<Object[]>();
-		java.util.List<Object[]> shownDocuments = new java.util.ArrayList<Object[]>();
-		for(int i=0; i<OWindow.list.size();i++){
-			OWindow w = OWindow.list.get(i);
-			if(w==OWindow.msgwindow || w==OWindow.cdwindow || w.name==null) continue;
-			if(w.isMovie() || (w.gpw!=null && !w.gpw.isPaletteWindow())){ (w.getVisible() ? shownDocuments : documents).add(new Object[]{w.name, w}); continue; }
-			String name = w.name;
-			if(english && w.dlog instanceof MessageWatcher) name = "Message Watcher";
-			else if(english && w.dlog instanceof VariableWatcher) name = "Variable Watcher";
-			//HyperCard J-2.3 names them メッセージ表示 / 変数表示 (the window titles here say ウィンドウ too)
-			else if(w.dlog instanceof MessageWatcher) name = "メッセージ表示";
-			else if(w.dlog instanceof VariableWatcher) name = "変数表示";
-			list.add(new Object[]{name, w});
-		}
-		list.add(new Object[]{OHcWindow.scroll.name, OHcWindow.scroll}); //HyperCard lists its hidden Scroll and FatBits windoids too
-		list.add(new Object[]{OHcWindow.fatbits.name, OHcWindow.fatbits});
-		if(OPatternWindow.patternwindow!=null) list.add(new Object[]{"Patterns", OPatternWindow.patternwindow});
-		if(OToolWindow.toolwindow!=null) list.add(new Object[]{"Tools", OToolWindow.toolwindow});
-		list.addAll(documents);
-		list.addAll(0, shownDocuments);
-		if(PCARD.pc!=null && PCARD.pc.stack!=null){
-			String title = longTitles && PCARD.pc.stack.path!=null && PCARD.pc.stack.cardWindowTitle==null ? TTalk.stackIdentityPath(PCARD.pc.stack.path) : PCARD.pc.stack.getWindowTitle();
-			list.add(new Object[]{title, OWindow.cdwindow});
-		}
-		//stacks left open in windows of their own (go … in a new window): HyperCard lists them behind the card window
-		for(String name : TTalk.windowStackNames()) list.add(new Object[]{name, null});
-		return list;
-	}
+	static java.util.List<Object[]> windowEntries() { return UiHost.get().windowEntries(); }
 
 	/** window N: the Nth window of "the windows" (Power Tools: repeat with K = the number of windows down to 1 / close window K) */
 	static OObject windowByNumber(int n) {
@@ -5756,9 +4378,10 @@ public class TUtil {
 	/** the owner of window: the external command that made it ("Picture", "Palette", "Movie", the watchers), else HyperCard */
 	static String windowOwner(OWindow w) {
 		if(w.isMovie()) return "Movie";
-		if(w.gpw!=null) return w.gpw.isPaletteWindow() ? "Palette" : "Picture";
-		if(w.dlog instanceof VariableWatcher) return "VariableWatcher";
-		if(w.dlog instanceof MessageWatcher) return "MessageWatcher";
+		if(w.gpw!=null) return UiHost.get().pictureIsPalette(w.gpw) ? "Palette" : "Picture";
+		if(w.pict!=null) return w.pict.palette ? "Palette" : "Picture";
+		if(UiHost.get().isVariableWatcher(w.dlog)) return "VariableWatcher";
+		if(UiHost.get().isMessageWatcher(w.dlog)) return "MessageWatcher";
 		return "HyperCard";
 	}
 }

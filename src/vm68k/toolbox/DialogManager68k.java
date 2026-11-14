@@ -12,7 +12,7 @@ import java.util.Map;
  * modeless dialogs, alerts, item text, edit fields (TextEdit), filter
  * procedures and user items, all drawn natively into the dialog window.
  */
-final class DialogManager68k {
+class DialogManager68k {
 	static final int DIALOG_SIZE=170;
 	private static final int PN_VIS=66,ITEMS=156,TEXT_H=160,EDIT_FIELD=164,EDIT_OPEN=166,DEFAULT_ITEM=168;
 	private static final int USER_ITEM=0,CTRL_ITEM=4,BTN_CTRL=4,CHK_CTRL=5,RAD_CTRL=6,RES_CTRL=7,STAT_TEXT=8,EDIT_TEXT=16,ICON_ITEM=32,PIC_ITEM=64,ITEM_DISABLE=128;
@@ -208,7 +208,7 @@ final class DialogManager68k {
 		int window=create(storage,bounds,title,visible&&!forceInvisible,procId,behind,goAway,refCon,items,false,dctb==null?null:tb.resources.data(dctb),dctb!=null);
 		if(window!=0){applyFontTable(window,ditlId,0);applyItemStyles(window,ditlId);
 			ResourceFile68k.Resource dlgx=tb.resources.find(0x646c6778,id);byte[] x=dlgx==null?null:tb.resources.data(dlgx); // 'dlgx': version.w, flags.l
-			if(x!=null&&x.length>=6&&(MacApp68k.u4(x,2)&2)!=0){dialogs.get(window).embedding=true;tb.appearance.ensureRootControl(window);}}
+			if(x!=null&&x.length>=6&&(MacApp68k.u4(x,2)&2)!=0){dialogs.get(window).embedding=true;if(tb.appearance!=null)tb.appearance.ensureRootControl(window);}}
 		return window;
 	}
 	/**
@@ -552,11 +552,11 @@ final class DialogManager68k {
 			// A recorded offscreen dialog is not cleared for us, so start its content on white (a shown dialog
 			// keeps whatever the program drew into it, as the real DrawDialog does).
 			if(recording){Graphics2D g=tb.quickDraw.windowSurface(window);if(g!=null){try{g.setColor(Color.WHITE);g.fillRect(0,0,w.width,w.height);}finally{g.dispose();}}}
-			MacAppHost.HostWindow hw=tb.host().window(window);
-			if(!recording&&hw!=null&&!hw.decorated&&!hw.customFrame){Graphics2D g=tb.quickDraw.windowSurface(window);
+			VmWindow hw=tb.host().window(window);
+			if(!recording&&hw!=null&&!hw.decorated()&&!hw.customFrame()){Graphics2D g=tb.quickDraw.windowSurface(window);
 				if(g!=null){try{g.setColor(Color.BLACK);g.drawRect(0,0,w.width-1,w.height-1);
 					// plainDBox is a single black line on a Mac: no inner grey line (it ran through Factory 1.1's black status bar)
-					if((hw.procId&15)!=2){g.setColor(new Color(0x60,0x60,0x60));g.drawRect(1,1,w.width-3,w.height-3);}}finally{g.dispose();}}}
+					if((hw.procId()&15)!=2){g.setColor(new Color(0x60,0x60,0x60));g.drawRect(1,1,w.width-3,w.height-3);}}finally{g.dispose();}}}
 			// The controls come last, as DrawDialog draws them with DrawControls after the other items: MacPaint's About box has
 			// a static text rectangle running into its OK button, and the text box's erase must not cut the button on a Mac
 			for(Item item:dialog.list)if(!isControl(item))drawItem(dialog,item);
@@ -758,7 +758,7 @@ final class DialogManager68k {
 			if(tag==AppearanceControls68k.T_TEXT||tag==AppearanceControls68k.T_CFSTRING){
 				byte[] bytes;
 				if(tag==AppearanceControls68k.T_TEXT)bytes=data==0?new byte[0]:memory.readBytes(data,Math.max(0,Math.min(size,32767)));
-				else{String s=size<4||data==0||tb.app==null||tb.app.ppc==null?null:tb.app.ppc.libraries.textServices.cfText(memory.readLong(data));if(s==null)return -50;bytes=tb.encoding.encodeReplacing(s);}
+				else{String s=size<4||data==0||tb.app==null||tb.app.ppc==null?null:Ppc68k.cfText(tb.app.ppc,memory.readLong(data));if(s==null)return -50;bytes=tb.encoding.encodeReplacing(s);}
 				if(item.handle==0){item.handle=tb.api.createHandle(bytes);memory.writeLong(item.address,item.handle);}
 				setItemText(item.handle,bytes);return 0;}
 			if(tag==AppearanceControls68k.T_FONT&&text()){ // ControlFontStyleRec: flags, font, size, style, mode, just, foreColor, backColor
@@ -970,7 +970,7 @@ final class DialogManager68k {
 	private void flash(Item item) throws M68kException {
 		if(item.handle==0)return;int d=tb.controls.data(item.handle);if(d==0)return;
 		memory.writeByte(d+17,10);tb.controls.draw(item.handle);tb.host().repaintNow(tb.controls.controls.get(item.handle).window);
-		try{Thread.sleep(80);}catch(InterruptedException ignored){}
+		try{Platform.get().sleep(80);}catch(InterruptedException ignored){}
 		memory.writeByte(d+17,0);tb.controls.draw(item.handle);
 	}
 
@@ -978,10 +978,10 @@ final class DialogManager68k {
 	private static final int MODAL_MASK=0xffff&~(1<<EventManager68k.OS_EVT)&~EventManager68k.HIGH_LEVEL_MASK;
 	private boolean modalDialog(M68kCpu cpu) throws M68kException {
 		int itemHitPtr=memory.readLong(cpu.a[7]),filter=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;
-		if(!tb.hosted()){memory.writeWord(itemHitPtr,0);return true;} // headless: nothing can be clicked
+		if(!tb.hosted()){if(Mac68kApi.TRACE)System.err.println("[68K] ModalDialog: no host, item 0");memory.writeWord(itemHitPtr,0);return true;} // headless: nothing can be clicked
 		int window=tb.windows.frontWindow();Dialog dialog=dialogs.get(window);
 		if(dialog==null){for(Dialog d:dialogs.values()){WindowManager68k.Window w=tb.windows.window(d.window);if(w!=null&&w.visible){dialog=d;window=d.window;break;}}}
-		if(dialog==null){memory.writeWord(itemHitPtr,0);return true;}
+		if(dialog==null){if(Mac68kApi.TRACE)System.err.println("[68K] ModalDialog: no dialog in front ($"+Integer.toHexString(window)+"), item 0");memory.writeWord(itemHitPtr,0);return true;}
 		tb.menus.flushIfDirty();
 		// ModalDialog makes the dialog the current port (and leaves it so): filters GlobalToLocal the event's point without a
 		// SetPort of their own - PageMaker 6's installer tested list clicks against the main window's coordinates.
@@ -1014,6 +1014,10 @@ final class DialogManager68k {
 		WindowManager68k.Window w=tb.windows.window(window);
 		if(w!=null&&!w.visible){tb.windows.show(window,true);}
 		tb.windows.select(window);
+		// a stack external's modal dialog takes the clicks queued for HyperCard while the handler ran (HyperCard's event queue:
+		// ModalDialog gets them, outside the dialog they only beep): Favorite Story's click in a dissolve went through its
+		// UxAnswer dialogs and ended a later wait until the mouseClick at once
+		if(Xcmd68k.hasWindowSessions())UiHost.get().gUIForgetClicks();
 		// A real ModalDialog draws nothing on entry: the items are drawn for the update event ShowWindow generated (handled
 		// below, or here when it is already queued), and a dialog drawn earlier keeps what the program did to it since.
 		// Realmz colours its party list by SetIText under changing ForeColors between two ModalDialog calls - an
@@ -1047,7 +1051,7 @@ final class DialogManager68k {
 			}
 			if(dialog.tracksCursor)trackCursor(dialog);
 			if(e.what==EventManager68k.UPDATE_EVT&&e.message!=window){if(dialogs.containsKey(e.message))draw(e.message);else deferredUpdates.add(e.message);continue;}
-			if(e.what==EventManager68k.MOUSE_DOWN&&e.menuId!=0){tb.events.clickTracked();if(e.menuId==-1&&e.window==window&&dialog.cancelItem>0)return dialog.cancelItem;java.awt.Toolkit.getDefaultToolkit().beep();tb.events.pendingMenuEvent=null;if(e.menuId==-1)tb.events.goAwayRefused();continue;}
+			if(e.what==EventManager68k.MOUSE_DOWN&&e.menuId!=0){tb.events.clickTracked();if(e.menuId==-1&&e.window==window&&dialog.cancelItem>0)return dialog.cancelItem;Toolbox68k.PARTS.beep();tb.events.pendingMenuEvent=null;if(e.menuId==-1)tb.events.goAwayRefused();continue;}
 			if(filter!=0){
 				tb.events.writeEventRecord(scratchEvent,e);if(itemHitPtr==0)memory.writeWord(scratchItem,0);
 				M68kCpu cpu=tb.cpu;int[] d=cpu.d.clone(),a=cpu.a.clone();
@@ -1089,14 +1093,14 @@ final class DialogManager68k {
 	 */
 	void initializeLowMemory() throws M68kCpuException {
 		if(standardBeeper==0)standardBeeper=tb.registerGate(new Toolbox68k.Gate(){@Override public void call(M68kCpu cpu) throws M68kException {
-			int n=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;for(int i=0;i<Math.min(3,n);i++)tb.api.soundManager().sysBeep();}});
+			int n=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;for(int i=0;i<Math.min(3,n);i++){if(tb.api.soundManager()!=null)tb.api.soundManager().sysBeep();else UiHost.get().beep();}}});
 		if(!beeperSet)memory.writeLong(DA_BEEPER,standardBeeper);
 	}
 
 	/** An alert stage's sound (1-3 beeps): through the program's ErrorSound procedure, called with the sound number. */
 	private void alertSound(M68kCpu cpu,int sound) throws M68kException {
 		if(sound==0)return;
-		if(!beeperSet){java.awt.Toolkit.getDefaultToolkit().beep();return;}
+		if(!beeperSet){Toolbox68k.PARTS.beep();return;}
 		if(beeper==0)return;
 		cpu.a[7]-=2;memory.writeWord(cpu.a[7],sound);cpu.callPascal(beeper,2);
 	}
@@ -1172,7 +1176,7 @@ final class DialogManager68k {
 			case 0x110c:{int sp=cpu.a[7];int items=memory.readLong(sp+4),refCon=memory.readLong(sp+8);boolean goAway=memory.readByte(sp+12)!=0;int behind=memory.readLong(sp+14),procId=(short)memory.readWord(sp+18);
 				boolean visible=memory.readByte(sp+20)!=0;int title=memory.readLong(sp+22),bounds=memory.readLong(sp+26),storage=memory.readLong(sp+30);cpu.a[7]+=34;
 				int window=create(storage,readRect(bounds),tb.readPascal(title),visible,procId,behind,goAway,refCon,items,true,null,true);
-				if(window!=0&&(memory.readLong(sp)&2)!=0){dialogs.get(window).embedding=true;tb.appearance.ensureRootControl(window);} // kDialogFlagsUseControlHierarchy
+				if(window!=0&&(memory.readLong(sp)&2)!=0){dialogs.get(window).embedding=true;if(tb.appearance!=null)tb.appearance.ensureRootControl(window);} // kDialogFlagsUseControlHierarchy
 				memory.writeLong(cpu.a[7],window);return true;} // NewFeaturesDialog (otherwise the flags only choose the Appearance look)
 			default:cpu.a[7]+=(selector>>>8)*2;memory.writeWord(cpu.a[7],-4);return true;
 		}

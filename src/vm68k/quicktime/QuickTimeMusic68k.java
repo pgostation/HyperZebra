@@ -21,7 +21,7 @@ import javax.sound.midi.ShortMessage;
  * QuickTimeMusic.h's. The tune plays on a thread of its own, so it goes on while the external has returned; it stops with
  * TuneStop, when the instance closes, and when the VM shuts down (stack closed, program quit).
  */
-final class QuickTimeMusic68k {
+class QuickTimeMusic68k {
 	static final int NOTA=0x6e6f7461,TUNE=0x74756e65,APPL=0x6170706c,SOFT_SYNTH=0x73732020; // 'ss  '
 	static final int BAD_SELECTOR=0x80008002,PARAM_ERR=-50,USER_CANCELED=-128;
 	static final int QUEUE_DEPTH=8; // kTuneQueueDepth

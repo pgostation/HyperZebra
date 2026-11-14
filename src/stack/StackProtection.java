@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -150,7 +151,7 @@ final class StackProtection {
 	/** The user level in effect: the user's level, lowered to the limit of the current stack. */
 	static int effectiveUserLevel(){
 		PCARD pc = PCARD.pc;
-		int level = PCARD.userLevel;
+		int level = HZ.userLevel;
 		if(pc!=null) level = Math.min(level, stackLimit(pc.stack));
 		return Math.max(1, Math.min(5, level));
 	}
@@ -396,6 +397,49 @@ final class StackProtection {
 		}
 	}
 
+	/**
+	 * A copy of an open stack's folder made plain for the web player (WebExport), which opens no sealed file: the sealed
+	 * _stack.xml (HyperZebra's key, or the Private Access password the stack was opened with) and sealed pictures (the
+	 * stack's content key) are written unsealed, in place.
+	 */
+	static void unsealCopy(File folder, OStack stack) throws IOException { unsealCopy(folder, stack.contentKey, stack.unlockedPassword); }
+
+	/** The same for a copy of a stack that is not open: its sealed _stack.xml opened first (HyperZebra's key, or the
+	 *  password), its pictures with the content key that file holds. */
+	static void unsealCopy(File folder) throws IOException {
+		File xml = new File(folder, "_stack.xml");
+		byte[] data = xml.isFile() ? Files.readAllBytes(xml.toPath()) : null;
+		if (data == null || !isSealed(data)) return;
+		if (needsPassword(data)) throw new IOException("The stack has Private Access: " + folder.getName());
+		try { data = unseal(data, null); } catch (GeneralSecurityException e) { throw new IOException("The stack file could not be opened: " + folder.getName(), e); }
+		Files.write(xml.toPath(), data);
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("<contentKey>\\s*([A-Za-z0-9+/=]+)\\s*</contentKey>").matcher(new String(data, StandardCharsets.UTF_8));
+		unsealCopy(folder, m.find() ? java.util.Base64.getDecoder().decode(m.group(1)) : null, null);
+	}
+
+	private static void unsealCopy(File folder, byte[] contentKey, String password) throws IOException {
+		java.util.List<Path> files;
+		try (java.util.stream.Stream<Path> walk = Files.walk(folder.toPath())) { files = walk.filter(Files::isRegularFile).collect(java.util.stream.Collectors.toList()); }
+		for (Path p : files) {
+			byte[] head = new byte[MAGIC.length + 1];
+			int n;
+			try (java.io.InputStream in = Files.newInputStream(p)) { n = Platform.readNBytes(in, head, 0, head.length); }
+			if (n < head.length || !Arrays.equals(Arrays.copyOf(head, MAGIC.length), MAGIC)) continue;
+			byte[] data = Files.readAllBytes(p);
+			if (!isSealed(data)) continue;
+			try {
+				byte[] plain;
+				if (data[MAGIC.length] == MODE_CONTENT) {
+					if (contentKey == null) throw new GeneralSecurityException("no content key");
+					plain = unsealContent(data, contentKey);
+				} else plain = unseal(data, data[MAGIC.length] == MODE_PASSWORD ? password : null);
+				Files.write(p, plain);
+			} catch (GeneralSecurityException e) {
+				throw new IOException("The stack's protected file " + folder.toPath().relativize(p) + " could not be opened: " + e.getMessage(), e);
+			}
+		}
+	}
+
 	//---- Password prompt ----
 
 	/** Test hook: when set, prompts answer with this instead of showing a dialog (null there means Cancel). */
@@ -415,7 +459,7 @@ final class StackProtection {
 			});
 			Object[] content = {message, field};
 			int r = JOptionPane.showConfirmDialog(PCARD.pc!=null && PCARD.pc.isShowing() ? PCARD.pc : null, content,
-				PCARD.AppName, JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+				HZ.AppName, JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
 			if(r==JOptionPane.OK_OPTION) answer[0] = new String(field.getPassword());
 		};
 		if(SwingUtilities.isEventDispatchThread()) ask.run();

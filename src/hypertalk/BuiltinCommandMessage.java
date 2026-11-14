@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-import javax.swing.JMenu;
 
 /**
  * A built-in command caught by a same-named script handler (on answer, on go, on set, on show…). HyperCard parses the
@@ -384,13 +383,13 @@ final class BuiltinCommandMessage {
 	}
 
 	private static String menuOf(String item){
-		if(PCARD.pc==null) return "";
-		ArrayList<JMenu> menus = new ArrayList<JMenu>(TTalk.menuList());
+		if(!Host.get().hasCardWindow()) return "";
+		ArrayList<MMenu> menus = new ArrayList<MMenu>(TTalk.menuList());
 		if(TTalk.appleMenu!=null) menus.add(TTalk.appleMenu);
-		for(JMenu m : menus){
+		for(MMenu m : menus){
 			if(m==null || TTalk.findMenuItemIndex(m, item)<0) continue;
 			String name = m.getText();
-			return PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(name) : name;
+			return HZ.intl()!=null ? HZ.intl().getEngText(name) : name;
 		}
 		//HyperZebra's own item for it is named differently
 		if(item.trim().equalsIgnoreCase("Quit HyperCard")) return "File";

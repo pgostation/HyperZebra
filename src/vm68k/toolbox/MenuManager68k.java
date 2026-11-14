@@ -71,13 +71,13 @@ final class MenuManager68k {
 			case 0x93d:{cpu.a[7]+=4;EventManager68k.Event e=tb.events.pendingMenuEvent;tb.events.clickTracked();int result=0;if(e!=null&&programMenu(e.menuId)){result=(e.menuId<<16)|(e.menuItem&0xffff);}tb.events.pendingMenuEvent=null;
 				if(e!=null&&e.probe){tb.events.endMenuProbe();memory.writeLong(cpu.a[7],0);if(Mac68kApi.TRACE)System.err.println("[68K] MenuSelect for the host menu "+e.menuId+" being opened -> 0");return true;}
 				if(e!=null&&e.menuId>0)noteMenuSelect();
-				if(result!=0&&!tb.desk.ownsMenu(e.menuId)&&!pullDown(e.menuId,e.menuItem))result=0; // the menu "pulled down": the program's MBDF and MBarHook see it
-				if(e!=null&&e.menuId!=-1&&tb.desk.ownsMenu(e.menuId)){tb.desk.systemMenu(cpu,(e.menuId<<16)|(e.menuItem&0xffff));result=0;} // a desk accessory's menu: MenuSelect calls SystemMenu and returns 0
+				if(result!=0&&!(tb.desk!=null&&tb.desk.ownsMenu(e.menuId))&&!pullDown(e.menuId,e.menuItem))result=0; // the menu "pulled down": the program's MBDF and MBarHook see it
+				if(e!=null&&e.menuId!=-1&&tb.desk!=null&&tb.desk.ownsMenu(e.menuId)){tb.desk.systemMenu(cpu,(e.menuId<<16)|(e.menuItem&0xffff));result=0;} // a desk accessory's menu: MenuSelect calls SystemMenu and returns 0
 				if(Mac68kApi.TRACE)System.err.println("[68K] MenuSelect event "+(e==null?"none":e.menuId+"/"+e.menuItem)+" -> $"+Integer.toHexString(result));
 				memory.writeLong(MENU_DISABLE,e!=null&&programMenu(e.menuId)?(e.menuId<<16)|(e.menuItem&0xffff):0); // a disabled item too (MenuChoice)
 				memory.writeLong(cpu.a[7],result);return true;}
 			case 0x93e:{int ch=memory.readWord(cpu.a[7])&0xff;cpu.a[7]+=2;int result=menuKey(ch);memory.writeLong(MENU_DISABLE,result);
-				if(result!=0&&tb.desk.ownsMenu((short)(result>>>16))){tb.desk.systemMenu(cpu,result);result=0;}
+				if(result!=0&&tb.desk!=null&&tb.desk.ownsMenu((short)(result>>>16))){tb.desk.systemMenu(cpu,result);result=0;}
 				memory.writeLong(cpu.a[7],result);return true;}
 			case 0x94c:cpu.a[7]+=2;return true;
 			// SetMenuFlash: the host menu bar does not blink chosen items, but the count goes into the MenuFlash global ($A24) the ROM keeps it in, for a program that reads it back
@@ -111,7 +111,7 @@ final class MenuManager68k {
 			case 0xa63:{int h=pop(cpu);if(h!=0)tb.api.disposeHandle(h);return true;}             // DisposeMCInfo
 			case 0xa64:{int item=(short)memory.readWord(cpu.a[7]),id=(short)memory.readWord(cpu.a[7]+2);cpu.a[7]+=4;memory.writeLong(cpu.a[7],getMcEntry(id,item));return true;} // GetMCEntry
 			case 0xa65:{int table=memory.readLong(cpu.a[7]),count=(short)memory.readWord(cpu.a[7]+4);cpu.a[7]+=6;for(int i=0;i<count;i++)putMcEntry(memory.readBytes(table+i*MC_ENTRY,MC_ENTRY));writeMcTable();return true;} // SetMCEntries(numEntries, menuCEntries)
-			case 0x9b5:return tb.desk.handle(cpu,0x9b5); // SystemMenu
+			case 0x9b5:return tb.desk!=null&&tb.desk.handle(cpu,0x9b5); // SystemMenu
 			default:return false;
 		}
 	}
@@ -377,7 +377,7 @@ final class MenuManager68k {
 			case 0:{int after=(short)memory.readWord(cpu.a[7]+2),h=memory.readLong(cpu.a[7]+4);cpu.a[7]+=args;appendResources(h,0x464f4e44,after);return true;}
 			case 1:{int after=(short)memory.readWord(cpu.a[7]+2),type=memory.readLong(cpu.a[7]+4),h=memory.readLong(cpu.a[7]+8);cpu.a[7]+=args;appendResources(h,type,after);return true;}
 			case 12:{int event=memory.readLong(cpu.a[7]);cpu.a[7]+=args;int result=menuEvent(event); // MenuEvent(const EventRecord*): the item for a key-down
-				if(result!=0&&tb.desk.ownsMenu((short)(result>>>16))){tb.desk.systemMenu(cpu,result);result=0;}
+				if(result!=0&&tb.desk!=null&&tb.desk.ownsMenu((short)(result>>>16))){tb.desk.systemMenu(cpu,result);result=0;}
 				memory.writeLong(cpu.a[7],result);return true;}
 			// Mac OS 8.5 item data (refCons, command IDs, modifiers, encodings, fonts, glyphs), kept beside the MenuInfo as the
 			// real Menu Manager keeps it. Acrobat Reader 5.0 finds its command objects through the item refCons: with the
@@ -548,13 +548,13 @@ final class MenuManager68k {
 		List<Object> items=new ArrayList<Object>(),known=new ArrayList<Object>();
 		final Map<Object,String> texts=new java.util.IdentityHashMap<Object,String>();
 		/** The submenus the external hung on items of the menu (cmd $1B), as last shown. */
-		final Map<Object,MacAppHost.MenuModel> submenus=new java.util.IdentityHashMap<Object,MacAppHost.MenuModel>();
+		final Map<Object,MenuModel68k> submenus=new java.util.IdentityHashMap<Object,MenuModel68k>();
 		boolean outOfBar;
 		HyperCardMenu(Object menu,String title){this.menu=menu;this.title=title;}
 		/** HyperZebra put another component in an item's place (checking an item makes a check-box item of it). */
 		void replaced(Object was,Object now){
 			java.util.Collections.replaceAll(items,was,now);java.util.Collections.replaceAll(known,was,now);
-			String t=texts.remove(was);if(t!=null)texts.put(now,t);MacAppHost.MenuModel sub=submenus.remove(was);if(sub!=null)submenus.put(now,sub);
+			String t=texts.remove(was);if(t!=null)texts.put(now,t);MenuModel68k sub=submenus.remove(was);if(sub!=null)submenus.put(now,sub);
 		}
 		/** The host items as HyperZebra has the menu now: {@link #known} goes on if they are still in its order (the deleted ones in between). */
 		void hostItems(List<Object> now,List<String> texts){
@@ -578,10 +578,10 @@ final class MenuManager68k {
 	 */
 	private void syncHyperCardMenus() throws M68kCpuException {
 		hyperCardMenusStale=false;
-		List<TTalk.ExternalMenu> menus=TTalk.hyperCardMenusForExternals();
+		List<ExternalMenu68k> menus=UiHost.get().externalMenusUIHyperCardMenusForExternals();
 		boolean wasDirty=dirty;
 		List<Integer> handles=new ArrayList<Integer>();int nextId=SCRIPT_MENU_IDS;
-		for(TTalk.ExternalMenu hm:menus){
+		for(ExternalMenu68k hm:menus){
 			Menu m=new Menu();m.id=hm.id>0?hm.id:nextId++;m.title=hm.title;m.enableFlags=hm.enabled?1:0;
 			for(Integer taken=menusById.get(m.id);taken!=null&&!hyperCardMenus.containsKey(taken);taken=menusById.get(m.id))m.id=nextId++; // the external's own menu has that ID: it keeps it
 			// with their Command keys, marks and styles: GetMenuKey's GetItemCmd of Edit and Go gave nothing
@@ -609,7 +609,7 @@ final class MenuManager68k {
 	/** What the external did to one of HyperCard's menus since it was given it goes to HyperZebra's menu. */
 	private void hyperCardMenuChanged(int handle,Menu now){
 		HyperCardMenu record=hyperCardMenus.get(handle);Menu was=record==null?null:record.shown;if(was==null)return;
-		if(((now.enableFlags^was.enableFlags)&1)!=0)TTalk.externalChangedHyperCardMenu(record.menu,0,(now.enableFlags&1)!=0,null,null);
+		if(((now.enableFlags^was.enableFlags)&1)!=0)UiHost.get().externalMenusUIExternalChangedHyperCardMenu(record.menu,0,(now.enableFlags&1)!=0,null,null);
 		if(now.items.size()!=was.items.size()){rearranged(record,now);record.shown=now;return;}
 		for(int i=1;i<=Math.min(now.items.size(),was.items.size())&&i<=record.items.size();i++){
 			Item a=was.items.get(i-1),b=now.items.get(i-1);
@@ -622,15 +622,15 @@ final class MenuManager68k {
 			int cmdWas=a.cmd>=0x20?a.cmd:0,cmdNow=b.cmd>=0x20?b.cmd:0;if(cmdWas!=cmdNow)command=(char)cmdNow;
 			if(a.style!=b.style)style=b.style;
 			Object item=record.items.get(i-1),placed=item;
-			if(enabled!=null||mark!=null||text!=null||command!=null||style!=null)placed=TTalk.externalChangedHyperCardItem(record.menu,item,enabled,text,mark,command,style);
+			if(enabled!=null||mark!=null||text!=null||command!=null||style!=null)placed=UiHost.get().externalMenusUIExternalChangedHyperCardItem(record.menu,item,enabled,text,mark,command,style);
 			// an item the external made hierarchical (SetItemCmd $1B, the submenu's ID as its mark) gets that submenu: Properties
 			// hangs its button and field styles on New Button and New Field, and its doMenu handler makes the object chosen
-			MacAppHost.MenuModel submenu=null;
+			MenuModel68k submenu=null;
 			if(b.cmd==0x1b){Integer sub=menusById.get(b.mark);
 				try{Menu subMenu=sub==null||hyperCardMenus.containsKey(sub)?null:read(sub);if(subMenu!=null)submenu=model(subMenu,1);}catch(M68kCpuException e){}}
-			MacAppHost.MenuModel shownSub=record.submenus.get(placed);
+			MenuModel68k shownSub=record.submenus.get(placed);
 			if(submenu==null?shownSub!=null:!submenu.sameAs(shownSub)){
-				TTalk.externalHierarchicalHyperCardItem(record.menu,placed,submenu);
+				UiHost.get().externalMenusUIExternalHierarchicalHyperCardItem(record.menu,placed,submenu);
 				if(submenu==null)record.submenus.remove(placed);else record.submenus.put(placed,submenu);}
 			if(placed!=item)record.replaced(item,placed);
 		}
@@ -651,7 +651,7 @@ final class MenuManager68k {
 			arrangement.add(found!=null?found:item.text);
 			enabled[i]=i>=31||(now.enableFlags&(1<<(i+1)))!=0;checked[i]=item.mark!=0&&item.cmd!=0x1b;
 		}
-		List<Object> placed=TTalk.externalArrangedHyperCardMenu(record.menu,arrangement,enabled,checked,record.known); // HyperZebra's own items it never saw stay
+		List<Object> placed=UiHost.get().externalMenusUIExternalArrangedHyperCardMenu(record.menu,arrangement,enabled,checked,record.known); // HyperZebra's own items it never saw stay
 		if(placed.size()!=arrangement.size())return;
 		for(int i=0;i<placed.size();i++){Object o=placed.get(i);
 			if(!record.texts.containsKey(o)){record.texts.put(o,now.items.get(i).text);int at=record.known.indexOf(i>0?placed.get(i-1):null);record.known.add(at+1,o);}}
@@ -661,10 +661,10 @@ final class MenuManager68k {
 	private void hyperCardMenusInBar(){
 		Object previous=null;
 		for(int h:menuBar){HyperCardMenu r=hyperCardMenus.get(h);if(r==null)continue;
-			if(r.outOfBar){r.outOfBar=false;TTalk.externalRestoredHyperCardMenu(r.menu,previous);}
+			if(r.outOfBar){r.outOfBar=false;UiHost.get().externalMenusUIExternalRestoredHyperCardMenu(r.menu,previous);}
 			previous=r.menu;}
 		for(Map.Entry<Integer,HyperCardMenu> e:hyperCardMenus.entrySet())
-			if(!e.getValue().outOfBar&&!menuBar.contains(e.getKey())){e.getValue().outOfBar=true;TTalk.externalRemovedHyperCardMenu(e.getValue().menu);}
+			if(!e.getValue().outOfBar&&!menuBar.contains(e.getKey())){e.getValue().outOfBar=true;UiHost.get().externalMenusUIExternalRemovedHyperCardMenu(e.getValue().menu);}
 	}
 	/** The HyperCard menu after which an external's own menu stands in the bar (its place in HyperZebra's bar), null when none is before it. */
 	private Object hyperCardMenuBefore(int handle){
@@ -714,6 +714,16 @@ final class MenuManager68k {
 	}
 	/** Handle of the MenuList structure (low-memory global $A1C), rebuilt at every change. */
 	private int menuList;
+	/**
+	 * The program starts: a new process's MenuList is NIL until its InitMenus (the Process Manager switches it per process),
+	 * whatever menus the INITs touched before. Libraries tell from it whether the Toolbox is up yet: Microsoft Office 2001's
+	 * CFM init routine started its Windows layer (WLM) itself when MenuList was set, registered the window classes, and Word's
+	 * own _WlmStartup then failed to register them again - "The application was unable to start due to an error" (17006).
+	 */
+	void launched(){
+		if(menuList!=0){tb.api.disposeHandle(menuList);menuList=0;}
+		try{memory.writeLong(0xa1c,0);}catch(M68kCpuException e){}
+	}
 	/** The menu bar changed: the host bar is rebuilt at the next flush, MenuList right away (HyperCard walks
 	 *  MenuList itself to enumerate the menus it created with `create menu`). */
 	private void changed(){
@@ -746,11 +756,11 @@ final class MenuManager68k {
 
 	void flush(){
 		if(!dirty)return;dirty=false;
-		List<MacAppHost.MenuModel> models=new ArrayList<MacAppHost.MenuModel>();
+		List<MenuModel68k> models=new ArrayList<MenuModel68k>();
 		boolean externals=tb.app==null&&tb.stack!=null;
 		if(externals)hyperCardMenusInBar();
 		try{for(int h:menuBar){Menu m=read(h);if(m==null)continue;if(hyperCardMenus.containsKey(h)){hyperCardMenuChanged(h,m);continue;}
-			MacAppHost.MenuModel model=model(m,0);if(externals)model.after=hyperCardMenuBefore(h);
+			MenuModel68k model=model(m,0);if(externals)model.after=hyperCardMenuBefore(h);
 			// the Help menu shows the program's own items (the system's balloon items have no host counterpart), and only when it has some
 			if(h==helpMenu&&helpSystemItems>0){int n=Math.min(helpSystemItems,model.items.size());model.items.subList(0,n).clear();model.itemBase=n;}
 			if(h==helpMenu&&model.items.isEmpty())continue;
@@ -758,14 +768,14 @@ final class MenuManager68k {
 		catch(M68kCpuException e){System.err.println("[68K] menu bar not rebuilt: "+e);return;}
 		// The Quit item: the one with Cmd-Q, else one named Quit (MacWrite 2.2 predates the shortcut).
 		int[] quit=null,named=null;
-		for(MacAppHost.MenuModel m:models)for(int i=0;i<m.items.size();i++){MacAppHost.ItemModel im=m.items.get(i);
+		for(MenuModel68k m:models)for(int i=0;i<m.items.size();i++){ItemModel68k im=m.items.get(i);
 			if(quit==null&&(im.command=='Q'||im.command=='q'))quit=new int[]{m.id,i+1};
 			if(named==null&&!im.separator&&isQuitName(im.text))named=new int[]{m.id,i+1};}
 		quitItem=quit!=null?quit:named;
 		// an external (XCMD/XFCN) puts its menus into HyperCard's menu bar, where scripts use them like any other menu
 		// (The Yennie eXternals: toolsMenu inserts "ToolsMenu", then set the menuMsg of menuItem 1 of menu "ToolsMenu")
-		if(tb.app==null&&tb.stack!=null){TTalk.syncExternalMenus(tb,models);return;}
-		try{tb.host().menusUpdateOnOpening=updatesMenusOnOpening()||adjustsOnClick;}catch(M68kCpuException e){}
+		if(tb.app==null&&tb.stack!=null){UiHost.get().externalMenusUISyncExternalMenus(tb,models);return;}
+		try{tb.host().setMenusUpdateOnOpening(updatesMenusOnOpening()||adjustsOnClick);}catch(M68kCpuException e){}
 		tb.host().setMenuBar(models);
 	}
 	/**
@@ -776,7 +786,7 @@ final class MenuManager68k {
 	private String tearOffLabel(int menuId){
 		if(tearOffScript(menuId)==null)return null;
 		String label=menuId==HC_TOOLS_MENU?"Show Tool Palette":"Show Patterns Palette";
-		return PCARD.pc==null||PCARD.pc.intl==null?label:PCARD.pc.intl.getDialogText(label);
+		return HZ.intl()==null?label:HZ.intl().getDialogText(label);
 	}
 	static final int HC_TOOLS_MENU=5,HC_PATTERNS_MENU=11;
 	String tearOffScript(int menuId){
@@ -809,9 +819,9 @@ final class MenuManager68k {
 	boolean hasMenuBar(){return !menuBar.isEmpty();}
 	int[] quitItem(){return quitItem;}
 
-	private MacAppHost.MenuModel model(Menu m,int depth) throws M68kCpuException {
+	private MenuModel68k model(Menu m,int depth) throws M68kCpuException {
 		boolean apple=m.title.length()==1&&m.title.charAt(0)==0x14;
-		MacAppHost.MenuModel model=new MacAppHost.MenuModel(m.id,apple?(tb.app==null?"":tb.app.name):shown(m.title),(m.enableFlags&1)!=0);
+		MenuModel68k model=new MenuModel68k(m.id,apple?(tb.app==null?"":tb.app.name):shown(m.title),(m.enableFlags&1)!=0);
 		model.apple=apple;
 		// a custom MDEF is run for its picture only when the record carries no text items (HyperCard's Tools/Patterns palettes);
 		// menus with real items behind a custom MDEF (HyperCard's card-size pop-up in New Stack) are shown as text like any other
@@ -827,9 +837,9 @@ final class MenuManager68k {
 		int n=0;
 		for(Item item:m.items){
 			n++;
-			MacAppHost.ItemModel im=new MacAppHost.ItemModel();
+			ItemModel68k im=new ItemModel68k();
 			im.text=item.text.startsWith("-")?item.text:shown(item.text);im.enabled=n>31||(m.enableFlags&(1<<n))!=0;im.checked=item.mark==0x12&&item.cmd!=0x1b;im.mark=item.mark;im.style=item.style;
-			if(item.cmd!=0x1b&&item.mark!=0)im.markText=markText(item.mark);im.help=tb.help.menuHelp(m.id,n,im.enabled);
+			if(item.cmd!=0x1b&&item.mark!=0)im.markText=markText(item.mark);im.help=tb.help==null?null:tb.help.menuHelp(m.id,n,im.enabled);
 			im.separator=item.text.equals("-")||item.text.startsWith("-");
 			if(item.cmd==0x1b&&depth<3){Integer sub=menusById.get(item.mark);Menu subMenu=sub==null?null:read(sub);if(subMenu!=null)im.submenu=model(subMenu,depth+1);}
 			else if(item.cmd>=0x20){im.command=(char)item.cmd;Integer menuHandle=menusById.get(m.id);int[] d=menuHandle==null?null:itemData(menuHandle,n,false);if(d!=null)im.modifiers=d[slot(0x04)];}
@@ -1099,7 +1109,7 @@ final class MenuManager68k {
 			if(pixels==null||pixels[6]!=32)return -1;
 			final int rowBytes=pixels[1];final byte[] before=memory.readBytes(pixels[0],rowBytes*screenHeight);
 			final int copyRect=memory.allocate(8,2);
-			MacAppHost.LiveMenu live=new MacAppHost.LiveMenu(){
+			LiveMenu68k live=new LiveMenu68k(){
 				java.awt.image.BufferedImage current;
 				/** Runs {@code message} in the scratch port; true when the menu's picture changed. */
 				boolean run(int message,int h,int v) throws M68kException {
@@ -1138,7 +1148,7 @@ final class MenuManager68k {
 					int item=(short)memory.readWord(which);return item<0?0:item;
 				}
 				@Override public java.awt.image.BufferedImage image(){return current;}
-				MacAppHost.LiveMenu open() throws M68kException {run(M_DRAW,0,0);current=picture();return current==null?null:this;}
+				LiveMenu68k open() throws M68kException {run(M_DRAW,0,0);current=picture();return current==null?null:this;}
 			}.open();
 			if(live==null)return -1;
 			if(MDEF_TIMING)System.err.println("[68K] live MDEF pop-up $"+Integer.toHexString(handle)+" "+size[0]+"x"+size[1]+" at "+where[1]+","+where[0]+" ready in "+(System.nanoTime()-started)/100000/10.0+" ms");
@@ -1237,7 +1247,7 @@ final class MenuManager68k {
 		int result=0;
 		if(m!=null){int item=-1;
 			if(LIVE_MDEF&&customMdef(h)&&tb.host()!=null)item=popUpLive(h,m.items.size(),left,top,popUpItem);
-			if(item<0){MacAppHost.MenuModel model=model(m,0);
+			if(item<0){MenuModel68k model=model(m,0);
 				// a custom MDEF over text items that hands them to MDEF 0 after TextSize: the host menu in that size
 				Integer size=customMdef(h)?mdefTextSize.get(h):null;if(size!=null&&size!=12&&model.image==null)model.fontSize=size;
 				item=tb.host().popUpMenuSelect(model,left,top,popUpItem);}
@@ -1284,7 +1294,7 @@ final class MenuManager68k {
 		Menu m=new Menu();m.id=HELP_MENU_ID;m.title="Help";
 		// System 7's Help menu starts with the Help Manager's own items (getHelpMenuItems listed none); an external's go after them.
 		// Only HyperCard's externals for now: a program's own VM keeps its items from 1 on (no 68K program here relies on them)
-		if(tb.systemVersion()<0x0800&&tb.app==null&&tb.stack!=null){for(String t:new String[]{"About Balloon Help…","-",tb.help.balloons()?"Hide Balloons":"Show Balloons"}){Item it=new Item();it.text=t;m.items.add(it);}
+		if(tb.systemVersion()<0x0800&&tb.app==null&&tb.stack!=null){for(String t:new String[]{"About Balloon Help…","-",tb.help!=null&&tb.help.balloons()?"Hide Balloons":"Show Balloons"}){Item it=new Item();it.text=t;m.items.add(it);}
 			m.enableFlags=-1&~(1<<2);helpSystemItems=m.items.size();}
 		helpMenu=store(m,0);menuBar.add(helpMenu);changed();return helpMenu;
 	}

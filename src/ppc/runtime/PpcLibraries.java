@@ -39,6 +39,10 @@ final class PpcLibraries {
 	 */
 	static final String[] MANUAL_GLUE={
 		"NumToString P v 4,4 :D0,A0 4267,A9EE",                  // CLR.W -(SP); _Pack7 (selector 0)
+		// SoundLib's alert sound (Mac OS 8.5 and later, not in the Universal Interfaces): the 'snd ' ID of the alert sound as two bytes
+		// of extended parameter RAM at $7C, read and written through the pointer argument (SimpleSound jumped to a NIL TVector)
+		"GetAlertBeepResID P 2 4 D0:A0 203C,0002,007C,A051",      // MOVE.L #$2007C,D0; _ReadXPRam
+		"SetAlertBeepResID P 2 4 D0:A0 203C,0002,007C,A052",      // MOVE.L #$2007C,D0; _WriteXPRam
 		"StringToNum P v 4,4 :A0,A1 3F3C,0001,A9EE,2280",        // MOVE.W #1,-(SP); _Pack7; MOVE.L D0,(A1)
 		"GetHandleSize P 4 4 D0:A0 A025,4A80,6A02,7000",          // _GetHandleSize; errors (negative D0) give 0
 		"GetPtrSize P 4 4 D0:A0 A021,4A80,6A02,7000",
@@ -762,6 +766,10 @@ final class PpcLibraries {
 			def("LMSet"+name,(r,c)->memory.copy(arg(0),a,n));
 			if(functions.get("LMGet"+name)==null)def("LMGet"+name,(r,c)->memory.copy(a,arg(0),n));}
 		def("LMGetExpandMem",(r,c)->ret(memory.readLong(0x2b6))); // PrivateInterfaceLib (LowMemPriv.h): iTunes reads it in its sound deferred task
+		// An extension that needs a longer ExpandMem copies it into a bigger block, sets the new one and disposes the old: ignored,
+		// $2B6 kept the freed block and everything reading ExpandMem shared memory others were given (on the PowerMac 6500's
+		// Mac OS 9.1 System Folder QuickTime VR's INIT then called a Component Manager pointer read from there into a file name)
+		def("LMSetExpandMem",(r,c)->memory.writeLong(0x2b6,arg(0)));
 		// more of LowMemPriv.h (MPW Shell 3.5's PowerPC code: HpChk holds its globals pointer, as $316 does for its 68K code)
 		int[][] longs={{0x316},{0x33c},{0x3e2},{0x8e0},{0xbf6}};String[] longNames={"HpChk","IAZNotify","FSQueueHook","JSwapFont","FScaleHFact"};
 		for(int i=0;i<longs.length;i++){final int a=longs[i][0];String n=longNames[i];
@@ -944,7 +952,7 @@ final class PpcLibraries {
 		int machine=108;
 		if(rt.app!=null&&rt.app.file!=null&&FinderInfo68k.creator(rt.app.file)==0x6368736b)machine=312;
 		g.put(0x6d616368,Integer.getInteger("hzppc.mach",machine));
-		g.put(0x74686473,0x0001|0x0002|0x0004); // thds: Thread Manager, specific-match support and the ThreadsLib shared library (iCab refused to start: "the ThreadManager is not installed")
+		g.put(0x74686473,Toolbox68k.THREAD_MANAGER_ATTRIBUTES|0x0004); // thds: Thread Manager, specific-match support and the ThreadsLib shared library (iCab refused to start: "the ThreadManager is not installed")
 		// PowerPC programs run on Mac OS 9.2.2 (the last classic system): with the Appearance Manager 1.1 and CarbonLib 1.6
 		// installed, as on every 9.2.2. Sherlock 2 needs 9, Outlook Express 5 8.1, Audion 3 and PhotoGrid 8. 68K programs see
 		// 9.2.2 too; the launcher can give a program System 7.5.5 (Toolbox68k.systemVersionFor). SysVersion ($15A) and SysEnvirons

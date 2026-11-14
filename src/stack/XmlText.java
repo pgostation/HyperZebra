@@ -1,9 +1,3 @@
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-
-import javax.xml.stream.XMLStreamReader;
-
 /**
  * HyperCardのフィールドにはバイナリ(制御文字)が入っていることがある。
  * XML 1.0 では \t \n \r 以外の制御文字は数値文字参照でも書けないので、書き出し時に私用領域
@@ -43,20 +37,8 @@ final class XmlText {
 		return sb==null ? text : sb.toString();
 	}
 
-	/** getText/getElementText/getAttributeValue の結果を復号する XMLStreamReader */
-	static XMLStreamReader decodingReader(final XMLStreamReader reader){
-		return (XMLStreamReader)Proxy.newProxyInstance(XMLStreamReader.class.getClassLoader(), new Class<?>[]{XMLStreamReader.class},
-			new InvocationHandler(){
-				@Override public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-					Object r;
-					try{ r = method.invoke(reader, args); }
-					catch(java.lang.reflect.InvocationTargetException e){ throw e.getCause(); }
-					String n = method.getName();
-					if(r instanceof String && (n.equals("getText") || n.equals("getElementText") || n.equals("getAttributeValue"))){
-						return decodeControlChars((String)r);
-					}
-					return r;
-				}
-			});
+	/** getText/getElementText/getAttributeValue の結果を復号する XmlIn */
+	static XmlIn decodingReader(final XmlIn reader){
+		return XmlIn.decoding(reader, XmlText::decodeControlChars);
 	}
 }

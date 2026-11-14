@@ -54,6 +54,10 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(p!=null)try{return Integer.parseInt(p,16);}catch(NumberFormatException e){System.err.println("hz68k.sysv: not a hex version: "+p);}
 		return MAC_OS_9_VERSION;
 	}
+	/** Gestalt 'thds' bits 0, 1 and 5 (ThreadsLib's bit 2 is added for PowerPC). */
+	static final int THREAD_MANAGER_ATTRIBUTES=0x0001|0x0002|0x0020;
+	/** The length of the FSVars block (FSVarsPtr $BB8): at least what Disk First Aid 8.6 asks of Mac OS 9's file system. */
+	static final int FS_VARS_SIZE=0xc00;
 	/** This VM's System version (see systemVersionFor). */
 	final int baseSystemVersion;
 	static final long MAC_EPOCH_DELTA=2_082_844_800L;
@@ -82,7 +86,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		else{attach(cpu);cardWindow.syncScreenPort();api.quickDraw().setPortTo(cpu,cardWindow.record);}
 		if(resources!=null)resources.syncStacksInUse(); // start/stop using since the VM was made
 		menus.externalCallStarts(); // HyperCard's menus as they are now, at the call's first Menu Manager trap
-		api.soundManager().syncSdVolume(); // SdVolume as another external's VM may have set it (SetVolume XCMD sets, GetSoundVolume reads)
+		if(api.soundManager()!=null)api.soundManager().syncSdVolume(); // SdVolume as another external's VM may have set it (SetVolume XCMD sets, GetSoundVolume reads)
 		openA5World(cpu);
 	}
 	private int a5World;
@@ -120,7 +124,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	final Mac68kApi api;
 	final StackTextEncoding encoding;
 	/** Host UI; created lazily. Headless VMs (no application, no stack) get a no-op host. */
-	private MacAppHost host;
+	private VmHost host;
 	final String name;
 	final EventManager68k events;
 	final WindowManager68k windows;
@@ -150,7 +154,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	final AppleTalk68k appleTalk;
 	/** Open Transport, made when a program first uses it (the 68K glue's library manager stand-in is installed at launch). */
 	private OpenTransport openTransport;
-	synchronized OpenTransport openTransport(){if(openTransport==null)openTransport=new OpenTransport(this);return openTransport;}
+	synchronized OpenTransport openTransport(){if(openTransport==null)openTransport=PARTS.openTransport(this);return openTransport;}
 	final DeviceManager68k devices;
 	final DeskAccessories68k desk;
 	final QuickTime68k quickTime;
@@ -211,8 +215,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	/** Records an external loaded at {@code start} when it has PowerPC code to run. */
 	void externalLoaded(int start,byte[] code,String name){
 		if(app!=null)return;
-		boolean only=PpcRuntime.powerPcOnlyFat(code);
-		if(!only&&!(FAT_EXTERNALS_PPC&&PpcRuntime.powerPcFat(code)))return;
+		boolean only=Ppc68k.powerPcOnlyFat(code);
+		if(!only&&!(FAT_EXTERNALS_PPC&&Ppc68k.powerPcFat(code)))return;
 		powerPcExternals.add(new int[]{start,start+code.length,only?0:1});
 		if(powerPcExternalName==null)powerPcExternalName=name;
 		if(Mac68kApi.TRACE_XCMD)System.err.println("[xcmd] "+name+": "+(only?"PowerPC code only":"fat - its PowerPC code runs"));
@@ -222,7 +226,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	/** The PowerPC runtime for a routine descriptor at {@code rd} inside an external with PowerPC code, or null. */
 	PpcRuntime powerPcExternalAt(M68kCpu cpu,int rd) throws M68kCpuException {
 		if(powerPcExternal(rd)==null)return null;
-		if(externalPpc==null)externalPpc=PpcRuntime.forExternal(this,cpu,powerPcExternalName,stack==null?null:stack.file);
+		if(externalPpc==null)externalPpc=Ppc68k.forExternal(this,cpu,powerPcExternalName,stack==null?null:stack.file);
 		return externalPpc;
 	}
 	/** Whether the external holding {@code at} has a 68K routine that does its work (a fat one): run when its PowerPC code cannot be prepared. */
@@ -266,7 +270,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	}
 	/**
 	 * _HFSUtilDispatch ($A824, FSM.h: InterfaceLib 8.5 and later) - the File System Manager's FCB utilities over the FCB table
-	 * above: UTIndexFCB (4), UTResolveFCB (5), UTCheckWDRefNum/FileRefNum/VolRefNum ($13-$15). Code built with the Mac OS 9
+	 * above: UTIndexFCB (4), UTResolveFCB (5), UTLocateVCBByRefNum (9, over the VCB queue: Disk First Aid 8.6), UTCheckWDRefNum/FileRefNum/VolRefNum ($13-$15). Code built with the Mac OS 9
 	 * libraries resolves its open files' FCBs through them once the System is 8.5 or later (Good People, 何かon林檎).
 	 */
 	private boolean hfsUtilDispatch(M68kCpu cpu) throws M68kException {
@@ -278,6 +282,13 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				int i=ref<2?0:(ref-2)/FCB_SIZE+1;i=fcbUsed.nextSetBit(i);
 				if(i<0||i>=FCB_COUNT||fcbTable==0){memory.writeWord(cpu.a[7],-43);return true;}
 				int next=2+i*FCB_SIZE;if(refPtr!=0)memory.writeWord(refPtr,next);if(out!=0)memory.writeLong(out,fcbTable+next);memory.writeWord(cpu.a[7],NO_ERR);return true;}
+			case 9:{int vcbOut=memory.readLong(sp),refOut=memory.readLong(sp+4),ref=(short)memory.readWord(sp+8);cpu.a[7]+=10; // UTLocateVCBByRefNum(refNum, *vRefNum, *vcb)
+				// the VCB queue (FileSystem68k.writeVolumeControlBlocks): by volume reference number or drive number, 0 = the default volume
+				int found=ref==0?memory.readLong(0x352):0;
+				for(int vcb=memory.readLong(0x358),n=0;found==0&&vcb!=0&&n<256;vcb=memory.readLong(vcb),n++)
+					if((short)memory.readWord(vcb+78)==ref||ref>0&&(short)memory.readWord(vcb+72)==ref)found=vcb;
+				if(found!=0){if(refOut!=0)memory.writeWord(refOut,memory.readWord(found+78));if(vcbOut!=0)memory.writeLong(vcbOut,found);}
+				memory.writeWord(cpu.a[7],found!=0?NO_ERR:-35);return true;} // nsvErr
 			case 0x14:{int ref=(short)memory.readWord(sp);cpu.a[7]+=2;memory.writeWord(cpu.a[7],fcbOpen(ref)?NO_ERR:-51);return true;}
 			case 0x13:case 0x15:cpu.a[7]+=2;memory.writeWord(cpu.a[7],NO_ERR);return true;
 			default:throw new M68kMacApiException(cpu.pc,0xa824,"HFSUtilDispatch selector "+(cpu.d[0]&0xffff));
@@ -294,7 +305,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	 *  Japanese gives a KanjiTalk-like System (Shift-JIS, Osaka, itl 16384); anything else a U.S. System (Mac OS Roman). */
 	static StackTextEncoding applicationEncoding(){
 		String lang=System.getProperty("hz68k.language");
-		if(lang==null||lang.isEmpty())lang=PCARD.language;
+		if(lang==null||lang.isEmpty())lang=UiHost.get().startLanguage();
 		return International.sameLanguage(lang,"ja")?StackTextEncoding.JAPANESE:StackTextEncoding.ROMAN;
 	}
 
@@ -365,9 +376,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(file!=null){
 			int han=0;
 			for(char c:file.getName().toCharArray()){
-				Character.UnicodeScript script=Character.UnicodeScript.of(c);
-				if((script==Character.UnicodeScript.HIRAGANA||script==Character.UnicodeScript.KATAKANA)&&c<0xff00)return true; // not half-width katakana: "Juliaﾕs" is a Roman ’ read as Shift-JIS
-				if(script==Character.UnicodeScript.HAN||(c>=0xff01&&c<=0xff5e))han++;
+				UScript script=UScript.of(c);
+				if((script==UScript.HIRAGANA||script==UScript.KATAKANA)&&c<0xff00)return true; // not half-width katakana: "Juliaﾕs" is a Roman ’ read as Shift-JIS
+				if(script==UScript.HAN||(c>=0xff01&&c<=0xff5e))han++;
 			}
 			if(han>=2)return true;
 		}
@@ -452,35 +463,40 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		events=new EventManager68k(this);
 		windows=new WindowManager68k(this);
 		menus=new MenuManager68k(this);
-		controls=new ControlManager68k(this);appearance=new AppearanceManager68k(this);cursorDevices=new CursorDevices68k(this);managers=new MiscManagers68k(this);
+		controls=new ControlManager68k(this);appearance=PARTS.appearance(this);cursorDevices=PARTS.cursorDevices(this);managers=new MiscManagers68k(this);
 		textEdit=new TextEdit68k(this);
-		dialogs=new DialogManager68k(this);ctb=new CommToolbox68k(this);
+		dialogs=new DialogManager68k(this);ctb=PARTS.ctb(this);
 		devices=new DeviceManager68k(this);
-		desk=new DeskAccessories68k(this);
+		desk=PARTS.desk(this);
 		files=new FileSystem68k(this);
-		soundDriver=new SoundDriver68k(this);
-		appleEvents=new AppleEvents68k(this);
-		standardFile=new StandardFile68k(this);
-		editions=new EditionManager68k(this);
+		soundDriver=PARTS.soundDriver(this);
+		appleEvents=PARTS.appleEvents(this);
+		standardFile=PARTS.standardFile(this);
+		editions=PARTS.editions(this);
 		listManager=new ListManager68k(this);
-		macTcp=new MacTCP68k(this);
-		appleTalk=new AppleTalk68k(this);
+		macTcp=PARTS.macTcp(this);
+		appleTalk=PARTS.appleTalk(this);
 		// A real QuickTime extension in the virtual System Folder takes over: the native Movie Toolbox, its Gestalt selectors and
 		// its movie controller component stand aside so the extension's INIT installs itself as on a real Mac (-Dhz68k.quicktime=
 		// native keeps the native one, see Extensions68k.QUICKTIME_EXTENSION; the QuickTime files are then not loaded).
 		guestQuickTime=app!=null&&Extensions68k.QUICKTIME_EXTENSION&&Extensions68k.hasQuickTimeExtension(files.systemFolder);
 		guestPowerPcQuickTime=guestQuickTime&&Extensions68k.runsPowerPcQuickTime(files.systemFolder);
-		quickTime=new QuickTime68k(this);imageCompression=new ImageCompression68k(this);
+		quickTime=PARTS.quickTime(this);imageCompression=PARTS.imageCompression(this);
 		components=new Components68k(this);
-		InternetConfig68k.register(components,this); // Internet Config ('ICAp'), part of Mac OS 9.2.2: XTernal Collection's LaunchURL and IC getters
-		extensions=new Extensions68k(this);
-		help=new HelpManager68k(this);
-		print=new PrintManager68k(this);
-		drag=new DragManager68k(this);
+		PARTS.internetConfig(components,this); // Internet Config ('ICAp'), part of Mac OS 9.2.2: XTernal Collection's LaunchURL and IC getters
+		extensions=PARTS.extensions(this);
+		help=PARTS.help(this);
+		print=PARTS.print(this);
+		drag=PARTS.drag(this);
 		threads=new ThreadManager68k(this);
-		adb=new AdbManager68k(this);
-		textServices=new TextServices68k(this);
+		adb=PARTS.adb(this);
+		textServices=PARTS.textServices(this);
 	}
+
+	/** The Toolbox areas that come with the desktop (Toolbox68kDesktopParts, found by name): networking, QuickTime, desk
+	 *  accessories, printing, Standard File, Apple events and the like. A VM without them (the browser player's, P4) has
+	 *  those fields null and answers their traps as unimplemented */
+	static final Toolbox68kParts PARTS = Toolbox68kParts.find();
 
 	/** Binds the CPU (once); externals reach this through the first trap they make. */
 	void attach(M68kCpu cpu){
@@ -489,7 +505,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(cpu.romHandler()==null)cpu.setRomHandler(this);
 		if(cpu.scheduler()==null)cpu.setScheduler(this);
 		Fonts68k.registerBitmapLookup(bitmapLookup);
-		macTcp.installDnr(resources.system);
+		if(macTcp!=null)macTcp.installDnr(resources.system);
 		if(app==null){try{initializeLowMemory();}catch(M68kCpuException e){}}
 	}
 	boolean isApplication(){return app!=null;}
@@ -599,9 +615,11 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		return new java.io.File(System.getProperty("user.home",""));
 	}
 	/** The screen an external sees: a classic screen one size up round the card window ({@link ExternalScreenArea}), else HyperCard's, the display. */
-	java.awt.Rectangle externalScreenBounds(){java.awt.Rectangle r=host().externalScreen();return r!=null?r:MacAppHost.screenBounds(true);}
-	MacAppHost host(){
-		if(host==null){host=new MacAppHost(events,memory,name,!hosted()||(app!=null&&app.service)||java.awt.GraphicsEnvironment.isHeadless(),app==null);host.quickDraw=api.quickDraw();host.owner=app;host.setApplicationIcon(applicationIcon());host.configureSmooth(false);} // a service VM (QuickTime playback for XCMDs) has no display
+	java.awt.Rectangle externalScreenBounds(){java.awt.Rectangle r=host().externalScreen();return r!=null?r:UiHost.get().macAppHostScreenBounds(true);}
+	/** The host as the desktop's MacAppHost (tests and desktop-only code) */
+	MacAppHost desktopHost(){return (MacAppHost)host();}
+	VmHost host(){
+		if(host==null){host=PARTS.host(events,memory,name,!hosted()||(app!=null&&app.service)||PARTS.headlessDisplay(),app==null);host.setQuickDraw(api.quickDraw());host.setOwner(app);host.setApplicationIcon(applicationIcon());host.configureSmooth(false);} // a service VM (QuickTime playback for XCMDs) has no display
 		return host;
 	}
 	/** Classic Finder icon used for the hosted application's native windows and the drop stand-in: the colour 'icl8' (ID 128,
@@ -627,7 +645,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	}
 	byte[] readPascalBytesOf(String s){byte[] b=encoding.encodeReplacing(s==null?"":s);int n=Math.min(255,b.length);byte[] r=new byte[n+1];r[0]=(byte)n;System.arraycopy(b,0,r,1,n);return r;}
 	StackTextEncoding encoding(){return encoding;}
-	MacAppHost.Listener hostListener(){return events;}
+	VmHostListener hostListener(){return events;}
 
 	// ------------------------------------------------------------------ gates
 
@@ -783,7 +801,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		long deadline=Math.max(throttleDeadline,now-THROTTLE_SLACK_NANOS)+(long)(delta*1000/rate);
 		throttleDeadline=deadline;
 		long wait=deadline-now;
-		if(wait>=500_000L)java.util.concurrent.locks.LockSupport.parkNanos(wait);
+		if(wait>=500_000L)Platform.get().parkNanos(wait);
 	}
 
 	/** Runs {@code r} on the emulation thread at the next safe point. */
@@ -812,7 +830,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	/** Ends an idle wait early (MIDI arrived from the host, a wake-up was armed): the timers run again at once. */
 	void wakeIdle(){if(events!=null)events.wake();}
 	/** When the next timed work (a MIDI Manager wake-up or due packet) is wanted, in nanoTime terms; Long.MAX_VALUE for none. */
-	long nextDueNanos(){MidiManager68k midi=api.soundManager().midiIfAny();return Math.min(Math.min(Math.min(Math.min(appleTalk.nextDueNanos(),midi==null?Long.MAX_VALUE:midi.nextDueNanos()),threads.nextTaskDeadline()),io==null?Long.MAX_VALUE:io.nextDueNanos()),timersDueNanos());}
+	long nextDueNanos(){MidiManager68k midi=api.soundManager()==null?null:api.soundManager().midiIfAny();return Math.min(Math.min(Math.min(Math.min((appleTalk==null?Long.MAX_VALUE:appleTalk.nextDueNanos()),midi==null?Long.MAX_VALUE:midi.nextDueNanos()),threads.nextTaskDeadline()),io==null?Long.MAX_VALUE:io.nextDueNanos()),timersDueNanos());}
 
 	@Override public void poll(M68kCpu cpu) throws M68kException {
 		long started=SLOW_TRAP_NANOS>0?System.nanoTime():0;
@@ -883,14 +901,14 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		int tick=tickCount();
 		// PowerPC programs call TickCount through the 68K glue: the PowerPC work in between counts too (何かon林檎's REALbasic
 		// runtime reads TickCount at every loop turn of an image scan and was parked as if it were spinning - boot stopped at "Shell setting...")
-		long executed=(cpu==null?0:cpu.instructions)+(app!=null&&app.ppc!=null?app.ppc.cpu.instructions:0),since=executed-spinLastInstructions;spinLastInstructions=executed;
+		long executed=(cpu==null?0:cpu.instructions)+(app!=null?Ppc68k.instructions(app.ppc):0),since=executed-spinLastInstructions;spinLastInstructions=executed;
 		if(TICK_STATS){long d=since;tickStatCalls++;tickStatSum+=d;if(d<tickStatMin)tickStatMin=d; // -Dhz68k.tickstats=true: instructions between calls, every 2 s
 			int b=0;for(long v=d;v>=16&&b<7;v>>=2)b++;tickStatBuckets[b]++;
 			long now=System.currentTimeMillis();if(now-tickStatPrinted>2000){tickStatPrinted=now;System.err.println("[68K] TickCount stats: calls="+tickStatCalls+" min="+tickStatMin+" avg="+(tickStatCalls==0?0:tickStatSum/tickStatCalls)+" buckets(<16,<64,<256,<1k,<4k,<16k,<64k,>=64k)="+java.util.Arrays.toString(tickStatBuckets));tickStatCalls=0;tickStatSum=0;tickStatMin=Long.MAX_VALUE;java.util.Arrays.fill(tickStatBuckets,0);}}
 		if(tick!=spinTick||since>=TICK_SPIN_INSTRUCTIONS){spinTick=tick;spinCalls=0;return tick;}
 		if(++spinCalls>=TICK_PARK_AFTER&&(app==null||!app.finished)){
 			long elapsed=System.nanoTime()-startNanos,remaining=TICK_NANOS-elapsed%TICK_NANOS;
-			java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining,4_000_000L));
+			Platform.get().parkNanos(Math.min(remaining,4_000_000L));
 			int now=tickCount();if(now!=tick){spinTick=now;spinCalls=0;}return now;}
 		return tick;
 	}
@@ -920,7 +938,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(pollSpinPolls==TICKS_PARK_AFTER&&!cpu.spinningOn(0x016a,0x016d)){pollSpinPolls=Integer.MIN_VALUE;return tick;} // a long trap-free computation, not a wait: leave it alone until the next tick
 		if(pollSpinPolls<0)return tick;
 		long elapsed=System.nanoTime()-startNanos,remaining=TICK_NANOS-elapsed%TICK_NANOS;
-		java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining,4_000_000L));
+		Platform.get().parkNanos(Math.min(remaining,4_000_000L));
 		int now=tickCount();
 		if(now!=tick){pollTick=now;pollSpinPolls=0;if(spinYieldedTicks<TICKS_SPIN_LIMIT){spinYieldedTicks+=now-tick;cpu.yielded();}}
 		return now;
@@ -943,7 +961,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// outline and target frame): shown before the wait, not at the next scheduler poll ~1 s later
 		if(cardWindow!=null)try{cardWindow.flush();}catch(M68kCpuException e){}
 		long elapsed=System.nanoTime()-startNanos,remaining=TICK_NANOS-elapsed%TICK_NANOS;
-		java.util.concurrent.locks.LockSupport.parkNanos(Math.min(remaining,4_000_000L));
+		Platform.get().parkNanos(Math.min(remaining,4_000_000L));
 		int now=tickCount();
 		if(now!=tick){mousePollTick=now;mousePolls=0;if(mouseYieldedTicks<TICKS_SPIN_LIMIT){mouseYieldedTicks+=now-tick;cpu.yielded();}}
 	}
@@ -1006,14 +1024,14 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	/** Moves the pointer to (h,v) and publishes it as Mouse/RawMouse/MTemp now (CursorDeviceMove/MoveTo, and the cursor task's warp). */
 	void warpPointer(int h,int v) throws M68kCpuException {
 		if(host==null)return;
-		host().warpMouse(h,v);adb.pointerWarped(h,v);
+		host().warpMouse(h,v);if(adb!=null)adb.pointerWarped(h,v);
 		int packed=(v<<16)|(h&0xffff);lastWrittenMouse=packed;memory.writeLong(0x828,packed);memory.writeLong(0x82c,packed);memory.writeLong(0x830,packed);
 	}
 	/** The cursor VBL task (JCrsrTask vector): moves the pointer to RawMouse and publishes it as Mouse (IM I-259 mouse warping). */
 	private void cursorTask() throws M68kCpuException {
 		int raw=memory.readLong(0x82c);
 		if(raw==lastWrittenMouse)return; // the tick's own call through a program's JCrsrTask hook: nothing to warp
-		host().warpMouse((short)raw,raw>>16);adb.pointerWarped((short)raw,raw>>16);
+		host().warpMouse((short)raw,raw>>16);if(adb!=null)adb.pointerWarped((short)raw,raw>>16);
 		lastWrittenMouse=raw;memory.writeLong(0x828,raw);memory.writeLong(0x830,raw);memory.writeByte(0x8ce,0); // CrsrNew
 	}
 	/** Local time zone offset, re-read from the zone rules at most once a second: updateTicks asks every 4096 instructions
@@ -1060,9 +1078,11 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	// ------------------------------------------------------------------ low memory
 
 	/** The boot value of RndSeed: random in 1..2^31-2 (the range Random's 7^5 x mod (2^31-1) keeps), or -Dhz68k.rndseed. */
+	/** (Not ThreadLocalRandom: TeaVM's cannot be made, its Random constructor calls the setSeed it refuses.) */
+	private static final java.util.Random SEEDS=new java.util.Random();
 	static int initialRndSeed(){
 		Long fixed=Long.getLong("hz68k.rndseed");
-		long seed=fixed!=null?fixed:java.util.concurrent.ThreadLocalRandom.current().nextLong(1,2147483647L);
+		long seed=fixed!=null?fixed:SEEDS.nextLong(1,2147483647L);
 		seed%=2147483647L;if(seed<=0)seed+=2147483646L;return (int)Math.max(1,seed);
 	}
 
@@ -1116,7 +1136,12 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// globals at +$10C (and the key cache, drag globals ...) for the whole VM
 		api.adoptPointer(expandMem,0x1e8);
 		memory.writeLong(0x2b6,expandMem);              // ExpandMem
-		OpenTransport68k.install(this,expandMem);       // ExpandMem+$10C: the Shared Library Manager globals the Open Transport glue binds through
+		// FSVarsPtr ($BB8, FileMgrPrivate.a): the File System Manager's variable block, whose first word is its own length; later
+		// systems grew it. Disk First Aid 8.6 (Mac OS 9.1) takes a length below $B66 for a file system it cannot work with and says
+		// "This version of Disk First Aid is incompatible with this version of Mac OS" - it read the word at address 0 when the
+		// pointer was NIL. A zeroed block of that length: no hooks (XFS, FSMHook, DTDB manager all NIL).
+		{int fsVars=memory.allocate(FS_VARS_SIZE,4);memory.fill(fsVars,FS_VARS_SIZE,0);memory.writeWord(fsVars,FS_VARS_SIZE);api.adoptPointer(fsVars,FS_VARS_SIZE);memory.writeLong(0xbb8,fsVars);}
+		if(PARTS.openTransportInstalled())OpenTransport68k.install(this,expandMem);       // ExpandMem+$10C: the Shared Library Manager globals the Open Transport glue binds through
 		// emDragGlobals (+$118, SysPrivateEqu.a): the Drag Manager is built in (DragManager68k), as in Mac OS 8/9. The old "Macintosh
 		// Drag and Drop" extension (1.1, which the CodeWarrior 5 installer puts into Extensions) installs its own Drag Manager unless
 		// these globals exist with a version word >= $100 (its 'pflp' preflight); with 0 here it patched _DragDispatch over ours and
@@ -1129,7 +1154,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		memory.writeLong(0x2f0,30);memory.writeLong(0x2f4,32); // DoubleTime, CaretTime
 		for(int i=0;i<8;i++)memory.writeByte(0xa3c+i,(i&1)==0?0xaa:0x55); // DeskPattern: the System's 'PAT ' 16 (grey)
 		memory.writeLong(0xae8,-1);                     // SoundGlue: -1 until the Sound Driver glue allocates its parameter block (SoundDone reads through it otherwise)
-		memory.writeByte(0x260,7);api.soundManager().initSdVolume(); // SdVolume: the output volume every VM shares (SoundMixer68k.outputVolume, full at start)
+		memory.writeByte(0x260,7);if(api.soundManager()!=null)api.soundManager().initSdVolume(); // SdVolume: the output volume every VM shares (SoundMixer68k.outputVolume, full at start)
 		memory.writeWord(0x210,systemFolderRef());      // BootDrive
 		// The Finder launches an application with its folder as the default directory: SFSaveDisk holds the
 		// negated vRefNum/WDRefNum (old programs open themselves at -SFSaveDisk) and CurDirStore its dirID.
@@ -1198,8 +1223,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// sequencers of 1989 (Opcode Vision) clock their music from a VIA timer interrupt and send MIDI through the SCC
 		// themselves. VIA2 used to fall past a $2000-byte buffer into the heap blocks after it. The sound buffer is in the same
 		// region and plays (SoundBuffer68k): MacinTalk 1 speaks through it.
-		if(io==null){io=new MacIo68k(this,memory,memory.allocate(MacIo68k.LENGTH,2));memory.mapIo(io.base,MacIo68k.LENGTH,io);}
-		memory.writeLong(0x266,io.soundBase());memory.writeLong(0x1d4,io.base);
+		if(io==null){io=PARTS.io(this,memory);if(io!=null)memory.mapIo(io.base,MacIo68k.LENGTH,io);}
+		if(io!=null){memory.writeLong(0x266,io.soundBase());memory.writeLong(0x1d4,io.base);}
 		// ASCBase ($CC0): the Apple Sound Chip of a Mac II / SE/30 family machine, 4 KB (FIFO A $000, FIFO B $400, registers $800-). A program
 		// that drives it directly (3D Demo, 1992: silence into both FIFOs and the volume at start-up) wrote 8 bytes apart through
 		// the whole 2 KB of low memory with ASCBase 0 - trap table and vectors included. The chip itself is not emulated: the block is plain RAM.
@@ -1208,7 +1233,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// waits 1 ms at the end of each sound buffer). At the paced speed one DBRA is one instruction.
 		double rate=app!=null&&!app.powerPC?app.mips():stack!=null?StackSpeed.externalMips(mips):mips;
 		memory.writeWord(0xd00,(int)Math.min(0x7fff,(rate>0?rate:DEFAULT_MIPS)*1000));
-		memory.writeLong(0x1d8,io.base+MacIo68k.SCC_OFFSET);memory.writeLong(0x1dc,io.base+MacIo68k.SCC_OFFSET); // SCCRd, SCCWr
+		if(io!=null){memory.writeLong(0x1d8,io.base+MacIo68k.SCC_OFFSET);memory.writeLong(0x1dc,io.base+MacIo68k.SCC_OFFSET);} // SCCRd, SCCWr
 		// SysFontFam / ApFontID: Chicago 0 and Geneva 3 on a U.S. System, Osaka (16384) for both on a KanjiTalk System - programs
 		// take the System's script from the application font; Font2Script(ApFontID) may decide the menu language.
 		boolean japaneseSystem=encoding==StackTextEncoding.JAPANESE;
@@ -1242,9 +1267,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		windows.initializeLowMemory();
 		menus.initializeLowMemory();            // SystemMenuList
 		dialogs.initializeLowMemory();          // DABeeper
-		api.scrapManager().initializeLowMemory(); // ScrapInfo at $960
+		if(api.scrapManager()!=null)api.scrapManager().initializeLowMemory(); // ScrapInfo at $960
 		devices.initializeLowMemory();
-		appleTalk.initializeLowMemory();
+		if(appleTalk!=null)appleTalk.initializeLowMemory();
 		files.writeVolumeControlBlocks();
 		resources.describeOpenFiles();
 		quickDraw.initializeLowMemory();
@@ -1316,7 +1341,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				case 0x9f8:return methodDispatch(cpu,instructionPc);
 				case 0x815:return scsiDispatch(cpu);
 				case 0x82d:return editionDispatch(cpu);
-				case 0x9f4:if(app==null)throw new M68kCpuException(instructionPc,"ExitToShell called by an external");files.ejectAddedDrives(cpu);if(Mac68kApi.TRACE)System.err.println("[68K] ExitToShell from $"+Integer.toHexString(instructionPc)+"\n"+cpu.dumpState(instructionPc)+describeSegments());if(Boolean.getBoolean("hz68k.tmpexitdump")&&app.ppc!=null)System.err.println("TMPEXIT "+app.ppc.describe(app.ppc.cpu.lastPc()));throw new ExitToShell();
+				case 0x9f4:if(app==null)throw new M68kCpuException(instructionPc,"ExitToShell called by an external");files.ejectAddedDrives(cpu);if(Mac68kApi.TRACE)System.err.println("[68K] ExitToShell from $"+Integer.toHexString(instructionPc)+"\n"+cpu.dumpState(instructionPc)+describeSegments());if(Boolean.getBoolean("hz68k.tmpexitdump")&&app.ppc!=null)System.err.println("TMPEXIT "+Ppc68k.describeLastPc(app.ppc));throw new ExitToShell();
 			case 0x9ff:return debugger(cpu,false);
 				case 0xbff:return debugger(cpu,true);
 				case 0x9c9:return sysError(cpu);
@@ -1344,11 +1369,11 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				case 0x9e2:return ptrToXHand(cpu);
 				case 0x9e4:return handAndHand(cpu);
 				case 0x9ef:return ptrAndHand(cpu);
-				case 0x8fd:return print.dispatch(cpu);
-				case 0xbed:return drag.dispatch(cpu);
+				case 0x8fd:return print!=null&&print.dispatch(cpu);
+				case 0xbed:return drag!=null&&drag.dispatch(cpu);
 				case 0xbf2:return threads.dispatch(cpu);         // ThreadDispatch
 				case 0xbeb:return displayDispatch(cpu);          // DisplayDispatch (Display Manager)
-				case 0xa54:return textServices.dispatch(cpu);    // TSMDispatch
+				case 0xa54:return textServices!=null&&textServices.dispatch(cpu);    // TSMDispatch
 				case 0x8cf:return packBits(cpu);
 				case 0x8d0:return unpackBits(cpu);
 				case 0x868:return fixMul(cpu);
@@ -1373,8 +1398,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				case 0x8bc:return slopeFromAngle(cpu);
 				case 0x8c4:return angleFromSlope(cpu);
 				case 0x94f:return deltaPoint(cpu);
-				case 0x9b4:desk.systemTask(cpu);return systemTask(cpu); // SystemTask: desk accessories' accRun
-				case 0x9b2:case 0x9b3:case 0x9c2:case 0x9b6:case 0x9b7:return desk.handle(cpu,trap); // SystemEvent, SystemClick, SystemEdit, OpenDeskAcc, CloseDeskAcc
+				case 0x9b4:if(desk!=null)desk.systemTask(cpu);return systemTask(cpu); // SystemTask: desk accessories' accRun
+				case 0x9b2:case 0x9b3:case 0x9c2:case 0x9b6:case 0x9b7:return desk!=null&&desk.handle(cpu,trap); // SystemEvent, SystemClick, SystemEdit, OpenDeskAcc, CloseDeskAcc
 				case 0x9c3:return keyTranslate(cpu);
 				case 0xa52:return files.highLevelDispatch(cpu);
 				case 0x82a:return components.dispatch(cpu);
@@ -1382,19 +1407,21 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				case 0x82b:return pack9(cpu);
 				case 0xbf1:return gestaltValueDispatch(cpu);
 				case 0xaa3:if(guestQuickTime)throw new M68kMacApiException(cpu.pc,opcode,"Image Compression Manager: the installed QuickTime extension did not install the trap");return imageCompression.handle(cpu);
-				case 0xaaa:if(guestQuickTime)throw new M68kMacApiException(cpu.pc,opcode,"QuickTime Movie Toolbox: the installed QuickTime extension did not install the trap");return quickTime.dispatch(cpu);
-				case 0x816:return appleEvents.pack8(cpu);
-				case 0xa73:case 0xa74:case 0xa75:return appearance.dispatch(cpu,trap); // ControlDispatch, AppearanceDispatch, IconServicesDispatch
-				case 0xadb:return cursorDevices.dispatch(cpu);
+				case 0xaaa:if(guestQuickTime)throw new M68kMacApiException(cpu.pc,opcode,"QuickTime Movie Toolbox: the installed QuickTime extension did not install the trap");
+					if(quickTime==null)throw new M68kMacApiException(cpu.pc,opcode,"QuickTime Movie Toolbox: no QuickTime here (the browser player)"); // (GoldCatcher's BGMMovieX: a NullPointerException)
+					return quickTime.dispatch(cpu);
+				case 0x816:return appleEvents!=null&&appleEvents.pack8(cpu);
+				case 0xa73:case 0xa74:case 0xa75:return appearance!=null&&appearance.dispatch(cpu,trap); // ControlDispatch, AppearanceDispatch, IconServicesDispatch
+				case 0xadb:return cursorDevices!=null&&cursorDevices.dispatch(cpu);
 				case 0xa72:return contextualMenuDispatch(cpu);
 				case 0xa59:return mixedModeDispatch(cpu);
 				case 0xa5a:return codeFragmentDispatch(cpu);
 				case 0x824:return hfsUtilDispatch(cpu);
 				case 0xbf6:case 0xbee:case 0xbfc:case 0xa80:case 0xa7e:case 0xa56:case 0xbe0:case 0x82f:if(managers.dispatch(cpu,trap))return true;break; // Collection Manager, ColorSync, Translation Manager, AVL trees, DebugLib, speech recognition, cursor components, Data Access Manager
-				case 0x9ea:return standardFile.pack3(cpu);
+				case 0x9ea:return standardFile!=null&&standardFile.pack3(cpu);
 				case 0x9e7:return listManager.pack0(cpu);
 				case 0x82e:return quickDraw.pack12(cpu);
-				case 0x830:return help.dispatch(cpu);
+				case 0x830:return help!=null&&help.dispatch(cpu);
 				case 0x831:return quickDraw.pack15(cpu);
 				case 0xbc0:{ // private QuickDraw dispatch (D0 = selector): QuickTime's OpenCPort patch calls selector 9 with the new port's grafVars Handle; nothing to do here
 					int selector=cpu.d[0]&0xffff;if(Mac68kApi.TRACE)System.err.println("[68K] private dispatch $ABC0 selector "+selector+" arg $"+Integer.toHexString(memory.readLong(cpu.a[7])));
@@ -1416,18 +1443,19 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		}
 		// OS traps
 		if(files.handle(cpu,opcode))return true;
-		if(trap>=0x77&&trap<=0x7c)return adb.handle(cpu,trap);
+		if(trap>=0x77&&trap<=0x7c)return adb!=null&&adb.handle(cpu,trap);
 		switch(trap){
 			case 0x3d:return devices.drvrInstall(cpu);           // DrvrInstall / DrvrInstallReserveMem ($A43D)
 			case 0x3e:return devices.drvrRemove(cpu);
 			case 0x4e:return files.addDrive(cpu);                // AddDrive
 			case 0x46:return getTrapAddress(cpu,opcode);
 			case 0x47:return setTrapAddress(cpu,opcode);
+			case 0xec:return dispatchHelper(cpu,instructionPc);
 			case 0xfc:return readResourceData(cpu);
 			case 0xad:return gestalt(cpu,opcode);
 			case 0x90:return sysEnvirons(cpu);
 			case 0x3b:return delay(cpu);
-			case 0x8b:if(dialogs.commToolboxDispatch(cpu)||ctb.dispatch(cpu))return true; // _CommToolboxDispatch: the DITL utilities, then the Communications Toolbox
+			case 0x8b:if(dialogs.commToolboxDispatch(cpu)||ctb!=null&&ctb.dispatch(cpu))return true; // _CommToolboxDispatch: the DITL utilities, then the Communications Toolbox
 				System.err.println("[68K "+name+"] CommToolboxDispatch selector $"+Integer.toHexString(memory.readWord(cpu.a[0])&0xffff)+" ignored");cpu.d[0]=-1;return true;
 			case 0xdd:{ // _PPC (PPC Toolbox; the call is D0: PPCInit 0, PPCOpen 1, ...; A0 = PPCParamBlock): no program linking here.
 				// PPCInit succeeds so browsers that only initialize it can continue. PPCInit's glue (moveq #0,d0) leaves A0 as it was:
@@ -1549,7 +1577,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	/** _Pack11 ($A82D), the Edition Manager: Publish & Subscribe (EditionManager68k). Gestalt 'edtn' says it is present (MacApp 3 requires it). */
 	private boolean editionDispatch(M68kCpu cpu) throws M68kException {
 		if(packageEntry(0xa82d)!=0)return false; // a program's own PACK 11 runs instead
-		return editions.dispatch(cpu);
+		return editions!=null&&editions.dispatch(cpu);
 	}
 
 	/** MacApp/Object Pascal's class-info globals: the error routine (%_OBJERROR) and a pointer to the pointer to the table of
@@ -1889,23 +1917,23 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				int spec=memory.readLong(block+16);
 				if(spec!=0)target=files.fileForSpec(spec);
 				int appParameters=memory.readLong(block+40);
-				if(appParameters!=0)documents.addAll(appleEvents.documentsFromLaunchParameters(appParameters));
+				if(appParameters!=0&&appleEvents!=null)documents.addAll(appleEvents.documentsFromLaunchParameters(appParameters));
 			}else if(block!=0){
 				int namePtr=memory.readLong(block);
 				if(namePtr!=0)target=files.fileForClassicPath(readPascal(namePtr));
 			}
 		}catch(IOException e){target=null;}
-		if(target!=null&&!MacApp68k.isApplication(target)&&MacApp68k.isDeskAccessory(target)){ // a desk accessory runs in a process of its own
-			if(!Sandbox.allowFile(target,Sandbox.Access.EXECUTE,name)){cpu.d[0]=-54;return true;}
-			try{MacApp68k launched=MacApp68k.openDeskAccessory(target,null);cpu.d[0]=NO_ERR;if(extended){memory.writeLong(block+20,PSN_HIGH);memory.writeLong(block+24,launched.serialNumber);}}
+		if(target!=null&&!UiHost.get().macApp68kIsApplication(target)&&MacApp68k.isDeskAccessory(target)){ // a desk accessory runs in a process of its own
+			if(!Sandbox68k.allowFile(target,Sandbox68k.Access.EXECUTE,name)){cpu.d[0]=-54;return true;}
+			try{MacApp68k launched=PARTS.openDeskAccessory(target,null);if(launched==null){cpu.d[0]=-43;return true;}cpu.d[0]=NO_ERR;if(extended){memory.writeLong(block+20,PSN_HIGH);memory.writeLong(block+24,launched.serialNumber);}}
 			catch(IOException e){cpu.d[0]=-43;}
 			return true;}
-		if(target==null||!MacApp68k.isApplication(target)){cpu.d[0]=-43;return true;}
-		if(!Sandbox.allowFile(target,Sandbox.Access.EXECUTE,name)){cpu.d[0]=-54;return true;}
+		if(target==null||!UiHost.get().macApp68kIsApplication(target)){cpu.d[0]=-43;return true;}
+		if(!Sandbox68k.allowFile(target,Sandbox68k.Access.EXECUTE,name)){cpu.d[0]=-54;return true;}
 		// a PowerPC program's helper file (not an 'APPL'): it runs in the program's own process, as on a Mac where both share one address space
-		if(app!=null&&app.powerPC&&app.ppc!=null&&continues&&documents.isEmpty()&&PpcRuntime.runsInLauncher(target)){
+		if(app!=null&&app.powerPC&&app.ppc!=null&&continues&&documents.isEmpty()&&Ppc68k.runsInLauncher(target)){
 			int serial=MacApp68k.newSerialNumber();
-			cpu.d[0]=app.ppc.launchInProcess(target,serial);
+			cpu.d[0]=Ppc68k.launchInProcess(app.ppc,target,serial);
 			if(cpu.d[0]==NO_ERR&&extended){memory.writeLong(block+20,PSN_HIGH);memory.writeLong(block+24,serial);}
 			return true;
 		}
@@ -1918,7 +1946,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			asrBusy=true;final String requester=name;final MacApp68k launcher=app;
 			Thread t=new Thread(()->{
 				try{AsrRestore.restore(image,volume,requester);}catch(IOException e){System.err.println("[ASR] restore failed: "+e);}
-				try{Thread.sleep(1500);}catch(InterruptedException ignored){}
+				try{Platform.get().sleep(1500);}catch(InterruptedException ignored){}
 				// ASR reports its result to the sender - 'ERNI'/'revl' with rnum (0 = the restore went through) - and stays until it is told to quit
 				Toolbox68k t2=launcher==null?null:launcher.toolbox;
 				if(t2!=null&&!launcher.finished){
@@ -1929,7 +1957,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 					AppleEvents68k.Portable rnum=new AppleEvents68k.Portable();rnum.type=AppleEvents68k.TYPE_SHOR;rnum.data=new byte[]{0,0};ev.items.put(0x726e756d,rnum);
 					t2.events.postAppleEvent(ev,ASR_SERIAL);}
 			},"asr-restore");
-			t.setDaemon(true);t.start();
+			t.setDaemon(true);Platform.get().start(t);
 			cpu.d[0]=NO_ERR;memory.writeLong(block+20,PSN_HIGH);memory.writeLong(block+24,ASR_SERIAL);
 			return true;
 		}
@@ -1937,7 +1965,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// program's first LoadSeg (LaunchHookBridge68k; Aladdin's trial engine hands its purchase record over that way)
 		int loadSegHook=continues&&app!=null?cpu.patchedTrap(0xa9f0):0;
 		if(loadSegHook!=0&&loadSegHook!=app.loadSegPatchAtStart)MacApp68k.LOAD_SEG_HOOK.set(loadSegHook);
-		try{MacApp68k launched;try{launched=MacApp68k.launch(target,documents);}finally{MacApp68k.LOAD_SEG_HOOK.remove();}cpu.d[0]=NO_ERR;
+		try{MacApp68k launched;try{launched=PARTS.launch(target,documents);}finally{MacApp68k.LOAD_SEG_HOOK.remove();}if(launched==null){cpu.d[0]=-43;return true;}cpu.d[0]=NO_ERR;
 			if(exitReport!=0){final int flag=exitReport;final M68kMemory launcherMemory=memory;launched.onExit=new Runnable(){@Override public void run(){try{launcherMemory.writeLong(flag,0);}catch(M68kCpuException ignored){}}};}
 			if(extended){memory.writeLong(block+20,PSN_HIGH);memory.writeLong(block+24,launched.serialNumber);}
 			// acceptAppDiedEvents ($0100) in the launcher's SIZE: it hears 'aevt'/'obit' when this program quits
@@ -1958,9 +1986,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		File target;
 		try{target=spec==0?null:files.fileForSpec(spec);}catch(IOException e){target=null;}
 		if(target==null||!MacApp68k.isDeskAccessory(target))return -43; // fnfErr
-		if(!Sandbox.allowFile(target,Sandbox.Access.EXECUTE,name))return -54;
+		if(!Sandbox68k.allowFile(target,Sandbox68k.Access.EXECUTE,name))return -54;
 		String accessory=namePtr==0?null:resources.resourceName(namePtr);
-		try{MacApp68k.openDeskAccessory(target,accessory==null||accessory.isEmpty()?null:accessory);return NO_ERR;}
+		try{return PARTS.openDeskAccessory(target,accessory==null||accessory.isEmpty()?null:accessory)==null?-43:NO_ERR;}
 		catch(IOException e){return -43;}
 	}
 
@@ -2036,6 +2064,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// With the installed QuickTime extension its INIT installs the Image Compression Manager only when _CodecDispatch is
 		// _Unimplemented: it calls CodecManagerVersion through an existing entry and keeps that ICM otherwise.
 		if(word==0xaaa3&&guestQuickTime)return false;
+		if(word==0xaaaa&&quickTime==null&&!guestQuickTime)return false; // no Movie Toolbox (the browser player): TrapAvailable says so
 		if(word==0xaafe&&!powerPcExternals.isEmpty())return true; // _MixedModeMagic: a PowerPC-only external's stub looks for it
 		// _IconServicesDispatch (Mac OS 8.5+, IconServices68k) is there, unlike the Appearance traps $AA73/$AA74 kept hidden with
 		// 'appr': ACTION Menus' INIT saw System 9.2.2, patched it and called through the old address - _Unimplemented
@@ -2185,6 +2214,24 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		cpu.d[0]=NO_ERR;return true;
 	}
 
+	/**
+	 * _DispatchHelper ($A0EC), the System 7 selector dispatcher a trap's own code jumps to through the OS trap table (the Location
+	 * Manager Extension's _ALMDispatch: LEA table,A0; MOVE.L $7B0,-(SP); RTS). A0 = the table: a flags word, the first and last
+	 * selector (signed bytes), then per selector a signed word offset from the table's start; D0.W = parameter words << 8 |
+	 * selector. The routine runs on the caller's stack, the caller's return address on top, and returns to it itself. An unknown
+	 * selector loses its parameters and gets paramErr in D0.
+	 */
+	private boolean dispatchHelper(M68kCpu cpu,int instructionPc) throws M68kCpuException {
+		if(cpu.isTrapRomAddress(instructionPc))cpu.pushLong(cpu.romReturnAddress()); // the ROM entry took it off the stack
+		int table=cpu.a[0],selector=(byte)cpu.d[0],first=(byte)memory.readByte(table+2),last=(byte)memory.readByte(table+3);
+		if(selector<first||selector>last){
+			int ret=memory.readLong(cpu.a[7]);cpu.a[7]+=4+2*((cpu.d[0]>>>8)&0xff);cpu.d[0]=PARAM_ERR;cpu.pc=ret;
+			if(Mac68kApi.TRACE)System.err.printf("[68K] DispatchHelper table $%X selector %d outside %d..%d%n",table,selector,first,last);
+			return true;}
+		cpu.pc=table+(short)memory.readWord(table+4+2*(selector-first));
+		if(Mac68kApi.TRACE)System.err.printf("[68K] DispatchHelper table $%X selector %d -> $%X%n",table,selector,cpu.pc);
+		return true;
+	}
 	private static boolean ownOsTrap(int trap){
 		switch(trap){
 			case 0x51:case 0x52:case 0x71:case 0x72:case 0x82:case 0x5c:case 0x0e:case 0x0f:case 0x17:case 0x35:case 0x43:
@@ -2194,6 +2241,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x30:case 0x31:case 0x3d:case 0x3e:return true; // the rest of the OS switch above (drivers, file system extras, 32-bit memory calls)
 			case 0x77:case 0x78:case 0x79:case 0x7a:case 0x7b:case 0x7c:return true; // ADB Manager
 			case 0x8b:return true; // CommToolboxDispatch (DITL utilities)
+			case 0xec:return true; // DispatchHelper
 			default:return false;
 		}
 	}
@@ -2209,7 +2257,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if((opcode&0x0600)==0x0400){ // ReplaceGestalt
 			Integer old=gestaltProcs.get(selector);gestaltProcs.put(selector,cpu.a[0]);cpu.a[0]=old==null?0:old;cpu.d[0]=NO_ERR;return true;
 		}
-		if(selector==SPEECH_MANAGER&&app==null&&gestaltProcs.get(selector)==null&&gestaltValue(selector)==null)extensions.loadForExternal(SPEECH_MANAGER); // its INIT defines 'ttsc'
+		if(selector==SPEECH_MANAGER&&app==null&&gestaltProcs.get(selector)==null&&gestaltValue(selector)==null&&extensions!=null)extensions.loadForExternal(SPEECH_MANAGER); // its INIT defines 'ttsc'
 		Integer proc=gestaltProcs.get(selector);
 		// The trap itself only returns the response in A0 (result in D0); storing it through A1 is the job of the Pascal glue
 		// (MOVE.L A0,(A1)). Programs that call _Gestalt inline may have anything in A1, so the trap must never write there.
@@ -2253,11 +2301,11 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	static final int QUICKTIME_PPC_VERSION=0x05028000;
 	/** Gestalt called by the PowerPC program itself - not by the 4.0.3 extension's own 68K code, which takes a newer version for
 	 *  "Some of your QuickTime software failed to load because it is out of date". */
-	private boolean powerPcProgramAsks(){return app!=null&&app.powerPC&&app.ppc!=null&&"Gestalt".equals(app.ppc.toolboxCall);}
+	private boolean powerPcProgramAsks(){return app!=null&&app.powerPC&&"Gestalt".equals(Ppc68k.toolboxCall(app.ppc));}
 	/** Gestalt called by the PowerPC code of a stack's external ({@link #externalPpc}): such code runs only on a Power Macintosh, so
 	 *  it sees one, with the Mac OS 9.2.2 PowerPC programs see (URLAccess 1.3 answered "requires MacOS 8.6" to System 7.5.5). The
 	 *  VM's 68K code and HyperTalk's systemVersion keep the 68K Mac and System 7.5.5. */
-	private boolean powerPcExternalAsks(){return app==null&&externalPpc!=null&&"Gestalt".equals(externalPpc.toolboxCall);}
+	private boolean powerPcExternalAsks(){return app==null&&"Gestalt".equals(Ppc68k.toolboxCall(externalPpc));}
 	Integer gestaltValue(int selector){
 		Integer custom=gestaltValues.get(selector);
 		if(custom!=null)return custom;
@@ -2304,7 +2352,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x736e6420:return 0x0001|0x0002|0x0004|0x0008|0x0010|0x0020|0x0040|0x0080|0x0400|0x0800|0x1000;
 			case 0x736e6476:return 0x0321;                     // sndv: Sound Manager 3.2.1
 			case 0x616c6973:return 1;                          // alis: Alias Manager
-			case 0x65766e74:return Integer.getInteger("hz68k.evnt",0x0001|0x0002|0x0004);       // evnt: high level events, AppleEvents
+			// evnt: high level events, AppleEvents. None without the Apple Event Manager (the browser player's VM: Toolbox68kParts):
+			// Cosmic Osmo's PlayMovie XCMD called Pack8 because this said it was there ("Mac API is not supported yet: AppleEvents")
+			case 0x65766e74:return appleEvents==null?0:Integer.getInteger("hz68k.evnt",0x0001|0x0002|0x0004);
 			case 0x706f7021:return 0x0001;                              // pop!: gestaltPopupPresent - the pop-up menu CDEF (63) is there (HyperCard 2.2+ shows its script editor's scripting-language pop-up only with it)
 			case 0x696e7466:return 2;
 			case 0x6b626420:return KeyboardLayout68k.GESTALT_KEYBOARD; // kbd : extended ADB keyboard
@@ -2319,8 +2369,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x636f6d70:return 1;                          // comp: Component Manager
 			case 0x63706e74:return Components68k.CM_VERSION;   // cpnt: Component Manager version (>= 8: QuickTime 4 does not patch it)
 			case 0x6275677a:return 1<<8;                       // bugz: QuickTime's own "ROM bugs fixed" selector; bit 8 = Microseconds is accurate, so its VIA-timer replacement (no VIA here) stays out
-			case 0x7174696d:return quickTime.version()!=0?quickTime.version():null; // qtim: QuickTime version (undefined when the installed extension is to answer)
-			case 0x71746673:return quickTime.version()!=0?1:null;// qtfs? features
+			case 0x7174696d:return quickTime!=null&&quickTime.version()!=0?quickTime.version():null; // qtim: QuickTime version (undefined when the installed extension is to answer)
+			case 0x71746673:return quickTime!=null&&quickTime.version()!=0?1:null;// qtfs? features
 			// qtrs: gestaltQuickTimeFeatures, bit 0 gestaltPPCQuickTimeLibPresent - PowerPC code gets QuickTimeLib here whichever
 			// QuickTime answers. QuickTime VR's INIT on a Power Mac queues itself until the bit shows, and QuickTime's start-up
 			// finish then reported it "not installed"
@@ -2328,12 +2378,12 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			// selector undefined (measured), a Power Mac's answers 1, and HyperCard ran on Power Macs: Rinaldi's 68K externals
 			// (CreateThumbnail, MovieMediaType, PictInfos ...) take a defined 'qtrs' as "QuickTime is installed"
 			// A PowerPC QuickTime defines it itself: its PowerPlug INIT installs QuickTimeLib only while bit 0 (gestaltPPCQuickTimeLibPresent) is clear
-			case 0x71747273:return guestPowerPcQuickTime?null:seesPowerPC()?1:app==null&&quickTime.version()!=0?0:null;
+			case 0x71747273:return guestPowerPcQuickTime?null:seesPowerPC()?1:app==null&&quickTime!=null&&quickTime.version()!=0?0:null;
 			case 0x6d746370:return 0x0203;                     // mtcp: MacTCP 2.0.x
 			case 0x6f74616e:return OpenTransport.ENABLED?0x0001|0x0002|0x0010|0x0020:null; // otan: Open Transport present and loaded, TCP/IP present and loaded (no AppleTalk or IPX through OT)
 			case 0x6f747672:return OpenTransport.ENABLED?(app!=null&&app.powerPC?0x02608000:0x01308000):null; // otvr: 2.6 for PowerPC programs (Mac OS 9), 1.3 for 68K ones (the last for 68K Macs)
-			case 0x61746c6b:return appleTalk.isEnabled()?58:0;   // atlk: AppleTalk 58 (Phase 2), 0 = switched off
-			case 0x61746b76:return appleTalk.isEnabled()?0x58008000:0; // atkv: 58.0 final
+			case 0x61746c6b:return appleTalk!=null&&appleTalk.isEnabled()?58:0;   // atlk: AppleTalk 58 (Phase 2), 0 = switched off
+			case 0x61746b76:return appleTalk!=null&&appleTalk.isEnabled()?0x58008000:0; // atkv: 58.0 final
 			case 0x6469746c:return 1;                          // ditl: AppendDITL/CountDITL/ShortenDITL present (DialogManager68k.commToolboxDispatch); MandelNet said "requires System 7" without it
 			case 0x70706320:return 0;                          // ppc : no PPC toolbox
 			case 0x68656c70:return 1;                          // help: Help Manager
@@ -2396,7 +2446,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x73657220:return 0;                          // ser : no GPi lines wired to the ports
 			case 0x6c6d656d:try{int sys=memory.partitionBase()!=0?APPL_ZONE:memory.readLong(0x2a6);return sys>0?sys:null;}catch(M68kCpuException e){return null;} // lmem: low memory ends where the System heap (SysZone) begins
 			case 0x74726565:return 1;                          // tree: AVL tree routines
-			case 0x666f6c64:return 1;                          // fold: FindFolder
+			// fold: FindFolder; bit 1 gestaltFolderDescSupport (Mac OS 8.5: Add/Get/RemoveFolderDescriptor, served below). The Location
+			// Manager Extension's 'AINI' needs it to register its folders and install _ALMDispatch, else Office 2001 called the empty trap
+			case 0x666f6c64:return baseSystemVersion>=0x0850?3:1;
 			case 0x6d697864:return seesPowerPC()?1:0;        // mixd: Mixed Mode on a Power Macintosh
 			case 0x636f6465:return 0;                          // 'code'
 			case 0x63667267:return seesPowerPC()?1:null;      // cfrg: gestaltCFMPresent (the PowerPC Code Fragment Manager of a Power Macintosh)
@@ -2407,7 +2459,11 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x74736d76:return 0x0150;                     // tsmv: Text Services Manager 1.5
 			case 0x49434170:return "false".equals(System.getProperty("hz68k.internetconfig"))?null:0x02008000; // ICAp: Internet Config version (NumVersion 2.0, like the extension's 'vers'); JPEGBatcher wants v2 or later
 			case 0x74736d61:return 0;                          // tsma: TSM attributes
-			case 0x74686473:return 0x0001|0x0002;              // thds: Thread Manager present, specific-match support
+			// thds: Thread Manager present, specific-match support, bit 5 (undocumented: what Thread Manager 2.1.5 and later set), and on
+			// a Power Macintosh the native ThreadsLib (bit 2) from the start, as in its System file (PpcLibraries sets the same). Mac OS
+			// 9.1's QuickTime MPEG Extension tests bits 0 and 5 when QuickTime registers it and otherwise posts a notification
+			// "did not load. It requires the ThreadManager extension (version 2.1.5 or later)"
+			case 0x74686473:return THREAD_MANAGER_ATTRIBUTES|(POWERPC_MACHINE?0x0004:0);
 			case 0x74786d76:return 0;
 			case 0x70726e74:return 0;
 			case 0x6d6d6772:return 1;                          // mmgr? Memory Manager
@@ -2416,7 +2472,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x6c6f6769:return 3;                          // logi: 68030 logical RAM etc.
 			case 0x6c6f6f70:return 0;
 			case 0x64657620:return 0;
-			case 0x69636d70:return quickTime.version()==0?null:app==null?imageCompression.version():1; // icmp: Image Compression Manager comes with QuickTime (an external's: CodecManagerVersion of QuickTime 4.0.3; CompressPictFile wants >= 15)
+			case 0x69636d70:return quickTime==null||quickTime.version()==0?null:app==null?imageCompression.version():1; // icmp: Image Compression Manager comes with QuickTime (an external's: CodecManagerVersion of QuickTime 4.0.3; CompressPictFile wants >= 15)
 			case 0x616d6963:return 0;
 			default:return null;
 		}
@@ -2557,9 +2613,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		int sp=cpu.a[7];
 		switch(cpu.d[0]&0xffff){
 			case 0:{int isa=memory.readByte(sp),procInfo=memory.readLong(sp+2),proc=memory.readLong(sp+6);cpu.a[7]+=10;int upp=proc;
-				if((isa&0x7f)==1&&proc!=0&&app!=null){if(app.ppc==null)app.ppc=PpcRuntime.forCallsFrom68k(app);upp=app.ppc.newRoutineDescriptor(proc,procInfo,PpcRuntime.ISA_PPC);}
+				if((isa&0x7f)==1&&proc!=0&&app!=null){if(app.ppc==null)app.ppc=Ppc68k.forCallsFrom68k(app);upp=Ppc68k.newRoutineDescriptor(app.ppc,proc,procInfo);}
 				memory.writeLong(cpu.a[7],upp);return true;}
-			case 1:{int upp=memory.readLong(sp);cpu.a[7]+=4;if(upp!=0&&app!=null&&app.ppc!=null&&app.ppc.isRoutineDescriptor(upp)&&memory.isAllocated(upp))memory.free(upp);return true;}
+			case 1:{int upp=memory.readLong(sp);cpu.a[7]+=4;if(upp!=0&&app!=null&&Ppc68k.isRoutineDescriptor(app.ppc,upp)&&memory.isAllocated(upp))memory.free(upp);return true;}
 			case 2:{int m68k=memory.readLong(sp+8);cpu.a[7]+=12;memory.writeLong(cpu.a[7],m68k);return true;}
 			case 3:case 4:cpu.a[7]+=8;memory.writeWord(cpu.a[7],NO_ERR);return true;
 			default:throw new M68kMacApiException(cpu.pc,0xaa59,"MixedModeDispatch selector "+(cpu.d[0]&0xffff));
@@ -2580,9 +2636,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			// one it updates (QuickTime's installers). Registered files are searched for import libraries; the tie is accepted.
 			case -20:{int spec=memory.readLong(sp+2);cpu.a[7]=sp+6;
 				if(app==null){memory.writeWord(cpu.a[7],-43);return true;} // an external (no program): no libraries to register
-				if(app.ppc==null)app.ppc=PpcRuntime.forCallsFrom68k(app);
-				java.io.File f=spec==0?null:app.ppc.libraries.fileOf(spec);
-				if(f!=null&&f.isFile()&&!app.ppc.registeredLibraryFiles.contains(f))app.ppc.registeredLibraryFiles.add(f);
+				if(app.ppc==null)app.ppc=Ppc68k.forCallsFrom68k(app);
+				java.io.File f=spec==0?null:Ppc68k.libraryFile(app.ppc,spec);
+				if(f!=null&&f.isFile())Ppc68k.registerLibraryFile(app.ppc,f);
 				memory.writeWord(cpu.a[7],f!=null&&f.isFile()?NO_ERR:-43);return true;}
 			case -17:cpu.a[7]=sp+12;memory.writeWord(cpu.a[7],NO_ERR);return true;
 			// -19 (cfrg Ptr, VAR, VAR, VAR memberPtr): the 'cfrg' member a 68K caller could run natively. MPW Shell 3.5's 68K code asks
@@ -2603,18 +2659,18 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// an external runs in HyperCard on a 68K Mac (Gestalt sysa 68K): no fragments to connect to - cfragNoLibraryErr, so
 		// Rinaldi's FullNavigation answers "Navigation not available" (a Java NullPointerException ended its handler silently)
 		if(app==null){memory.writeWord(cpu.a[7],selector<=3?-2804:-2801);return true;} // cfragNoLibraryErr / cfragConnectionIDErr
-		if(app.ppc==null)app.ppc=PpcRuntime.forCallsFrom68k(app);
+		if(app.ppc==null)app.ppc=Ppc68k.forCallsFrom68k(app);
 		int[] saved68=cpu.d.clone(),savedA=cpu.a.clone();
-		int result=app.ppc.libraries.invoke(name,args);
-		if(PpcRuntime.TRACE)System.err.printf("[ppc] 68K %s(%s) -> %d%s%n",name,java.util.Arrays.stream(args).mapToObj(a->String.format("%08X",a)).collect(java.util.stream.Collectors.joining(" ")),result,
-			selector==1&&args[0]!=0?" \""+app.ppc.pString(args[0])+"\"":selector==5&&args[1]!=0?" \""+app.ppc.pString(args[1])+"\"":"");
+		int result=Ppc68k.invokeLibrary(app.ppc,name,args);
+		if(Ppc68k.trace())System.err.printf("[ppc] 68K %s(%s) -> %d%s%n",name,java.util.Arrays.stream(args).mapToObj(a->String.format("%08X",a)).collect(java.util.stream.Collectors.joining(" ")),result,
+			selector==1&&args[0]!=0?" \""+Ppc68k.pString(app.ppc,args[0])+"\"":selector==5&&args[1]!=0?" \""+Ppc68k.pString(app.ppc,args[1])+"\"":"");
 		System.arraycopy(saved68,0,cpu.d,0,8);System.arraycopy(savedA,0,cpu.a,0,8);
 		memory.writeWord(cpu.a[7],result);return true;
 	}
 	/** The program's PowerPC runtime, started at the first use (null in an external's VM, which has no program). */
 	PpcRuntime powerPcRuntime() throws M68kCpuException {
 		if(app==null)return null;
-		if(app.ppc==null)app.ppc=PpcRuntime.forCallsFrom68k(app);
+		if(app.ppc==null)app.ppc=Ppc68k.forCallsFrom68k(app);
 		return app.ppc;
 	}
 	/** The System version the program sees (Gestalt sysv, as a program may have replaced it). */
@@ -2650,7 +2706,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// keyboard and no AppleTalk while Gestalt said otherwise
 		Integer machine=gestaltValue(0x6d616368);memory.writeWord(record,2);memory.writeWord(record+2,machine==null?0:Math.max(0,machine-2));memory.writeWord(record+4,systemVersion());memory.writeWord(record+6,4);
 		memory.writeByte(record+8,M68kFpu.ENABLED?1:0);memory.writeByte(record+9,1);memory.writeWord(record+10,KeyboardLayout68k.GESTALT_KEYBOARD);
-		memory.writeWord(record+12,appleTalk.isEnabled()?58:0);memory.writeWord(record+14,systemFolderRef()); // hasFPU, hasColorQD, keyboardType, atDrvrVersNum, sysVRefNum
+		memory.writeWord(record+12,appleTalk!=null&&appleTalk.isEnabled()?58:0);memory.writeWord(record+14,systemFolderRef()); // hasFPU, hasColorQD, keyboardType, atDrvrVersNum, sysVRefNum
 		// versionRequested is D0.W (some callers leave data in the high word); envBadVers -5501 for a nonpositive version,
 		// envVersTooBig -5502 above 2 (the record is still filled), envNotPresent -5500 is only ever returned by the glue
 		// (MacErrors.h; these were one off, and Siege of Darkwood asks for version $7FFF and accepts only -5502).
@@ -2736,8 +2792,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x31:{int refCon=memory.readLong(cpu.a[7]),name=memory.readLong(cpu.a[7]+18);cpu.a[7]+=22;
 				memory.writeWord(cpu.a[7],name==0||memory.readByte(name)==0||refCon==0?PARAM_ERR:NO_ERR);return true;}
 			case 0x32:cpu.a[7]+=4;memory.writeWord(cpu.a[7],NO_ERR);return true; // DeleteAppleMenuItem(itemRefCon) : OSErr - the System 7.5 Finder calls it with 0 (all its items) once it is set up
-			case 0x33:return appleEvents.acceptHighLevelEvent(cpu);
-			case 0x34:return appleEvents.postHighLevelEvent(cpu);
+			case 0x33:return appleEvents!=null&&appleEvents.acceptHighLevelEvent(cpu);
+			case 0x34:return appleEvents!=null&&appleEvents.postHighLevelEvent(cpu);
 			case 0x36:{int name=memory.readLong(cpu.a[7]),spec=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8; // LaunchDeskAccessory(pFileSpec, pDAName): the Finder opening a 'dfil' file
 				memory.writeWord(cpu.a[7],launchDeskAccessory(spec,name));return true;}
 			case 0x37:{int psn=memory.readLong(cpu.a[7]);cpu.a[7]+=4;writePsn(psn,currentProcessOverride!=0?currentProcessOverride:serialNumber());memory.writeWord(cpu.a[7],NO_ERR);return true;} // GetCurrentProcess
@@ -2762,18 +2818,18 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			case 0x3a:return getProcessInformation(cpu);
 			case 0x3b:{int psn=memory.readLong(cpu.a[7]);cpu.a[7]+=4;int serial=serialOf(psn); // SetFrontProcess
 				if(serial==FINDER_SERIAL&&finderStandInPresent()){ // the Finder stand-in: the launcher, HyperZebra's own Finder, comes forward
-					MacApp68k.finderFront=true;GLauncher.showLauncher(true);memory.writeWord(cpu.a[7],NO_ERR);return true;}
+					MacApp68k.finderFront=true;UiHost.get().gLauncherShowLauncher(true);memory.writeWord(cpu.a[7],NO_ERR);return true;}
 				MacApp68k target=MacApp68k.bySerial(serial);
 				if(target!=null&&!target.backgroundOnly()){MacApp68k.activeApplication=target;MacApp68k.finderFront=false;}
 				if(target!=null&&target.host!=null)target.host.setProcessHidden(false); // a hidden program made the front one comes back
-				if(target!=null&&target.host!=null){MacAppHost.HostWindow hw=target.host.frontWindow();if(hw!=null)target.host.selectWindow(hw.record);}memory.writeWord(cpu.a[7],NO_ERR);return true;}
+				if(target!=null&&target.host!=null){VmWindow hw=target.host.frontWindow();if(hw!=null)target.host.selectWindow(hw.record());}memory.writeWord(cpu.a[7],NO_ERR);return true;}
 			case 0x3c:cpu.a[7]+=4;memory.writeWord(cpu.a[7],NO_ERR);return true; // WakeUpProcess
 			case 0x3d:{int resultPtr=memory.readLong(cpu.a[7]),b=memory.readLong(cpu.a[7]+4),a=memory.readLong(cpu.a[7]+8);cpu.a[7]+=12;
 				boolean same=serialOf(a)==serialOf(b);
 				if(resultPtr!=0)memory.writeByte(resultPtr,same?1:0);/* VAR Boolean: one byte */memory.writeWord(cpu.a[7],NO_ERR);return true;} // SameProcess
 			case 0x40:case 0x41:memory.writeWord(cpu.a[7],NO_ERR);return true; // undocumented: QuickTime brackets TempNewHandle with these when Gestalt reports real temporary memory (OSErr results, no arguments)
 			case 0x42:case 0x43:cpu.a[7]+=8;memory.writeWord(cpu.a[7],NO_ERR);return true; // undocumented pair (0L, Ptr) : OSErr - the System 7.5 Finder brackets something with them and ignores the results
-			case 0x45:return appleEvents.getSpecificHighLevelEvent(cpu);
+			case 0x45:return appleEvents!=null&&appleEvents.getSpecificHighLevelEvent(cpu);
 			case 0x46:{ // GetPortNameFromProcessSerialNumber(VAR PPCPortRec, PSN): a process's default PPC port - its name, ppcByCreatorAndType,
 				// its signature and 'ep01'. Microsoft OLE 2 copies the strings out without checking the result (garbage lengths overran its stack).
 				int psn=memory.readLong(cpu.a[7]),port=memory.readLong(cpu.a[7]+4);cpu.a[7]+=8;
@@ -2807,7 +2863,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				if(target.host!=null)target.host.setProcessHidden(!visible);
 				if(!visible&&MacApp68k.frontApplication()==target){MacApp68k.activeApplication=null;
 					MacApp68k next=null;for(MacApp68k a:MacApp68k.runningApplications())if(a!=target&&!a.backgroundOnly()&&a.toolbox!=null&&(a.host==null||!a.host.processHidden()))next=a;
-					if(next!=null){MacApp68k.activeApplication=next;if(next.host!=null){MacAppHost.HostWindow hw=next.host.frontWindow();if(hw!=null)next.host.selectWindow(hw.record);}}
+					if(next!=null){MacApp68k.activeApplication=next;if(next.host!=null){VmWindow hw=next.host.frontWindow();if(hw!=null)next.host.selectWindow(hw.record());}}
 					else MacApp68k.finderFront=true;}
 				memory.writeWord(cpu.a[7],NO_ERR);return true;}
 			// undocumented Mac OS 8 call (ProcPtr) : OSErr - NotePad installs a pascal (VAR result: Integer; EventRecord*) : OSErr
@@ -2949,7 +3005,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(front==null||front==app)return;
 		long until=front.startedAt+FIRST_EVENT_CALL_WAIT_MS;
 		while(!front.finished&&(front.toolbox==null||!front.toolbox.events.firstEventCallMade())&&System.currentTimeMillis()<until)
-			try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}
+			try{Platform.get().sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}
 	}
 	private static final long FIRST_EVENT_CALL_WAIT_MS=20000;
 	private int serialOf(int psn) throws M68kCpuException {int high=memory.readLong(psn),low=memory.readLong(psn+4);return high==0&&(low==2||low==0)?serialNumber():low;}
@@ -3059,7 +3115,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			if(cpu.abortRequested())throw new M68kAbortException(cpu.pc);
 			runDeferred();runTimers();
 			long due=nextDueNanos()-System.nanoTime();if(due<=0)continue; // a MIDI wake-up is due
-			try{Thread.sleep(Math.max(1L,Math.min(Math.min(remaining,due)/1_000_000L,10L)));}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+			try{Platform.get().sleep(Math.max(1L,Math.min(Math.min(remaining,due)/1_000_000L,10L)));}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 		}
 		cpu.d[0]=tickCount();updateTicks();return true;
 	}
@@ -3104,7 +3160,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			if(cpu.abortRequested())throw new M68kAbortException(cpu.pc);
 			runDeferred();runTimers();if(!task.active)break;
 			if(cardWindow!=null)cardWindow.flush(); // a frame drawn on the card shows while the external waits for the next
-			try{Thread.sleep(Math.max(1L,Math.min(remaining/1_000_000L,10L)));}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+			try{Platform.get().sleep(Math.max(1L,Math.min(remaining/1_000_000L,10L)));}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 		}
 		runTimers();updateTicks();
 	}
@@ -3128,9 +3184,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		cpu.d[0]=NO_ERR;return true;
 	}
 	void runTimers() throws M68kException {
-		adb.poll(); // reached from every idle path and the scheduler poll: the mouse packets of a program's ADB routine
-		MidiManager68k midi=api.soundManager().midiIfAny();if(midi!=null)midi.service(this); // wake-ups and read hooks, like its 1 ms interrupt
-		appleTalk.service(); // NBP/ATP retries and time-outs
+		if(adb!=null)adb.poll(); // reached from every idle path and the scheduler poll: the mouse packets of a program's ADB routine
+		MidiManager68k midi=api.soundManager()==null?null:api.soundManager().midiIfAny();if(midi!=null)midi.service(this); // wake-ups and read hooks, like its 1 ms interrupt
+		if(appleTalk!=null)appleTalk.service(); // NBP/ATP retries and time-outs
 		if(io!=null){io.service(cpu);cpu.interruptSource=io.armed()?io:null;} // VIA timer and SCC interrupts of programs that drive the chips themselves
 		if(timers.isEmpty())return;
 		long now=System.nanoTime();boolean fired=false;
@@ -3367,8 +3423,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			// NMRec: nmMark +14, nmIcon +16, nmSound +20 (-1 = system alert sound), nmStr +24, nmResp +28 (-1 = remove when done), nmRefCon +32
 			int sound=memory.readLong(record+20),text=memory.readLong(record+24),response=memory.readLong(record+28);
 			if(Mac68kApi.TRACE)System.err.println("[68K] NMInstall record $"+Integer.toHexString(record)+" mark "+memory.readWord(record+14)+" icon $"+Integer.toHexString(memory.readLong(record+16))+" sound $"+Integer.toHexString(sound)+" str $"+Integer.toHexString(text)+(text!=0?" \""+readPascal(text)+"\"":"")+" resp $"+Integer.toHexString(response));
-			if(sound!=0)Toolkit.getDefaultToolkit().beep();
-			if(text!=0){final String message=readPascal(text);javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){javax.swing.JOptionPane.showMessageDialog(null,message,name,javax.swing.JOptionPane.INFORMATION_MESSAGE);}});}
+			if(sound!=0)PARTS.beep();
+			if(text!=0)PARTS.notification(name,readPascal(text));
 			if(response!=0&&response!=-1&&!pendingNotifications.contains(record))pendingNotifications.add(record);
 			notificationCount++;}
 		cpu.d[0]=NO_ERR;return true;
@@ -3615,7 +3671,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	/** Mac OS Roman byte tables: upper case, lower case, and the letter without its accent (other bytes map to themselves). */
 	private static final int[] ROMAN_UPPER=new int[256],ROMAN_LOWER=new int[256],ROMAN_STRIP=new int[256];
 	static{
-		java.nio.charset.Charset roman=java.nio.charset.Charset.forName("x-MacRoman");
+		java.nio.charset.Charset roman=Platform.get().charset("x-MacRoman");
 		byte[] bytes=new byte[256];for(int i=0;i<256;i++)bytes[i]=(byte)i;String chars=new String(bytes,roman);
 		java.util.Map<Character,Integer> byChar=new java.util.HashMap<Character,Integer>();for(int i=0;i<256;i++)byChar.put(chars.charAt(i),i);
 		for(int i=0;i<256;i++){char c=chars.charAt(i);ROMAN_UPPER[i]=ROMAN_LOWER[i]=ROMAN_STRIP[i]=i;
@@ -3623,7 +3679,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 			Integer u=byChar.get(Character.toUpperCase(c)),l=byChar.get(Character.toLowerCase(c));
 			if(u!=null&&Character.toUpperCase(c)!=c&&Character.toString(c).toUpperCase(java.util.Locale.ROOT).length()==1)ROMAN_UPPER[i]=u;
 			if(l!=null&&Character.toLowerCase(c)!=c)ROMAN_LOWER[i]=l;
-			String base=java.text.Normalizer.normalize(Character.toString(c),java.text.Normalizer.Form.NFD);
+			String base=Platform.get().normalize(Character.toString(c),UnicodeNorm.Form.NFD);
 			if(base.length()>1&&base.charAt(0)<0x80&&Character.isLetter(base.charAt(0)))ROMAN_STRIP[i]=base.charAt(0);}
 	}
 	/** _UprString; with the MARKS bit ($0200, diacSensitive FALSE) the accents go too. */
@@ -3671,7 +3727,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(c>='0'&&c<='9')return 0x0100;                                                  // smPunctNumber
 		if(c<0x80)return "$+<=>^`|~".indexOf((char)c)>=0?0x0200:0x0000;                  // smPunctSymbol / smPunctNormal
 		if(japanese)return c>=0xa1&&c<=0xdf?0x0002:0x0000;                               // one-byte (half-width) Katakana
-		char ch=new String(new byte[]{(byte)c},java.nio.charset.Charset.forName("x-MacRoman")).charAt(0);
+		char ch=new String(new byte[]{(byte)c},Platform.get().charset("x-MacRoman")).charAt(0);
 		return Character.isLetter(ch)?0x0007|(Character.isUpperCase(ch)?0x4000:0):0x0000; // smCharExtAscii
 	}
 	/** CharacterType of a Shift-JIS two-byte character, without smChar2byte. */
@@ -3681,8 +3737,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(code>=0x824f&&code<=0x8258)return 0x0100;                                      // full-width digits
 		if(code>=0x8260&&code<=0x8279)return 0x4001;                                      // full-width A-Z
 		if(code>=0x8281&&code<=0x829a)return 0x0001;                                      // full-width a-z
-		if(code>=0x829f&&code<=0x82f1)return 0x0003|("ぁぃぅぇぉっゃゅょゎ".indexOf(new String(new byte[]{(byte)(code>>8),(byte)code},java.nio.charset.Charset.forName("MS932")).charAt(0))>=0?0x0100:0); // Hiragana
-		if(code>=0x8340&&code<=0x8396)return 0x0002|("ァィゥェォッャュョヮヵヶ".indexOf(new String(new byte[]{(byte)(code>>8),(byte)code},java.nio.charset.Charset.forName("MS932")).charAt(0))>=0?0x0100:0); // Katakana
+		if(code>=0x829f&&code<=0x82f1)return 0x0003|("ぁぃぅぇぉっゃゅょゎ".indexOf(new String(new byte[]{(byte)(code>>8),(byte)code},Platform.get().charset("MS932")).charAt(0))>=0?0x0100:0); // Hiragana
+		if(code>=0x8340&&code<=0x8396)return 0x0002|("ァィゥェォッャュョヮヵヶ".indexOf(new String(new byte[]{(byte)(code>>8),(byte)code},Platform.get().charset("MS932")).charAt(0))>=0?0x0100:0); // Katakana
 		if(code>=0x839f&&code<=0x83d6)return 0x0005|(code<=0x83b6?0x4000:0);              // Greek
 		if(code>=0x8440&&code<=0x8491)return 0x0006|(code<=0x8460?0x4000:0);              // Cyrillic
 		if(code>=0x849f&&code<=0x84be)return 0x0500;                                      // line graphics
@@ -3699,6 +3755,9 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		// parameters, which the selector's argument count does not include (some runtimes call ParseTable as $C2040022 with
 		// FontScript() first; taking the script word for the table pointer filled 256 bytes over low memory and the trap tables).
 		if((selector&0x40000000)!=0){int script=(short)memory.readWord(cpu.a[7]);cpu.a[7]+=2;japanese=script==1;}
+		// The plain form of the text routines (CharByte, CharType, Pixel2Char ... StyledLineBreak) works in the script of the port's
+		// font, as FontScript answers it: a one-byte strike's text is Roman, one byte per character (see Fonts68k.oneByteStrike)
+		else if(japanese&&(routine>=0x0010&&routine<=0x0036||routine==(short)0xfffe)){int[] t=api.quickDraw().textState();if(Fonts68k.oneByteStrike(Fonts68k.font(t[0],t[3],t[1])))japanese=false;}
 		int args=cpu.a[7];
 		switch(routine){
 			case 0x0000:{int font=Fonts68k.substitute(api.quickDraw().textState()[0]);cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],japanese&&(font==0||font==1||font>=0x4000&&font<0x4400)?1:0);return true;} // FontScript: the script of the current port's font (0/1 = the System's own fonts), or of the family the program's font substitution draws instead
@@ -4053,17 +4112,17 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	}
 	/** Fullwidth katakana (and punctuation) to its halfwidth form, built from the halfwidth block's own compatibility decompositions. */
 	private static final java.util.Map<Character,Character> HALFWIDTH_KANA=new java.util.HashMap<Character,Character>();
-	static{for(char h=0xff61;h<=0xff9d;h++){String full=java.text.Normalizer.normalize(String.valueOf(h),java.text.Normalizer.Form.NFKC);if(full.length()==1)HALFWIDTH_KANA.put(full.charAt(0),h);}
+	static{for(char h=0xff61;h<=0xff9d;h++){String full=Platform.get().normalize(String.valueOf(h),UnicodeNorm.Form.NFKC);if(full.length()==1)HALFWIDTH_KANA.put(full.charAt(0),h);}
 		HALFWIDTH_KANA.put('\u30ee','\uff9c');HALFWIDTH_KANA.put('\u30f0','\uff72');HALFWIDTH_KANA.put('\u30f1','\uff74');} // small wa, wi, we: no halfwidth forms of their own
 	private static String toHalfwidthKana(char c){
-		String nfd=java.text.Normalizer.normalize(String.valueOf(c),java.text.Normalizer.Form.NFD);
+		String nfd=Platform.get().normalize(String.valueOf(c),UnicodeNorm.Form.NFD);
 		Character h=HALFWIDTH_KANA.get(nfd.charAt(0));if(h==null)return null;
 		char mark=nfd.length()>1?nfd.charAt(1):0;return mark==0x3099?h+"\uff9e":mark==0x309a?h+"\uff9f":String.valueOf(h);
 	}
 	/** The 2-byte form of a 1-byte character (Roman to fullwidth Roman, halfwidth katakana with a following voice mark to one katakana); null when it has none. */
 	private static String toFullwidth(char c,char next){
 		if(c>=0x21&&c<=0x7e)return String.valueOf((char)(c+0xfee0));if(c==' ')return "\u3000";
-		if(c>=0xff61&&c<=0xff9f){String pair=(next==0xff9e||next==0xff9f)?""+c+next:String.valueOf(c);String n=java.text.Normalizer.normalize(pair,java.text.Normalizer.Form.NFKC);
+		if(c>=0xff61&&c<=0xff9f){String pair=(next==0xff9e||next==0xff9f)?""+c+next:String.valueOf(c);String n=Platform.get().normalize(pair,UnicodeNorm.Form.NFKC);
 			if(n.length()==1)return pair.length()==2?n+"\u0000":n;return n.substring(0,1);} // NFKC composes ｶ+ﾞ into ガ; the marker length tells the caller to skip the mark
 		return null;
 	}
@@ -4207,7 +4266,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	 *  UPPER case: the Roman sort order puts each lower-case letter with its capital, so [ \ ] ^ _ ` still sort after Z (HyperHIT's
 	 *  relation directory, built on a Mac, holds "orderHeaders" before "Order_Items"; lower-case folding put "_" before the letters
 	 *  and its openCollection walked that directory for ever). */
-	private static String primaryKey(String s){return java.text.Normalizer.normalize(s,java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+","").toUpperCase(java.util.Locale.ROOT);}
+	private static String primaryKey(String s){return Platform.get().normalize(s,UnicodeNorm.Form.NFD).replaceAll("\\p{M}+","").toUpperCase(java.util.Locale.ROOT);}
 	/** The International Utilities' sort order (IUMagString, IUTextOrder): letters first without case and diacriticals, so é sorts with
 	 *  e (Rinaldi's FullSort "t=i" put every accented letter after z); equal that way, the plain letter before the accented one, then
 	 *  lower case before upper case. */
@@ -4365,6 +4424,8 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 
 	static final int BAD_FOLDER_DESC_ERR=-4270,DUPLICATE_FOLDER_DESC_ERR=-4271;
 	/** Folder descriptors added with AddFolderDescriptor: type -> {foldClass, foldLocation} and type -> name. */
+	/** Folder routings by (fileType, routeFromFolder): {routeToFolder, flags}. */
+	private final Map<Long,int[]> folderRoutings=new HashMap<Long,int[]>();static final int ROUTING_NOT_FOUND_ERR=-4275;
 	private final Map<Integer,int[]> folderDescriptors=new HashMap<Integer,int[]>();private final Map<Integer,String> folderDescriptorNames=new HashMap<Integer,String>();
 	/** FindFolder's folder of {@code type}: a built-in special folder, or a relative folder ('relf') a program described: the
 	 *  folder of that name inside the folder of its foldLocation type. */
@@ -4415,7 +4476,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				return true;}
 			case 9:{ // NewAliasMinimalFromFullPath(len, path, zone, server, VAR alias)
 				int aliasPtr=memory.readLong(cpu.a[7]);int path=memory.readLong(cpu.a[7]+12),len=(short)memory.readWord(cpu.a[7]+16);cpu.a[7]+=18;
-				String fullPath=encoding.decode(memory.readBytes(path,Math.max(0,len)));if(Mac68kApi.TRACE||PpcRuntime.TRACE)System.err.println("[68K] NewAliasMinimalFromFullPath \""+fullPath+"\"");
+				String fullPath=encoding.decode(memory.readBytes(path,Math.max(0,len)));if(Mac68kApi.TRACE||Ppc68k.trace())System.err.println("[68K] NewAliasMinimalFromFullPath \""+fullPath+"\"");
 				try{File f=files.fileForClassicPath(fullPath);if(f==null)throw new IOException("no such path");byte[] alias=files.makeAlias(f);memory.writeLong(aliasPtr,api.createHandle(alias));memory.writeWord(cpu.a[7],NO_ERR);}
 				catch(IOException e){memory.writeLong(aliasPtr,0);memory.writeWord(cpu.a[7],-43);}
 				return true;}
@@ -4483,6 +4544,35 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 				if(Mac68kApi.TRACE)System.err.println("[68K] AddFolderDescriptor '"+AppleEvents68k.fourcc(type)+"' class '"+AppleEvents68k.fourcc(folderClass)+"' in '"+AppleEvents68k.fourcc(location)+"' \""+folderDescriptorNames.get(type)+"\" -> "+err);
 				memory.writeWord(cpu.a[7],err);return true;}
 			case 0x21:{int type=memory.readLong(cpu.a[7]);cpu.a[7]+=4;boolean had=folderDescriptors.remove(type)!=null;folderDescriptorNames.remove(type);memory.writeWord(cpu.a[7],had?NO_ERR:BAD_FOLDER_DESC_ERR);return true;} // RemoveFolderDescriptor(foldType)
+			case 0x23:{ // GetFolderDescriptor(foldType, descSize, VAR FolderDesc): Word 2001 asks once its document window is up
+				int desc=memory.readLong(cpu.a[7]),size=memory.readLong(cpu.a[7]+4),type=memory.readLong(cpu.a[7]+8);cpu.a[7]+=12;
+				int[] d=folderDescriptors.get(type);String name=folderDescriptorNames.get(type);
+				if(d==null){File f=files.specialFolder(type,false);
+					// a folder the Folder Manager knows itself: relative to the System Folder or the startup disk's root, else special
+					if(f!=null){File parent=f.getParentFile();int location=0;
+						try{if(parent!=null&&files.systemFolder!=null&&parent.equals(files.systemFolder))location=0x6d616373; // 'macs'
+							else if(parent!=null&&parent.equals(files.fileManager.volumeRoot(files.startupVolumeRefNum())))location=0x726f6f74;} // 'root'
+						catch(IOException e){}
+						d=new int[]{location!=0?0x72656c66:0x73706366,location};name=f.getName();}} // 'relf' / 'spcf'
+				if(Mac68kApi.TRACE||Ppc68k.trace())System.err.println("[68K] GetFolderDescriptor '"+AppleEvents68k.fourcc(type)+"' -> "+(d==null?"badFolderDescErr":"'"+AppleEvents68k.fourcc(d[0])+"' in '"+AppleEvents68k.fourcc(d[1])+"' \""+name+"\""));
+				if(d==null){memory.writeWord(cpu.a[7],BAD_FOLDER_DESC_ERR);return true;}
+				// FolderDesc: descSize, foldType, flags, foldClass, foldLocation, badgeSignature, badgeType, reserved, name (Str63): 96 bytes
+				byte[] b=new byte[96];java.nio.ByteBuffer.wrap(b).putInt(0,96).putInt(4,type).putInt(12,d[0]).putInt(16,d[1]);
+				byte[] n=encoding.encodeReplacing(name==null?"":name);int len=Math.min(63,n.length);b[32]=(byte)len;System.arraycopy(n,0,b,33,len);
+				if(desc!=0&&size>0)for(int i=0;i<Math.min(size,96);i++)memory.writeByte(desc+i,b[i]);
+				memory.writeWord(cpu.a[7],desc==0?PARAM_ERR:NO_ERR);return true;}
+			// Folder routing (Mac OS 8.6): where the Finder puts files of a type dropped on a folder. There is no Finder routing here,
+			// so the table only answers for itself; the Location Manager Extension's 'AINI' routes its location files into 'fall'
+			case 0x26:{ // AddFolderRouting(fileType, routeFromFolder, routeToFolder, flags, replaceFlag)
+				int sp=cpu.a[7];boolean replace=memory.readByte(sp)!=0;int flags=memory.readLong(sp+2),to=memory.readLong(sp+6);long key=(long)memory.readLong(sp+14)<<32|(memory.readLong(sp+10)&0xffffffffL);cpu.a[7]+=18;
+				if(folderRoutings.containsKey(key)&&!replace){memory.writeWord(cpu.a[7],-4274);return true;} // duplicateRoutingErr
+				folderRoutings.put(key,new int[]{to,flags});memory.writeWord(cpu.a[7],NO_ERR);return true;}
+			case 0x27:{long key=(long)memory.readLong(cpu.a[7]+4)<<32|(memory.readLong(cpu.a[7])&0xffffffffL);cpu.a[7]+=8; // RemoveFolderRouting(fileType, routeFromFolder)
+				memory.writeWord(cpu.a[7],folderRoutings.remove(key)!=null?NO_ERR:ROUTING_NOT_FOUND_ERR);return true;}
+			case 0x22:{ // FindFolderRouting(fileType, routeFromFolder, VAR routeToFolder, VAR flags)
+				int flagsPtr=memory.readLong(cpu.a[7]),toPtr=memory.readLong(cpu.a[7]+4);long key=(long)memory.readLong(cpu.a[7]+12)<<32|(memory.readLong(cpu.a[7]+8)&0xffffffffL);cpu.a[7]+=16;
+				int[] r=folderRoutings.get(key);if(r==null){memory.writeWord(cpu.a[7],ROUTING_NOT_FOUND_ERR);return true;}
+				if(toPtr!=0)memory.writeLong(toPtr,r[0]);if(flagsPtr!=0)memory.writeLong(flagsPtr,r[1]);memory.writeWord(cpu.a[7],NO_ERR);return true;}
 			case 0x0b:cpu.a[7]+=6;memory.writeWord(cpu.a[7],NO_ERR);return true; // ReleaseFolder(vRefNum, folderType)
 			case 0x2a:{ // IsAliasFile(fileFSSpec, VAR aliasFileFlag, VAR folderFlag): the Finder's isAlias flag
 				int folderFlag=memory.readLong(cpu.a[7]),aliasFlag=memory.readLong(cpu.a[7]+4),spec=memory.readLong(cpu.a[7]+8);cpu.a[7]+=12;
@@ -4617,7 +4707,15 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 	 * bullet, $A9 a copyright sign, not half-width katakana; $5C a backslash, not a yen sign). A valid Shift-JIS pair still
 	 * reads as Japanese, the Osaka fallback's character, so Japanese text set in such a font stays readable.
 	 */
-	String decodeFor(java.awt.Font font,byte[] bytes){return classicGlyphs(decodeText(font,bytes));}
+	String decodeFor(java.awt.Font font,byte[] bytes){
+		// a one-byte strike draws its own glyph for every byte: Mac OS Roman gives each byte one character and BitmapFont68k.encode
+		// the same bytes back (Shift-JIS read a pair as one kanji, which the strike measured and drew as '?')
+		if(Fonts68k.oneByteStrike(font))return StackTextEncoding.ROMAN.decode(bytes);
+		return classicGlyphs(decodeText(font,bytes));
+	}
+	/** Whether text in {@code font} reads a Shift-JIS lead byte and the byte after it as one character: under a Japanese system,
+	 *  except in a strike of one-byte glyphs ({@link Fonts68k#oneByteStrike}). */
+	boolean readsPairs(java.awt.Font font){return encoding==StackTextEncoding.JAPANESE&&!Fonts68k.oneByteStrike(font);}
 	/**
 	 * $11-$14 as the Mac's fonts draw them, the command key, check mark, diamond and Apple (a host font has nothing at U+0011):
 	 * HyperToaster's dialog text "(Press \x11-period or Esc to Cancel)" and Progress 2.0r's "Type \x11-. to cancel." showed a gap
@@ -4649,7 +4747,7 @@ final class Toolbox68k implements M68kCpu.RomHandler,M68kCpu.Scheduler {
 		if(shutDown)return;shutDown=true;
 		threads.shutDown(); // coroutine threads parked for good: their Java threads end
 		if(cardWindow!=null)cardWindow.close();
-		macTcp.shutDown();appleTalk.shutDown();synchronized(this){if(openTransport!=null)openTransport.shutDown();}quickTime.shutDown();api.soundManager().shutDown(releaseSound);soundDriver.shutDown(releaseSound);if(io!=null)io.shutDown();
+		if(macTcp!=null)macTcp.shutDown();if(appleTalk!=null)appleTalk.shutDown();synchronized(this){if(openTransport!=null)openTransport.shutDown();}if(quickTime!=null)quickTime.shutDown();if(api.soundManager()!=null)api.soundManager().shutDown(releaseSound);if(soundDriver!=null)soundDriver.shutDown(releaseSound);if(io!=null)io.shutDown();
 		try{resources.flushAll();}catch(Exception ignored){}
 		try{files.fileManager.closeAll();}catch(Exception ignored){} // files left open reach the host (a PICT saved as PNG needs its Close)
 		try{files.fileManager.giveNewProgramsIcons();}catch(Exception ignored){} // programs it made (expanded from an archive) get their icons on the host

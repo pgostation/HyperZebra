@@ -249,18 +249,16 @@ final class M68kMemory {
 		// the 68020 tolerates odd word accesses (the 68000 does not); programs compiled for 68020+ rely on it
 		if(Integer.compareUnsigned(address-lowEnd,span2)>0)return readOutside(address,2);
 		if(address<ioEnd&&address+2>ioStart)return ioRead(address,2);
-		return (short)BIG_SHORT.get(bytes,address) & 0xffff;
+		return BigEndian68k.BYTES.word(bytes,address);
 	}
 
 	int readLong(int address) throws M68kCpuException {
 		address = normalize(address);
 		if(Integer.compareUnsigned(address-lowEnd,span4)>0)return readOutside(address,4);
 		if(address<ioEnd&&address+4>ioStart)return ioRead(address,4);
-		return (int)BIG_INT.get(bytes,address);
+		return BigEndian68k.BYTES.lng(bytes,address);
 	}
-	/** Big-endian words and longs of the byte array: one host load or store each (with a byte swap) where HotSpot compiles them. */
-	private static final java.lang.invoke.VarHandle BIG_SHORT=java.lang.invoke.MethodHandles.byteArrayViewVarHandle(short[].class,java.nio.ByteOrder.BIG_ENDIAN),
-		BIG_INT=java.lang.invoke.MethodHandles.byteArrayViewVarHandle(int[].class,java.nio.ByteOrder.BIG_ENDIAN);
+	// (big-endian words and longs of the byte array: BigEndian68k, VarHandle views on the JVM, byte shifts in the browser build)
 
 	/** Debug (-Dhz68k.writeprobe=LO,HI hex PC range): reports the address range of guest writes made by code in that range. */
 	static final int[] WRITE_PROBE=parseProbe(System.getProperty("hz68k.writeprobe"));
@@ -298,7 +296,7 @@ final class M68kMemory {
 	void writeWord(int address, int value) throws M68kCpuException {
 		address = normalize(address);if(WRITE_PROBE!=null)probe(address);if(ADDR_PROBE!=null)addrProbe(address,2,value);
 		if(Integer.compareUnsigned(address-lowEnd,span2)>0){writeOutside(address,2,value);return;}
-		BIG_SHORT.set(bytes,address,(short)value);
+		BigEndian68k.BYTES.setWord(bytes,address,value);
 		byte[] code=codeMarks;if(code!=null&&code[address>>>CODE_SHIFT]!=0)codeWritten(address,2); // a line is marked from 3 bytes before its code
 		if(address<trackEnd&&address+2>trackStart&&chunkTracked[address>>>CHUNK_SHIFT]!=0)touched(address,2);
 		if(address<watchEnd&&address+2>watchStart)watched(address,2);
@@ -308,7 +306,7 @@ final class M68kMemory {
 	void writeLong(int address, int value) throws M68kCpuException {
 		address = normalize(address);if(WRITE_PROBE!=null)probe(address);if(ADDR_PROBE!=null)addrProbe(address,4,value);
 		if(Integer.compareUnsigned(address-lowEnd,span4)>0){writeOutside(address,4,value);return;}
-		BIG_INT.set(bytes,address,value);
+		BigEndian68k.BYTES.setLong(bytes,address,value);
 		byte[] code=codeMarks;if(code!=null&&code[address>>>CODE_SHIFT]!=0)codeWritten(address,4);
 		if(address<trackEnd&&address+4>trackStart&&chunkTracked[address>>>CHUNK_SHIFT]!=0)touched(address,4);
 		if(address<watchEnd&&address+4>watchStart)watched(address,4);

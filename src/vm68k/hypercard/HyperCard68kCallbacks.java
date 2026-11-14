@@ -157,8 +157,8 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 				field.styleList=null;field.setText(chars);
 				for(int i=0;i<runs.size();i++){int[] run=runs.get(i);
 					int start=charIndex(bytes,run[0],enc),end=i+1<runs.size()?charIndex(bytes,runs.get(i+1)[0],enc):chars.length();
-					String font=Fonts68k.nameOf(run[1]);int face=run[2]&0x7f;if(font.isEmpty())font=field.textFont;
-					if(end<=start||(font.equalsIgnoreCase(field.textFont)&&run[3]==field.textSize&&face==(field.textStyle&0x7f)))continue;
+					String font=Fonts68k.nameOf(run[1]);int face=run[2]&0xff;if(font.isEmpty())font=field.textFont; // bit 7 = HyperCard's group, as GetFieldTE hands it
+					if(end<=start||(font.equalsIgnoreCase(field.textFont)&&run[3]==field.textSize&&face==(field.textStyle&0xff)))continue;
 					field.applyTextStyle(start,end,font,run[3],face);}
 				break;
 			}
@@ -171,8 +171,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 				String prompt=macApi.application().dialogs.substituteParamText(readPascalText(in(1)));int kind=in(0);
 				String[][] buttons={{"OK"},{"OK","Cancel"},{"Cancel","Delete"},{"Yes","Cancel","No"}};
 				String[] b=buttons[Math.max(0,Math.min(3,kind-1))];
-				int choice=javax.swing.JOptionPane.showOptionDialog(PCARD.pc,prompt,"",javax.swing.JOptionPane.DEFAULT_OPTION,
-					javax.swing.JOptionPane.PLAIN_MESSAGE,null,b,b[0]);
+				int choice=UiHost.get().showHCAlert(prompt,b);
 				memory.writeWord(block+0x72,choice<0?(kind==1?1:2):choice+1); // outArgs[0]'s first word: the glue reads a short
 				break;
 			}
@@ -181,7 +180,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 			// 203 CountHandlers: UxProgressBar asks it at every event of its windoid and closes the window when no handler runs (the
 			// script that showed it ended, by itself, by cmd-. or by an error); a Boolean 1 written into the INTEGER read as 256
 			case 203:if(in(0)!=0)memory.writeWord(in(0),ScriptDebugger.frameDepth());break; // CountHandlers(VAR INTEGER): the handlers running (0 at idle: UxProgressBar's windows close then)
-			case 202:TXcmd.abortScriptAfterExternal=true;break; // AbortScript: the script stops when the external returns, silently, as by cmd-.
+			case 202:UiHost.get().abortScriptAfterExternal();break; // AbortScript: the script stops when the external returns, silently, as by cmd-.
 			// HyperCard 2.x debugger callbacks (names and argument order from MPW HyperXLib.o: 200 GoScript, 201 StepScript,
 			// 202 AbortScript, 203 CountHandlers, 204 GetHandlerInfo, 205 GetVarInfo, 206 SetVarValue, 207 GetStackCrawl,
 			// 208 TraceScript). Handler 0 is the global variables: HyperBib's SaveCurrentGlobals asks GetHandlerInfo(0) for their
@@ -265,7 +264,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 			//stack), so a leading colon names a full path when it exists (宇宙への旅's sound module plays its BGM that way)
 			if((name.indexOf(':')>0 || name.startsWith(":") && full.isAbsolute()) && full.exists()) found=full;
 			OStack stack=macApi.stack();
-			java.io.File stackFolder=stack!=null&&stack.file!=null?GMenuBrowse.stackChooserDirectory(stack.file):null;
+			java.io.File stackFolder=stack!=null&&stack.file!=null?UiHost.get().stackFolderOf(stack.file):null;
 			//a Mac full path the program built from what the File Manager gave it ("Macintosh HD:…:Documents-H#70:…": long host
 			//names in their 31-character form): the File Manager resolves it back
 			if(found==null&&name.indexOf(':')>0&&stackFolder!=null){
@@ -278,25 +277,22 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 				if(f.exists())found=f;
 			}
 			String leaf=name.substring(name.lastIndexOf(':')+1);
-			if(found==null&&stackFolder!=null)found=FileManager68k.existingOrUnarchived(stackFolder,leaf.replace('/',':'));
-			if(found==null&&PCARD.home!=null&&PCARD.home.file!=null){
-				java.io.File homeFolder=GMenuBrowse.stackChooserDirectory(PCARD.home.file);
+			if(found==null&&stackFolder!=null)found=UiHost.get().fileManager68kExistingOrUnarchived(stackFolder,leaf.replace('/',':'));
+			if(found==null&&HZ.home!=null&&HZ.home.file!=null){
+				java.io.File homeFolder=UiHost.get().stackFolderOf(HZ.home.file);
 				if(homeFolder!=null){java.io.File f=new java.io.File(homeFolder,leaf.replace('/',':'));if(f.exists())found=f;}
 			}
 			//then HyperCard's search paths, the globals Documents, Stacks and Applications (Myst Preview's Movie XCMD finds
 			//"Brøderbund MooV" in the "Preview Files:" folder its startUp handler put there)
 			for(String global:new String[]{"documents","stacks","applications"}){
 				if(found!=null)break;
-				for(java.io.File folder:TTalk.searchPathFolders(global)){java.io.File f=FileManager68k.existingOrUnarchived(folder,leaf.replace('/',':'));if(f!=null){found=f;break;}}
+				for(java.io.File folder:TTalk.searchPathFolders(global)){java.io.File f=UiHost.get().fileManager68kExistingOrUnarchived(folder,leaf.replace('/',':'));if(f!=null){found=f;break;}}
 			}
 		}
 		if(found==null&&in(3)!=0){
-			javax.swing.JFileChooser chooser=new javax.swing.JFileChooser();
 			OStack stack=macApi.stack();
-			java.io.File stackFolder=stack!=null&&stack.file!=null?GMenuBrowse.stackChooserDirectory(stack.file):null;
-			if(stackFolder!=null)chooser.setCurrentDirectory(stackFolder);
-			chooser.setDialogTitle(name.isEmpty()?"":"Where is "+name+"?");
-			if(PCARD.showFileChooser(chooser,PCARD.pc,false)==javax.swing.JFileChooser.APPROVE_OPTION)found=chooser.getSelectedFile();
+			java.io.File stackFolder=stack!=null&&stack.file!=null?UiHost.get().stackFolderOf(stack.file):null;
+			found=UiHost.get().chooseExternalFile(name,stackFolder);
 		}
 		if(found==null){memory.writeWord(block+RESULT_OFFSET,1);return true;}
 		if(in(4)!=0)memory.writeLong(in(4),tb.files.fileType(found));
@@ -324,7 +320,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 	private boolean getMaskAndData(int mask,int data) throws M68kCpuException {
 		OStack stack=macApi.stack();
 		OCard card=stack==null?null:stack.curCard;
-		OCardBase owner=card==null?null:PaintTool.editBackground&&card.bg!=null?card.bg:card;
+		OCardBase owner=card==null?null:HZ.editBackground&&card.bg!=null?card.bg:card;
 		if(owner==null||mask==0||data==0){memory.writeWord(block+RESULT_OFFSET,1);return true;}
 		int width=Math.max(1,stack.width),height=Math.max(1,stack.height),rowBytes=((width+15)/16)*2;
 		java.awt.image.BufferedImage picture=owner.composite();
@@ -387,16 +383,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 		owner.invalidateComposite();
 		owner.changed=true;
 		OStack stack=owner.stack!=null?owner.stack:macApi.stack();
-		if(stack!=null&&stack.file!=null){
-			if(owner.bitmapName==null||!owner.bitmapName.matches(".*\\.png"))owner.bitmapName="BMAP_"+owner.id+".png";
-			java.io.File file=new java.io.File(stack.file.getParent(),owner.bitmapName);
-			try{StackProtection.writeImage(stack,picture,file);PictureCache.invalidate(file);}catch(java.io.IOException e){e.printStackTrace();}
-		}
-		//a card that had no picture has no picture layer on show: the card is built again (the new picture shows at once, as
-		//HyperCard redraws the card - MtDrawIcon's icon stayed invisible until the card was left and opened again)
-		boolean shown=PCARD.pc!=null&&stack!=null&&PCARD.pc.stack==stack&&stack.curCard!=null&&(owner==stack.curCard||owner==stack.curCard.bg);
-		if(shown&&(owner.label==null||owner.label.cd!=owner||owner.label.getParent()==null))OCard.reloadCurrentCard();
-		else if(shown&&PCARD.pc.mainPane!=null)PCARD.pc.mainPane.repaint();
+		UiHost.get().externalChangedPicture(stack,owner,picture); // saved with the stack, the card shown again
 		memory.writeWord(block+RESULT_OFFSET,0);
 		return true;
 	}
@@ -496,11 +483,11 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 		java.util.List<int[]> runs=new ArrayList<int[]>();int bytes=0;int[] last=null;
 		for(int i=0;i<chars.length();){
 			int cp=chars.codePointAt(i),n=Character.charCount(cp);
-			OField.TextStyleSpec spec=field.textStyleAt(i);int[] style={Fonts68k.numberOf(spec.font),spec.style&0x7f,spec.size};
+			OField.TextStyleSpec spec=field.textStyleAt(i);int[] style={Fonts68k.numberOf(spec.font),spec.style&0xff,spec.size}; // face bit 7 = group: HC 2.x hands its own style byte (FieldToRTF writes it as \hcgroup)
 			if(last==null||last[0]!=style[0]||last[1]!=style[1]||last[2]!=style[2]){runs.add(new int[]{bytes,style[0],style[1],style[2]});last=style;}
 			bytes+=enc.encodeReplacing(chars.substring(i,i+n)).length;i+=n;
 		}
-		if(runs.isEmpty())runs.add(new int[]{0,Fonts68k.numberOf(field.textFont),field.textStyle&0x7f,field.textSize});
+		if(runs.isEmpty())runs.add(new int[]{0,Fonts68k.numberOf(field.textFont),field.textStyle&0xff,field.textSize});
 		return runs;
 	}
 	/** The character index of byte offset {@code offset} of {@code bytes} in {@code enc}. */
@@ -553,7 +540,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 	 * the stack is open again, as another OStack of the same file.
 	 */
 	private OStack currentStack(){
-		OStack own=macApi.stack();PCARD pc=PCARD.pc;OStack current=pc==null?null:pc.stack;
+		OStack own=macApi.stack();OStack current=HZ.stack();
 		if(current==null||current.curCard==null||current==own)return own;
 		return own==null||own.curCard==null||!Xcmd68k.sameStack(current,own)?current:own;
 	}
@@ -571,7 +558,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 		String text=readPascalText(in(0));
 		if(Mac68kApi.TRACE)System.out.println("[xcmd] "+(cardMessage?"SendCardMessage":"SendHCMessage")+" \""+text+"\"");
 		if(!cardMessage&&keyboardCommandForHyperCard(text))return true;
-		OObject messageTarget=TXcmd.callTarget.get(); // "the target" in the statement: the target of the message that called the external
+		OObject messageTarget=UiHost.get().externalCallTarget(); // "the target" in the statement: the target of the message that called the external
 		try{TTalk.runExternalStatement(text,target,messageTarget!=null?messageTarget:target);memory.writeWord(block+RESULT_OFFSET,0);}
 		catch(xTalkException e){System.out.println("XCMD "+(cardMessage?"SendCardMessage":"SendHCMessage")+" \""+text+"\": "+e.getMessage());memory.writeWord(block+RESULT_OFFSET,1);}
 		// a statement that breaks inside HyperZebra fails like a script error (xresFail), as EvalExpr's do: MacZine's parse XFCN sends
@@ -597,7 +584,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 		}
 		if(words.length!=(param==null?1:2))return false;
 		TTalk talk=TTalk.talk;if(talk==null)return false;
-		MemoryData m=TXcmd.callVariables.get();if(m==null){m=new MemoryData();m.treeset=new TreeSet<String>();m.nameList=new ArrayList<String>();m.valueList=new ArrayList<String>();}
+		MemoryData m=HZ.callVariables.get();if(m==null){m=new MemoryData();m.treeset=new TreeSet<String>();m.nameList=new ArrayList<String>();m.valueList=new ArrayList<String>();}
 		try{talk.keyboardCommand(message,param,m);memory.writeWord(block+RESULT_OFFSET,0);}
 		catch(xTalkException e){System.out.println("XCMD SendHCMessage \""+text+"\": "+e.getMessage());memory.writeWord(block+RESULT_OFFSET,1);}
 		catch(RuntimeException e){System.out.println("XCMD SendHCMessage \""+text+"\": "+e);memory.writeWord(block+RESULT_OFFSET,1);}
@@ -605,12 +592,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 	}
 
 	/** Notify: the Notification Manager's alert when HyperCard is not the active application; nothing when the user is here. */
-	private static void notifyUser(){
-		if(java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow()!=null)return;
-		try{if(java.awt.Taskbar.isTaskbarSupported()&&java.awt.Taskbar.getTaskbar().isSupported(java.awt.Taskbar.Feature.USER_ATTENTION)){java.awt.Taskbar.getTaskbar().requestUserAttention(true,false);return;}}
-		catch(RuntimeException ignored){}
-		java.awt.Toolkit.getDefaultToolkit().beep();
-	}
+	private static void notifyUser(){UiHost.get().notifyUser();}
 
 	private boolean evalExpr() throws M68kException {
 		String expression=readPascalText(in(0)).trim(),value=null;
@@ -628,9 +610,9 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 			// button, a function of the button's script is found, its locals and `it` are seen): AutoCheck reads the field being typed
 			// in with EvalExpr "me", SndFilePlaySync's idle expression "ClickAbort()" lives in the calling button. With no handler
 			// behind the call (an external window's event at idle) it is the current card, as before
-			OStack stack=currentStack();OObject caller=TXcmd.callVariables.get()!=null?ScriptDebugger.currentObject():null;
+			OStack stack=currentStack();OObject caller=HZ.callVariables.get()!=null?ScriptDebugger.currentObject():null;
 			OObject target=stack==null?null:caller!=null?caller:stack.curCard;
-			OObject messageTarget=TXcmd.callTarget.get(); // "the target" is the target of the message whose handler called the external
+			OObject messageTarget=UiHost.get().externalCallTarget(); // "the target" is the target of the message whose handler called the external
 			if(target!=null){
 				TUtil.ExternalFrame outer=TUtil.externalFrame.get(),frame=externalFrame(expression);if(frame!=null)TUtil.externalFrame.set(frame);
 				try{value=TTalk.evaluateExternalExpression(expression,target,messageTarget!=null?messageTarget:target);}
@@ -669,7 +651,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 	private TUtil.ExternalFrame externalFrame(String expression) {
 		String lower=expression.toLowerCase(Locale.ROOT);if(!lower.contains("window")&&!lower.contains("screenrect"))return null;
 		Toolbox68k tb=macApi.application();if(tb==null||!tb.hosted())return null;
-		MacAppHost host=tb.host();java.awt.Rectangle screen=host.externalScreen();
+		VmHost host=tb.host();java.awt.Rectangle screen=host.externalScreen();
 		return screen==null?null:new TUtil.ExternalFrame(screen,host::toGuestRect);
 	}
 
@@ -686,7 +668,7 @@ final class HyperCard68kCallbacks implements M68kCallbackHandler {
 	}
 	/** The variables of running handler {@code n} (1: those of the handler that called the external), or null. */
 	private static MemoryData handlerVariables(int n){
-		MemoryData m=n==1?TXcmd.callVariables.get():null;
+		MemoryData m=n==1?HZ.callVariables.get():null;
 		if(m==null){ScriptDebugger.Frame f=handlerFrame(n);m=f==null?null:f.memData;}
 		return m==null||m.nameList==null||m.valueList==null?null:m;
 	}

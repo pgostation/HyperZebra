@@ -51,14 +51,14 @@ public class VEffect {
 	static void lockLazily() {
 		oldoff = null;
 		lazyLock = PCARDFrame.pc!=null && PCARDFrame.pc.mainPane!=null;
-		PCARD.lockedScreen = true;
+		HZ.lockedScreen = true;
 	}
 
 	/** (EDT) 絵なしのロック中にツリーが変わる直前: ロック開始時の画面(今のツリー)を絵にしておく */
 	static void captureBeforeChange() {
 		if(!lazyLock) return;
 		lazyLock = false;
-		if(!PCARD.lockedScreen || oldoff!=null || PCARDFrame.pc==null || PCARDFrame.pc.mainPane==null) return;
+		if(!HZ.lockedScreen || oldoff!=null || PCARDFrame.pc==null || PCARDFrame.pc.mainPane==null) return;
 		int width=PCARDFrame.pc.mainPane.getWidth();
 		int height=PCARDFrame.pc.mainPane.getHeight();
 		if(width<=0 || height<=0) return;
@@ -72,9 +72,9 @@ public class VEffect {
 	 *  EDT 上でロックする。ロック中のカードの再描画要求は CardRepaintManager が捨て、画面には直前の絵が残る。
 	 *  解除(visualEffect)でカード全体を描き直す */
 	public static void freezeScreen() {
-		if(PCARDFrame.pc==null || PCARDFrame.pc.mainPane==null){ PCARD.lockedScreen = true; return; }
+		if(PCARDFrame.pc==null || PCARDFrame.pc.mainPane==null){ HZ.lockedScreen = true; return; }
 		oldoff = null;
-		PCARD.runOnEDT(() -> { lazyLock = false; PCARD.lockedScreen = true; });
+		PCARD.runOnEDT(() -> { lazyLock = false; HZ.lockedScreen = true; });
 	}
 
 	//Swingの共有ダブルバッファを経由してmainPaneを別画像へpaintすると、その直後の
@@ -83,14 +83,14 @@ public class VEffect {
 	static void paintCurrentPanel(Graphics2D target){
 		RepaintManager manager = RepaintManager.currentManager(PCARDFrame.pc.mainPane);
 		boolean doubleBuffering = manager.isDoubleBufferingEnabled();
-		boolean saveCapturing = PCARD.capturingEffect;
-		PCARD.capturingEffect = true;
+		boolean saveCapturing = HZ.capturingEffect;
+		HZ.capturingEffect = true;
 		manager.setDoubleBufferingEnabled(false);
 		try{
 			PCARDFrame.pc.mainPane.printAll(target);
 		}finally{
 			manager.setDoubleBufferingEnabled(doubleBuffering);
-			PCARD.capturingEffect = saveCapturing;
+			HZ.capturingEffect = saveCapturing;
 		}
 	}
 
@@ -110,7 +110,7 @@ public class VEffect {
 		BufferedImage normal = new BufferedImage(width, height, BufferedImage.TYPE_INT_BGR);
 		Graphics2D normalGraphics = normal.createGraphics();
 		try{
-			if(PCARD.lockedScreen && oldoff!=null){
+			if(HZ.lockedScreen && oldoff!=null){
 				normalGraphics.drawImage(oldoff, 0, 0, width, height,
 					0, 0, oldoff.getWidth(), oldoff.getHeight(), null);
 			}else{
@@ -138,7 +138,7 @@ public class VEffect {
 		}finally{
 			screen.dispose();
 		}
-		if(!PCARD.lockedScreen)
+		if(!HZ.lockedScreen)
 			PCARDFrame.pc.mainPane.paintImmediately(0, 0, width, height);
 	}
 	
@@ -221,7 +221,7 @@ public class VEffect {
 		int width=PCARDFrame.pc.mainPane.getWidth();
 		int height=PCARDFrame.pc.mainPane.getHeight();
 		if(width<=0 || height<=0){
-			PCARD.lockedScreen = false;
+			HZ.lockedScreen = false;
 			oldoff = null;
 			return;
 		}
@@ -252,14 +252,14 @@ public class VEffect {
 				//そうしないと、一部の部品がキャプチャから抜け落ちて真っ白のまま
 				//アニメーションされてしまう。
 				paintCurrentPanel(offg);
-				PCARD.lockedScreen = true;
+				HZ.lockedScreen = true;
 			}
 			else if(toEffect==4){
 				//オフスクリーンに描画(同上)
 				BufferedImage card = new BufferedImage(width, height, BufferedImage.TYPE_INT_BGR);
 				Graphics2D cardGraphics = card.createGraphics();
 				try{ paintCurrentPanel(cardGraphics); }finally{ cardGraphics.dispose(); }
-				PCARD.lockedScreen = true;
+				HZ.lockedScreen = true;
 				offg.drawImage(inverted(card), 0, 0, null);
 			}
 			else{
@@ -268,7 +268,7 @@ public class VEffect {
 
 			if(paneg==null){
 				offg.dispose();
-				PCARD.lockedScreen = false;
+				HZ.lockedScreen = false;
 				oldoff = null;
 				PCARDFrame.pc.mainPane.repaint();
 				return;
@@ -299,13 +299,13 @@ public class VEffect {
 			if(!finish){
 				//次の効果はこの画像から始める
 				oldoff = off;
-				PCARD.lockedScreen = true;
+				HZ.lockedScreen = true;
 				return;
 			}
 		}
 
 		//移動後のカードの表示
-		PCARD.lockedScreen = false;
+		HZ.lockedScreen = false;
 		oldoff = null;
 		PCARDFrame.pc.mainPane.revalidate();
 		if(effect==0){
@@ -348,61 +348,15 @@ public class VEffect {
 		}
 	}
 
-	/** HyperCard J-2.3's own effects (numbers 0-27, the order of GVisualEffectWindow.EFFECTS): how many ticks (1/60 s) each takes
-	 *  at the speeds very fast, fast, normal, slow, very slow. Measured in HyperCard J-2.3 in the 68K VM (go with `visual effect X
-	 *  <speed>`, the same with the VM unthrottled: it is the effect's own time, not the CPU's; probe groups group_vec27_vfx*). The
-	 *  speeds are not one scale: very slow is 6.5 times normal, and checkerboard/zoom open are the long ones, venetian blinds the short. */
-	private static final int[][] HC_TICKS = {
-		{2, 15, 30, 66, 197},     //0 plain / cut: HyperCard paces them too
-		{1, 12, 25, 53, 158},     //1 barn door open
-		{1, 12, 24, 53, 157},     //2 barn door close
-		{3, 17, 32, 69, 203},     //3 dissolve
-		{1, 6, 12, 26, 75},       //4 venetian blinds
-		{1, 24, 46, 101, 299},    //5 checkerboard
-		{1, 13, 26, 57, 169},     //6 iris open
-		{1, 13, 26, 57, 168},     //7 iris close
-		{2, 9, 18, 40, 118},      //8 scroll left
-		{2, 9, 18, 40, 119},      //9 scroll right
-		{2, 9, 18, 40, 118},      //10 scroll up
-		{2, 9, 18, 40, 119},      //11 scroll down
-		{1, 12, 25, 53, 158},     //12 wipe left
-		{1, 13, 24, 54, 157},     //13 wipe right
-		{1, 10, 20, 42, 126},     //14 wipe up
-		{1, 10, 20, 42, 126},     //15 wipe down
-		{1, 21, 42, 92, 273},     //16 zoom open (zoom out)
-		{1, 7, 13, 27, 77},       //17 zoom close (zoom in)
-		{4, 14, 27, 59, 173},     //18 shrink to top
-		{4, 14, 27, 59, 173},     //19 shrink to bottom
-		{5, 14, 27, 59, 173},     //20 shrink to center
-		{3, 15, 28, 61, 180},     //21 stretch from top
-		{3, 15, 29, 61, 179},     //22 stretch from bottom
-		{3, 15, 28, 61, 180},     //23 stretch from center
-		{4, 9, 19, 40, 118},      //24 push left
-		{4, 9, 18, 40, 119},      //25 push right
-		{3, 10, 18, 40, 119},     //26 push up
-		{4, 10, 18, 40, 118}};    //27 push down
-
-	/** The length of an effect at a speed: 1 very fast, 2 fast, 3 normal, 4 slow(ly), 5 very slow(ly) (ms); another
-	 *  number plays no frames. HyperCard's effects 0-27 take HyperCard's time (HC_TICKS), HyperZebra's own ones a common table. */
-	static long effectDuration(int effect, int speed){
-		if(effect>=0 && effect<HC_TICKS.length && speed>=1 && speed<=5) return Math.round(HC_TICKS[effect][speed-1]*1000/60.0);
-		return effectDuration(speed);
-	}
+	/** The length of an effect at a speed (ms): HyperCard's measured times for its effects 0-27 (HzEffects.HC_TICKS, which the
+	 *  browser player shares), HyperZebra's own ones a common table. */
+	static long effectDuration(int effect, int speed){ return HzEffects.duration(effect, speed); }
 
 	/** -Dhz.effects.fastest=true (the test runs): every effect plays at very fast, whatever speed the script asked for */
 	private static final boolean FASTEST = Boolean.getBoolean("hz.effects.fastest");
 	private static int playSpeed(int speed){ return FASTEST && speed>=1 && speed<=5 ? 1 : speed; }
 
-	static long effectDuration(int speed){
-		switch(speed){
-			case 1: return 100;
-			case 2: return 250;
-			case 3: return 500;
-			case 4: return 1000;
-			case 5: return 2000;
-			default: return 0;
-		}
-	}
+	static long effectDuration(int speed){ return HzEffects.duration(speed); }
 
 	/** `visual effect plain|cut <speed>` before a go / unlock screen: HyperCard lets the speed's time pass with nothing drawn
 	 *  (HC J-2.3 measured: 30 ticks at normal). A script thread's pause; an abort ends it. */

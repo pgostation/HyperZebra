@@ -64,7 +64,7 @@ final class ScriptLint {
 			if(stack.usingStacks!=null) for(OStack s : new ArrayList<OStack>(stack.usingStacks)) if(s!=null && !stacks.contains(s)) stacks.add(s);
 			if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.usingStacks!=null)
 				for(OStack s : new ArrayList<OStack>(PCARD.pc.stack.usingStacks)) if(s!=null && !stacks.contains(s)) stacks.add(s);
-			if(PCARD.home!=null && !stacks.contains(PCARD.home)) stacks.add(PCARD.home);
+			if(HZ.home!=null && !stacks.contains(HZ.home)) stacks.add(HZ.home);
 			Names names = new Names();
 			for(OStack s : stacks){
 				StackNames sn = stackNames(s);
@@ -265,7 +265,9 @@ final class ScriptLint {
 	private static final Set<String> EXTRA_FUNCTIONS = new HashSet<String>(Arrays.asList(
 		"tan", "jsonvalue", "matchtext", "matchchunk", "replacetext", "checkhcfont", "stacksinuse", "version",
 		"numberformat", "itemdelimiter", "textfont", "textsize", "textstyle", "userlevel", "language", "lockscreen",
-		"lockmessages"));
+		"lockmessages", "bytetonum", "numtobyte", "binaryencode", "binarydecode", "base64encode", "base64decode", "compress",
+		"decompress", "md5digest", "sha1digest", "messagedigest", "textencode", "textdecode", "byteoffset", "imagetoarray",
+		"arraytoimage", "imagefilter", "imagecombine", "imagecreate", "imagesize"));
 
 	private static volatile Set<String> knownFunctions;
 	private static volatile Set<String> knownCommands;

@@ -15,7 +15,7 @@ import java.nio.file.Files;
  * left alone too: classic programs read them themselves (QuickTime, browsers, image editors) - Adobe PageMill inserts
  * a .jpg as a JPEG, and a PICT behind that name showed as a broken image.
  */
-final class PictureFile68k {
+class PictureFile68k {
 	static final int PICT=0x50494354,PNGF=0x504E4766;
 	/** The longer side a picture is scaled down to: enough for any classic screen, and a bitmap a 68K heap can hold. */
 	static final int MAX_SIDE=2048;
@@ -53,7 +53,7 @@ final class PictureFile68k {
 	static boolean readsPng(File program){
 		if(program==null||!program.isFile())return false;
 		try{
-			if(program.length()<=SCAN_LIMIT&&contains(Files.readAllBytes(program.toPath()),IHDR))return true;
+			if(program.length()<=SCAN_LIMIT&&contains(Files68k.read(program),IHDR))return true;
 			byte[] fork=ResourceFile68k.readForkBytes(program,null);
 			return fork!=null&&contains(fork,IHDR);
 		}catch(IOException|RuntimeException e){return false;}
@@ -75,7 +75,7 @@ final class PictureFile68k {
 	/** A PICT file (512-byte header, then the picture) showing {@code host}, scaled to at most {@link #MAX_SIDE}; null when the bytes are not an image Java can read. */
 	static byte[] toProgram(byte[] host){
 		try{
-			BufferedImage image=javax.imageio.ImageIO.read(new ByteArrayInputStream(host));
+			BufferedImage image=Toolbox68k.PARTS.readImage(host);
 			if(image==null||image.getWidth()<=0||image.getHeight()<=0)return null;
 			int width=image.getWidth(),height=image.getHeight();
 			double scale=Math.min(1.0,Math.min((double)MAX_SIDE/width,(double)MAX_SIDE/height));
@@ -111,15 +111,15 @@ final class PictureFile68k {
 	/** {@code image} as PNG bytes. */
 	static byte[] png(BufferedImage image) throws IOException {
 		ByteArrayOutputStream out=new ByteArrayOutputStream();
-		if(!javax.imageio.ImageIO.write(image,"png",out))throw new IOException("PNG not written");
+		if(!Toolbox68k.PARTS.writePng(image,out))throw new IOException("PNG not written");
 		return out.toByteArray();
 	}
 
 	/** The picture of a PICT file played by the host's own decoder (the fallback when the program's QuickDraw cannot be used). */
 	static BufferedImage renderWithHost(byte[] file){
 		try{
-			File temp=TempFiles.createFile("hyperzebra-pict-",".pict");
-			try{Files.write(temp.toPath(),file);return PictureFile.loadPICT(temp.getPath());}finally{temp.delete();}
+			File temp=UiHost.get().tempFilesCreateFile("hyperzebra-pict-",".pict");
+			try{Files68k.write(temp,file);return Toolbox68k.PARTS.loadPict(temp);}finally{temp.delete();}
 		}catch(IOException|RuntimeException e){return null;}
 	}
 }

@@ -62,7 +62,6 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
     /** Mouse presses so far (a 68K external's event queue turns new ones into mouseDown events). */
     static volatile int mousePresses;
     static volatile String clickLine = "";
-    static volatile OField clickField;
     //clickField内でクリックされた位置(フィールドコンポーネント自身の左上起点、
     //物理ピクセル=MouseEventの座標そのまま)。clickH/clickVはカード座標系
     //かつ論理座標(scale換算)のため、2倍表示モード等で正確な文字位置の
@@ -70,7 +69,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
     static volatile int clickFieldLocalX=0;
     static volatile int clickFieldLocalY=0;
     /** The field of the last click (the clickChunk, clickText and clickLine; clickFieldLocalX/Y is where). Kept apart from
-     *  clickField, the field the selection functions look at: HyperCard records a click in a locked or unlocked field for
+     *  HZ.clickField, the field the selection functions look at: HyperCard records a click in a locked or unlocked field for
      *  these also while a handler runs (wait until the mouseClick), where the click selects nothing. */
     static volatile OField clickTextField;
     /** The press `the mouse` has taken (mousePresses then): its release is no mouseClick any more. */
@@ -150,7 +149,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 	static void endPeek(){
 		clearModifierKeys();
 		stroke_frag = 0;
-		PCARD.editMode = 0;
+		HZ.editMode = 0;
 		addAllListener();
 	}
 	/** Shift/Option/Control/Command/CapsLock/Windows とその左右(111-122)を離したことにする */
@@ -177,9 +176,9 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 	static void cardDeactivated(){
 		java.util.Arrays.fill(key, 0);
 		if(StackSettings.controlKeys!=null) MacAppHost.suspendSystemHotKeys(false);
-		if(stroke_frag!=0 || PCARD.editMode!=0){
+		if(stroke_frag!=0 || HZ.editMode!=0){
 			if(PCARDFrame.pc!=null && PCARDFrame.pc.stack!=null && PCARDFrame.pc.stack.curCard!=null) endPeek();
-			else { stroke_frag = 0; PCARD.editMode = 0; }
+			else { stroke_frag = 0; HZ.editMode = 0; }
 		}
 	}
 
@@ -299,6 +298,9 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		return true;
 	}
 
+	/** A key event as the global key dispatcher takes it in the card window's open field (tests): whether it was used up */
+	static boolean dispatchForTest(KeyEvent e){ return inCardWindow(e) && fieldKey(e); }
+
 	/** The key press just used up by {@link #fieldKey}: its character is not typed */
 	private static boolean fieldCommandTyping;
 	/**
@@ -329,7 +331,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		if(fld.tableStyle || fld.outlineStyle) return false;
 		if(e.getID()==KeyEvent.KEY_PRESSED && e.getKeyCode()==KeyEvent.VK_ESCAPE){
 			//Esc in the open field is no text: keyDown, then go back as on the card (HC J-2.3)
-			GUI.clickField = fld;
+			HZ.clickField = fld;
 			TTalk.callKeyDown(Character.toString((char)27), "back", fld);
 			e.consume();
 			return true;
@@ -340,13 +342,41 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			if(c>=32 && c!=127 && TTalk.handlerInPath(fld, "keydown")) command = "keyDown "+TTalk.quoteLiteral(String.valueOf(c));
 			if(command==null) return false;
 		}else{
-			if(e.isShiftDown()) return false;
-			if(e.getKeyCode()==KeyEvent.VK_TAB) command = "tabKey";
-			else if(e.getKeyCode()==KeyEvent.VK_ENTER) command = e.getKeyLocation()==KeyEvent.KEY_LOCATION_NUMPAD ? "enterInField" : "returnInField";
+			int code = e.getKeyCode();
+			//keyDown first for these too, the key's own action only when it is passed (HC J-2.3: Return 13, Enter 3, Tab 9,
+			//Delete 8, Forward Delete 127, the arrows 28-31; the Keyboard stack's card keyDown kept them all, the text and the
+			//insertion point stayed). Without a keyDown handler in the path the text component does Delete and the arrows
+			boolean keyDownHeard = TTalk.handlerInPath(fld, "keydown");
+			if(code==KeyEvent.VK_TAB || code==KeyEvent.VK_ENTER){
+				if(e.isShiftDown()) return false;
+				boolean enter = e.getKeyLocation()==KeyEvent.KEY_LOCATION_NUMPAD;
+				fieldCommandTyping = true;
+				HZ.clickField = fld;
+				if(code==KeyEvent.VK_TAB) TTalk.callKeyDown("\t", "tabKey", fld);
+				else TTalk.callKeyDown(enter ? "\u0003" : "\n", enter ? "enterInField" : "returnInField", fld);
+				e.consume();
+				return true;
+			}
+			if(!keyDownHeard) return false;
+			if(code==KeyEvent.VK_BACK_SPACE){ command = "keyDown numToChar(8)"; fieldCommandTyping = true; } //its own action deletes
+			else if(code==KeyEvent.VK_DELETE){
+				HZ.clickField = fld;
+				TTalk.callKeyDown(Character.toString((char)127), "forwardDelete", fld);
+				e.consume();
+				return true;
+			}
+			else if(code==KeyEvent.VK_LEFT || code==KeyEvent.VK_RIGHT || code==KeyEvent.VK_UP || code==KeyEvent.VK_DOWN){
+				if(e.isShiftDown()) return false; //(extending the selection: the text component's)
+				String dir = code==KeyEvent.VK_LEFT ? "left" : code==KeyEvent.VK_RIGHT ? "right" : code==KeyEvent.VK_UP ? "up" : "down";
+				int k = code==KeyEvent.VK_LEFT ? 28 : code==KeyEvent.VK_RIGHT ? 29 : code==KeyEvent.VK_UP ? 30 : 31;
+				HZ.clickField = fld;
+				TTalk.callKeyDown(Character.toString((char)k), dir, fld);
+				e.consume();
+				return true;
+			}
 			else return false;
-			fieldCommandTyping = true;
 		}
-		GUI.clickField = fld;
+		HZ.clickField = fld;
 		TTalk.fieldKeyCommand(command, fld);
 		e.consume();
 		return true;
@@ -555,11 +585,11 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
      *  field's text or text style changes, at unlock screen, at a click and on leaving the card, in a locked or unlocked field
      *  alike. An insertion point stays, and so does a list field's line. */
     static void dropSelectedRange(){
-    	OField f = clickField;
+    	OField f = HZ.clickField;
     	if(f==null || f.autoSelect || f.fld==null) return;
     	int start = f.fld.getSelectionStart(), end = f.fld.getSelectionEnd();
     	if(end<=start && !f.enabled) return; //an insertion point in a locked field goes too (HC J-2.3)
-    	clickField = null;
+    	HZ.clickField = null;
     	f.fld.setSelectionStart(end);
     	f.fld.setSelectionEnd(end);
     }
@@ -858,20 +888,23 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			}
 			//挿入ポイントのあるフィールド(HyperCardの keyboard command の最初の受信者)
 			OObject keyTarget = PCARD.pc.stack.curCard;
-			if(clickField!=null && clickField.fld!=null && clickField.fld.isFocusOwner() && !clickField.enabled) keyTarget = clickField;
+			if(HZ.clickField!=null && HZ.clickField.fld!=null && HZ.clickField.fld.isFocusOwner() && !HZ.clickField.enabled) keyTarget = HZ.clickField;
 			boolean inField = keyTarget instanceof OField;
 			if(e.getKeyCode()==KeyEvent.VK_ENTER){
 				//Return と Enter(テンキー) は別のコマンド
 				boolean enter = e.getKeyLocation()==KeyEvent.KEY_LOCATION_NUMPAD;
-				String message = inField ? (enter ? "enterInField" : "returnInField") : (enter ? "enterKey" : "returnKey");
-				TTalk.CallMessage(message, "", keyTarget, false, false);
+				//keyDown comes first, with return or numToChar(3); returnKey/enterKey (returnInField/enterInField in the open field)
+				//only when it is passed (HC J-2.3)
+				TTalk.callKeyDown(enter ? "\u0003" : "\n", inField ? (enter ? "enterInField" : "returnInField") : enter ? "enterKey" : "returnKey", keyTarget);
 			}
 			else if(e.getKeyCode()==KeyEvent.VK_TAB){
-				TTalk.fieldKeyCommand("tabKey", keyTarget); //HyperCard's own action at the end: the next unlocked field
+				//keyDown numToChar(9), then tabKey when it is passed (HC J-2.3), HyperCard's own action at its end: the next unlocked field
+				TTalk.callKeyDown("\t", "tabKey", keyTarget);
 			}
 			else if(controlDown(e) && keyStr==null && k>=32 && k<128 && !(c>=11 && c<=16)){
 				//controlKey <文字番号>
-				TTalk.CallMessage("controlKey", Integer.toString(k), PCARD.pc.stack.curCard, false, false);
+				//the key's control code (Control-B 2, HyperWrite's Bold), not its key code (66)
+				TTalk.CallMessage("controlKey", Integer.toString(TUtil.controlKeyNumber(k)), PCARD.pc.stack.curCard, false, false);
 			}
 			else if(keyStr!=null){
 				String message = "keyDown";
@@ -1033,7 +1066,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 			if(stroke_frag != want) {
 				if(stroke_frag != 0){
 					addAllListener();
-					PCARD.editMode = 0;
+					HZ.editMode = 0;
 					stroke_frag = 0;
 				}
 				else {
@@ -1041,8 +1074,8 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 					//カードが描き直されるたびに(フィールドのキャレット、スクリプトが変える部品、ボタンのロールオーバーなど)消えていた
 					stroke_frag = want;
 					PCARDFrame.pc.mainPane.repaint();
-					if(PCARD.editMode==0){
-						PCARD.editMode = 1;
+					if(HZ.editMode==0){
+						HZ.editMode = 1;
 						GUI.removeAllListener();
 						gui.addOutlineListener();
 					}
@@ -1051,7 +1084,7 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		} else if(stroke_frag >= 1){
 			PCARDFrame.pc.mainPane.repaint();
 			stroke_frag = 0;
-			PCARD.editMode = 0;
+			HZ.editMode = 0;
 			addAllListener();
 		}
 	}
@@ -1059,17 +1092,17 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 	static void noListener(){
 		//PCARDFrame.pc.removeMouseListener(outlineListen);
 		for(int i=0; i<PCARDFrame.pc.stack.curCard.btnList.size(); i++){
-			PCARDFrame.pc.stack.curCard.btnList.get(i).removeListener(OButton.btnOutlineListen);
+			PCARDFrame.pc.stack.curCard.btnList.get(i).removeListener(GUI.btnOutlineListen);
 		}
 		for(int i=0; i<PCARDFrame.pc.stack.curCard.fldList.size(); i++){
-			PCARDFrame.pc.stack.curCard.fldList.get(i).removeListener(OButton.btnOutlineListen);
+			PCARDFrame.pc.stack.curCard.fldList.get(i).removeListener(GUI.btnOutlineListen);
 		}
 		if(PCARDFrame.pc.stack.curCard.bg!=null){
 			for(int i=0; i<GUI.bgButtons(PCARDFrame.pc.stack.curCard).size(); i++){
-				GUI.bgButtons(PCARDFrame.pc.stack.curCard).get(i).removeListener(OButton.btnOutlineListen);
+				GUI.bgButtons(PCARDFrame.pc.stack.curCard).get(i).removeListener(GUI.btnOutlineListen);
 			}
 			for(int i=0; i<GUI.bgFields(PCARDFrame.pc.stack.curCard).size(); i++){
-				GUI.bgFields(PCARDFrame.pc.stack.curCard).get(i).removeListener(OButton.btnOutlineListen);
+				GUI.bgFields(PCARDFrame.pc.stack.curCard).get(i).removeListener(GUI.btnOutlineListen);
 			}
 		}
 	}
@@ -1088,20 +1121,20 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		PCARDFrame.pc.stack.pcard.addMouseListener(gui);
 		PCARDFrame.pc.mainPane.addMouseListener(gui);
 		for(int i=0; i<PCARDFrame.pc.stack.curCard.btnList.size(); i++){
-			PCARDFrame.pc.stack.curCard.btnList.get(i).removeListener(OButton.btnOutlineListen);
+			PCARDFrame.pc.stack.curCard.btnList.get(i).removeListener(GUI.btnOutlineListen);
 			PCARDFrame.pc.stack.curCard.btnList.get(i).addListener();
 		}
 		for(int i=0; i<PCARDFrame.pc.stack.curCard.fldList.size(); i++){
-			PCARDFrame.pc.stack.curCard.fldList.get(i).removeListener(OField.fldOutlineListen);
+			PCARDFrame.pc.stack.curCard.fldList.get(i).removeListener(GUI.fldOutlineListen);
 			PCARDFrame.pc.stack.curCard.fldList.get(i).addListener();
 		}
 		if(PCARDFrame.pc.stack.curCard.bg!=null){
 			for(int i=0; i<GUI.bgButtons(PCARDFrame.pc.stack.curCard).size(); i++){
-				GUI.bgButtons(PCARDFrame.pc.stack.curCard).get(i).removeListener(OButton.btnOutlineListen);
+				GUI.bgButtons(PCARDFrame.pc.stack.curCard).get(i).removeListener(GUI.btnOutlineListen);
 				GUI.bgButtons(PCARDFrame.pc.stack.curCard).get(i).addListener();
 			}
 			for(int i=0; i<GUI.bgFields(PCARDFrame.pc.stack.curCard).size(); i++){
-				GUI.bgFields(PCARDFrame.pc.stack.curCard).get(i).removeListener(OField.fldOutlineListen);
+				GUI.bgFields(PCARDFrame.pc.stack.curCard).get(i).removeListener(GUI.fldOutlineListen);
 				GUI.bgFields(PCARDFrame.pc.stack.curCard).get(i).addListener();
 			}
 		}
@@ -1151,18 +1184,18 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		boolean tool = AuthTool.tool!=null;
 		if(!tool || stroke_frag==1){
 			for(int i=0; i<PCARD.pc.stack.curCard.btnList.size(); i++){
-				PCARD.pc.stack.curCard.btnList.get(i).addListener(OButton.btnOutlineListen);
+				PCARD.pc.stack.curCard.btnList.get(i).addListener(GUI.btnOutlineListen);
 			}
 			for(int i=0; i<GUI.bgButtons(PCARD.pc.stack.curCard).size(); i++){
-				GUI.bgButtons(PCARD.pc.stack.curCard).get(i).addListener(OButton.btnOutlineListen);
+				GUI.bgButtons(PCARD.pc.stack.curCard).get(i).addListener(GUI.btnOutlineListen);
 			}
 		}
 		if(!tool || stroke_frag==2){
 			for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
-				PCARD.pc.stack.curCard.fldList.get(i).addListener(OField.fldOutlineListen);
+				PCARD.pc.stack.curCard.fldList.get(i).addListener(GUI.fldOutlineListen);
 			}
 			for(int i=0; i<GUI.bgFields(PCARD.pc.stack.curCard).size(); i++){
-				GUI.bgFields(PCARD.pc.stack.curCard).get(i).addListener(OField.fldOutlineListen);
+				GUI.bgFields(PCARD.pc.stack.curCard).get(i).addListener(GUI.fldOutlineListen);
 			}
 		}
 		OField.updateAllTextEditable();
@@ -1173,8 +1206,8 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 		OCardBase[] owners = {PCARDFrame.pc.stack.curCard, PCARDFrame.pc.stack.curCard.bg};
 		for(OCardBase o : owners){
 			if(o==null) continue;
-			for(OButton b : o.btnList) b.removeListener(OButton.btnOutlineListen);
-			for(OField f : o.fldList) f.removeListener(OField.fldOutlineListen);
+			for(OButton b : o.btnList) b.removeListener(GUI.btnOutlineListen);
+			for(OField f : o.fldList) f.removeListener(GUI.fldOutlineListen);
 		}
 	}
 	
@@ -1259,6 +1292,11 @@ public class GUI implements MouseListener, MouseMotionListener, KeyListener {
 
 
 	//static outlineListen outlineListen = new outlineListen();
+
+
+	/** The parts' outlines while the button or field tool is chosen (were OButton's and OField's). */
+	static btnOutlineListen btnOutlineListen = new btnOutlineListen();
+	static fldOutlineListen fldOutlineListen = new fldOutlineListen();
 }
 
 
@@ -1492,7 +1530,7 @@ class GPopup implements ActionListener, PopupMenuListener {
 	}
 
 	public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
-		if(TTalk.idle==true && PCARD.editMode==0){
+		if(TTalk.idle==true && HZ.editMode==0){
 			TTalk.CallMessage("mouseDown", ((MyPopup)e.getSource()).btnData);
 		}else{
 			GUI.mouseClicked();
@@ -1576,7 +1614,7 @@ class GField implements MouseListener, MouseMotionListener {
 			}
 	    	//ロックしたフィールドのクリックは選択も挿入ポイントも作らない(HyperCard: the selectedChunk/selectedField は空)。
 	    	//リストフィールドは下で選択行を決める
-	    	GUI.clickField = fld.enabled && !fld.autoSelect ? null : fld;
+	    	HZ.clickField = fld.enabled && !fld.autoSelect ? null : fld;
 	    	if(fld.enabled ){
 	    		if(fld.textHeight<fld.textSize){
 	    			fld.textHeight=fld.textSize;
@@ -1742,7 +1780,7 @@ final class GShape implements MouseListener, MouseMotionListener {
 
 	/** Whether shapes take the mouse: the browse tool, also while Command-Option shows the button outlines (not the field ones). */
 	static boolean receivesMouse(){
-		return PCARD.pc!=null && PCARD.pc.tool==null && AuthTool.tool==null && (PCARD.editMode==0 || GUI.stroke_frag==1);
+		return PCARD.pc!=null && PCARD.pc.tool==null && AuthTool.tool==null && (HZ.editMode==0 || GUI.stroke_frag==1);
 	}
 	private static OShape.ShapeView view(MouseEvent e){ return (OShape.ShapeView)e.getSource(); }
 
@@ -1750,7 +1788,7 @@ final class GShape implements MouseListener, MouseMotionListener {
 	public void mousePressed(MouseEvent e) {
 		mouseDownSent = false;
 		GUI.mouseDowned();
-		if(PCARD.editMode!=0 || PCARD.pc.stack==null) return;
+		if(HZ.editMode!=0 || PCARD.pc.stack==null) return;
 		GUI.reclaimFocusFromField();
 		OShape.ShapeView v = view(e);
 		GUI.clickH = PCARD.toLogical(v.getX()+e.getX());
@@ -1771,7 +1809,7 @@ final class GShape implements MouseListener, MouseMotionListener {
 		boolean inside = v.contains(e.getX(), e.getY());
 		boolean sent = mouseDownSent;
 		mouseDownSent = false;
-		if(PCARD.editMode!=0){
+		if(HZ.editMode!=0){
 			//ピーク: Command-Option を押したままのクリックだけがスクリプトを開く。
 			//key[]に Command-Option が残っていただけの普通のクリックならピークを終える
 			if(!GUI.isPeekClick(e)) GUI.endPeek();
@@ -1793,11 +1831,11 @@ final class GShape implements MouseListener, MouseMotionListener {
 	}
 	@Override
 	public void mouseEntered(MouseEvent e) {
-		if(TTalk.idle && PCARD.editMode==0) TTalk.CallMessage("mouseEnter", view(e).shape);
+		if(TTalk.idle && HZ.editMode==0) TTalk.CallMessage("mouseEnter", view(e).shape);
 	}
 	@Override
 	public void mouseExited(MouseEvent e) {
-		if(TTalk.idle && PCARD.editMode==0) TTalk.CallMessage("mouseLeave", view(e).shape);
+		if(TTalk.idle && HZ.editMode==0) TTalk.CallMessage("mouseLeave", view(e).shape);
 	}
 	@Override
 	public void mouseDragged(MouseEvent e) {

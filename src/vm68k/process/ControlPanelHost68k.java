@@ -38,7 +38,7 @@ final class ControlPanelHost68k implements MacApp68k.HostedCode {
 	ControlPanelHost68k(MacApp68k app,File file){this.app=app;this.file=file;}
 
 	/** The title the Finder shows: the file's name (as the program sees it). */
-	private String title(){return FileManager68k.programName(tb.encoding(),file.getName());}
+	private String title(){return UiHost.get().fileManager68kProgramName(tb.encoding(),file.getName());}
 
 	/** One pass of the Finder's control-panel loop; true when the panel has closed and the process should exit. */
 	@Override public boolean step() throws M68kException {
@@ -97,7 +97,7 @@ final class ControlPanelHost68k implements MacApp68k.HostedCode {
 		// 'CNTL' resources in those coordinates; with the items moved to the origin they lay 87 pixels right of them, cut off.
 		int itemsHandle=tb.api.createHandle(items);
 		// the window: a document window with a close box, placed like the Finder's (upper third of the screen, centred)
-		java.awt.Rectangle screen=MacAppHost.screenBounds();
+		java.awt.Rectangle screen=UiHost.get().macAppHostScreenBounds();
 		int left=Math.max(4,(screen.width-width)/2),top=Math.max(MacAppHost.MENU_BAR_HEIGHT+24,MacAppHost.MENU_BAR_HEIGHT+(screen.height-MacAppHost.MENU_BAR_HEIGHT-height)/3);
 		memory.writeWord(scratch,top);memory.writeWord(scratch+2,left);memory.writeWord(scratch+4,top+height);memory.writeWord(scratch+6,left+width);
 		memory.load(titleP,tb.readPascalBytesOf(title()));

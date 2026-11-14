@@ -251,7 +251,7 @@ final class TesseractInstall {
 		return HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(Duration.ofSeconds(20)).build();
 	}
 	private static HttpRequest request(String url){
-		return HttpRequest.newBuilder(URI.create(url)).header("User-Agent","HyperZebra/"+PCARD.longVersion).timeout(Duration.ofMinutes(10)).GET().build();
+		return HttpRequest.newBuilder(URI.create(url)).header("User-Agent","HyperZebra/"+HZ.longVersion).timeout(Duration.ofMinutes(10)).GET().build();
 	}
 
 	private static String text(String url) throws IOException,InterruptedException{

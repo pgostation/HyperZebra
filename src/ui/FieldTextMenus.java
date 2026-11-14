@@ -88,8 +88,8 @@ class FieldTextMenus {
 			public void menuSelected(MenuEvent e){
 				//the families are put in at the first opening (several hundred items on a Mac: not at every rebuild of the bar)
 				if(menu.getItemCount()==0){
-					for(int i=0; i<TTalk.fontMenu().getItemCount(); i++){
-						JMenuItem source = TTalk.fontMenu().getItem(i);
+					for(int i=0; i<SwingMenus.unwrap(TTalk.fontMenu()).getItemCount(); i++){
+						JMenuItem source = SwingMenus.unwrap(TTalk.fontMenu()).getItem(i);
 						if(source==null) continue;
 						String family = source.getText();
 						JCheckBoxMenuItem item = new JCheckBoxMenuItem(family);

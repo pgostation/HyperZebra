@@ -95,12 +95,12 @@ class International {
 	private static International beforeStart;
 
 	/**
-	 * The catalog of the language in use: HyperZebra's ({@code PCARD.pc.intl}); before it is made (or without a stack window,
+	 * The catalog of the language in use: HyperZebra's ({@code HZ.intl()}); before it is made (or without a stack window,
 	 * as in tests) the one of {@link PCARD#language}.
 	 */
 	static International current(){
-		if(PCARD.pc!=null && PCARD.pc.intl!=null) return PCARD.pc.intl;
-		String tag = normalize(PCARD.language);
+		if(Host.get().hasCardWindow() && HZ.intl()!=null) return HZ.intl();
+		String tag = normalize(UiHost.get().startLanguage());
 		if(tag==null) tag = SOURCE_LANGUAGE;
 		synchronized(International.class){
 			if(beforeStart==null || !beforeStart.language.equals(tag)){
@@ -144,7 +144,7 @@ class International {
 
 	/** The language in use (a BCP 47 tag). */
 	static String language(){
-		String lang = PCARD.pc!=null && PCARD.pc.lang!=null ? PCARD.pc.lang : PCARD.language;
+		String lang = UiHost.get().cardWindowLanguage();
 		String tag = normalize(lang);
 		return tag==null ? SOURCE_LANGUAGE : tag;
 	}
@@ -154,7 +154,7 @@ class International {
 	static boolean sameLanguage(String lang, String tag){
 		String a = normalize(lang);
 		if(a==null || tag==null) return false;
-		return Locale.forLanguageTag(a).getLanguage().equals(Locale.forLanguageTag(tag).getLanguage());
+		return Platform.get().tagLanguage(a).equals(Platform.get().tagLanguage(tag));
 	}
 
 	/**
@@ -167,9 +167,7 @@ class International {
 		if(s.isEmpty()) return null;
 		String byName = NAMES.get(s.toLowerCase(Locale.ROOT));
 		if(byName!=null) return byName;
-		Locale l = Locale.forLanguageTag(s.replace('_', '-'));
-		if(l.getLanguage().isEmpty()) return null;
-		return l.toLanguageTag();
+		return Platform.get().languageTag(s.replace('_', '-'));
 	}
 	private static final Map<String,String> NAMES = new HashMap<String,String>();
 	static {
@@ -205,9 +203,8 @@ class International {
 			t = dash<0 ? null : t.substring(0, dash);
 		}
 		if(tag!=null){
-			Locale locale = Locale.forLanguageTag(tag);
-			if(locale.getLanguage().equals("zh") && locale.getScript().isEmpty()){
-				String country = locale.getCountry();
+			if(Platform.get().tagLanguage(tag).equals("zh") && Platform.get().tagScript(tag).isEmpty()){
+				String country = Platform.get().tagCountry(tag);
 				String script = country.equals("TW") || country.equals("HK") || country.equals("MO") ? "zh-Hant" : "zh-Hans";
 				// A regional catalog wins; infer its writing system before falling back to generic Chinese.
 				int generic = chain.indexOf("zh");
@@ -267,7 +264,7 @@ class International {
 		final Map<String,String> header = new LinkedHashMap<String,String>();
 
 		/** The folder of extra or replacement catalogs of the user: Languages in HyperZebra's state folder. */
-		static File userFolder(){ return new File(AppPaths.stateDirectory(), "Languages"); }
+		static File userFolder(){ return new File(UiHost.get().appPathsStateDirectory(), "Languages"); }
 		/** The project's lang folder, when HyperZebra runs from the project (an IDE that does not copy it into the classes). */
 		private static File projectFolder(){ return new File("lang"); }
 

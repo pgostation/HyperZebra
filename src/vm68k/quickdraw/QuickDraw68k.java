@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Stateful, memory-safe subset of classic black-and-white QuickDraw. */
-final class QuickDraw68k {
+class QuickDraw68k {
 	private static final int PPAT_TYPE=0x70706174;
 	private static final int CLUT_TYPE=0x636c7574;
 	private static final int NO_ERR=0,PARAM_ERR=-50;
@@ -157,7 +157,7 @@ final class QuickDraw68k {
 		return (gWorldRowBytes(width,depth)+15)&~15;
 	}
 	/** A PowerPC program that imports CarbonLib ('cbon' alone tells nothing: every PowerPC program sees CarbonLib 1.6 installed). */
-	private boolean carbonPowerPcProgram(){Toolbox68k tb=macApi.application();return tb!=null&&tb.app!=null&&tb.app.powerPC&&tb.app.ppc!=null&&tb.app.ppc.libraries.carbon!=null&&tb.app.ppc.libraries.carbon.carbonProgram();}
+	private boolean carbonPowerPcProgram(){Toolbox68k tb=macApi.application();return tb!=null&&tb.app!=null&&tb.app.powerPC&&Ppc68k.carbonProgram(tb.app.ppc);}
 	private boolean powerPcScreen(){Toolbox68k tb=macApi.application();return tb!=null&&tb.app!=null&&tb.app.powerPC;}
 	/**
 	 * The depth preference as it stood when this VM first looked at the screen. The screen's width follows from it, and
@@ -1652,7 +1652,7 @@ final class QuickDraw68k {
 	BufferedImage scratchPortImage(int port) throws M68kCpuException {
 		int[] px=colorPortPixels(port);if(px==null)return null;
 		BufferedImage image=new BufferedImage(px[2],px[3],BufferedImage.TYPE_INT_RGB);int[] row=new int[px[2]];byte[] raw=memory.raw();
-		for(int y=0;y<px[3];y++){MacAppHost.readPixels(raw,px[0]+y*px[1],px[6],null,px[2],row);image.setRGB(0,y,px[2],1,row,0,px[2]);}
+		for(int y=0;y<px[3];y++){Pixels68k.readPixels(raw,px[0]+y*px[1],px[6],null,px[2],row);image.setRGB(0,y,px[2],1,row,0,px[2]);}
 		return image;
 	}
 
@@ -1661,7 +1661,7 @@ final class QuickDraw68k {
 		int[] px=colorPortPixels(port);if(px==null)return null;
 		int x0=Math.max(0,left),x1=Math.min(px[2],right),y0=Math.max(0,top),y1=Math.min(px[3],bottom);if(x1<=x0||y1<=y0)return null;
 		BufferedImage image=new BufferedImage(x1-x0,y1-y0,BufferedImage.TYPE_INT_RGB);int[] row=new int[px[2]];byte[] raw=memory.raw();
-		for(int y=y0;y<y1;y++){MacAppHost.readPixels(raw,px[0]+y*px[1],px[6],null,px[2],row);image.setRGB(0,y-y0,x1-x0,1,row,x0,px[2]);}
+		for(int y=y0;y<y1;y++){Pixels68k.readPixels(raw,px[0]+y*px[1],px[6],null,px[2],row);image.setRGB(0,y-y0,x1-x0,1,row,x0,px[2]);}
 		return image;
 	}
 
@@ -1848,7 +1848,7 @@ final class QuickDraw68k {
 	/** The virtual screen: the host screen for hosted programs (no wider than the main device's rowBytes allows at the preferred depth, see {@link #MAX_SCREEN_ROW_BYTES}), the classic 512x342 otherwise. */
 	Rect screenRect(){
 		Toolbox68k tb=macApi.application();
-		if(tb!=null&&tb.hosted()){java.awt.Rectangle r=tb.isApplication()?MacAppHost.screenBounds(false):tb.externalScreenBounds();boolean ppc=powerPcScreen(); // PowerPC: only the PixMap format's own rowBytes limit
+		if(tb!=null&&tb.hosted()){java.awt.Rectangle r=tb.isApplication()?UiHost.get().macAppHostScreenBounds(false):tb.externalScreenBounds();boolean ppc=powerPcScreen(); // PowerPC: only the PixMap format's own rowBytes limit
 			int width=Math.min(ppc?r.width:Math.min(4096,r.width),maxScreenWidth(preferredScreenDepth(),ppc))&~1;
 			if(width<r.width&&width!=reportedScreenWidth){reportedScreenWidth=width;System.err.println("[68K] screen width "+r.width+" limited to "+width+" pixels: "+(ppc?"a PixMap row must stay within "+PPC_MAX_SCREEN_ROW_BYTES+" bytes":"a PixMap row must stay within "+MAX_SCREEN_ROW_BYTES+" bytes and width*depth within a word")+" at "+preferredScreenDepth()+" bits");}
 			return new Rect(0,0,Math.min(4096,r.height),width);}
@@ -3552,7 +3552,7 @@ final class QuickDraw68k {
 	private boolean copyBits(M68kCpu cpu) throws M68kCpuException {
 		try{boolean result=copyBits0(cpu);SmoothCopy carry=pendingSmoothCopy;pendingSmoothCopy=null;if(carry!=null)carry.end();return result;}
 		finally{SmoothCopy carry=pendingSmoothCopy;pendingSmoothCopy=null;if(carry!=null)carry.abandon();
-			MacAppHost host=screenBlitHost;if(host!=null){screenBlitHost=null;host.blitEnd();}}
+			VmHost host=screenBlitHost;if(host!=null){screenBlitHost=null;host.blitEnd();}}
 	}
 	/** CopyBits for native callers (the Image Compression Manager's StdPix / DecompressImage): the trap's 22 argument bytes are
 	 *  pushed below the caller's stack, so the blit is exactly the trap's (port clip, screen routing, modes, mask region). */
@@ -3563,7 +3563,7 @@ final class QuickDraw68k {
 		cpu.a[7]=frame;try{copyBits(cpu);}finally{cpu.a[7]=sp;}
 	}
 	/** The host a CopyBits under way draws onto the screen of (null: none, or into an offscreen buffer). */
-	private MacAppHost screenBlitHost;
+	private VmHost screenBlitHost;
 	private void screenBlitBegins(Bitmap destination){
 		Toolbox68k tb=macApi.application();if(tb==null||!tb.hosted())return;
 		if(!(destination instanceof ScreenBitmap)&&!memory.tracked(destination.base))return;
@@ -4148,7 +4148,7 @@ final class QuickDraw68k {
 		{int[] in=spoolPictureIn(cpu,data,size);if(in!=null){spooled=in[0];size=in[1];}}
 		// Real QuickDraw does not check the size; a record with no opcodes draws nothing.
 		if(size<11){if(spooled!=0)memory.free(spooled);return true;}
-		if(PICTURE_TRACE&&size>2000){try{java.nio.file.Files.write(new java.io.File(System.getProperty("java.io.tmpdir"),"hz-pict-"+Integer.toHexString(picture)+"-"+size+".pict").toPath(),memoryBytes(data,size));}catch(Exception ignored){}}
+		if(PICTURE_TRACE&&size>2000){try{Files68k.write(new java.io.File(System.getProperty("java.io.tmpdir"),"hz-pict-"+Integer.toHexString(picture)+"-"+size+".pict"),memoryBytes(data,size));}catch(Exception ignored){}}
 		if(Mac68kApi.TRACE)System.err.println("[68K] DrawPicture $"+Integer.toHexString(picture)+" frame "+readRect(data+2)+" -> "+readRect(destinationPointer)+" clip "+currentClip()+" vis "+readRegionRect(memory.readLong(currentPort+VIS_RGN))+" origin "+state().originH+","+state().originV);
 		Rect frame=readRect(data+2),destination=readRect(destinationPointer);imageDraws++;
 		if(DRAW_COST>0&&!penHidden()){Rect area=intersection(destination,currentClipBounds(currentBitmapBounds()));cpu.charge((long)(drawCost()*(PICTURE_SETUP+BLIT_BYTE*bytes(area,currentPortDepth())+BLIT_CONVERTED*pixels(area))));} // its opcodes played: about a blit of the frame

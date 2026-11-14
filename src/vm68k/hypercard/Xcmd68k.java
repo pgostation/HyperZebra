@@ -16,7 +16,7 @@ import java.util.Map;
  * events are delivered to the same code with an event XCmdBlock (see {@link XWindows68k}). The script thread pumps those
  * events from its idle loop and from `wait`, which is when HyperCard's own event loop serves external windows.
  */
-final class Xcmd68k {
+class Xcmd68k {
 	static final int CODE_BASE = 0x00010000;
 	/**
 	 * HyperCard's windows' records lie at the same address in every external's VM - the first block of its heap - so `the id of
@@ -108,7 +108,7 @@ final class Xcmd68k {
 		 *  stays open, and so do its externals' windows (CalendarPallete's palette, from a library stack, when the stack that called
 		 *  it closes: its closeCalendar went to the card being closed, "no field Message"). */
 		boolean hostsExternalsInUse(OStack closing){
-			OStack current=PCARD.pc==null?null:PCARD.pc.stack;
+			OStack current=HZ.stack();
 			if(current==null||current.usingStacks==null)return false;
 			for(OStack u:new ArrayList<OStack>(current.usingStacks))if(u!=null&&!sameStack(u,closing)&&hostsExternalsOf(u,closing))return true;
 			return false;
@@ -128,7 +128,7 @@ final class Xcmd68k {
 
 		/** Whether the VM must outlive the current call (an external window is open, or state was left behind). */
 		/** Kept for its windows, its state, or a sound it started and returns from (ending the VM now silences it). */
-		boolean persistent(){return !xwindows.isEmpty()||keepAlive||macApi.soundManager().sounding()||macApi.application().soundDriver.busy()||macApi.application().quickTime.musicSounding();} // a tune queued by an external plays on after it returns
+		boolean persistent(){Toolbox68k tb=macApi.application();return !xwindows.isEmpty()||keepAlive||macApi.soundManager()!=null&&macApi.soundManager().sounding()||tb.soundDriver!=null&&tb.soundDriver.busy()||tb.quickTime!=null&&tb.quickTime.musicSounding();} // a tune queued by an external plays on after it returns
 
 		/** Loads another external of the stack into this VM, in a locked Handle as HyperCard loads code resources. */
 		int load(String key,byte[] code) throws M68kException {
@@ -191,7 +191,7 @@ final class Xcmd68k {
 				// without the parameter Handles, which are gone again when the count is compared (HyperBBS's configureSPort, 5
 				// parameters, made its globals Handle and 4 Ptrs - 5 blocks - and seemed to leave nothing behind: its VM went, and
 				// every later serial external read garbage through the Handle address it had put into the global SPortGlobals)
-				blocksBefore=macApi.liveBlockCount()-handles.size();resourcesBefore=macApi.application().resources.loadedCount();streamsBefore=macApi.application().macTcp.openStreams();
+				blocksBefore=macApi.liveBlockCount()-handles.size();resourcesBefore=macApi.application().resources.loadedCount();streamsBefore=macApi.application().macTcp==null?0:macApi.application().macTcp.openStreams();
 				int forksBefore=openForks();
 				int savedEntry=entry;entry=entryPoint;
 				if(running==1)followFileDialogFolder();
@@ -229,7 +229,7 @@ final class Xcmd68k {
 					// an open MacTCP stream is state too, whatever memory it took (TCPActiveOpen's connection id is its stream)
 					// and so is a file it opened and did not close: File Utilities' FSOpen answers the refNum that GetEOF/FSRead/FSClose
 					// are given in the next calls (rfNumErr -51 in a fresh VM)
-					boolean left=macApi.liveBlockCount()>blocksBefore||macApi.application().resources.loadedCount()>resourcesBefore||macApi.application().macTcp.openStreams()>streamsBefore||openForks()>forksBefore;if(left&&!keepAlive)keepAlive=true; // sticky: the state is still there on later calls that add none
+					boolean left=macApi.liveBlockCount()>blocksBefore||macApi.application().resources.loadedCount()>resourcesBefore||macApi.application().macTcp!=null&&macApi.application().macTcp.openStreams()>streamsBefore||openForks()>forksBefore;if(left&&!keepAlive)keepAlive=true; // sticky: the state is still there on later calls that add none
 					if(TRACE&&left)System.err.println("[xcmd] "+name+" left state behind (blocks "+blocksBefore+" -> "+macApi.liveBlockCount()+", resources "+resourcesBefore+" -> "+macApi.application().resources.loadedCount()+", open files "+forksBefore+" -> "+openForks()+"): VM kept");
 				}
 			}
@@ -281,7 +281,7 @@ final class Xcmd68k {
 		private void handPostedClicksToCard(List<int[]> clicks,CardWindow68k card){
 			if(clicks.isEmpty()||card==null)return;
 			int[] place=card.screenPlace();
-			OStack current=PCARD.pc!=null&&PCARD.pc.stack!=null?PCARD.pc.stack:stack;
+			OStack current=HZ.stack()!=null?HZ.stack():stack;
 			for(int[] c:clicks){
 				int x=c[0]-place[0],y=c[1]-place[1];
 				if(current==null||x<0||y<0||x>=current.width||y>=current.height){if(TRACE)System.err.println("[xcmd] "+name+": posted click at "+c[0]+","+c[1]+" is off the card");continue;}
@@ -317,7 +317,7 @@ final class Xcmd68k {
 	private static final Map<String,Session> sessions=new LinkedHashMap<String,Session>();
 	/** Sessions in a call now: a fresh one joins {@link #sessions} only when its call returns, and an external can reach HyperCard
 	 *  meanwhile (ColorCover's doMenu "next window" through RunHandler, right after showing its cover window). */
-	private static final java.util.Set<Session> calling=java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private static final java.util.Set<Session> calling=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<Session,Boolean>());
 	/** How many state-only VMs stay at once (each holds 16 MB): the least recently called go first. */
 	static final int MAX_KEPT_SESSIONS=Integer.getInteger("hz68k.xcmdsessions",12);
 
@@ -359,7 +359,7 @@ final class Xcmd68k {
 		// its callback handler a message, and the handler calls dChanger/SRMStringWidth): HyperCard has one heap, and the dialog
 		// pointer the handler was given is good only in the running external's VM - a VM of its own saw garbage there
 		Session caller=key!=null&&stack!=null?callingSessionOf(stack):null;
-		if(caller!=null){session=caller;if(code==null&&!caller.codeAt.containsKey(key))try{code=Files.readAllBytes(new File(key).toPath());}catch(IOException e){throw new M68kCpuException(CODE_BASE,"cannot read the external "+key+": "+e.getMessage());}}
+		if(caller!=null){session=caller;if(code==null&&!caller.codeAt.containsKey(key))try{code=Files68k.read(new File(key));}catch(IOException e){throw new M68kCpuException(CODE_BASE,"cannot read the external "+key+": "+e.getMessage());}}
 		code=powerPcCode(code,xcmd,name);
 		if(session==null&&key!=null)synchronized(sessions){session=sessions.get(key);if(session!=null&&session.isShutDown()){sessions.remove(key);session=null;}}
 		if(session==null&&key!=null&&stack!=null&&code!=null)session=keptSessionOf(stack); // join the stack's kept VM (shared heap)
@@ -395,7 +395,7 @@ final class Xcmd68k {
 				if(last!=null&&now-last<REPEAT_WINDOW_NANOS)session.keepAlive=true;
 			}
 			//the external went to another stack and did not come back ("go home" from an external): its stack is closed now
-			boolean stackGone=stack!=null&&PCARD.pc!=null&&!sameStack(PCARD.pc.stack,session.stack);
+			boolean stackGone=stack!=null&&(HZ.mirror!=null||HZ.stack()!=null)&&!sameStack(HZ.stack(),session.stack);
 			if(!session.persistent()||stackGone||session.isShutDown()){session.shutDown();final Session ended=session;synchronized(sessions){sessions.values().removeIf(x->x==ended);}}
 			else if(key!=null){synchronized(sessions){sessions.put(key,session);}trimSessions(session);}
 		}
@@ -409,8 +409,8 @@ final class Xcmd68k {
 	 */
 	private static byte[] powerPcCode(byte[] code,Rsrc.xcmdClass xcmd,String name) throws M68kCpuException {
 		if(code==null)return null;
-		code=PpcRuntime.withRoutineDescriptor(code);
-		if(isPowerPc(xcmd)&&!PpcRuntime.powerPcOnlyFat(code))throw new M68kCpuException(CODE_BASE,"the PowerPC external "+(xcmd.name!=null?xcmd.name:name)+" is neither a routine descriptor for a code fragment nor a code fragment");
+		code=Ppc68k.withRoutineDescriptor(code);
+		if(isPowerPc(xcmd)&&!Ppc68k.powerPcOnlyFat(code))throw new M68kCpuException(CODE_BASE,"the PowerPC external "+(xcmd.name!=null?xcmd.name:name)+" is neither a routine descriptor for a code fragment nor a code fragment");
 		return code;
 	}
 	/** Whether the external is a PowerPC one (an 'xcmd'/'xfcn' resource: platform "macppc", not "mac68k"). */
@@ -470,7 +470,7 @@ final class Xcmd68k {
 	private static String toInternalLineEndings(String value) { return swapLineBreaks(value); }
 
 	static String execute(File resource, String[] parameters, StackTextEncoding encoding) throws IOException, M68kException {
-		return execute(Files.readAllBytes(resource.toPath()),parameters,encoding);
+		return execute(Files68k.read(resource),parameters,encoding);
 	}
 
 	static String execute(File resource,String[] parameters,StackTextEncoding encoding,OStack stack)
@@ -483,7 +483,7 @@ final class Xcmd68k {
 		throws IOException,M68kException {
 		String key=resource.getAbsolutePath();
 		Session existing;synchronized(sessions){existing=sessions.get(key);}
-		byte[] code=existing!=null&&!existing.isShutDown()?null:Files.readAllBytes(resource.toPath()); // a live VM has the code loaded
+		byte[] code=existing!=null&&!existing.isShutDown()?null:Files68k.read(resource); // a live VM has the code loaded
 		return execute(code,parameters,encoding,stack,key,resource.getName(),xcmd);
 	}
 
@@ -608,7 +608,7 @@ final class Xcmd68k {
 				if(s.running>0&&stack!=null)continue;
 				if(stack==null){closing.add(s);it.remove();continue;}
 				if(!sameStack(s.stack,stack))continue;
-				if(s.hostsExternalsOf(PCARD.pc==null?null:PCARD.pc.stack,stack)||s.hostsExternalsInUse(stack))handedOn.add(s);
+				if(s.hostsExternalsOf(HZ.stack(),stack)||s.hostsExternalsInUse(stack))handedOn.add(s);
 				else{closing.add(s);it.remove();}
 			}
 		}
@@ -618,7 +618,7 @@ final class Xcmd68k {
 		//of the closing stack's externals close
 		for(Session s:handedOn)synchronized(s){
 			try{s.xwindows.closeMadeBy(s.entriesOf(stack));}catch(M68kException e){if(TRACE)System.err.println("[xwindow] close failed: "+e.getMessage());}
-			s.stack=PCARD.pc.stack;
+			s.stack=HZ.stack();
 			try{s.macApi.rebindToStack(s.stack);}catch(M68kException e){if(TRACE)System.err.println("[xcmd] "+s.name+": "+e.getMessage());}
 		}
 	}

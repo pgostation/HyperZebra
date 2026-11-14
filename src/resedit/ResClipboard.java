@@ -11,10 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 /**
  * Copy and Paste of resources between the resource editor's windows, also of different stacks (as resources go from one file
@@ -56,7 +52,7 @@ class ResClipboard {
 		if(old!=null) for(File f : old) f.delete();
 		try {
 			StringWriter out = new StringWriter();
-			XMLStreamWriter writer = XMLOutputFactory.newInstance().createXMLStreamWriter(out);
+			XmlOut writer = Platform.get().xmlOut(out);
 			writer.writeStartElement("resourceclips");
 			writer.writeCharacters("\n\t");
 			int n = 0;
@@ -94,7 +90,7 @@ class ResClipboard {
 		}
 	}
 
-	private static void element(XMLStreamWriter writer, String name, String text) throws Exception {
+	private static void element(XmlOut writer, String name, String text) throws Exception {
 		writer.writeStartElement(name);
 		writer.writeCharacters(text);
 		writer.writeEndElement();
@@ -240,12 +236,11 @@ class ResClipboard {
 	private static List<Clip> read(String text, Rsrc rsrc){
 		ArrayList<Clip> clips = new ArrayList<Clip>();
 		try {
-			XMLStreamReader reader = XmlSafe.input().createXMLStreamReader(
-				new ByteArrayInputStream(text.getBytes(StandardCharsets.UTF_8)), "UTF-8");
+			XmlIn reader = Platform.get().xmlIn(new java.io.StringReader(text));
 			Clip c = null;
 			while(reader.hasNext()){
 				int event = reader.next();
-				if(event==XMLStreamConstants.START_ELEMENT){
+				if(event==XmlIn.START_ELEMENT){
 					String elm = reader.getLocalName();
 					if(elm.equals("media") || elm.equals("external")){
 						c = new Clip();
@@ -265,7 +260,7 @@ class ResClipboard {
 						c.info = info;
 					}
 				}
-				else if(event==XMLStreamConstants.END_ELEMENT){
+				else if(event==XmlIn.END_ELEMENT){
 					String elm = reader.getLocalName();
 					if(c!=null && (elm.equals("media") || elm.equals("external"))){
 						if(c.type!=null && !c.file.isEmpty() && (!c.external || Rsrc.isExternalMacType(c.type))) clips.add(c);

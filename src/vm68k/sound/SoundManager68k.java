@@ -14,7 +14,7 @@ import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.UnsupportedAudioFileException;
 
 /** Basic classic Sound Manager channels, commands, and in-memory 'snd ' playback. */
-final class SoundManager68k {
+class SoundManager68k {
 	private static final int NO_ERR=0,NOT_ENOUGH_HARDWARE_ERR=-201,RES_PROBLEM=-204,BAD_CHANNEL=-205,BAD_FORMAT=-206,NOT_ENOUGH_BUFFER_SPACE=-207;
 	private static final int CHANNEL_SIZE=36+128*8;
 	/** Channels one program may have open at once (Sound Manager 3 on a fast 68K Mac mixes about that many sampled channels). */
@@ -117,7 +117,7 @@ final class SoundManager68k {
 
 	/** Commands a channel's queue holds (stdQLength); SndDoCommand answers queueFull beyond. */
 	private static final int QUEUE_LENGTH=128,QUEUE_FULL=-203;
-	private static final java.util.concurrent.ScheduledExecutorService WAIT_TIMER=java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"68K sound waitCmd");t.setDaemon(true);return t;});
+	private static final Toolbox68kParts.Timer68k WAIT_TIMER=Toolbox68k.PARTS.timer("68K sound waitCmd");
 
 	/** Whether the channel's queue is held: by a waitCmd's pause, or by the sampled sound a queued bufferCmd started. */
 	private static boolean queueBusy(ChannelState state){
@@ -172,7 +172,7 @@ final class SoundManager68k {
 	 * Manager from the bufferCmd until its callBackCmd.
 	 */
 	private void prelink(ChannelState state) throws M68kCpuException {
-		if(!TSound.use||state.rate<=0)return;
+		if(!UiHost.get().soundOn()||state.rate<=0)return;
 		SoundMixer68k.Voice tail=state.tail;
 		if(tail==null||tail.ended||tail.stopped)return;
 		for(byte[] cmd:state.pending){
@@ -233,8 +233,8 @@ final class SoundManager68k {
 				final int token=++state.waitToken;state.waiting=true;
 				WAIT_TIMER.schedule(()->{if(state.waitToken==token){state.waiting=false;drainLater(state);}},halfMs*500L,java.util.concurrent.TimeUnit.MICROSECONDS);
 				return NO_ERR;}
-			case QUIET_CMD:state.generation++;state.waitToken++;state.waiting=false;stopDoubleBuffer(state);stop(state,false);if(state.synthesizer!=null)state.synthesizer.flush();return NO_ERR;
-			case FLUSH_CMD:state.generation++;clearPending(state);state.waitToken++;state.waiting=false;stopDoubleBuffer(state);stop(state,false);if(state.synthesizer!=null)state.synthesizer.flush();memory.writeWord(state.channel+32,0);memory.writeWord(state.channel+34,0);return NO_ERR;
+			case QUIET_CMD:state.rateHeld=false;state.generation++;state.waitToken++;state.waiting=false;stopDoubleBuffer(state);stop(state,false);if(state.synthesizer!=null)state.synthesizer.flush();return NO_ERR;
+			case FLUSH_CMD:state.rateHeld=false;state.generation++;clearPending(state);state.waitToken++;state.waiting=false;stopDoubleBuffer(state);stop(state,false);if(state.synthesizer!=null)state.synthesizer.flush();memory.writeWord(state.channel+32,0);memory.writeWord(state.channel+34,0);return NO_ERR;
 			case PAUSE_CMD:pause(state);return NO_ERR;
 			case RESUME_CMD:resume(state);return NO_ERR;
 			case AMP_CMD:state.amplitude=Math.max(0,Math.min(255,param1));updateVolume(state);return NO_ERR;
@@ -248,8 +248,13 @@ final class SoundManager68k {
 			case WAVE_TABLE_CMD:{int length=param1&0xffff;synth(state).waveTable(param2==0||length==0?null:memory.readBytes(param2,length));return NO_ERR;}
 			case RATE_CMD:case RATE_MULTIPLIER_CMD:{state.rate=param2==0?0x10000:param2;
 				// the sound playing now changes its rate (and pitch) too, sampled notes of the synthesizer as well (PgSoundX's "Rate")
-				double rate=state.rate/65536.0;synchronized(state.voices){for(SoundMixer68k.Voice v:state.voices)v.rateMultiplier=rate;}
-				if(state.synthesizer!=null)state.synthesizer.rate=rate;
+				double rate=state.rate/65536.0;
+				// a rate of 0 stops the sound where it is until a rate comes again (MusicBox 3's "pause": getRateCmd, rateCmd 0, later
+				// rateCmd with the saved rate); the channel's rate for the sounds after it stays normal
+				boolean hold=param2==0&&kind==RATE_CMD;
+				synchronized(state.voices){for(SoundMixer68k.Voice v:state.voices){v.rateMultiplier=rate;v.paused=hold||state.paused;}}
+				state.rateHeld=hold;
+				if(state.synthesizer!=null){state.synthesizer.rate=rate;state.synthesizer.pause(hold||state.paused);}
 				return NO_ERR;}
 			case GET_RATE_CMD:case GET_RATE_MULTIPLIER_CMD:if(param2!=0)memory.writeLong(param2,state.rate);return param2==0?BAD_FORMAT:NO_ERR;
 			case SOUND_CMD:return installInstrument(state,param2);
@@ -404,7 +409,7 @@ final class SoundManager68k {
 			if((kind==BUFFER_CMD||kind==SOUND_CMD)&&(raw&0x8000)!=0)param2=data+param2;
 			int r=execute(state,kind,param1,param2,0);if(r!=NO_ERR)result=r;}
 		if(!async||temporary){SoundSynth68k synth=state.synthesizer;long deadline=System.currentTimeMillis()+120_000;
-			while(synth!=null&&synth.busy()&&System.currentTimeMillis()<deadline)try{Thread.sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+			while(synth!=null&&synth.busy()&&System.currentTimeMillis()<deadline)try{Platform.get().sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			if(temporary){if(synth!=null)synth.stop();stop(state,true);}}
 		return result;
 	}
@@ -439,7 +444,7 @@ final class SoundManager68k {
 		tap(state,header);
 		if(!continuing){state.mace=null;if(state.guest!=null){state.guest.close();state.guest=null;}} // a new sound: a decompressor starts from its initial state
 		AudioInputStream stream=headerStream(state,header);if(stream==null)return BAD_FORMAT;
-		if(!TSound.use)return NO_ERR;
+		if(!UiHost.get().soundOn())return NO_ERR;
 		return startClip(state,stream,async);
 	}
 
@@ -486,7 +491,7 @@ final class SoundManager68k {
 			boolean mac3=compressionID==3||(compressionID==-1&&format==0x4d414333L),mac6=compressionID==4||(compressionID==-1&&format==0x4d414336L); // 'MAC3' / 'MAC6'
 			if(mac3||mac6){long bytes=(long)frames*channels*(mac3?2:1);if(bytes>Integer.MAX_VALUE)return null;
 				// the channel's decompressor: continueCmd buffers carry on from the state the previous buffer left
-				if(state.mace==null||state.mace.six!=mac6||state.mace.channels!=channels)state.mace=new MaceDecoder.Stream(mac6,channels);
+				if(state.mace==null||state.mace.six!=mac6||state.mace.channels!=channels)state.mace=new MaceCodec.Stream(mac6,channels);
 				byte[] packets=memory.readBytes(samples,(int)bytes),pcm=state.mace.decode(packets,0,packets.length);
 				return new AudioInputStream(new ByteArrayInputStream(pcm),new AudioFormat((float)rate,8,channels,false,true),pcm.length/channels);}
 			// the other formats QuickTime's sound media handler passes on (ulaw, alaw, sowt, in24, in32, fl32, fl64, twos): decoded
@@ -526,7 +531,7 @@ final class SoundManager68k {
 
 	private int playBytes(ChannelState state,byte[] sound,boolean async) {
 		if(!validSoundResource(sound))return BAD_FORMAT;
-		if(!TSound.use)return NO_ERR;
+		if(!UiHost.get().soundOn())return NO_ERR;
 		AudioInputStream stream=pcmStream(sound);
 		if(stream!=null)return stream.getFrameLength()==0?NO_ERR:startClip(state,stream,async);
 		byte[] aiff;try {aiff=HCResource.decodeSndToAiffBytes(sound);}catch(RuntimeException invalid){return BAD_FORMAT;}if(aiff==null)return BAD_FORMAT;
@@ -591,7 +596,7 @@ final class SoundManager68k {
 		if(SND_TRACE&&state!=null)System.err.println("[snd] buffer "+voice.frames+" frames "+(linked?"linked behind the one finishing":"started")+" (inCallBack "+state.inCallBack+", previous "+(previous==null?"none":previous.ended?"ended":previous.nearlyEnded?"nearly ended":"playing")+")");
 		if(state!=null)state.lastQueued=state.tail=voice;
 		if(!linked)SoundMixer68k.get().start(voice);
-		if(!async){while(voice.playing())try {Thread.sleep(5);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}SoundMixer68k.get().stop(voice);}
+		if(!async){while(voice.playing())try {Platform.get().sleep(5);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();break;}SoundMixer68k.get().stop(voice);}
 		return NO_ERR;
 	}
 
@@ -607,13 +612,13 @@ final class SoundManager68k {
 	}
 
 	private void pause(ChannelState state){state.paused=true;synchronized(state.voices){for(SoundMixer68k.Voice v:state.voices)v.paused=true;}DoubleBufferPlayer p=state.doubleBuffer;if(p!=null)p.pause(true);if(state.synthesizer!=null)state.synthesizer.pause(true);}
-	private void resume(ChannelState state){state.paused=false;synchronized(state.voices){for(SoundMixer68k.Voice v:state.voices)v.paused=false;}DoubleBufferPlayer p=state.doubleBuffer;if(p!=null)p.pause(false);if(state.synthesizer!=null)state.synthesizer.pause(false);}
+	private void resume(ChannelState state){state.paused=false;synchronized(state.voices){for(SoundMixer68k.Voice v:state.voices)v.paused=state.rateHeld;}DoubleBufferPlayer p=state.doubleBuffer;if(p!=null)p.pause(state.rateHeld);if(state.synthesizer!=null)state.synthesizer.pause(state.rateHeld);}
 	/** Silences the channel's sampled sounds; {@code drain} lets them finish first (SndDisposeChannel with quietNow false), within reason. */
 	private void stop(ChannelState state,boolean drain){
 		// (voices linked for queued bufferCmds but not started yet stay: their queue entries still play them)
 		List<SoundMixer68k.Voice> playing=new ArrayList<SoundMixer68k.Voice>();
 		synchronized(state.voices){for(java.util.Iterator<SoundMixer68k.Voice> i=state.voices.iterator();i.hasNext();){SoundMixer68k.Voice v=i.next();if(v.started||!state.prelinked.containsValue(v)){playing.add(v);i.remove();}}}
-		if(drain){long deadline=System.currentTimeMillis()+30_000;for(SoundMixer68k.Voice v:playing)while(v.playing()&&System.currentTimeMillis()<deadline)try{Thread.sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}}
+		if(drain){long deadline=System.currentTimeMillis()+30_000;for(SoundMixer68k.Voice v:playing)while(v.playing()&&System.currentTimeMillis()<deadline)try{Platform.get().sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}}
 		for(SoundMixer68k.Voice v:playing)SoundMixer68k.get().stop(v);
 	}
 	private void release(ChannelState state){
@@ -799,8 +804,8 @@ final class SoundManager68k {
 		if(selector!=8&&selector!=0x10){if(numChannels<=1&&inBuffer!=0&&outBuffer!=0&&count>0&&count<=16*1024*1024)storeUncompressed(inBuffer,outBuffer,count);return true;} // Comp3to1 / Comp6to1
 		boolean six=selector==0x10;int channels=Math.max(1,numChannels),channel=Math.max(0,Math.min(channels,whichChannel)-1),packetBytes=six?1:2;
 		if(inBuffer==0||outBuffer==0||count<=0||count>16*1024*1024)return true;
-		MaceDecoder.Stream stream=inState==0?null:maceStates.remove(inState);
-		if(stream==null||stream.six!=six||!continuesState(inState))stream=new MaceDecoder.Stream(six,1);
+		MaceCodec.Stream stream=inState==0?null:maceStates.remove(inState);
+		if(stream==null||stream.six!=six||!continuesState(inState))stream=new MaceCodec.Stream(six,1);
 		byte[] packets=new byte[count*packetBytes];
 		for(int i=0;i<count;i++)for(int b=0;b<packetBytes;b++)packets[i*packetBytes+b]=(byte)memory.readByte(inBuffer+(i*channels+channel)*packetBytes+b);
 		byte[] samples=stream.decode(packets,0,packets.length);
@@ -840,7 +845,7 @@ final class SoundManager68k {
 	private static int u4(byte[] b,int o){return u2(b,o)<<16|u2(b,o+2);}
 
 	/** Expansion state by StateBlock address; the block's first long marks it as continued (a zeroed block starts afresh). */
-	private final Map<Integer,MaceDecoder.Stream> maceStates=new HashMap<Integer,MaceDecoder.Stream>();
+	private final Map<Integer,MaceCodec.Stream> maceStates=new HashMap<Integer,MaceCodec.Stream>();
 	private static final int MACE_STATE_MARK=0x685a4d43; // 'hZMC'
 	private boolean continuesState(int block) throws M68kCpuException {return memory.readLong(block)==MACE_STATE_MARK;}
 	private MidiManager68k midi;
@@ -899,7 +904,7 @@ final class SoundManager68k {
 			try{if(length>0&&length<=64L*1024*1024)data=files.readReference(fRefNum,0,(int)length);}catch(IOException e){data=null;}
 			FileManager68k.ForkState fork=files.forkState(fRefNum);if(state!=null){state.filePlaying=fork==null?null:fork.path;state.fileOpen=files.openFile(fRefNum);}
 			if(data==null)result=-51; // rfNumErr
-			else if(!TSound.use)result=NO_ERR;
+			else if(!UiHost.get().soundOn())result=NO_ERR;
 			else{AudioInputStream stream=null;
 				try{stream=AudioSystem.getAudioInputStream(new ByteArrayInputStream(data));}
 				catch(UnsupportedAudioFileException unsupported){try{stream=MaceConverter.open(data);}catch(IOException e){stream=null;}if(stream==null)stream=MaceConverter.openIma4(data);}catch(IOException e){stream=null;}
@@ -936,15 +941,24 @@ final class SoundManager68k {
 		}catch(M68kException e){throw Toolbox68k.wrap(e);}}};
 		if(!async||state==null){call.run();return;} // synchronous: the sound is over (a deferred guest call would need the loop)
 		final int generation=state.generation;
+		if(SoundMixer68k.driven){ // the browser player: no thread; the player's mixing asks until the channel is silent
+			SoundMixer68k.watch(()->{
+				if(state.generation!=generation)return true;
+				boolean busy;synchronized(state.voices){busy=!state.voices.isEmpty();}
+				if(state.synthesizer!=null&&state.synthesizer.busy())busy=true;
+				if(busy)return false;
+				macApi.application().later(call);return true;});
+			return;
+		}
 		Thread t=new Thread(new Runnable(){@Override public void run(){
 			// a voice the mixer has not started yet counts too (it leaves the list when it ends): the completion used to run at once
 			// when the mixer was a moment late, and Bugdom, which loops its music from the completion, restarted the song on a busy channel
 			while(state.generation==generation){boolean busy=false;synchronized(state.voices){busy=!state.voices.isEmpty();}
-				if(state.synthesizer!=null&&state.synthesizer.busy())busy=true;if(!busy)break;try{Thread.sleep(20);}catch(InterruptedException e){return;}}
+				if(state.synthesizer!=null&&state.synthesizer.busy())busy=true;if(!busy)break;try{Platform.get().sleep(20);}catch(InterruptedException e){return;}}
 			// stopped (SndStopFilePlay, another play): no completion - Bugdom loops its music from it and restarted the stopped song
 			if(state.generation!=generation)return;
 			macApi.application().later(call);}},"68K file play completion");
-		t.setDaemon(true);t.start();
+		t.setDaemon(true);Platform.get().start(t);
 	}
 
 	static String name(int trap){switch(trap){case 0x800:return "SoundDispatch";case 0x801:return "SndDisposeChannel";case 0x803:return "SndDoCommand";case 0x804:return "SndDoImmediate";case 0x805:return "SndPlay";case 0x806:return "SndControl";case 0x802:return "SndAddModifier";case 0x807:return "SndNewChannel";default:return null;}}
@@ -972,7 +986,8 @@ final class SoundManager68k {
 		DoubleBufferPlayer player=new DoubleBufferPlayer(state,new int[]{buffer0,buffer1},doubleBack,new AudioFormat((float)rate,sampleSize,numChannels,signed,!littleEndian));
 		state.doubleBuffer=player;if(SND_TRACE)System.err.println("[snd] SndPlayDoubleBuffer $"+Integer.toHexString(channel)+" "+rate+" Hz "+sampleSize+"-bit "+numChannels+" ch compression "+compression+" doubleBack $"+Integer.toHexString(doubleBack)+" buffers $"+Integer.toHexString(buffer0)+" $"+Integer.toHexString(buffer1));
 		for(int i=0;i<2;i++)player.copyIfReady(i); // the caller filled both buffers before starting
-		if(TSound.use){Thread t=new Thread(player,"68K double buffer");t.setDaemon(true);t.start();}
+		if(UiHost.get().soundOn()&&SoundMixer68k.driven)player.startDriven(); // the browser player: a voice of its mixer
+		else if(UiHost.get().soundOn()){Thread t=new Thread(player,"68K double buffer");t.setDaemon(true);Platform.get().start(t);}
 		else player.finished=true;
 		return NO_ERR;
 	}
@@ -1041,14 +1056,59 @@ final class SoundManager68k {
 			long lastRequest=0;
 			while(chunks[i]==null&&!stopped){
 				long now=System.nanoTime();if(now-lastRequest>4_000_000L){post(i,false);lastRequest=now;} // the application may set dbBufferReady outside the callback
-				try{wait(4);}catch(InterruptedException e){Thread.currentThread().interrupt();return null;}
+				try{Platform.get().waitOn(this,4);}catch(InterruptedException e){Thread.currentThread().interrupt();return null;}
 			}
 			if(stopped)return null;byte[] data=chunks[i];chunks[i]=null;isLast[0]=last[i];return data;
 		}
-		void pause(boolean on){paused=on;SourceDataLine l=line;if(l==null)return;if(on)l.stop();else l.start();}
+		void pause(boolean on){paused=on;SoundMixer68k.Voice v=voice;if(v!=null)v.paused=on;SourceDataLine l=line;if(l==null)return;if(on)l.stop();else l.start();}
+
+		// ---- the browser player (SoundMixer68k.driven): no thread and no line; the stream is a voice the player's mixing pulls from
+		private volatile SoundMixer68k.Voice voice;
+		/** The buffer being played, the frame of it the mixer is at, and its samples as 16-bit (null: none taken yet) */
+		private int playing,offset;private short[] chunkLeft,chunkRight;private boolean chunkLast,lastPlayed;private long lastRequest;
+		void startDriven(){
+			short[] l=new short[2048],r=new short[2048];
+			SoundMixer68k.Voice v=new SoundMixer68k.Voice(l,r,format.getSampleRate(),1,this::fill);
+			applyVolume(state,v);v.paused=paused;voice=v;
+			v.onEnd(()->{finished=true;if(state.doubleBuffer==this)state.doubleBuffer=null;if(!state.pending.isEmpty())drainLater(state);});
+			SoundMixer68k.get().start(v);
+		}
+		/** The mixer wants more: from the buffer being played, then the other one once the program has filled it (each emptied one
+		 *  goes back to its doubleBack, as the line's thread hands it back); a short silence while the program is late. 0: over. */
+		private int fill(short[] left,short[] right){
+			if(stopped||lastPlayed)return 0;
+			int n=0;
+			while(n<left.length){
+				if(chunkLeft==null){
+					byte[] data;synchronized(this){data=chunks[playing];if(data!=null){chunks[playing]=null;chunkLast=last[playing];}}
+					if(data==null){ // the program has not refilled it yet: ask again (it may set dbBufferReady outside its callback)
+						long now=System.nanoTime();if(now-lastRequest>4_000_000L){post(playing,false);lastRequest=now;}
+						break;}
+					decode(data);offset=0;
+				}
+				int take=Math.min(left.length-n,chunkLeft.length-offset);
+				System.arraycopy(chunkLeft,offset,left,n,take);System.arraycopy(chunkRight,offset,right,n,take);n+=take;offset+=take;
+				if(offset>=chunkLeft.length){
+					boolean wasLast=chunkLast;chunkLeft=chunkRight=null;
+					if(wasLast){lastPlayed=true;return n;} // the buffer marked last has played: the stream is over
+					post(playing,true);playing^=1;
+				}
+			}
+			if(n==0){n=Math.min(left.length,256);java.util.Arrays.fill(left,0,n,(short)0);java.util.Arrays.fill(right,0,n,(short)0);} // late: a little silence
+			return n;
+		}
+		private void decode(byte[] data){
+			int channels=format.getChannels(),bytes=format.getSampleSizeInBits()/8,frames=data.length/Math.max(1,channels*bytes);
+			boolean signed=format.getEncoding()==AudioFormat.Encoding.PCM_SIGNED,big=format.isBigEndian();
+			short[] l=new short[frames],r=channels==2?new short[frames]:l;
+			for(int f=0,o=0;f<frames;f++)for(int c=0;c<channels;c++,o+=bytes){
+				int v=bytes==1?(signed?data[o]<<8:((data[o]&0xff)-128)<<8):(short)(big?(data[o]<<8|data[o+1]&0xff):(data[o+1]<<8|data[o]&0xff));
+				if(c==0)l[f]=(short)v;else r[f]=(short)v;}
+			chunkLeft=l;chunkRight=r;
+		}
 		/** Only flags the player: the player thread stops its own line. Stopping it from the emulation thread spun forever inside
 		 *  DirectAudioDevice.nStop while the player thread was blocked in write() (Snavely! restarting its stream, macOS JDK 26). */
-		void stop(){stopped=true;synchronized(this){notifyAll();}}
+		void stop(){stopped=true;synchronized(this){notifyAll();}SoundMixer68k.Voice v=voice;if(v!=null)SoundMixer68k.get().stop(v);}
 
 		@Override public void run(){
 			SourceDataLine l=null;
@@ -1077,11 +1137,11 @@ final class SoundManager68k {
 					if(isLast[0])break;
 					long now=System.nanoTime(),due=clockStart+(long)(written/bytesPerNano);
 					if(paused||due<now-lineNanos)clockStart=now-(long)(written/bytesPerNano); // paused or fallen behind: the clock goes on from now
-					else if(due-lineNanos>now)try{Thread.sleep(Math.max(1,(due-lineNanos-now)/1_000_000L));}catch(InterruptedException e){break;}
+					else if(due-lineNanos>now)try{Platform.get().sleep(Math.max(1,(due-lineNanos-now)/1_000_000L));}catch(InterruptedException e){break;}
 					// An empty buffer (Shockwave Audio's decoder has nothing yet) is handed back no faster than the hardware's
 					// interrupt period, as the real Sound Manager does; at once, two streams posted ~36000 refills a second
 					// and starved the emulation thread the decoder and the movie run on
-					if(data.length==0)try{Thread.sleep(EMPTY_BUFFER_MS);}catch(InterruptedException e){break;}
+					if(data.length==0)try{Platform.get().sleep(EMPTY_BUFFER_MS);}catch(InterruptedException e){break;}
 					post(i,true);
 				}
 				if(!stopped)l.drain();else{try{l.stop();l.flush();}catch(RuntimeException ignored){}}
@@ -1095,9 +1155,9 @@ final class SoundManager68k {
 	SoundSynth68k.Instrument instrumentOf(int channel){ChannelState state=channels.get(channel);return state==null||state.synthesizer==null?null:state.synthesizer.instrument();}
 
 	private static final class ChannelState {
-		final int channel,synth,init,callback;final List<SoundMixer68k.Voice> voices=new ArrayList<SoundMixer68k.Voice>();int amplitude=255,volume=0x01000100;boolean paused;volatile DoubleBufferPlayer doubleBuffer;
+		final int channel,synth,init,callback;final List<SoundMixer68k.Voice> voices=new ArrayList<SoundMixer68k.Voice>();int amplitude=255,volume=0x01000100;boolean paused;volatile DoubleBufferPlayer doubleBuffer;/** a rateCmd of 0 holds the playing sound (MusicBox's pause) until the next rate */boolean rateHeld;
 		/** The MACE decompressor of the sound playing (continueCmd buffers go on from its state). */
-		MaceDecoder.Stream mace;
+		MaceCodec.Stream mace;
 		/** The installed 'sdec' component expanding the channel's sound (a format no native decoder knows); its state runs on likewise. */
 		GuestSoundDecoder guest;
 		/** The decompression configuration SndSetInfo 'dcfg' gave the channel (format, rate and the sound description's atoms). */

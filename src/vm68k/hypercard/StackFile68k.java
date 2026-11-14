@@ -13,21 +13,36 @@ import java.util.List;
  * (Src) = -43"), MtRsrcTypeList and MtSaveTextRsrc failed on pathThis(), and its installer wrote the XCMD it installed into a
  * fork of the ZIP.
  * <p>
- * The external's File Manager hands it a stand-in for such a path instead ({@link FileManager68k}): a file with no data, typed
- * 'STAK'/'WILD', whose resource fork is the stack's resources as {@link Mac68kResourceManager#forStack} shows them. Everything
+ * The external's File Manager hands it a stand-in for such a path instead ({@link FileManager68k}): a file typed 'STAK'/'WILD'
+ * whose data fork is the .hzb's bytes (a folder-form .hzb: none) and whose resource fork is the stack's resources as {@link Mac68kResourceManager#forStack} shows them. Everything
  * the external does with it - GetFInfo, OpenRF, OpenResFile, AddResource, UpdateResFile - then works as on a Mac, and what it
  * changed in the fork goes into the stack when the external returns ({@link #sync}), stored the way {@link
  * Mac68kResourceManager#storeChanges} stores resources added to an open stack; a stack read on the side is saved then. The
  * stand-ins live in a hidden folder of HyperZebra's state folder (the access gate does not ask about them; it is asked about
  * the stack itself instead).
  */
-final class StackFile68k {
+class StackFile68k {
 	private StackFile68k(){}
 
 	/** One stack's stand-in file: what its fork held when made or last synced, and the stack it stands for. */
 	static final class Shadow {
 		final File bundle,file;OStack stack;byte[] baseline;
+		/** The .hzb's time when its bytes became the data fork (refreshData) */
+		long dataStamp;
 		private Shadow(File bundle,File file,OStack stack,byte[] baseline){this.bundle=bundle;this.file=file;this.stack=stack;this.baseline=baseline;}
+	}
+
+	/**
+	 * The data fork of a stand-in: the packed .hzb's bytes, as a HyperCard stack file holds the stack in its data fork. An
+	 * external that copies the stack (Cosmic Osmo's installer: CopyFile "Cosmic Osmo CD:CO.Hard Disk" into the System Folder
+	 * as "Copy of CO.Hard Disk", then go to stack "Copy of CO.Hard Disk") makes a stack HyperZebra opens; with no data the copy
+	 * was an empty file ("Having trouble starting"). Written again when the .hzb changed since (the autosave). A folder-form
+	 * .hzb has no single file: no data.
+	 */
+	static void refreshData(Shadow s){
+		if(!s.bundle.isFile()||s.bundle.lastModified()==s.dataStamp||!s.file.isFile())return;
+		try{Files68k.write(s.file,Files68k.read(s.bundle));s.dataStamp=s.bundle.lastModified();}
+		catch(IOException e){System.err.println("[xcmd] the stand-in of "+s.bundle+" has no data: "+e);}
 	}
 
 	private static final String FOLDER=".stack-files";
@@ -42,11 +57,11 @@ final class StackFile68k {
 		try{
 			File parent=path.getParentFile();
 			// a .hzb folder's own file (answer file of type STAK lists _stack.xml)
-			if(path.isFile()&&(path.getName().equals("_stack.xml")||path.getName().equals("toc.xml"))&&parent!=null&&StackBundle.hasHzbExtension(parent))return parent.getCanonicalFile();
-			if(path.isFile())return StackBundle.hasHzbExtension(path)&&StackBundle.isPacked(path)?path.getCanonicalFile():null;
+			if(path.isFile()&&(path.getName().equals("_stack.xml")||path.getName().equals("toc.xml"))&&parent!=null&&UiHost.get().stackBundleHasHzbExtension(parent))return parent.getCanonicalFile();
+			if(path.isFile())return UiHost.get().stackBundleHasHzbExtension(path)&&UiHost.get().stackBundleIsPacked(path)?path.getCanonicalFile():null;
 			if(path.exists()||path.getParentFile()==null)return null;
 			File hzb=new File(path.getParentFile(),path.getName()+".hzb");
-			if(hzb.isFile()&&StackBundle.isPacked(hzb))return hzb.getCanonicalFile();
+			if(hzb.isFile()&&UiHost.get().stackBundleIsPacked(hzb))return hzb.getCanonicalFile();
 			if(hzb.isDirectory()&&(new File(hzb,"_stack.xml").isFile()||new File(hzb,"toc.xml").isFile()))return hzb.getCanonicalFile();
 		}catch(IOException|SecurityException e){}
 		return null;
@@ -54,21 +69,24 @@ final class StackFile68k {
 
 	/** A new stand-in for the stack in {@code bundle}, its file named {@code name}; null when the stack cannot be read. */
 	static Shadow make(File bundle,String name,String requester){
-		if(!Sandbox.allowFile(bundle,Sandbox.Access.READ,requester))return null;
+		if(!Sandbox68k.allowFile(bundle,Sandbox68k.Access.READ,requester))return null;
 		OStack stack=stackFor(bundle);
 		if(stack==null)return null;
 		try{
 			File dir;synchronized(StackFile68k.class){dir=new File(root(),Long.toString(System.currentTimeMillis())+"-"+(++serial));}
 			if(!dir.mkdirs())return null;
 			File file=new File(dir,name);
-			Files.write(file.toPath(),new byte[0]);
+			Files68k.write(file,new byte[0]);
 			ResourceFile68k fork=new ResourceFile68k(file);
 			for(ResourceFile68k.Resource r:Mac68kResourceManager.forStack(stack).all())fork.add(new ResourceFile68k.Resource(r.type,r.id,r.name,r.attributes,r.data()));
 			fork.write();
 			FinderInfo68k.write(file,new byte[]{'S','T','A','K','W','I','L','D',0,0,0,0,0,0,0,0});
 			file.setLastModified(bundle.lastModified());
 			byte[] written=ResourceFile68k.readForkBytes(file,null);
-			return new Shadow(bundle,file,stack,written==null?new byte[0]:written);
+			Shadow made=new Shadow(bundle,file,stack,written==null?new byte[0]:written);
+			refreshData(made);
+			file.setLastModified(bundle.lastModified());
+			return made;
 		}catch(IOException e){
 			System.err.println("[xcmd] no stand-in file for the stack "+bundle+": "+e);
 			return null;
@@ -97,7 +115,7 @@ final class StackFile68k {
 		if(s.stack.rsrc==null){OStack again=stackFor(s.bundle);if(again==null||again.rsrc==null)return false;s.stack=again;}
 		ResourceFile68k live=Mac68kResourceManager.forStack(s.stack);
 		if(live.stack==null)return false; // can't modify
-		if(!Sandbox.allowFile(s.bundle,Sandbox.Access.WRITE,requester))return false;
+		if(!Sandbox68k.allowFile(s.bundle,Sandbox68k.Access.WRITE,requester))return false;
 		for(ResourceFile68k.Resource r:live.all()){
 			ResourceFile68k.Resource w=written.get(r.type,r.id);
 			if(w==null){live.remove(r);continue;}
@@ -108,7 +126,7 @@ final class StackFile68k {
 			ResourceFile68k.Resource n=new ResourceFile68k.Resource(w.type,w.id,w.name,w.attributes&~(ResourceFile68k.RES_CHANGED|ResourceFile68k.RES_COMPRESSED),w.data());n.changed=true;live.add(n);}
 		if(!Mac68kResourceManager.storeChanges(live,ResourceFile68k.Resource::data))return false;
 		// the stack on show is written by its own autosave; one in use or read on the side is written now
-		if(s.stack.saveXML==null){try{XMLwrite.writeOnce(s.stack);}catch(RuntimeException e){System.err.println("[xcmd] the stack "+s.bundle+" was not saved: "+e);}}
+		if(s.stack.saveXML==null){try{UiHost.get().xMLwriteWriteOnce(s.stack);}catch(RuntimeException e){System.err.println("[xcmd] the stack "+s.bundle+" was not saved: "+e);}}
 		if(Mac68kApi.TRACE)System.err.println("[xcmd] stand-in of "+s.bundle+" stored into the stack");
 		return true;
 	}
@@ -124,22 +142,22 @@ final class StackFile68k {
 
 	/** The stack in {@code bundle}: the one on show, in use or Home, else the stack read on the side. */
 	private static OStack stackFor(File bundle){
-		if(PCARD.pc!=null){
-			List<OStack> open=new ArrayList<OStack>();
-			if(PCARD.pc.stack!=null){open.add(PCARD.pc.stack);if(PCARD.pc.stack.usingStacks!=null)open.addAll(PCARD.pc.stack.usingStacks);}
-			if(PCARD.home!=null)open.add(PCARD.home);
+		if(UiHost.get().cardWindowOpen()){
+			List<OStack> open=new ArrayList<OStack>();OStack shown=HZ.stack();
+			if(shown!=null){open.add(shown);if(shown.usingStacks!=null)open.addAll(shown.usingStacks);}
+			if(HZ.home!=null)open.add(HZ.home);
 			for(OStack s:open)if(s!=null&&s.rsrc!=null&&bundle.equals(bundleOf(s)))return s;
 			OStack side=TTalk.resolveStackObject(bundle.getPath());
 			if(side!=null&&side.rsrc!=null&&bundle.equals(bundleOf(side)))return side; // not one closed meanwhile (no resources)
 		}
-		OStack s=new OStack(PCARD.pc);
+		OStack s=UiHost.get().newStack();
 		String path=bundle.isDirectory()?new File(bundle,new File(bundle,"_stack.xml").isFile()?"_stack.xml":"toc.xml").getPath():bundle.getPath();
 		return s.openStackFileInThread(path,true)?s:null;
 	}
 
 	/** The packed .hzb file or the folder a stack is kept in (canonical), or null. */
 	static File bundleOf(OStack stack){
-		File f=stack==null?null:StackBundle.host(stack.file!=null?stack.file:stack.path!=null?new File(stack.path):null);
+		File f=stack==null?null:UiHost.get().stackBundleHost(stack.file!=null?stack.file:stack.path!=null?new File(stack.path):null);
 		if(f==null)return null;
 		if((f.getName().equals("_stack.xml")||f.getName().equals("toc.xml"))&&f.getParentFile()!=null)f=f.getParentFile();
 		try{return f.getCanonicalFile();}catch(IOException e){return f.getAbsoluteFile();}
@@ -148,7 +166,7 @@ final class StackFile68k {
 	/** The hidden folder the stand-ins are made in; stand-ins left by a HyperZebra that did not quit go when it is first used. */
 	private static boolean cleaned;
 	private static synchronized File root(){
-		File root=new File(AppPaths.stateDirectory(),FOLDER);
+		File root=new File(UiHost.get().appPathsStateDirectory(),FOLDER);
 		if(!cleaned){
 			cleaned=true;
 			File[] old=root.listFiles();

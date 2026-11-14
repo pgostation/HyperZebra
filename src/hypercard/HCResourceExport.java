@@ -609,8 +609,8 @@ final class HCResourceExport {
 			d.writeByte(value);
 		}
 		//an entry per code, the missing glyph's and the closing one (FontInfo from before Oct 23 2026: see StackStrikeFont.Strike.owWords)
-		for(int loc:StackStrikeFont.Strike.locs(info,image.getWidth()))d.writeShort(loc);
-		for(int ow:StackStrikeFont.Strike.owWords(info,image.getWidth()))d.writeShort(ow);
+		for(int loc:StrikeWidths.locs(info,image.getWidth()))d.writeShort(loc);
+		for(int ow:StrikeWidths.owWords(info,image.getWidth()))d.writeShort(ow);
 		return out.toByteArray();
 	}
 

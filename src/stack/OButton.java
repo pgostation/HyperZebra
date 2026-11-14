@@ -41,9 +41,6 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.border.MatteBorder;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 
 public class OButton extends OObject implements Cloneable {
@@ -66,8 +63,8 @@ public class OButton extends OObject implements Cloneable {
 	Color hiliteColor=null;
 	int group=0;
 	Boolean check_hilite=false;//他のカードからの参照用
-	private boolean autoHilite=true;//作成時のみ参照
-	private boolean hilite=false;//作成時のみ参照
+	boolean autoHilite=true;//作成時のみ参照
+	boolean hilite=false;//作成時のみ参照
 	int icon=0;
 	URI iconURI;
 	//number (カードの情報から求める)
@@ -89,8 +86,8 @@ public class OButton extends OObject implements Cloneable {
 		return (btn.showName && btn.titleWidth>0) ? Math.min(btn.titleWidth, width) : 0;
 	}
 
-	private int selectedLine=0;
-	private boolean scaleIcon = false;
+	int selectedLine=0;
+	boolean scaleIcon = false;
 	private boolean iconAspect = false; // Opt-in: legacy stacks retain stretch scaling.
 	int blendMode;
 	int blendLevel = 100;
@@ -115,7 +112,7 @@ public class OButton extends OObject implements Cloneable {
 	//ようにする(JButtonのアイコン用レイアウト計算にもそのまま使われるため)。
 	static Icon makeButtonIcon(ImageIcon plain){
 		if(plain==null) return null;
-		double scale = PCARD.scale();
+		double scale = Host.get().scale();
 		int w = plain.getIconWidth();
 		int h = plain.getIconHeight();
 		//a PICT whose srcXor/notSrcXor bits invert the card under the button (PictureFile.withInversion)
@@ -149,7 +146,6 @@ public class OButton extends OObject implements Cloneable {
 			}
 		}
 	}
-	static ButtonGroup[] btnGroup = new ButtonGroup[16];
 	DropTarget drop;
 	
 	//get
@@ -167,24 +163,16 @@ public class OButton extends OObject implements Cloneable {
 	//set
 	public void setName(String in) {
 		name=in;
-		if(btn!=null && showName){
-			btn.setText(in);
-		}
-		if(radio!=null && showName){
-			radio.setName(in);
-		}
-		if(chkbox!=null && showName){
-			chkbox.setName(in);
-		}
-		if(popup!=null && showName){
-			popup.setToolTipText(in);
-		}
+		UiHost.get().setNameView167(this, in);
+		UiHost.get().setNameView170(this, in);
+		UiHost.get().setNameView173(this, in);
+		UiHost.get().setNameView176(this, in);
 		if(icon==-1) {
 			//PICTボタンの場合
 			setIcon(-1, false);
 		}
-		else if(!PCARD.lockedScreen) {
-			PCARD.repaintLogicalRect(left, top, width, height);
+		else if(!HZ.lockedScreen) {
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
 	}
@@ -203,22 +191,17 @@ public class OButton extends OObject implements Cloneable {
 		if(stack==null || stack.rsrc==null) return false;
 		if(stack.rsrc.getResourceAll(id, "cicn")!=null) return true;
 		if(stack.rsrc.getResourceAll(id, "ICON")!=null) return true;
-		if(systemIcon(id)!=null) return true;
+		if(UiHost.get().hasSystemIcon(id)) return true;
 		if(stack.file==null) return false;
 		String base = stack.file.getParent()+"/resource/icon"+id;
 		return new File(base+".png").exists() || new File(base+".jpeg").exists();
 	}
 	/** The System file's alert icons that HyperCard finds at the end of its resource chain: ICON 1 (note) and 2 (caution),
 	 *  drawn as HyperZebra's own System gives them to 68K programs (Rinaldi's X-Archive "Info" button has icon 1). */
-	static BufferedImage systemIcon(int id){
-		if(id!=1 && id!=2) return null;
-		synchronized(SYSTEM_ICONS){
-			return SYSTEM_ICONS.computeIfAbsent(id, k -> HCResource.decodeICON(SystemResources68k.icon(k)));
-		}
-	}
-	private static final java.util.Map<Integer,BufferedImage> SYSTEM_ICONS = new java.util.HashMap<Integer,BufferedImage>();
+	static BufferedImage systemIcon(int id){ return UiHost.get().systemIcon(id); }
+	static final java.util.Map<Integer,BufferedImage> SYSTEM_ICONS = new java.util.HashMap<Integer,BufferedImage>();
 	/** The ICON (or cicn) {@code id} as this button shows it: the stack, the stacks in use, the old resource/iconN files, the System's; null when none. */
-	private BufferedImage findIconImage(int id){
+	BufferedImage findIconImage(int id){
 		// a button of a stack closed meanwhile (its card is still painted once) has no stack: only the System's icons then
 		OStack st = parent instanceof OCardBase ? ((OCardBase)parent).stack : null;
 		BufferedImage image = st==null ? null : st.rsrc.getDisplayImage(id, "ICON");
@@ -231,11 +214,11 @@ public class OButton extends OObject implements Cloneable {
 		if(image==null) image = systemIcon(id);
 		return image;
 	}
-	private static final long ICON_FOUND = Long.MIN_VALUE;
+	static final long ICON_FOUND = Long.MIN_VALUE;
 	/** {@link #usingKey} when the button's icon was not found (it may be in a stack put in use later), else ICON_FOUND. */
-	private volatile long missingIconUsing = ICON_FOUND;
+	volatile long missingIconUsing = ICON_FOUND;
 	/** The stacks in use by this button's stack, as one number (their identities in order). */
-	private long usingKey(){
+	long usingKey(){
 		OStack st = parent instanceof OCardBase ? ((OCardBase)parent).stack : null;
 		java.util.ArrayList<OStack> using = st==null ? null : st.usingStacks;
 		long k = 1;
@@ -264,124 +247,12 @@ public class OButton extends OObject implements Cloneable {
 			b.setVerticalTextPosition(SwingConstants.BOTTOM);
 		}
 	}
-	private void setIcon(int in, boolean noupdate) {
+	void setIcon(int in, boolean noupdate) {
 		//if(icon==in) return;
 		icon=in;
 		iconURI=null;
 		missingIconUsing = ICON_FOUND;
-		if(btn!=null)
-		{
-			//アイコンの読み込み(ファイルI/O)は従来通りここでTTalkスレッド上で
-			//行い、その結果をbtn.setIcon()へ反映する処理だけを最後にひとつの
-			//EDTタスクへまとめて同期実行する。コンポーネントの状態変更(アイコン
-			//差し替え)と即時再描画が分断されないため、EDTが後追いで発行する
-			//自動repaintと競合してチラつくのを防げる。
-			Icon newIcon = null;
-			boolean clearText = false;
-
-			//this.iconImage = null;
-			//negative IDs other than -1 are ICON resources too (Teka PIM's TCHome: ICON -15743 "person", -16491 "SoundToggle")
-			if(icon>0 || icon<-1){
-				//見つからないIDへ変更した場合に、拡大・blend用の旧画像を残さない。
-				imageForScale = null;
-				//表示用画像はRsrcの小さな共有キャッシュから取得する。
-				//cicn優先と生データのデコードもここで行う。
-				BufferedImage rawIconBi = findIconImage(icon);
-				missingIconUsing = rawIconBi==null ? usingKey() : ICON_FOUND;
-				if(rawIconBi!=null){
-					if(scaleIcon || blendMode!=0) imageForScale = rawIconBi;
-					newIcon = makeButtonIcon(new ImageIcon(rawIconBi));
-				}
-			}
-			else if(icon==-1){
-				//-1 is HyperCard's PICT button convention: resolve the picture by the
-				//button name. Resolve by resource identity rather than looking its ID up
-				//again, since a using stack may contain the named PICT with an ID that is
-				//also occupied by an unrelated PICT in the main stack.
-				BufferedImage bi = ((OCardBase)parent).stack.rsrc.getDisplayImage(name, "PICT");
-				if(bi!=null) bi = PictureTranslation.shown(((OCardBase)parent).stack, bi); //its text translated when the stack is
-				if(bi!=null){
-					if(scaleIcon || blendMode!=0) imageForScale = bi;
-					newIcon = makeButtonIcon(new ImageIcon( bi ));
-				}
-				else
-				{
-					//PICTボタン読み込み(jpeg,png)
-					File file=new File(card.stack.file.getParent()+"/resource/pict"+name+".png");
-					if(!file.exists()) {
-						file=new File(card.stack.file.getParent()+"/resource/pict"+name+".jpeg");
-					}
-					if(!file.exists()) {
-						try {
-							BufferedImage pict = ImageIO.read(new File(card.stack.file.getParent()+"/resource/pict"+name+"_img.png"));
-							File file2=new File(card.stack.file.getParent()+"/resource/pict"+name+"_mask.png");
-							if(pict!=null && file2.exists()) {
-								BufferedImage mask = ImageIO.read(file2);
-								pict = OCard.makeAlphaImage(pict, mask);
-								File ofile=new File(card.stack.file.getParent()+"/resource/pict"+name+".png");
-								ImageIO.write(pict,"png",ofile);
-								file = ofile;
-							}
-						}catch (Exception err) {
-							//err.printStackTrace();
-						}
-					}
-					if(file.exists()) {
-						try {
-							BufferedImage fallbackImage = javax.imageio.ImageIO.read(file);
-							if(fallbackImage!=null){
-								if(scaleIcon || blendMode!=0) imageForScale = fallbackImage;
-								newIcon = makeButtonIcon(new ImageIcon( fallbackImage ));
-							}
-							else{
-								newIcon = null;
-								imageForScale = null;
-							}
-						} catch (IOException e) {
-							newIcon = null;
-							imageForScale = null;
-						}
-					}else{
-						newIcon = null;
-						imageForScale = null;
-					}
-				}
-				//btn.setIcon(new ImageIcon(card.stack.file.getParent()+"/resource/pict"+name+".png"));
-				clearText = true;
-			}
-			else if(icon==0){
-				newIcon = null;
-				imageForScale = null;
-			}
-
-			final Icon fNewIcon = newIcon;
-			final boolean fClearText = clearText;
-			final boolean fShowName = btn.btnData.showName;
-			final int fIcon = icon;
-			Runnable apply = () -> {
-				//the card may have been left (and the component dropped) before this runs: the icon number stays in
-				//this object and the next card build shows it (New Features "topics" sets an icon and goes away)
-				MyButton b = btn;
-				if(b==null) return;
-				b.setIcon(fNewIcon);
-				if(fClearText) b.setText("");
-				if(fIcon>0 && fShowName){
-					b.setHorizontalTextPosition(SwingConstants.CENTER);
-					b.setVerticalTextPosition(SwingConstants.BOTTOM);
-				}
-				if(!PCARD.lockedScreen && noupdate==false) {
-					PCARD.repaintLogicalRect(left, top, width, height);
-				}
-			};
-			//カードを組み立てる途中(buildOButton、まだカードに置かれていないボタン)は画面に出ていないので、
-			//EDT へ往復せずにその場で設定する(カード移動のたびにアイコン付きボタンの数だけ往復していた)
-			if(noupdate && btn.getParent()==null) apply.run();
-			else PCARD.runOnEDTWhenShown(apply);
-			//以前はここで2.x系スタック向けにThread.sleep(2*TTalk.wait)していたが、
-			//set icon 1回(実処理0.17ms程度)ごとに2.5ms前後のスリープが入り、
-			//アイコンを連続で切り替えるスクリプトの実行速度を大きく落としていた
-			//ため撤廃した。
-		}
+		UiHost.get().iconOnView(this, in, noupdate);
 		//buildOButton(noupdate=true)からの呼び出しは表示の組み立てであって変更では
 		//ないので、changedを立てない。立てていると、アイコン付きボタンのある
 		//カードへ移動するたびにスタック全体が保存し直されていた。
@@ -390,54 +261,11 @@ public class OButton extends OObject implements Cloneable {
 	public void setIconURI(URI in) {
 		setIconURI(in, false);
 	}
-	private void setIconURI(URI in, boolean noupdate) {
+	void setIconURI(URI in, boolean noupdate) {
 		//if(icon==in) return;
 		icon=0;
 		iconURI = in;
-		if(btn!=null)
-		{
-			if(iconURI!=null){
-				//画像の読み込み(ImageIconのコンストラクタが内部でMediaTrackerを
-				//使い読み込み完了まで待つ)はここまでTTalkスレッド上で行い、
-				//btn.setIcon()の反映と即時再描画だけを1つのEDTタスクにまとめて
-				//同期実行する。以前は読み込み完了を待たない別スレッドでアイコンを
-				//差し替えていたため、直後のrepaintと競合してチラついていた。
-				Icon newIcon = null;
-				try {
-					Image img = Toolkit.getDefaultToolkit().getImage(iconURI.toURL());
-					if(scaleIcon || blendMode!=0) {
-						imageForScale = new BufferedImage(img.getWidth(btn), img.getHeight(btn), BufferedImage.TYPE_INT_ARGB);
-						imageForScale.createGraphics().drawImage(img,0,0,btn);
-					}
-					newIcon = makeButtonIcon(new ImageIcon(img));
-				} catch (MalformedURLException e) {
-					e.printStackTrace();
-				} catch(IllegalArgumentException e){
-
-				}
-				final Icon fNewIcon = newIcon;
-				final boolean fShowName = btn.btnData.showName;
-				PCARD.runOnEDT(() -> {
-					btn.setIcon(fNewIcon);
-					if(fShowName){
-						btn.setHorizontalTextPosition(SwingConstants.CENTER);
-						btn.setVerticalTextPosition(SwingConstants.BOTTOM);
-					}
-					if(!PCARD.lockedScreen && noupdate==false) {
-						PCARD.repaintLogicalRect(left, top, width, height);
-					}
-				});
-			}
-			else{
-				imageForScale = null;
-				PCARD.runOnEDT(() -> {
-					btn.setIcon(null);
-					if(!PCARD.lockedScreen && noupdate==false) {
-						PCARD.repaintLogicalRect(left, top, width, height);
-					}
-				});
-			}
-		}
+		UiHost.get().iconURIOnView(this, in, noupdate);
 		if(!noupdate) ((OCardBase)parent).changed = true;
 	}
 
@@ -454,38 +282,10 @@ public class OButton extends OObject implements Cloneable {
 		if(h==oldLeft && v==oldTop) StackSpeed.unchanged(); //HyperCard draws nothing for it (speed limit)
 		left=h;
 		top=v;
-		if(getComponent()!=null){
-			final int newLeft=left;
-			final int newTop=top;
-			final int buttonWidth=width;
-			final int buttonHeight=height;
-			//lock中もコンポーネントツリーの変更自体はEDT上で行う。画面は
-			//MyPanelがロック開始時のスナップショットを描いて凍結する。
-			PCARD.runOnEDTWhenShown(this, PCARD.EDT_BOUNDS, () -> {
-				JComponent component=getComponent();
-				if(component==null) return;
-				component.setBounds(newLeft, newTop, buttonWidth, buttonHeight);
-				if(!PCARD.lockedScreen) {
-					if(Math.abs(newLeft-oldLeft)<buttonWidth && Math.abs(newTop-oldTop)<buttonHeight)
-						PCARD.repaintLogicalRect(Math.min(newLeft,oldLeft), Math.min(newTop,oldTop), buttonWidth+Math.abs(newLeft-oldLeft), buttonHeight+Math.abs(newTop-oldTop));
-					else {
-						PCARD.repaintLogicalRect(newLeft, newTop, buttonWidth, buttonHeight);
-						PCARD.repaintLogicalRect(oldLeft, oldTop, buttonWidth, buttonHeight);
-					}
-				}
-			}, this::applyBounds);
-			if(!PCARD.lockedScreen) {
-				if(TTalk.wait>0 && PCARD.pc.stack.createdByVersion.charAt(0)=='2'){
-					try {
-						Thread.sleep(3*TTalk.wait);
-					} catch (InterruptedException e) {
-					}
-				}
-			}
-		}
+		UiHost.get().setTopLeftView286(this, h, v, oldLeft, oldTop);
 		((OCardBase)parent).changed = true;
 		((OCardBase)parent).movePanelPeers(this, h-oldLeft, v-oldTop);
-		CardWindow68k.partMoved(this, oldTop, oldLeft, oldTop+height, oldLeft+width); //an external's drawing there goes
+		UiHost.get().cardWindow68kPartMoved(this, oldTop, oldLeft, oldTop+height, oldLeft+width); //an external's drawing there goes
 	}
 	public void setRect(int v1, int v2, int v3, int v4) {
 		final int oldLeft=left;
@@ -496,87 +296,41 @@ public class OButton extends OObject implements Cloneable {
 		top=v2;
 		width=v3-v1;
 		height=v4-v2;
-		if(getComponent()!=null){
-			final int newLeft=left;
-			final int newTop=top;
-			final int newWidth=width;
-			final int newHeight=height;
-			PCARD.runOnEDTWhenShown(this, PCARD.EDT_BOUNDS, () -> {
-				JComponent component=getComponent();
-				if(component==null) return;
-				component.setBounds(newLeft, newTop, newWidth, newHeight);
-				if(!PCARD.lockedScreen) {
-					PCARD.repaintLogicalRect(newLeft, newTop, newWidth, newHeight);
-					PCARD.repaintLogicalRect(oldLeft, oldTop, oldWidth, oldHeight);
-				}
-			}, this::applyBounds);
-			if(!PCARD.lockedScreen) {
-				if(TTalk.wait>0 && PCARD.pc.stack.createdByVersion.charAt(0)=='2'){
-					try {
-						Thread.sleep(3*TTalk.wait);
-					} catch (InterruptedException e) {
-					}
-				}
-			}
-		}
+		UiHost.get().setRectView328(this, v1, v2, v3, v4, oldLeft, oldTop, oldWidth, oldHeight);
 		((OCardBase)parent).changed = true;
-		CardWindow68k.partMoved(this, oldTop, oldLeft, oldTop+oldHeight, oldLeft+oldWidth); //an external's drawing there goes
+		UiHost.get().cardWindow68kPartMoved(this, oldTop, oldLeft, oldTop+oldHeight, oldLeft+oldWidth); //an external's drawing there goes
 	}
 	public void setText(String in) {
 		super.setText(in);
-		if(popup!=null){
-			final String[] values = in.split("\n");
-			PCARD.runOnEDT(() -> {
-				if(popup==null) return;
-				popup.removeAllItems();
-				for(String value: values) popup.addItem(value);
-				if(!PCARD.lockedScreen)
-					PCARD.repaintLogicalRect(left, top, width, height);
-			});
-		}
+		UiHost.get().setTextView356(this, in);
 		((OCardBase)parent).changed = true;
 	}
 	public void setVisible(boolean in) {
 		if(getVisible()==in) return;
 		super.setVisible(in);
-		if(getComponent()!=null)
-		{
-			PCARD.runOnEDTWhenShown(this, PCARD.EDT_VISIBLE, () -> {
-				JComponent component=getComponent();
-				if(component==null) return;
-				component.setVisible(isShown());
-				if(!PCARD.lockedScreen)
-					PCARD.repaintLogicalRect(left, top, width, height);
-			}, this::applyVisible);
-		}
+		UiHost.get().setVisibleView371(this, in);
 	}
 	/** Its panel was shown or hidden, or it joined or left one: the component follows isShown. */
 	@Override void applyShown(){
 		if(getComponent()==null) return;
-		PCARD.runOnEDTWhenShown(this, PCARD.EDT_VISIBLE, () -> {
+		Host.get().runOnEDTWhenShown(this, Host.EDT_VISIBLE, () -> {
 			applyVisible();
-			if(!PCARD.lockedScreen) PCARD.repaintLogicalRect(left, top, width, height);
+			if(!HZ.lockedScreen) Host.get().repaintLogicalRect(left, top, width, height);
 		}, this::applyVisible);
 	}
 	/** (EDT) The component shows the visibility the button has now (with its panel's). */
-	private void applyVisible(){
+	void applyVisible(){
 		JComponent component=getComponent();
-		if(component!=null) component.setVisible(isShown());
+		UiHost.get().applyVisibleView375(this, component);
 	}
 	/** (EDT) The component has the rectangle the button has now. */
-	private void applyBounds(){
+	void applyBounds(){
 		JComponent component=getComponent();
 		if(component!=null) component.setBounds(left, top, width, height);
 	}
 	public void setEnabled(boolean in) {
 		enabled = in;
-		if(getComponent()!=null)
-		{
-			getComponent().setEnabled(in);
-			if(!PCARD.lockedScreen) {
-				PCARD.repaintLogicalRect(left, top, width, height);
-			}
-		}
+		UiHost.get().setEnabledView562(this, in);
 		((OCardBase)parent).changed = true;
 	}
 	public void setHilite(boolean in) {
@@ -594,28 +348,11 @@ public class OButton extends OObject implements Cloneable {
 					sibling.storeCardHilite();
 					//its Swing part too: getHilite reads the part (HC J-2.3 probe D Click Hilite: the family's other button
 					//read true after click at hilited Check)
-					if(sibling.btn!=null) sibling.btn.setHilite(false);
-					else if(sibling.radio!=null) sibling.radio.setSelected(false);
-					else if(sibling.chkbox!=null) sibling.chkbox.setSelected(false);
+					UiHost.get().setHiliteView402(this, in, sibling);
 				}
 			}
 		}
-		if(getComponent()!=null)
-		{
-			if(btn!=null){
-				btn.setHilite(in);
-			}
-			else if (radio!=null){
-				radio.setSelected(in);
-			}
-			else if (chkbox!=null){
-				chkbox.setSelected(in);
-			}
-			
-			if(!PCARD.lockedScreen) {
-				PCARD.repaintLogicalRect(left, top, width, height);
-			}
-		}
+		UiHost.get().setHiliteView592(this, in);
 		((OCardBase)parent).changed = true;
 	}
 	/** The card a forCard view reads and writes the hilite of (null: the background's displayed card) */
@@ -678,37 +415,20 @@ public class OButton extends OObject implements Cloneable {
 	}
 
 	public boolean getHilite() {
-		if(getComponent()!=null)
-		{
-			if(btn!=null){
-				return btn.getHilite();
-			}
-			else if (radio!=null){
-				return radio.isSelected();
-			}
-			else if (chkbox!=null){
-				return chkbox.isSelected();
-			}
-		}
-		
+		Boolean shown = UiHost.get().buttonViewHilite(this); //the Swing part's (the desktop), when it has one
+		if(shown!=null) return shown;
 		return hilite;
 	}
 	public int getSelectedLine() {
 		//a pop-up with no text keeps its number (HC J-2.3: line 4 of an empty pop-up)
 		if(style==8 && popup!=null && !getText().isEmpty()){
-			int index = popup.getSelectedIndex()+1;
+			int index = UiHost.get().popupSelectedIndex(popup)+1;
 			return index;
 		}
 		return selectedLine;
 	}
 	public void setSelectedLine(int line) {
-		if(style==8 && popup!=null && line<=popup.getItemCount()){
-			MyPopup p = popup;
-			boolean was = p.settingSelection;
-			p.settingSelection = true;
-			try{ p.setSelectedIndex(line-1); }
-			finally{ p.settingSelection = was; }
-		}
+		if(style==8 && popup!=null) UiHost.get().selectPopupLine(popup, line);
 		if(style==8) selectedLine = line;
 		((OCardBase)parent).changed = true;
 	}
@@ -716,7 +436,7 @@ public class OButton extends OObject implements Cloneable {
 		if(style==8){
 			int index = selectedLine-1;
 			if(popup!=null){
-				index = popup.getSelectedIndex();
+				index = UiHost.get().popupSelectedIndex(popup);
 			}
 			String[] ary = getText().split("\n");
 			if(index>=0 && index < ary.length){
@@ -729,30 +449,7 @@ public class OButton extends OObject implements Cloneable {
 	}
 	public void setShowName(boolean in) {
 		showName = in;
-		if(getComponent()!=null)
-		{
-			if(btn!=null){
-				if(showName) btn.setText(name);
-				else btn.setText("");
-			}
-			else if(popup!=null){
-				//showNameが変わったので、名前表示用ラベルの有無・幅を
-				//(全体の矩形を渡し直して)MyPopup.setBoundsに再計算させる。
-				popup.setBounds(left, top, width, height);
-			}
-			else if(radio!=null){
-				if(showName) radio.setText(name);
-				else radio.setText("");
-			}
-			else if(chkbox!=null){
-				if(showName) chkbox.setText(name);
-				else chkbox.setText("");
-			}
-			
-			if(!PCARD.lockedScreen) {
-				PCARD.repaintLogicalRect(left, top, width, height);
-			}
-		}
+		UiHost.get().setShowNameView529(this, in);
 		((OCardBase)parent).changed = true;
 	}
 	//Swing部品の選択状態ではなく、記憶しているハイライト値。クリックでSwingが
@@ -768,9 +465,7 @@ public class OButton extends OObject implements Cloneable {
 	}
 	public void setAutoHilite(boolean in){
 		autoHilite = in;
-		if(btn != null){
-			btn.setAutoHilite(in);
-		}
+		UiHost.get().setAutoHiliteView760(this, in);
 		((OCardBase)parent).changed = true;
 	}
 	public boolean getIconAspect(){ return iconAspect; }
@@ -804,17 +499,17 @@ public class OButton extends OObject implements Cloneable {
 		else{
 			imageForScale = null;
 		}
-		if(!PCARD.lockedScreen) {
-			PCARD.repaintLogicalRect(left, top, width, height);
+		if(!HZ.lockedScreen) {
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
 	}
 	public void setTextFont(String in){
 		textFont = in;
 		JComponent component=getComponent();
-		if(component!=null)component.setFont(OObject.stackFont(textFont,textStyle&0x03,textSize*PCARD.scale()));
-		if(!PCARD.lockedScreen) {
-			PCARD.repaintLogicalRect(left, top, width, height);
+		UiHost.get().setTextFontView569(this, in, component);
+		if(!HZ.lockedScreen) {
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
 	}
@@ -827,38 +522,32 @@ public class OButton extends OObject implements Cloneable {
 				setIcon(icon);
 			}
 		}
-		if(!PCARD.lockedScreen) {
-			PCARD.repaintLogicalRect(left, top, width, height);
+		if(!HZ.lockedScreen) {
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
 	}
 	public void setBlendLevel(int in) {
 		blendLevel = in;
-		if(!PCARD.lockedScreen) {
-			PCARD.repaintLogicalRect(left, top, width, height);
+		if(!HZ.lockedScreen) {
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
 	}
 
 	public void setColor(Color col) {
 		color=col;
-		if(btn!=null)
-		{
-			btn.setForeground(col);
-		}
+		UiHost.get().setColorView842(this, col);
 	}
 	public void setBgColor(Color col) {
 		bgColor=col;
-		if(btn!=null)
-		{
-			btn.setBackground(col);
-		}
+		UiHost.get().setBgColorView849(this, col);
 	}
 	/** The colour a hilited button is filled with; null goes back to HyperCard's inversion. */
 	public void setHiliteColor(Color col) {
 		hiliteColor=col;
-		if(!PCARD.lockedScreen) {
-			PCARD.repaintLogicalRect(left, top, width, height);
+		if(!HZ.lockedScreen) {
+			Host.get().repaintLogicalRect(left, top, width, height);
 		}
 		((OCardBase)parent).changed = true;
 	}
@@ -879,11 +568,11 @@ public class OButton extends OObject implements Cloneable {
 	
 
 	@SuppressWarnings("unchecked")
-	public XMLStreamReader readXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readXML(XmlIn reader) throws Exception {
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamReader.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName().intern();
 	            	if(elm.equals("id")){ this.id = Integer.valueOf(reader.getElementText()); }
 	            	else if(elm.equals("visible")){ this.setVisible(XMLRead.bool(reader));reader.next(); }
@@ -897,7 +586,7 @@ public class OButton extends OObject implements Cloneable {
 	            		int right=0, bottom=0;
 	    	            while(reader.hasNext()){
 	    	            	int eventType2 = reader.next();
-	    	            	if (eventType2 == XMLStreamReader.START_ELEMENT) {
+	    	            	if (eventType2 == XmlIn.START_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("left")){ 
 	    		            		this.left = Integer.valueOf(reader.getElementText());
@@ -911,7 +600,7 @@ public class OButton extends OObject implements Cloneable {
 	    		            	else if(elm2.equals("bottom")){ bottom = Integer.valueOf(reader.getElementText()); }
 	    		            	else System.out.println("Part_Type: " + reader.getLocalName());
 	    	            	}
-	    	            	else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+	    	            	else if (eventType2 == XmlIn.END_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("rect")){
 	    		            		this.width = right - this.left;
@@ -925,14 +614,14 @@ public class OButton extends OObject implements Cloneable {
     	            	int red=0, green=0, blue=0;
 	    	            while(reader.hasNext()){
 	    	            	int eventType2 = reader.next();
-	    	            	if (eventType2 == XMLStreamReader.START_ELEMENT) {
+	    	            	if (eventType2 == XmlIn.START_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("red")){ red = Integer.valueOf(reader.getElementText());}
 	    		            	else if(elm2.equals("green")){ green = Integer.valueOf(reader.getElementText());}
 	    		            	else if(elm2.equals("blue")){ blue = Integer.valueOf(reader.getElementText()); }
 	    		            	else System.out.println("Part_Type: " + reader.getLocalName());
 	    	            	}
-	    	            	else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+	    	            	else if (eventType2 == XmlIn.END_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("color")){
 	    		            		this.color = new Color(red/256, green/256, blue/256);
@@ -1039,7 +728,7 @@ public class OButton extends OObject implements Cloneable {
 	            		name = reader.getElementText();
 	            	}
 				else if(elm.equals("panel")){ panelId = XMLRead.panelId(reader.getElementText()); }
-	            	else if(elm.equals("osaScript")) osaScript = OsaScript.readXML(reader);
+	            	else if(elm.equals("osaScript")) osaScript = UiHost.get().readOsaScript(reader);
 	            	else if(elm.equals("script"))
 	            	{
 	            		String scrStr = reader.getElementText();
@@ -1061,7 +750,7 @@ public class OButton extends OObject implements Cloneable {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamReader.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("part")){
 	            		break;
@@ -1076,7 +765,7 @@ public class OButton extends OObject implements Cloneable {
 	}
 
 	
-	public void writeXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeXML(XmlOut writer) throws XmlException {
         writer.writeStartElement("part");
         writer.writeCharacters("\n\t\t\t");
 
@@ -1434,7 +1123,7 @@ public class OButton extends OObject implements Cloneable {
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
         
-        if(osaScript!=null) osaScript.writeXML(writer, "\n\t\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
+        if(osaScript!=null) UiHost.get().writeOsaScript(osaScript, writer, "\n\t\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
 
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
@@ -1568,195 +1257,7 @@ public class OButton extends OObject implements Cloneable {
 	
 	
 	static void buildOButton(OButton obtn)
-	{
-		//古いポップアップの名前ラベル(あれば)は、呼び出し元が事前にmainPaneを
-		//removeAll()済みなので画面上は既に消えているはずだが、参照が残って
-		//いるとstyleがpopupへ戻ったときに古い(親を失った)ラベルを再利用
-		//してしまい表示されなくなるため、ここで必ずリセットする。
-		obtn.popupNameLabel = null;
-
-		//swingのボタンを追加
-		if(obtn.style==0 || obtn.style==6) {
-			obtn.btn = new MyButton(obtn, obtn.name);
-			if(obtn.style==6){
-				PCARD.pc.getRootPane().setDefaultButton(obtn.btn);
-			}
-		}
-		if(obtn.style==1 || obtn.style==2 || obtn.style==3 || obtn.style==4) obtn.btn = new RectButton(obtn, obtn.name);
-		if(obtn.style==5) obtn.btn = new RoundedCornerButton(obtn, obtn.name);
-		if(obtn.style==7) obtn.btn = new RoundButton(obtn, obtn.name);
-		
-		if(obtn.style<=7) {
-			obtn.addListener();
-			obtn.btn.setFocusPainted(false);
-			obtn.btn.setForeground(obtn.color);
-			obtn.btn.setBackground(obtn.bgColor);
-			obtn.btn.setBounds(obtn.left, obtn.top, obtn.width, obtn.height);
-			obtn.btn.setEnabled(obtn.enabled);
-			obtn.btn.setAutoHilite(obtn.autoHilite);
-			obtn.btn.setHilite(obtn.hilite);
-			obtn.btn.setFont(OObject.stackFont(obtn.textFont, obtn.textStyle & 0x03, obtn.textSize*PCARD.scale()));
-			if(!obtn.showName) obtn.btn.setText("");
-	        if(((obtn.textStyle&8) > 0 || (obtn.textStyle&16) > 0) && obtn.icon==0 && (obtn.iconURI==null || obtn.iconURI.toString().isEmpty())){//outline,shadow
-	        	obtn.btn.setText("");
-	        }
-	        if(obtn.iconURI!=null && obtn.iconURI.toString().length()>=1){
-	        	obtn.setIconURI(obtn.iconURI,true);
-	        }
-	        else{
-	        	obtn.setIcon(obtn.icon,true);
-	        }
-	        /*if(obtn.icon > 0) {
-				File file=new File(obtn.card.stack.file.getParent()+"/resource/icon"+obtn.icon+".png");
-				if(file.exists()) {
-					obtn.btn.setIcon(new ImageIcon(obtn.card.stack.file.getParent()+"/resource/icon"+obtn.icon+".png"));
-				}
-				else {
-					file=new File(obtn.card.stack.file.getParent()+"/resource/icon"+obtn.icon+".jpeg");
-					if(file.exists()) {
-						obtn.btn.setIcon(new ImageIcon(obtn.card.stack.file.getParent()+"/resource/icon"+obtn.icon+".jpeg"));
-					}
-					else {
-						try {
-							BufferedImage pict = ImageIO.read(new File(obtn.card.stack.file.getParent()+"/resource/icon"+obtn.icon+"_img.png"));
-							File file2=new File(obtn.card.stack.file.getParent()+"/resource/icon"+obtn.icon+"_mask.png");
-							if(file2.exists()) {
-								BufferedImage mask = ImageIO.read(file);
-								pict = OCard.makeAlphaImage(pict, mask);
-								File ofile=new File(obtn.card.stack.file.getParent()+"/resource/icon"+obtn.icon+".png");
-								ImageIO.write(pict,"png",ofile);
-							}
-						}catch (Exception err) {
-							//err.printStackTrace();
-						}
-					}
-				}
-				obtn.btn.setHorizontalTextPosition(JButton.CENTER);
-				obtn.btn.setVerticalTextPosition(JButton.BOTTOM);
-			}
-			if(obtn.icon == -1) {
-				File file=new File(obtn.card.stack.file.getParent()+"/resource/pict"+obtn.name+".png");
-				if(!file.exists()) {
-					file=new File(obtn.card.stack.file.getParent()+"/resource/pict"+obtn.name+".jpeg");
-				}
-				if(!file.exists()) {
-					try {
-						BufferedImage pict = ImageIO.read(new File(obtn.card.stack.file.getParent()+"/resource/pict"+obtn.name+"_img.png"));
-						File file2=new File(obtn.card.stack.file.getParent()+"/resource/pict"+obtn.name+"_mask.png");
-						if(file2.exists()) {
-							BufferedImage mask = ImageIO.read(file);
-							pict = OCard.makeAlphaImage(pict, mask);
-							File ofile=new File(obtn.card.stack.file.getParent()+"/resource/pict"+obtn.name+".png");
-							ImageIO.write(pict,"png",ofile);
-						}
-					}catch (Exception err) {
-						//err.printStackTrace();
-					}
-				}
-				obtn.btn.setIcon(new ImageIcon(obtn.card.stack.file.getParent()+"/resource/pict"+obtn.name+".png"));
-				obtn.btn.setText("");
-			}*/
-			switch(obtn.textAlign){
-				case 0:obtn.btn.setHorizontalAlignment(JButton.LEFT);break;
-				case 1:obtn.btn.setHorizontalAlignment(JButton.CENTER);break;
-				case 2:obtn.btn.setHorizontalAlignment(JButton.RIGHT);break;
-			}
-			obtn.btn.setVisible(obtn.isShown());
-			switch(obtn.style) {
-			case 0:
-			case 6:
-				break;
-			case 1:
-			case 2:
-				obtn.btn.setContentAreaFilled(false);
-				obtn.btn.setBorderPainted(false);
-				obtn.btn.setBorder(null);
-				break;
-			case 4:
-				obtn.btn.setBorder(new MatteBorder(1,1,3,3,obtn.color));
-				break;
-			case 3:
-			case 5:
-			case 7:
-				obtn.btn.setBorder(new MatteBorder(1,1,1,1,obtn.color));
-				break;
-			} 
-			obtn.btn.setMargin(new Insets(0,0,0,0));
-			obtn.btn.setFocusable(false);
-			PCARD.pc.mainPane.add(obtn.btn);
-		}
-		else if(obtn.style==8) {
-			String[] value = obtn.getText().split("\n");
-			obtn.popup = new MyPopup(obtn, value);
-			obtn.popup.setName(obtn.name);
-			//popup.setFocusPainted(false);
-			obtn.popup.setForeground(obtn.color);
-			obtn.popup.setBackground(obtn.bgColor);
-			obtn.popup.setBounds(obtn.left, obtn.top, obtn.width, obtn.height);
-			obtn.popup.setEnabled(obtn.enabled);
-			//popup(autoHilite);
-			//popup.setSelected(hilite);
-			try{obtn.popup.setSelectedIndex(obtn.selectedLine-1);}catch(Exception e){System.out.println("err: popup.setSelectedIndex(selectedLine-1)");}
-			//JComboBoxの高さはAqua L&Fが矢印ボタン用に描画するネイティブ画像の
-			//高さに固定されており(GEncodingDialog参照)、setBoundsで2倍拡大
-			//モード用に高さを2倍にしても実際の見た目はほとんど大きくならない。
-			//それにもかかわらず文字サイズだけ2倍にすると、変わらない箱に対して
-			//文字だけ大きすぎる見た目になってしまうため、popup自体のフォントは
-			//拡大率を掛けない。
-			obtn.popup.setFont(OObject.stackFont(obtn.textFont, obtn.textStyle&0x03, obtn.textSize));
-			//以前はshowNameのときに名前をツールチップとしてだけ表示していたが、
-			//実機のポップアップメニューコントロールと同様、titleWidthの幅で
-			//左側に実際に描画するようにした(MyPopup.setBounds参照)。
-			obtn.popup.setFocusable(false);
-			obtn.popup.setMaximumRowCount(20);
-			PCARD.pc.mainPane.add(obtn.popup);
-			obtn.popup.setVisible(obtn.isShown());
-			obtn.addListener();
-		}
-		else if(obtn.style==9) {
-			obtn.chkbox = new MyCheck(obtn, obtn.name);
-			ClassicToggleIcon.install(obtn.chkbox, obtn, false);
-			obtn.addListener();
-			obtn.chkbox.setFocusPainted(false);
-			obtn.chkbox.setForeground(obtn.color);
-			obtn.chkbox.setBackground(obtn.bgColor);
-			obtn.chkbox.setBounds(obtn.left, obtn.top, obtn.width, obtn.height);
-			obtn.chkbox.setEnabled(obtn.enabled);
-			//chkbox.setAutoHilite(autoHilite);
-			obtn.chkbox.setSelected(obtn.hilite);
-			obtn.chkbox.setFont(OObject.stackFont(obtn.textFont, obtn.textStyle&0x03, obtn.textSize*PCARD.scale()));
-			obtn.chkbox.setVisible(obtn.isShown());
-			if(!obtn.showName) obtn.chkbox.setText("");
-			obtn.chkbox.setFocusable(false);
-			PCARD.pc.mainPane.add(obtn.chkbox);
-		}
-		else if(obtn.style==10) {
-			obtn.radio = new MyRadio(obtn, obtn.name);
-			ClassicToggleIcon.install(obtn.radio, obtn, true);
-			obtn.addListener();
-			obtn.radio.setFocusPainted(false);
-			obtn.radio.setForeground(obtn.color);
-			obtn.radio.setBackground(obtn.bgColor);
-			obtn.radio.setBounds(obtn.left, obtn.top, obtn.width, obtn.height);
-			obtn.radio.setEnabled(obtn.enabled);
-			//chkbox.setAutoHilite(autoHilite);
-			obtn.radio.setSelected(obtn.hilite);
-			obtn.radio.setFont(OObject.stackFont(obtn.textFont, obtn.textStyle, obtn.textSize*PCARD.scale()));
-			obtn.radio.setVisible(obtn.isShown());
-			obtn.radio.setFocusable(false);
-			if(!obtn.showName) obtn.radio.setText("");
-			PCARD.pc.mainPane.add(obtn.radio);
-			//family 0のラジオボタンはHyperCardではチェックボックスと同様に独立して
-			//動く。ButtonGroupに入れるとSwingが選択解除を拒むため、スクリプトの
-			//"set the hilite ... to false"が効かなくなる
-			if(obtn.group>=1){
-				if(btnGroup[obtn.group]==null) {
-					btnGroup[obtn.group] = new ButtonGroup();
-				}
-				btnGroup[obtn.group].add(obtn.radio);
-			}
-		}
-	}
+	{ UiHost.get().buildOButton(obtn); }
     
     void addListener(){
     	if(card==null) return;
@@ -1811,7 +1312,6 @@ public class OButton extends OObject implements Cloneable {
 		}
 	}
     
-    static btnOutlineListen btnOutlineListen = new btnOutlineListen();
     void addListener(MouseListener listener){
 		if(getComponent()!=null){
 			getComponent().addMouseListener(listener);
@@ -1848,16 +1348,16 @@ class btnOutlineListen implements MouseListener {
     		return;
     	}
     	if(e.getSource() instanceof MyButton){
-    		ScriptEditor.openScriptEditor(PCARD.pc.stack.pcard, ((MyButton)e.getSource()).btnData);
+    		ScriptEditor.openScriptEditor(HZ.stack().pcard, ((MyButton)e.getSource()).btnData);
     	}
     	else if(e.getSource().getClass()==MyPopup.class){
-    		ScriptEditor.openScriptEditor(PCARD.pc.stack.pcard, ((MyPopup)e.getSource()).btnData);
+    		ScriptEditor.openScriptEditor(HZ.stack().pcard, ((MyPopup)e.getSource()).btnData);
     	}
     	else if(e.getSource().getClass()==MyRadio.class){
-    		ScriptEditor.openScriptEditor(PCARD.pc.stack.pcard, ((MyRadio)e.getSource()).btnData);
+    		ScriptEditor.openScriptEditor(HZ.stack().pcard, ((MyRadio)e.getSource()).btnData);
     	}
     	else if(e.getSource().getClass()==MyCheck.class){
-    		ScriptEditor.openScriptEditor(PCARD.pc.stack.pcard, ((MyCheck)e.getSource()).btnData);
+    		ScriptEditor.openScriptEditor(HZ.stack().pcard, ((MyCheck)e.getSource()).btnData);
     	}
 		GUI.endPeek();
     }
@@ -1908,9 +1408,9 @@ final class FullButtonName {
 	/** HyperCard's place for the name of {@code data} in component {@code b}, or null when there is no name to draw. */
 	static Placement place(AbstractButton b, OButton data, String text, Graphics g){
 		if(text==null || text.isEmpty()) return null;
-		double scale = PCARD.scale();
+		double scale = Host.get().scale();
 		int w = b.getWidth(), h = b.getHeight();
-		int centre = (int)Math.round((PCARD.toLogicalLength(h)/2)*scale); //(top+bottom)/2 in HyperCard's coordinates
+		int centre = (int)Math.round((Host.get().toLogicalLength(h)/2)*scale); //(top+bottom)/2 in HyperCard's coordinates
 		Font font = b.getFont();
 		Icon icon = b.getIcon();
 		boolean toggle = data.style==9 || data.style==10;
@@ -1947,7 +1447,7 @@ final class FullButtonName {
 			switch(data.textAlign){
 				case 0: x = (int)Math.round(8*scale); break;
 				case 2: x = w-(int)Math.round(8*scale)-tw; break;
-				default: x = (int)Math.round(((PCARD.toLogicalLength(w)-(data.style==0||data.style==6 ? 1 : 0))/2)*scale)-tw/2; break;
+				default: x = (int)Math.round(((Host.get().toLogicalLength(w)-(data.style==0||data.style==6 ? 1 : 0))/2)*scale)-tw/2; break;
 			}
 		}
 		Placement placement = new Placement(font, x, baseline);
@@ -1963,7 +1463,6 @@ final class FullButtonName {
 	}
 
 	/** Classic Osaka's descent+leading by point size (its suitcase's strikes, which HyperCard measured); other sizes are interpolated. */
-	private static final int[][] OSAKA_DROP = {{9,2},{10,3},{12,4},{14,5},{18,8},{24,10}};
 
 	/**
 	 * descent+leading of the classic font a name is drawn with. The host fonts standing in for Chicago, Geneva or Monaco
@@ -1971,14 +1470,7 @@ final class FullButtonName {
 	 * bitmap Osaka never had (6px at 12pt), so Osaka uses the classic values.
 	 */
 	static int drop(String fontName, int size, FontMetrics fm){
-		if(fontName!=null && fontName.equalsIgnoreCase("Osaka")){
-			int[] below = OSAKA_DROP[0], above = OSAKA_DROP[OSAKA_DROP.length-1];
-			for(int[] e : OSAKA_DROP){ if(e[0]<=size) below = e; if(e[0]>=size){ above = e; break; } }
-			if(below[0]==above[0]) return below[1];
-			if(size<below[0]) return below[1];
-			if(size>above[0]) return Math.round(size*above[1]/(float)above[0]);
-			return below[1]+Math.round((size-below[0])*(above[1]-below[1])/(float)(above[0]-below[0]));
-		}
+		if(fontName!=null && fontName.equalsIgnoreCase("Osaka")) return OField.osakaDrop(size);
 		return fm.getDescent()+Math.max(0, fm.getLeading());
 	}
 
@@ -1992,7 +1484,7 @@ final class FullButtonName {
 			if(p.iconName){
 				//measured in HyperCard J-2.3 (9-point name): white from 2px left of the pen to 2px past the text, ascent 10 above
 				//the baseline to descent 2 below it
-				double scale = PCARD.scale();
+				double scale = Host.get().scale();
 				int tw = g2.getFontMetrics().stringWidth(text);
 				//white; a hilited button swaps its colours, so the box of a hilited name is black under white text
 				boolean hilited = b instanceof MyButton && ((MyButton)b).getHilite();
@@ -2037,12 +1529,12 @@ class MyButton extends JButton {
 		// every time it moves.  Its own Swing double buffer otherwise retains
 		// pixels from the old position, leaving icon trails or erasing custom-font
 		// fields until the whole card is repainted.
-		this.setDoubleBuffered(PCARD.useDoubleBuffer && btn.style != 1);
+		this.setDoubleBuffered(HZ.useDoubleBuffer && btn.style != 1);
 	}
 
 	@Override
 	public void paint(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		if(btnData!=null) btnData.findMissingIcon();
 		super.paint(g);
 		if(dimsDisabled() && paintsOnCurrentCard()) dimDisabled(g);
@@ -2061,8 +1553,8 @@ class MyButton extends JButton {
 	}
 	private boolean paintsOnCurrentCard(){
 		if(!isVisible() || PCARD.pc.bit != 1) return false;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return false;
-		OCard cd = PCARD.pc.stack==null ? null : PCARD.pc.stack.curCard;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return false;
+		OCard cd = HZ.stack()==null ? null : HZ.stack().curCard;
 		return cd!=null && (btnData.card==cd || btnData.card==cd.bg);
 	}
 	/** 2x2 tile: white where the grey is cleared, clear elsewhere */
@@ -2078,7 +1570,7 @@ class MyButton extends JButton {
 		case 7: inside = new Ellipse2D.Float(0, 0, w-1, h-1); break; //the oval that a hilite inverts
 		default: inside = new Rectangle(0, 0, w, h); //transparent, opaque
 		}
-		double s = PCARD.scale();
+		double s = Host.get().scale();
 		Graphics2D g2 = (Graphics2D)g.create();
 		try{
 			g2.setPaintMode();
@@ -2107,6 +1599,7 @@ class MyButton extends JButton {
 		//bold shadow 24-point "Quiz" icon button, HC J-2.3)
 		boolean ownStyledName = this instanceof RoundedCornerButton && (btnData.textStyle&(8|16))!=0 && getIcon()==null;
 		FullButtonName.Placement p = btnData.showName && !ownStyledName ? FullButtonName.place(this, btnData, name, g) : null;
+		if((btnData.style==0 || btnData.style==6) && !isEnabled()) paintDisabledBackdrop(g);
 		if((btnData.style==0 || btnData.style==6) && btnData.fillsHilite() && getHilite()){
 			paintTintedBezel(g);
 			if(p!=null) FullButtonName.paint(this, g, name, p, "Button");
@@ -2120,6 +1613,20 @@ class MyButton extends JButton {
 		hidingName = true;
 		try{ super.paintComponent(g); } finally{ hidingName = false; }
 		FullButtonName.paint(this, g, name, p, "Button");
+	}
+	/**
+	 * A disabled standard or default button is opaque white under the look-and-feel's bezel, as HyperCard J-2.3 draws it (a
+	 * white rounded rectangle with a grey name). Aqua's disabled bezel is translucent: on a dark card it was a grey block
+	 * whose grey name could not be seen (Trash2's 縄張モード button on its black command panel).
+	 */
+	private void paintDisabledBackdrop(Graphics g){
+		Graphics2D g2 = (Graphics2D)g.create();
+		try{
+			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			g2.setColor(Color.WHITE);
+			int w = getWidth(), h = getHeight(), arc = Math.min(h, 8);
+			g2.fill(new RoundRectangle2D.Float(0.5f, 0.5f, w-1f, h-1f, arc, arc));
+		}finally{ g2.dispose(); }
 	}
 	/**
 	 * A hilited standard or default button with a hiliteColor: the look-and-feel's bezel (drawn without the name) in that
@@ -2159,7 +1666,7 @@ class MyButton extends JButton {
 	@Override
 	public int getIconTextGap(){
 		if(btnData!=null && btnData.showName && getIcon()!=null && super.getText()!=null && !super.getText().isEmpty()){
-			return PCARD.toPhysical(12)-getFontMetrics(getFont()).getHeight();
+			return Host.get().toPhysical(12)-getFontMetrics(getFont()).getHeight();
 		}
 		return super.getIconTextGap();
 	}
@@ -2174,7 +1681,7 @@ class MyButton extends JButton {
 	//実際のSwing上のサイズ・位置だけをここで拡大率倍する。
 	@Override
 	public void setBounds(int x, int y, int width, int height){
-		Rectangle physical = PCARD.toPhysical(x, y, width, height);
+		Rectangle physical = Host.get().toPhysical(x, y, width, height);
 		super.setBounds(physical.x, physical.y, physical.width, physical.height);
 	}
 
@@ -2188,24 +1695,24 @@ class MyButton extends JButton {
     }
     boolean getHilite(){
         //a disabled ButtonModel refuses (and drops) armed, but HyperCard still draws a disabled button's hilite
-        if(autoHilite && PCARD.editMode == 0 && isEnabled()) return getModel().isArmed();
+        if(autoHilite && HZ.editMode == 0 && isEnabled()) return getModel().isArmed();
     	return hilite;
     }
     
 	@Override
 	protected void paintComponent(Graphics g) {
-		if(!isVisible() || (PCARD.lockedScreen && !PCARD.capturingEffect)) return;
+		if(!isVisible() || (HZ.lockedScreen && !HZ.capturingEffect)) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
-		if(PCARD.pc.stack.curCard == null || btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.stack().curCard == null || btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
 
-		if(btnData.showName && PCARD.pc.stack.createdByVersion.charAt(0)=='2'){
+		if(btnData.showName && HZ.stack().createdByVersion.charAt(0)=='2'){
 			//HyperCard 2.x系から変換されたスタックは、元のMac OSとのフォントメトリクスの
 			//違いでボタン名が収まらなくなることがあるため、ボタンの幅に収まらない場合は
 			//少しフォントサイズを小さくして描画する（btnData.textSize自体は変更しない。
 			//収まるようになれば次の描画で元に戻る。HyperZebraで新規作成したスタックは対象外）。
 			//拡大表示モードではgetWidth()は物理サイズなので、フォントも物理サイズで測る。
-			int physicalTextSize = PCARD.toPhysical(btnData.textSize);
+			int physicalTextSize = Host.get().toPhysical(btnData.textSize);
 			Font baseFont = OObject.stackFont(btnData.textFont, btnData.textStyle & 0x03, physicalTextSize);
 			FontMetrics fo = g.getFontMetrics(baseFont);
 			int fitted = physicalTextSize;
@@ -2234,8 +1741,11 @@ class MyButton extends JButton {
         	//アイコンがボタンより大きい時は、showName=falseの場合と同じ手動の
         	//中央寄せ描画を使い、その下に名前を手描きすることで両方を表示する。
         	boolean iconLargerThanButton = curIcon!=null && (curIcon.getIconWidth()>getWidth() || curIcon.getIconHeight()>getHeight());
-        	if(btnData.style>=1&&btnData.style<=3 && curIcon!=null && (!btnData.showName || iconLargerThanButton)){
-        		if(btnData.style>=2){
+        	//shadow buttons too: HyperCard J-2.3 centres the icon on the whole rectangle, shadow included (measured: a 23x23
+        	//shadow button puts a 32x32 icon at -5,-5 as the other styles do); Swing's layout centred it inside the shadow border
+        	//(MatteBorder 1,1,3,3), a pixel up and left (Living Labyrinth's editor block buttons)
+        	if(btnData.style>=1&&btnData.style<=4 && curIcon!=null && (!btnData.showName || iconLargerThanButton)){
+        		if(btnData.style==2 || btnData.style==3){ //(a shadow button is filled by RoundedCornerButton, black when hilited)
         			g.setColor(getHilite() && btnData.fillsHilite() ? btnData.hiliteColor : btnData.bgColor);
         			Rectangle r = g.getClipBounds();
         			g.fillRect(r.x, r.y, r.width, r.height);
@@ -2256,9 +1766,10 @@ class MyButton extends JButton {
         				//中央寄せの計算をする。
         				int w = ic.getIconWidth();
         				int h = ic.getIconHeight();
-        				//名前も表示する場合は、アイコンを上寄せにして下に名前を描くスペースを空ける。
-        				int iy = btnData.showName ? 0 : (getHeight()-h)/2;
-        				ic.paintIcon(this, g, (getWidth()-w)/2, iy);
+        				//名前も表示する場合は、アイコンを6px上げて下に名前を描くスペースを空ける(HyperCard J-2.3の実測:
+        				//名前付きの31x31ボタンでは32x32アイコンが-7。0にすると上端に揃っていた)。
+        				int iy = iconOffset(getHeight(), h, btnData.height) - (btnData.showName ? Host.get().toPhysical(6) : 0);
+        				ic.paintIcon(this, g, iconOffset(getWidth(), w, btnData.width), iy);
         				if(btnData.showName && btnData.name!=null && btnData.name.length()>0){
         					String shownName = StackTranslation.buttonName(btnData, btnData.name);
         					FontMetrics fo = g.getFontMetrics();
@@ -2289,10 +1800,22 @@ class MyButton extends JButton {
             paintSwingButton(g);
         }
 		if(invertsIconOnly()) invertIcon(g);
-		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
+		if(Host.get().authToolActive() && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
 		}
     }
+
+	/**
+	 * Where an icon centred in the button starts (component pixels, zoomed): HyperCard adds half the difference rounded
+	 * down, so an icon taller than the button by an odd number starts the extra pixel above it (HyperCard J-2.3: the 32-high
+	 * second hand of HyperPiece 2's clock in a 31-high button, a pixel higher than (31-32)/2 put it). Worked out at the
+	 * card's own size and scaled, so a zoomed card matches.
+	 */
+	static int iconOffset(int box, int icon, int logicalBox){
+		double s = logicalBox>0 ? box/(double)logicalBox : 1;
+		int logicalIcon = (int)Math.round(icon/s);
+		return (int)Math.round(Math.floorDiv(logicalBox-logicalIcon, 2)*s);
+	}
 
 	/**
 	 * A hilited transparent button with an icon: HyperCard J-2.3 inverts the icon (its masked pixels) and the box of its
@@ -2309,7 +1832,7 @@ class MyButton extends JButton {
 		if(w<=0 || h<=0) return;
 		java.awt.Rectangle r;
 		boolean iconLargerThanButton = w>getWidth() || h>getHeight();
-		if(!btnData.showName || iconLargerThanButton) r = new java.awt.Rectangle((getWidth()-w)/2, btnData.showName ? 0 : (getHeight()-h)/2, w, h);
+		if(!btnData.showName || iconLargerThanButton) r = new java.awt.Rectangle(iconOffset(getWidth(), w, btnData.width), iconOffset(getHeight(), h, btnData.height) - (btnData.showName ? Host.get().toPhysical(6) : 0), w, h);
 		else{
 			java.awt.Insets in = getInsets();
 			java.awt.Rectangle viewR = new java.awt.Rectangle(in.left, in.top, getWidth()-in.left-in.right, getHeight()-in.top-in.bottom), textR = new java.awt.Rectangle();
@@ -2373,11 +1896,11 @@ class RoundedCornerButton extends MyButton {
 
     @Override
     protected void paintComponent(Graphics g) {
-		if(!isVisible() || (PCARD.lockedScreen && !PCARD.capturingEffect)) return;
+		if(!isVisible() || (HZ.lockedScreen && !HZ.capturingEffect)) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
-		if(PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return; //スタック切り替え中の再描画
-		if(btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.stack()==null || HZ.stack().curCard==null) return; //スタック切り替え中の再描画
+		if(btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
         initShape();
         Graphics2D g2 = (Graphics2D)g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -2426,8 +1949,8 @@ class RoundedCornerButton extends MyButton {
         String shownName = StackTranslation.buttonName(btnData, btnData.name);
         if((btnData.textStyle&8) > 0) { //outline
         	int fittedTextSize = getFont().getSize(); //収まらない場合は少し縮めたサイズを使う(拡大表示モードでは既に物理サイズ)
-        	int scaledWidth = PCARD.toPhysical(btnData.width);
-        	int scaledHeight = PCARD.toPhysical(btnData.height);
+        	int scaledWidth = Host.get().toPhysical(btnData.width);
+        	int scaledHeight = Host.get().toPhysical(btnData.height);
         	g2.setFont(OObject.stackFont(btnData.textFont, Font.PLAIN, fittedTextSize));
     		FontMetrics fo = g2.getFontMetrics();
         	int w = fo.stringWidth(shownName);
@@ -2444,8 +1967,8 @@ class RoundedCornerButton extends MyButton {
         }
         if((btnData.textStyle&16) > 0) { //shadow
         	int fittedTextSize = getFont().getSize(); //収まらない場合は少し縮めたサイズを使う(拡大表示モードでは既に物理サイズ)
-        	int scaledWidth = PCARD.toPhysical(btnData.width);
-        	int scaledHeight = PCARD.toPhysical(btnData.height);
+        	int scaledWidth = Host.get().toPhysical(btnData.width);
+        	int scaledHeight = Host.get().toPhysical(btnData.height);
         	g2.setFont(OObject.stackFont(btnData.textFont, Font.PLAIN, fittedTextSize));
     		FontMetrics fo = g2.getFontMetrics();
         	int w = fo.stringWidth(shownName);
@@ -2466,18 +1989,18 @@ class RoundedCornerButton extends MyButton {
     }
     @Override
     protected void paintBorder(Graphics g) {
-		if(!isVisible() || (PCARD.lockedScreen && !PCARD.capturingEffect)) return;
+		if(!isVisible() || (HZ.lockedScreen && !HZ.capturingEffect)) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return; //スタック切り替え中の再描画
-		if(btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		if(HZ.stack()==null || HZ.stack().curCard==null) return; //スタック切り替え中の再描画
+		if(btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
         if(isBorderPainted()){
 	        initShape();
 	        paintFrame((Graphics2D)g);
         }
-		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
+		if(Host.get().authToolActive() && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
 		}
-		else if((btnData.style==1 || btnData.style==2) && AuthTool.tool!=null && AuthTool.tool.getClass()==ButtonTool.class ){
+		else if((btnData.style==1 || btnData.style==2) && Host.get().authToolActive() && AuthTool.tool.getClass()==ButtonTool.class ){
 			g.setColor(Color.BLACK);
 			// Component dimensions are already converted to physical pixels by setBounds().
 			// Using the logical part dimensions here made the tool outline half-sized at 2x zoom.
@@ -2494,9 +2017,9 @@ class RoundedCornerButton extends MyButton {
     }
     /** Fills the logical rectangle x,y,w,h of the button (its own coordinates) in window pixels, edges rounded as the card's. */
     protected void fillLogical(Graphics g, int x, int y, int w, int h){
-        int l = PCARD.toPhysical(btnData.left), t = PCARD.toPhysical(btnData.top);
-        int px = PCARD.toPhysical(btnData.left+x)-l, py = PCARD.toPhysical(btnData.top+y)-t;
-        g.fillRect(px, py, PCARD.toPhysical(btnData.left+x+w)-l-px, PCARD.toPhysical(btnData.top+y+h)-t-py);
+        int l = Host.get().toPhysical(btnData.left), t = Host.get().toPhysical(btnData.top);
+        int px = Host.get().toPhysical(btnData.left+x)-l, py = Host.get().toPhysical(btnData.top+y)-t;
+        g.fillRect(px, py, Host.get().toPhysical(btnData.left+x+w)-l-px, Host.get().toPhysical(btnData.top+y+h)-t-py);
     }
     @Override
     public boolean contains(int x, int y) {
@@ -2517,6 +2040,23 @@ class RectButton extends RoundedCornerButton {
 		initShape();
 	}
 
+	/** A shadow button's icon (and the name under it) is placed on the whole rectangle, as HyperCard J-2.3 does: its border's
+	 *  insets (1,1,3,3, the shadow) moved a named 40x40 button's icon a pixel up and left. Without an icon the name keeps them. */
+	@Override
+	public java.awt.Insets getInsets(){
+		if(btnData!=null && btnData.style==4 && getIcon()!=null) return new java.awt.Insets(0, 0, 0, 0);
+		return super.getInsets();
+	}
+	@Override
+	public java.awt.Insets getInsets(java.awt.Insets in){
+		if(btnData!=null && btnData.style==4 && getIcon()!=null){
+			if(in==null) return new java.awt.Insets(0, 0, 0, 0);
+			in.set(0, 0, 0, 0);
+			return in;
+		}
+		return super.getInsets(in);
+	}
+
 	protected void initShape() {
 		if (!getBounds().equals(base)) {
 			base = getBounds();
@@ -2535,10 +2075,10 @@ class RectButton extends RoundedCornerButton {
 	@Override
     protected void paintComponent(Graphics g) {
 		if(!isVisible()) return;
-		if(PCARD.pc.stack.curCard==null || btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.stack().curCard==null || btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
         Graphics2D g2 = (Graphics2D)g;
         //g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         boolean fillsHilite = btnData.fillsHilite() && getHilite(); //hiliteColor: RoundedCornerButton fills it, no inversion
@@ -2581,10 +2121,10 @@ class RectButton extends RoundedCornerButton {
     }
     @Override
     protected void paintBorder(Graphics g) {
-		if(!isVisible() || (PCARD.lockedScreen && !PCARD.capturingEffect)) return;
+		if(!isVisible() || (HZ.lockedScreen && !HZ.capturingEffect)) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
-		if(PCARD.pc.stack.curCard==null || btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.stack().curCard==null || btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
         if(btnData.style==4){
 	        //in card pixels: zoomed, the frame and the shadow are as thick as one of them (they were one window pixel)
 	        g.setColor(btnData.color);
@@ -2637,10 +2177,10 @@ class RoundButton extends RoundedCornerButton {
 	@Override
     protected void paintComponent(Graphics g) {
 		if(!isVisible()) return;
-		if(PCARD.pc.stack.curCard==null || btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		if(HZ.stack().curCard==null || btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
         initShape();
         Graphics2D g2 = (Graphics2D)g;
         //g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
@@ -2653,7 +2193,7 @@ class RoundButton extends RoundedCornerButton {
             g2.fill(shape);
         }
         super.paintComponent(g2);
-		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
+		if(Host.get().authToolActive() && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
 		}
     }
@@ -2676,16 +2216,16 @@ class ClassicToggleIcon implements Icon {
 	/** Gives a radio button or check box this mark and HyperCard's spacing around it. */
 	static void install(javax.swing.AbstractButton component, OButton button, boolean radio){
 		component.setIcon(new ClassicToggleIcon(button, radio));
-		component.setIconTextGap(PCARD.toPhysical(TEXT_GAP));
-		component.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, PCARD.toPhysical(LEFT_INSET), 0, 0));
+		component.setIconTextGap(Host.get().toPhysical(TEXT_GAP));
+		component.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, Host.get().toPhysical(LEFT_INSET), 0, 0));
 		component.setRolloverEnabled(false);
 	}
-	public int getIconWidth(){ return PCARD.toPhysical(SIZE); }
-	public int getIconHeight(){ return PCARD.toPhysical(SIZE); }
+	public int getIconWidth(){ return Host.get().toPhysical(SIZE); }
+	public int getIconHeight(){ return Host.get().toPhysical(SIZE); }
 	public void paintIcon(java.awt.Component c, Graphics g, int x, int y){
 		//線の太さは拡大率を丸めたピクセル数(最大125%などでも1ピクセル以上)
-		int size = PCARD.toPhysical(SIZE), scale = Math.max(1, (int)Math.round(PCARD.scale()));
-		int dot = PCARD.toPhysical(3), dotSize = PCARD.toPhysical(6);
+		int size = Host.get().toPhysical(SIZE), scale = Math.max(1, (int)Math.round(Host.get().scale()));
+		int dot = Host.get().toPhysical(3), dotSize = Host.get().toPhysical(6);
 		boolean selected = c instanceof javax.swing.AbstractButton && ((javax.swing.AbstractButton)c).isSelected();
 		Color fg = button.color, bg = button.bgColor;
 		if(!c.isEnabled()) fg = new Color((fg.getRed()+bg.getRed())/2, (fg.getGreen()+bg.getGreen())/2, (fg.getBlue()+bg.getBlue())/2);
@@ -2739,11 +2279,11 @@ class MyRadio extends JRadioButton {
 		btnData=btn;
 		setModel(new EditToolInertToggleModel());
 		setMargin(new Insets(0,0,0,0));
-		this.setDoubleBuffered(PCARD.useDoubleBuffer);
+		this.setDoubleBuffered(HZ.useDoubleBuffer);
 	}
 	@Override
 	public void paint(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paint(g);
 	}
 	@Override
@@ -2764,20 +2304,20 @@ class MyRadio extends JRadioButton {
 	//実際のSwing上のサイズ・位置だけをここで拡大率倍する。
 	@Override
 	public void setBounds(int x, int y, int width, int height){
-		Rectangle physical = PCARD.toPhysical(x, y, width, height);
+		Rectangle physical = Host.get().toPhysical(x, y, width, height);
 		super.setBounds(physical.x, physical.y, physical.width, physical.height);
 	}
     @Override
     protected void paintComponent(Graphics g) {
 		if(!isVisible()) return;
-		if(btnData==null||PCARD.pc.stack.curCard==null||btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		if(btnData==null||HZ.stack().curCard==null||btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		paintSwingButton(g);
 		if((btnData.textStyle&8)!=0&&btnData.showName)
 			paintOutlineText(g,StackTranslation.buttonName(btnData, btnData.name),getInsets().left+(getIcon()!=null?getIcon().getIconWidth():getFont().getSize())+getIconTextGap());
-		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
+		if(Host.get().authToolActive() && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
 		}
 	}
@@ -2806,11 +2346,11 @@ class MyCheck extends JCheckBox {
 		btnData=btn;
 		setModel(new EditToolInertToggleModel());
 		setMargin(new Insets(0,0,0,0));
-		this.setDoubleBuffered(PCARD.useDoubleBuffer);
+		this.setDoubleBuffered(HZ.useDoubleBuffer);
 	}
 	@Override
 	public void paint(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paint(g);
 	}
 	@Override
@@ -2831,20 +2371,20 @@ class MyCheck extends JCheckBox {
 	//実際のSwing上のサイズ・位置だけをここで拡大率倍する。
 	@Override
 	public void setBounds(int x, int y, int width, int height){
-		Rectangle physical = PCARD.toPhysical(x, y, width, height);
+		Rectangle physical = Host.get().toPhysical(x, y, width, height);
 		super.setBounds(physical.x, physical.y, physical.width, physical.height);
 	}
 	@Override
 	protected void paintComponent(Graphics g) {
 		if(!isVisible()) return;
-		if(PCARD.pc.stack.curCard==null || btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		if(HZ.stack().curCard==null || btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		paintSwingButton(g);
 		if((btnData.textStyle&8)!=0&&btnData.showName)
 			paintOutlineText(g,StackTranslation.buttonName(btnData, btnData.name),getInsets().left+(getIcon()!=null?getIcon().getIconWidth():getFont().getSize())+getIconTextGap());
-		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
+		if(Host.get().authToolActive() && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
 		}
     }
@@ -2871,7 +2411,7 @@ class MyPopup extends JComboBox {
 	public MyPopup(OButton btn, String[] text){
 		super(text);
 		btnData=btn;
-		this.setDoubleBuffered(PCARD.useDoubleBuffer);
+		this.setDoubleBuffered(HZ.useDoubleBuffer);
 		//選択肢は表示だけ翻訳する(StackTranslation)。選んだ値(selectedText)は元のまま
 		//幅の狭いポップアップでは選択中の項目(index -1)をAquaには描かせず、paintで自分で描く
 		final javax.swing.ListCellRenderer<Object> base = getRenderer();
@@ -2932,7 +2472,7 @@ class MyPopup extends JComboBox {
 
 	@Override
 	public void paint(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		String own = narrowValueText();
 		ownValue = own!=null;
 		try{ super.paint(g); }
@@ -2966,7 +2506,7 @@ class MyPopup extends JComboBox {
 	@Override
 	public void setBounds(int x, int y, int width, int height){
 		if(height==19) height = 20; //hcのデフォルトでは上が消えてしまう(描くときだけ: the rect stays the button's)
-		double scale = PCARD.scale();
+		double scale = Host.get().scale();
 		int nameWidth = OButton.popupNameWidthFor(btnData, width);
 		if(nameWidth>0){
 			if(btnData.popupNameLabel==null){
@@ -2981,14 +2521,14 @@ class MyPopup extends JComboBox {
 			btnData.popupNameLabel.setForeground(btnData.color);
 			btnData.popupNameLabel.setBackground(btnData.bgColor);
 			btnData.popupNameLabel.setFont(OObject.stackFont(btnData.textFont, btnData.textStyle&0x03, btnData.textSize*scale));
-			btnData.popupNameLabel.setBounds(PCARD.toPhysical(x, y, nameWidth, height));
+			btnData.popupNameLabel.setBounds(Host.get().toPhysical(x, y, nameWidth, height));
 			btnData.popupNameLabel.setVisible(isVisible());
 		}
 		else if(btnData.popupNameLabel!=null){
 			PCARD.pc.mainPane.remove(btnData.popupNameLabel);
 			btnData.popupNameLabel = null;
 		}
-		Rectangle physical = PCARD.toPhysical(x+nameWidth, y, Math.max(0,width-nameWidth), height);
+		Rectangle physical = Host.get().toPhysical(x+nameWidth, y, Math.max(0,width-nameWidth), height);
 		super.setBounds(physical.x, physical.y, physical.width, physical.height);
 		updateNarrowLook();
 	}
@@ -3006,10 +2546,10 @@ class MyPopup extends JComboBox {
 	@Override
 	protected void paintComponent(Graphics g) {
 		if(!isVisible()) return;
-		//if(btnData.card!=PCARD.pc.stack.curCard && btnData.card!=PCARD.pc.stack.curCard.bg) return;
+		//if(btnData.card!=HZ.stack().curCard && btnData.card!=HZ.stack().curCard.bg) return;
 		if(PCARD.pc.bit != 1) return;
-		if(PaintTool.editBackground && btnData.parent.objectType.equals("card")) return;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.editBackground && btnData.parent.objectType.equals("card")) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		this.validate();
 		super.paintComponent(g);
 		if((btnData.textStyle&8)!=0 && !ownValue){
@@ -3019,7 +2559,7 @@ class MyPopup extends JComboBox {
 				paintOutlineText(g2,selected.toString(),getInsets().left+4,(getHeight()-metrics.getHeight())/2+metrics.getAscent());
 			}
 		}
-		if(AuthTool.tool!=null && ButtonGUI.gui.target == this){
+		if(Host.get().authToolActive() && ButtonGUI.gui.target == this){
 			ButtonGUI.drawSelectBorder(this);
 		}
 	}
@@ -3046,19 +2586,19 @@ class MyPopupNameLabel extends JLabel {
 
 	@Override
 	public void paint(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paint(g);
 	}
 
 	@Override
 	protected void paintComponent(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paintComponent(g);
 	}
 
 	@Override
 	protected void paintBorder(Graphics g){
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		super.paintBorder(g);
 	}
 }

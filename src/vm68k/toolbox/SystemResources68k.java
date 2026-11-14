@@ -102,6 +102,10 @@ final class SystemResources68k {
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("WDEF"),0,null,DEF_ATTRIBUTES,nativeDefStub(ResourceManager68k.WDEF_SELECTOR)));  // (varCode, WindowPtr, message, param): LONGINT
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("WDEF"),1,null,DEF_ATTRIBUTES,defStub(12,true)));
 		for(int id:new int[]{0,1})f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("CDEF"),id,null,DEF_ATTRIBUTES,nativeDefStub(ResourceManager68k.CDEF_SELECTOR|id))); // (varCode, ControlHandle, message, param): LONGINT
+		// Mac OS 8's System holds the Appearance Manager's CDEFs too (procIDs 32-463 and 976-1007: bevel buttons, sliders, tabs,
+		// the new push buttons and check boxes of CDEF 23...): Word 2001 quit at launch - ExitToShell with no message - when
+		// GetResource('CDEF',23) gave NIL. Mac OS 9.1's System has these IDs; the native drawing serves them by procID.
+		if(version>=0x0800)for(int id=2;id<=62;id++)if(id!=13&&(id<=28||id>=61))f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("CDEF"),id,null,DEF_ATTRIBUTES,nativeDefStub(ResourceManager68k.CDEF_SELECTOR|id)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("CDEF"),63,null,DEF_ATTRIBUTES,defStub(12,true)));
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("MDEF"),0,null,DEF_ATTRIBUTES,nativeMdefStub())); // (message, MenuHandle, Rect*, Point, whichItem*): sizes and hit tests natively
 		f.add(new ResourceFile68k.Resource(ResourceFile68k.fourcc("LDEF"),0,null,DEF_ATTRIBUTES,defStub(20,false))); // (message, select, Rect*, Cell, dataOffset, dataLen, ListHandle)
@@ -147,7 +151,7 @@ final class SystemResources68k {
 	}
 	/** A resource name as the map stores it: the family name's bytes in the system script (Shift-JIS for Japanese families), read as Mac Roman. */
 	private static String fondName(String name){
-		byte[] b=name.getBytes(java.nio.charset.Charset.forName("Shift_JIS"));
+		byte[] b=name.getBytes(Platform.get().charset("Shift_JIS"));
 		return StackTextEncoding.ROMAN.decode(b,0,b.length);
 	}
 	/** 'fld#': per folder its type, a zero version word, the name's length as a word and the name, padded to an even length. */
@@ -377,7 +381,7 @@ final class SystemResources68k {
 		{"i","\u02c6","aeiouAEIOU ","\u00e2\u00ea\u00ee\u00f4\u00fb\u00c2\u00ca\u00ce\u00d4\u00db\u02c6"},
 		{"n","\u02dc","anoANO ","\u00e3\u00f1\u00f5\u00c3\u00d1\u00d5\u02dc"},
 		{"u","\u00a8","aeiouyAEIOUY ","\u00e4\u00eb\u00ef\u00f6\u00fc\u00ff\u00c4\u00cb\u00cf\u00d6\u00dc\u0178\u00a8"}};
-	private static int roman(String c){byte[] b=c.getBytes(java.nio.charset.Charset.forName("x-MacRoman"));return b.length==1?b[0]&0xff:'?';}
+	private static int roman(String c){byte[] b=c.getBytes(Platform.get().charset("x-MacRoman"));return b.length==1?b[0]&0xff:'?';}
 	private static int keyFor(char plain){for(int k=0;k<128;k++)if(KEY_PLAIN[k]==plain)return k;return -1;}
 	private static byte[] kchr(){
 		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();

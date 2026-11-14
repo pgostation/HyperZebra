@@ -35,10 +35,6 @@ import javax.swing.JPopupMenu;
 import javax.swing.JRootPane;
 import javax.swing.KeyStroke;
 import javax.swing.filechooser.FileFilter;
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 
 public class GMenu {
@@ -241,6 +237,7 @@ public class GMenu {
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Export HyperCard Stack…")));mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Import SVG…")));mi.addActionListener(listener);
 		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Export Card Image…")));mi.addActionListener(listener);
+		    m.add(mi = new JMenuItem(PCARD.pc.intl.getText("Export for Web…")));mi.addActionListener(listener); //WebExport: the browser player
 		    m.addSeparator();
 		    //このスタックだけの拡大表示・キー・コントローラ・フォルダ外へのアクセス(StackSettings)。セキュリティの設定なので
 		    //doMenuを通さない(スタックのdoMenuハンドラに止められない)
@@ -668,7 +665,7 @@ public class GMenu {
 			boolean[] enabled={hasButton,hasField,hasShape,GMenuBrowse.hasPanels(),hasButton||hasField||hasShape,hasButton||hasField||hasShape};
 			for(int i=0;i<names.length;i++){JMenuItem item=searchMenuItem(bar,"Objects",names[i]);if(item!=null)item.setEnabled(enabled[i]);}
 			JMenuItem background=searchMenuItem(bar,"Edit","Background");
-			if(background!=null){background.setEnabled(AuthTool.tool!=null||PCARD.pc.tool!=null);if(background instanceof JCheckBoxMenuItem)((JCheckBoxMenuItem)background).setSelected(PaintTool.editBackground);}
+			if(background!=null){background.setEnabled(AuthTool.tool!=null||PCARD.pc.tool!=null);if(background instanceof JCheckBoxMenuItem)((JCheckBoxMenuItem)background).setSelected(HZ.editBackground);}
 		}
 		updateSaveACopy();
 		applyUserLevel();
@@ -921,6 +918,13 @@ class GMenuBrowse implements ActionListener {
 		else if(item!=null && item.equalsIgnoreCase("Clear Field")) item = "Delete Field";
 		//and "Bkgnd Info..." where HyperZebra's Objects menu says Background Info… (HyperCard 2.x Home's b)
 		else if(item!=null && (item.equalsIgnoreCase("Bkgnd Info...") || item.equalsIgnoreCase("Bkgnd Info…"))) item = "Background Info…";
+		//Undo / Redo with a paint tool: the painting (doMenu(String)), before the menus are looked at - the browse menus' Undo
+		//item is disabled then, and a disabled built-in item does nothing
+		if(item!=null && Host.get().paintToolActive() && (menuName==null || menuName.isEmpty() || menuName.equalsIgnoreCase("Edit") ||
+				(PCARD.pc.intl!=null && menuName.equalsIgnoreCase(PCARD.pc.intl.getText("Edit"))))){
+			String eng = PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(item) : item;
+			if(eng.trim().equalsIgnoreCase("Undo") || eng.trim().equalsIgnoreCase("Redo")){ doMenu(eng.trim()); return; }
+		}
 		//"select bg button 1" then doMenu "Copy Button" (SimOfAnt): the Edit menu follows the selection a script just made
 		GMenu.updateAuthoringMenus();
 		//Go > Next Window (Myst Preview: xWindowFrame opens a black backdrop window, then doMenu "next window" brings the card
@@ -940,11 +944,11 @@ class GMenuBrowse implements ActionListener {
 			//command works when no menu has an item of that name, as Paste Card does
 			boolean copyCard = false;
 			if(eng.equalsIgnoreCase("Copy Card") || item.equalsIgnoreCase("Copy Card")){
-				JMenu edit = TTalk.findMenu("Edit");
-				copyCard = edit!=null && TTalk.findMenuItemIndex(edit, item)>=0;
+				JMenu edit = SwingMenus.unwrap(TTalk.findMenu("Edit"));
+				copyCard = edit!=null && TTalk.findMenuItemIndex(SwingMenus.wrap(edit), item)>=0;
 				if(!copyCard){
 					copyCard = true;
-					for(JMenu m : TTalk.menuList()) if(m!=null && TTalk.findMenuItemIndex(m, item)>=0){ copyCard = false; break; }
+					for(JMenu m : SwingMenus.unwrapAll(TTalk.menuList())) if(m!=null && TTalk.findMenuItemIndex(SwingMenus.wrap(m), item)>=0){ copyCard = false; break; }
 				}
 			}
 			if(copyCard){
@@ -979,9 +983,9 @@ class GMenuBrowse implements ActionListener {
 			TTalk.doScriptforMenu("choose select tool");
 			return;
 		}
-		JMenu menu = menuName!=null && !menuName.isEmpty() ? TTalk.findMenu(menuName) : null;
+		JMenu menu = menuName!=null && !menuName.isEmpty() ? SwingMenus.unwrap(TTalk.findMenu(menuName)) : null;
 		//doMenu "Keep", "Paint" right after "choose tool 4" (J-Paint's filters): the Paint menu is in the paint menu bar
-		if(menu==null && menuName!=null && !menuName.isEmpty()) menu = TTalk.findPaintMenu(menuName);
+		if(menu==null && menuName!=null && !menuName.isEmpty()) menu = SwingMenus.unwrap(TTalk.findPaintMenu(menuName));
 		//doMenu "ことえり", "Keyboards": the system's Keyboard menu, kept for scripts only (ScreenSaver Stack)
 		if(menu==null && TTalk.isKeyboardsMenuName(menuName)){
 			if(TTalk.chooseKeyboardsMenuItem(item)) return;
@@ -994,20 +998,21 @@ class GMenuBrowse implements ActionListener {
 		}
 		//doMenu "Plain", "Style" (PALotto; HC J-2.3 probe Pan doMenu Style: no error with nothing selected): HyperCard's Style and
 		//Font menus, which HyperZebra's menu bar lacks, style the selected text
-		if(menu==null && menuName!=null && TTalk.isHyperCardOnlyMenu(menuName) && TTalk.virtualHyperCardMenu(menuName)!=null){
+		if(menu==null && menuName!=null && TTalk.isHyperCardOnlyMenu(menuName) && SwingMenus.unwrap(TTalk.virtualHyperCardMenu(menuName))!=null){
 			String vn = java.text.Normalizer.normalize(menuName.trim(), java.text.Normalizer.Form.NFKC).toLowerCase(java.util.Locale.ROOT);
 			boolean style = vn.equals("style") || vn.equals("スタイル");
 			OField field = TUtil.findFocusedOrClickedField();
 			boolean selected = field!=null && field.fld!=null && field.fld.getSelectionEnd()>field.fld.getSelectionStart();
+			if(style && TUtil.styleSelectedText(item)) return; //as choosing it: Bold comes off when all of the text has it
 			if(selected && item!=null && (style ? item.trim().matches("(?i)plain|bold|italic|underline|outline|shadow|condense|extend|group") : vn.equals("font") || vn.equals("フォント")))
 				TTalk.doScriptforMenu("set the "+(style ? "textStyle" : "textFont")+" of the selectedChunk to \""+item.trim().replace("\"", "")+"\"");
 			return;
 		}
 		if(menuName!=null && !menuName.isEmpty() && menu==null) throw new xTalkException("No such menu: {0}", menuName);
-		java.util.List<JMenu> menus = menu!=null ? java.util.Collections.singletonList(menu) : new java.util.ArrayList<JMenu>(TTalk.menuList());
-		if(menu==null) menus.add(TTalk.appleMenu); //doMenu "About X…" (アップルメニューの項目1)
+		java.util.List<JMenu> menus = menu!=null ? java.util.Collections.singletonList(menu) : new java.util.ArrayList<JMenu>(SwingMenus.unwrapAll(TTalk.menuList()));
+		if(menu==null) menus.add(SwingMenus.unwrap(TTalk.appleMenu)); //doMenu "About X…" (アップルメニューの項目1)
 		for(JMenu m : menus){
-			int idx = TTalk.findMenuItemIndex(m, item);
+			int idx = TTalk.findMenuItemIndex(SwingMenus.wrap(m), item);
 			if(idx<0) continue;
 			java.awt.Component c = m.getPopupMenu().getComponent(idx);
 			if(!(c instanceof JMenuItem)) continue;
@@ -1086,7 +1091,7 @@ class GMenuBrowse implements ActionListener {
 			}
 
 			public String getDescription() {
-				return PCARD.AppName+" stack(*.hzb)";
+				return HZ.AppName+" stack(*.hzb)";
 			}
 		});
 		FileChooserPlaces.attach(chooser);
@@ -1120,7 +1125,7 @@ class GMenuBrowse implements ActionListener {
 			int j=1;
 			String renameStr;
 			while(true){
-				renameStr = System.getProperty("java.io.tmpdir")+File.separatorChar+PCARD.AppName+"_renamed"+j;
+				renameStr = System.getProperty("java.io.tmpdir")+File.separatorChar+HZ.AppName+"_renamed"+j;
 				if(!new File(renameStr).exists()){
 					break;
 				}
@@ -1221,9 +1226,9 @@ class GMenuBrowse implements ActionListener {
 		newStack.firstCard = cd.id;
 		newStack.firstBg = bg.id;
 
-		newStack.createdByVersion = PCARD.longVersion;
-		newStack.lastCompactedVersion = PCARD.longVersion;
-		newStack.firstEditedVersion = PCARD.longVersion;
+		newStack.createdByVersion = HZ.longVersion;
+		newStack.lastCompactedVersion = HZ.longVersion;
+		newStack.firstEditedVersion = HZ.longVersion;
 		newStack.userLevel = 5;
 
 		//パターンはMac本来のppat(カラーのピクセルパターン)としてスタックに置く
@@ -1293,6 +1298,8 @@ class GMenuBrowse implements ActionListener {
 	public static void doMenu(String in_cmd) throws xTalkException {
 		String cmd = PCARD.pc.intl.getEngText(in_cmd);
 		if(TTalk.editSelectedText(cmd)) return;
+		//doMenu "Bold" (HyperCard's Style menu, which HyperZebra's bar has only while a field is edited): the selected text
+		if(TUtil.styleSelectedText(cmd)) return;
 		// Menu messages normally arrive on the interpreter thread. Shape authoring changes Swing widgets.
 		boolean shapeAction=java.util.Arrays.asList("shape","edit shapes","new shape","new shape…","shape info…",
 			"import svg…","cut shape","copy shape","paste shape","delete shape").contains(cmd.toLowerCase(java.util.Locale.ROOT))
@@ -1305,6 +1312,13 @@ class GMenuBrowse implements ActionListener {
 			if(failure[0]!=null)throw failure[0];return;
 		}
 		if (cmd.equalsIgnoreCase("Undo") || cmd.equalsIgnoreCase("Redo")) {
+			//with a paint tool HyperCard's Undo takes back the painting (the paint menus name the item Undo Paint): a script's
+			//doMenu "Undo" after a drag left the paint on the card (HyperPiece 2 card 72, Paint の隠し業: drag … / domenu "undo")
+			if(Host.get().paintToolActive()){
+				PaintTool.owner = PCARD.pc;
+				GMenuPaint.doMenu(cmd.equalsIgnoreCase("Redo") ? "Redo Paint" : "Undo Paint");
+				return;
+			}
 			AuthoringUndo.perform(cmd.equalsIgnoreCase("Redo"));
 			return;
 		}
@@ -1588,6 +1602,7 @@ class GMenuBrowse implements ActionListener {
 		//Go > Help: HyperZebra Help, on what HyperZebra adds to HyperCard (the launcher's Help menu has every topic)
 		else if(cmd.equalsIgnoreCase("Help")){GHelpWindow.show(GHelpWindow.TOPIC_EXTENSIONS);}
 		else if(cmd.equalsIgnoreCase("Export Card Image…")){CardImageExport.exportDialog(PCARD.pc);}
+		else if(cmd.equalsIgnoreCase("Export for Web…")){WebExport.exportFromMenu();}
 		else if(cmd.equalsIgnoreCase("Delete Shape")){if(ShapeTool.active())ShapeEditor.deleteSelected();}
 		else if(cmd.equalsIgnoreCase("Copy Shape")){if(ShapeTool.active())ShapeEditor.copySelected();}
 		else if(cmd.equalsIgnoreCase("Cut Shape")){if(ShapeTool.active()){ShapeEditor.copySelected();ShapeEditor.deleteSelected();}}
@@ -1773,10 +1788,9 @@ class GMenuBrowse implements ActionListener {
 			if(AuthTool.tool.getClass()==ButtonTool.class){
 				if(ButtonGUI.gui.tgtOBtn!=null){
 					//XMLテキストを取得
-					XMLOutputFactory factory = XMLOutputFactory.newInstance();
 			        StringWriter stringWriter = new StringWriter();
 			        try {
-			        	XMLStreamWriter writer = factory.createXMLStreamWriter(stringWriter);
+			        	XmlOut writer = Platform.get().xmlOut(stringWriter);
 
 			            writer.writeStartElement("buttonclip");
 			            writer.writeCharacters("\n\t");
@@ -1861,16 +1875,15 @@ class GMenuBrowse implements ActionListener {
 					e.printStackTrace();
 				}
 				if(str!=null && str.startsWith("<buttonclip>")){
-				    XMLInputFactory factory = XmlSafe.input();
-				    XMLStreamReader reader = null;
+				    XmlIn reader = null;
 				    try {
-						reader = factory.createXMLStreamReader(new ByteArrayInputStream(str.getBytes()));
+						reader = Platform.get().xmlIn(new ByteArrayInputStream(str.getBytes()));
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
 
 					OCardBase cdbase = PCARD.pc.stack.curCard;
-					if(PaintTool.editBackground){
+					if(HZ.editBackground){
 						cdbase = PCARD.pc.stack.curCard.bg;
 					}
 		        	int newid = cdbase.newPartId();
@@ -1883,14 +1896,14 @@ class GMenuBrowse implements ActionListener {
 				    	String text = "";
 				    	while (reader.hasNext()) {
 				            int eventType = reader.next();
-				            if (eventType == XMLStreamReader.START_ELEMENT) {
+				            if (eventType == XmlIn.START_ELEMENT) {
 				            	String elm = reader.getLocalName().intern();
 				            	if(elm.equals("iconpath")){ iconpath = reader.getElementText(); }
 				            	else if(elm.equals("iconname")){ iconname = reader.getElementText(); }
 				            	else if(elm.equals("fontname")){ fontname = reader.getElementText(); }
 				            	else if(elm.equals("text")){ text = reader.getElementText(); }
 				            }
-				            else if (eventType == XMLStreamReader.END_ELEMENT) {
+				            else if (eventType == XmlIn.END_ELEMENT) {
 				            	String elm = reader.getLocalName();
 				            	if(elm.equals("clipoption")){
 				            		break;
@@ -1986,10 +1999,9 @@ class GMenuBrowse implements ActionListener {
 			if(AuthTool.tool.getClass()==FieldTool.class){
 				if(FieldGUI.gui.tgtOFld!=null){
 					//XMLテキストを取得
-					XMLOutputFactory factory = XMLOutputFactory.newInstance();
 			        StringWriter stringWriter = new StringWriter();
 			        try {
-			        	XMLStreamWriter writer = factory.createXMLStreamWriter(stringWriter);
+			        	XmlOut writer = Platform.get().xmlOut(stringWriter);
 
 			            writer.writeStartElement("fieldclip");
 			            writer.writeCharacters("\n\t");
@@ -2061,16 +2073,15 @@ class GMenuBrowse implements ActionListener {
 					e.printStackTrace();
 				}
 				if(str!=null && str.startsWith("<fieldclip>")){
-				    XMLInputFactory factory = XmlSafe.input();
-				    XMLStreamReader reader = null;
+				    XmlIn reader = null;
 				    try {
-						reader = factory.createXMLStreamReader(new ByteArrayInputStream(str.getBytes()));
+						reader = Platform.get().xmlIn(new ByteArrayInputStream(str.getBytes()));
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
 
 					OCardBase cdbase = PCARD.pc.stack.curCard;
-					if(PaintTool.editBackground){
+					if(HZ.editBackground){
 						cdbase = PCARD.pc.stack.curCard.bg;
 					}
 		        	int newid = cdbase.newPartId();
@@ -2081,12 +2092,12 @@ class GMenuBrowse implements ActionListener {
 				    	String text = "";
 				    	while (reader.hasNext()) {
 				            int eventType = reader.next();
-				            if (eventType == XMLStreamReader.START_ELEMENT) {
+				            if (eventType == XmlIn.START_ELEMENT) {
 				            	String elm = reader.getLocalName().intern();
 				            	if(elm.equals("fontname")){ fontname = reader.getElementText(); }
 				            	else if(elm.equals("text")){ text = reader.getElementText(); }
 				            }
-				            else if (eventType == XMLStreamReader.END_ELEMENT) {
+				            else if (eventType == XmlIn.END_ELEMENT) {
 				            	String elm = reader.getLocalName();
 				            	if(elm.equals("clipoption")){
 				            		break;
@@ -2141,9 +2152,9 @@ class GMenuBrowse implements ActionListener {
 			}
 		}
 		else if(cmd.equalsIgnoreCase("Background")){
-			PaintTool.editBackground = !PaintTool.editBackground;
+			HZ.editBackground = !HZ.editBackground;
 			ShapeEditor.selected=null;
-			GMenu.changeSelected("Edit","Background",PaintTool.editBackground);
+			GMenu.changeSelected("Edit","Background",HZ.editBackground);
 
 			ButtonGUI.gui.tgtOBtn = null;
 			ButtonGUI.gui.target = null;
@@ -2153,7 +2164,7 @@ class GMenuBrowse implements ActionListener {
 			OCard.reloadCurrentCard();
 			
 			String titleName = PCARD.pc.stack.getWindowTitle();
-			if(PaintTool.editBackground){
+			if(HZ.editBackground){
 				PCARD.pc.setTitle("/// "+titleName+" ///");
 			}else{
 				PCARD.pc.setTitle(titleName);
@@ -2244,9 +2255,9 @@ class GMenuBrowse implements ActionListener {
 			goToNewCard(cd.id);
 			//HyperCard J-2.3 leaves the new background open for editing: the editBkgnd is true and New Field makes a
 			//background field (itch.io Desert of the Real: doMenu new background / doMenu new field / set the name of bg field 1)
-			if(Thread.currentThread()==TTalk.talk){ if(!PaintTool.editBackground) doMenuImpl("Background"); }
+			if(Thread.currentThread()==TTalk.talk){ if(!HZ.editBackground) doMenuImpl("Background"); }
 			else TTalk.runOnScriptThread(() -> { //after the go queued above, even when its handlers stop with an error
-				try{ if(!PaintTool.editBackground) doMenuImpl("Background"); }catch(xTalkException e){}
+				try{ if(!HZ.editBackground) doMenuImpl("Background"); }catch(xTalkException e){}
 			}, true);
 		}
 		else if(cmd.equalsIgnoreCase("Delete Card")){

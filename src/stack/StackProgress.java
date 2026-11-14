@@ -51,7 +51,7 @@ final class StackProgress {
 			return;
 		}
 		Window owner = stack.pcard;
-		JDialog dialog = new JDialog(owner, PCARD.AppName);
+		JDialog dialog = new JDialog(owner, HZ.AppName);
 		dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
 		dialog.setResizable(false);
 		dialog.setFocusableWindowState(false); //読み込み中もキー入力を奪わない

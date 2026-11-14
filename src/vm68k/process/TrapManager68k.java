@@ -23,8 +23,8 @@ abstract class TrapManager68k {
 	/** A Pascal string output of at most {@code max} characters (bytes as given). */
 	void putPascal(int p,byte[] text,int max) throws M68kCpuException {if(p==0)return;int n=Math.min(Math.min(255,max),text.length);memory.writeByte(p,n);memory.load(p+1,text,0,n);}
 	byte[] pascalBytes(int p) throws M68kCpuException {if(p==0)return new byte[0];return memory.readBytes(p+1,memory.readByte(p));}
-	static byte[] roman(String s){return s.getBytes(java.nio.charset.Charset.forName("MacRoman"));}
-	static String roman(byte[] b){return new String(b,java.nio.charset.Charset.forName("MacRoman"));}
+	static byte[] roman(String s){return s.getBytes(Platform.get().charset("MacRoman"));}
+	static String roman(byte[] b){return new String(b,Platform.get().charset("MacRoman"));}
 	static int fourcc(String s){return ResourceFile68k.fourcc(s);}
 
 	/**

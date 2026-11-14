@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * All OT structures use 68K alignment (the headers say so for PowerPC too): one layout for both processors.
  */
-final class OpenTransport {
+class OpenTransport {
 	static final boolean TRACE=Boolean.getBoolean("hz68k.traceot");
 	/** Whether programs are told Open Transport is there (Gestalt 'otan'): -Dhz68k.opentransport=off hides it (programs then use MacTCP). */
 	static final boolean ENABLED=!"off".equalsIgnoreCase(System.getProperty("hz68k.opentransport","on"));
@@ -419,6 +419,12 @@ final class OpenTransport {
 		if(errPtr!=0)memory.writeLong(errPtr,r[1]);
 		return r[0];
 	}
+	/** OTOpenAppleTalkServices: no provider, kOTNotFoundErr in {@code *err}; the configuration is used up as by any open. */
+	private int noAppleTalk(int cfig,int errPtr) throws M68kException {
+		if(cfig!=0&&cfig!=CONFIG_INVALID)takeConfiguration(cfig);
+		if(errPtr!=0)memory.writeLong(errPtr,NOT_FOUND);
+		return 0;
+	}
 	private int[] openProvider(int cfig,int info,int want) throws M68kException {
 		if(cfig==0)return new int[]{0,OUT_OF_MEMORY};
 		if(cfig==CONFIG_INVALID)return new int[]{0,BAD_CONFIGURATION};
@@ -524,12 +530,12 @@ final class OpenTransport {
 		}
 		try{
 			if(p.kind==UDP){
-				if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_UDP,"",port))return ACCESS;
+				if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_UDP,"",port))return ACCESS;
 				DatagramSocket ds=new DatagramSocket(null);ds.setReuseAddress(p.options.getOrDefault(key(INET_IP,IP_REUSEADDR),0)!=0);
 				ds.bind(new InetSocketAddress(port));ds.setBroadcast(true);
 				p.datagram=ds;p.localPort=ds.getLocalPort();startDatagramReader(p,ds);
 			}else if(qlen>0){
-				if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_LISTEN,"",port))return ACCESS;
+				if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_LISTEN,"",port))return ACCESS;
 				ServerSocket ss=new ServerSocket();ss.setReuseAddress(true);ss.bind(new InetSocketAddress(port),Math.max(qlen,4));
 				p.server=ss;p.localPort=ss.getLocalPort();p.qlen=qlen;startAcceptor(p,ss);
 			}else{
@@ -610,7 +616,7 @@ final class OpenTransport {
 		if(a==null)return NO_ADDRESS;
 		if(bad(a))return BAD_ADDRESS;
 		String host=a.name!=null?a.name:dotted(a.ip);
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_CONNECT,host,a.port))return ACCESS;
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_CONNECT,host,a.port))return ACCESS;
 		if(TRACE)System.err.println("[ot] connect to "+host+":"+a.port+(p.sync?"":" (async)")+(p.blocking?"":" (non-blocking)"));
 		final Socket s;synchronized(p){s=p.prebound!=null?p.prebound:new Socket();p.prebound=null;p.connecting=true;p.connectConfirmed=false;p.disconnectPending=false;p.peerClosed=false;p.in.clear();p.dataNotified=false;}
 		p.state=T_OUTCON;
@@ -618,7 +624,7 @@ final class OpenTransport {
 		Thread t=new Thread(()->{
 			try{
 				InetAddress target=a.name!=null?InetAddress.getByName(a.name):fromInt(a.ip);
-				if(a.name!=null)Sandbox.hostResolved(a.name,new String[]{target.getHostAddress()});
+				if(a.name!=null)Sandbox68k.hostResolved(a.name,new String[]{target.getHostAddress()});
 				s.connect(new InetSocketAddress(target,a.port),30000);s.setTcpNoDelay(p.options.getOrDefault(key(INET_TCP,TCP_NODELAY),1)!=0);
 				synchronized(p){if(p.closed||!p.connecting){closeQuietly(s);return;}attach(p,s);p.connecting=false;p.connectConfirmed=true;}
 				if(TRACE)System.err.println("[ot] connected to "+s.getRemoteSocketAddress()+" from port "+s.getLocalPort());
@@ -903,7 +909,7 @@ final class OpenTransport {
 		int len=memory.readLong(udata+28),buf=memory.readLong(udata+32);
 		byte[] data=sendData(buf,len);
 		String host=a.name!=null?a.name:dotted(a.ip);
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_UDP,host,a.port))return ACCESS;
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_UDP,host,a.port))return ACCESS;
 		try{InetAddress target=a.name!=null?InetAddress.getByName(a.name):fromInt(a.ip);p.datagram.send(new DatagramPacket(data,data.length,target,a.port));}
 		catch(IOException e){if(TRACE)System.err.println("[ot] udp send to "+host+":"+a.port+": "+e);return BAD_ADDRESS;}
 		if(p.ackSends)post(p,T_MEMORYRELEASED,data.length,udata);
@@ -1116,14 +1122,14 @@ final class OpenTransport {
 		final Lookup l=new Lookup();
 		Integer ip=parseDotted(name);
 		if(ip!=null){l.addresses=new int[]{ip};l.canonical=name;l.finish();return l;}
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_LOOKUP,name,0))return null;
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_LOOKUP,name,0))return null;
 		Thread t=new Thread(()->{
 			try{
 				InetAddress[] all=InetAddress.getAllByName(name);List<Integer> v4=new ArrayList<Integer>();
 				for(InetAddress a:all)if(a.getAddress().length==4)v4.add(toInt(a));
 				if(v4.isEmpty())l.result=NO_DATA;
 				else{l.addresses=new int[Math.min(10,v4.size())];for(int i=0;i<l.addresses.length;i++)l.addresses[i]=v4.get(i);
-					String[] dottedAll=new String[l.addresses.length];for(int i=0;i<dottedAll.length;i++)dottedAll[i]=dotted(l.addresses[i]);Sandbox.hostResolved(name,dottedAll);
+					String[] dottedAll=new String[l.addresses.length];for(int i=0;i<dottedAll.length;i++)dottedAll[i]=dotted(l.addresses[i]);Sandbox68k.hostResolved(name,dottedAll);
 					l.canonical=name;try{String c=all[0].getCanonicalHostName();if(c!=null&&!c.isEmpty()&&parseDotted(c)==null)l.canonical=c;}catch(RuntimeException ignored){}}
 			}catch(IOException e){l.result=NO_DATA;}
 			if(TRACE)System.err.println("[ot] lookup "+name+" -> "+(l.result==NO_ERR?dotted(l.addresses[0]):"error "+l.result));
@@ -1174,7 +1180,7 @@ final class OpenTransport {
 	private int mailExchange(int ref,int namePtr,final int numPtr,final int mx) throws M68kException {
 		final Provider p=provider(ref);if(p==null)return BAD_REFERENCE;
 		final String name=cString(namePtr).trim();final int max=numPtr==0?0:memory.readWord(numPtr);
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_LOOKUP,name,0))return ACCESS;
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_LOOKUP,name,0))return ACCESS;
 		final List<String[]> found=new ArrayList<String[]>();final boolean[] done={false};
 		Thread t=new Thread(()->{
 			try{java.util.Hashtable<String,String> env=new java.util.Hashtable<String,String>();env.put("java.naming.factory.initial","com.sun.jndi.dns.DnsContextFactory");
@@ -1374,6 +1380,15 @@ final class OpenTransport {
 		alias("OTAsyncOpenInternetServicesInContext","OTAsyncOpenInternetServicesPriv");
 		def("OTAsyncOpenInternetServices","4:4444",a->asyncOpen(a[0],0,a[2],a[3],INET_SERVICES));
 		def("OTOpenMapperPriv","4:4444",a->open(a[0],0,a[2],MAPPER));
+		// AppleTalk services (OTATalkClientLib, OpenTptAppleTalkLib): there is no AppleTalk stack under Open Transport here, as on a
+		// Mac with AppleTalk inactive - the open fails (HP LaserJet Utility jumped to the NIL import and crashed at start-up)
+		def("OTOpenAppleTalkServicesPriv","4:4444",a->noAppleTalk(a[0],a[2]));
+		alias("OTOpenAppleTalkServicesInContext","OTOpenAppleTalkServicesPriv");
+		def("OTOpenAppleTalkServices","4:444",a->noAppleTalk(a[0],a[2]));
+		def("OTAsyncOpenAppleTalkServicesPriv","4:44444",a->{noAppleTalk(a[0],0);return NOT_FOUND;});
+		alias("OTAsyncOpenAppleTalkServicesInContext","OTAsyncOpenAppleTalkServicesPriv");
+		def("OTAsyncOpenAppleTalkServices","4:4444",a->{noAppleTalk(a[0],0);return NOT_FOUND;});
+		for(String n:new String[]{"OTATalkGetMyZone","OTATalkGetLocalZones","OTATalkGetZoneList","OTATalkGetInfo"})def(n,"4:44",a->BAD_REFERENCE);
 		alias("OTOpenMapperInContext","OTOpenMapperPriv");
 		def("OTOpenMapper","4:444",a->open(a[0],0,a[2],MAPPER));
 		def("OTAsyncOpenMapperPriv","4:44444",a->asyncOpen(a[0],0,a[2],a[3],MAPPER));

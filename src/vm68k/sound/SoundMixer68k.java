@@ -17,7 +17,7 @@ import javax.sound.sampled.SourceDataLine;
  * stop() - so close() sat there until its 2 s join timeout. Woden sends quietCmd before every effect and froze for
  * two seconds each time; an earlier implementation leaked a clip thread per frame for related reasons.
  */
-final class SoundMixer68k {
+class SoundMixer68k {
 	/** Output rate; sounds at other rates are resampled (linear interpolation) while mixing. */
 	static final int RATE=44100;
 	private static final int CHUNK_FRAMES=512; // ~12 ms per write: effects start within a frame of the game
@@ -118,11 +118,11 @@ final class SoundMixer68k {
 	 * left alone). XTernal's SetSoundVolume TestDrive beeps after each level 1..7.
 	 */
 	static boolean beep(){
-		if(!TSound.use)return true; // sound switched off in HyperZebra
+		if(!UiHost.get().soundOn())return true; // sound switched off in HyperZebra
 		int b=sysBeepVolume;
 		float gl=gainLeft()*Math.min(0x100,b&0xffff)/256f,gr=gainRight()*Math.min(0x100,b>>>16)/256f;
 		if(gl<=0&&gr<=0)return false;
-		if(gl>=1&&gr>=1){if(!java.awt.GraphicsEnvironment.isHeadless())try{java.awt.Toolkit.getDefaultToolkit().beep();}catch(RuntimeException ignored){}return true;}
+		if(gl>=1&&gr>=1){if(driven||!java.awt.GraphicsEnvironment.isHeadless())try{Toolbox68k.PARTS.beep();}catch(RuntimeException ignored){}return true;}
 		short[] tone=beepTone();Voice voice=new Voice(tone,tone,RATE,1);voice.gainLeft=gl;voice.gainRight=gr;get().start(voice);
 		return true;
 	}
@@ -138,6 +138,49 @@ final class SoundMixer68k {
 
 	private final List<Voice> voices=new ArrayList<Voice>();
 	private final Object lock=new Object();
+
+	// ------------------------------------------------------------------ driven (the browser player)
+
+	/**
+	 * The browser player (P4 sound): one thread and no audio line, so there is no mixer thread - the player mixes on its own
+	 * loop ({@link #render}, as often as the page's audio needs it) and hands the samples to the page. Set before any sound.
+	 */
+	static volatile boolean driven;
+	private final int[] renderMix=new int[CHUNK_FRAMES*2];
+	private final List<Voice> renderDone=new ArrayList<Voice>();
+	private Voice[] renderActive=new Voice[0];
+	/**
+	 * Driven mode: the next {@code frames} output frames of the mix, interleaved 16-bit stereo at {@link #RATE} in {@code out}
+	 * (as the mixer thread writes them to its line: the voices, the output volume, voices that ran out finished). False when
+	 * nothing is playing (the frames are silence then), so the player sends nothing.
+	 */
+	boolean render(short[] out,int frames){
+		runWatchers();
+		boolean anyAll=false;
+		for(int at=0;at<frames;at+=CHUNK_FRAMES){
+			int n=Math.min(CHUNK_FRAMES,frames-at);
+			synchronized(lock){renderActive=voices.toArray(renderActive.length==voices.size()?renderActive:new Voice[voices.size()]);}
+			java.util.Arrays.fill(renderMix,0);boolean any=false;
+			for(Voice v:renderActive){if(v==null)break;if(v.paused||v.stopped)continue;any=true;mixChain(v,renderMix,n,renderDone);}
+			int volume=outputVolume,gl=Math.min(0x100,volume&0xffff),gr=Math.min(0x100,volume>>>16);
+			for(int i=0;i<n*2;i++){int s=renderMix[i];if((i&1)==0?gl<0x100:gr<0x100)s=s*((i&1)==0?gl:gr)>>8;out[at*2+i]=(short)(s>32767?32767:s<-32768?-32768:s);}
+			if(!renderDone.isEmpty()){synchronized(lock){voices.removeAll(renderDone);}for(Voice v:renderDone)v.finish();renderDone.clear();}
+			anyAll|=any;
+		}
+		return anyAll;
+	}
+	/** Whether a voice is being mixed now (paused ones not counted). */
+	boolean sounding(){synchronized(lock){for(Voice v:voices)if(!v.paused&&!v.stopped)return true;}return false;}
+	/** Work that waits for sound to end, polled at each {@link #render} in driven mode (a thread that sleeps until then on the desktop). */
+	private static final List<java.util.function.BooleanSupplier> WATCHERS=new ArrayList<java.util.function.BooleanSupplier>();
+	/** Driven mode: {@code step} is asked at each render until it answers true (done). */
+	static void watch(java.util.function.BooleanSupplier step){synchronized(WATCHERS){WATCHERS.add(step);}}
+	private static void runWatchers(){
+		List<java.util.function.BooleanSupplier> now;synchronized(WATCHERS){if(WATCHERS.isEmpty())return;now=new ArrayList<java.util.function.BooleanSupplier>(WATCHERS);}
+		for(java.util.function.BooleanSupplier w:now){boolean done;try{done=w.getAsBoolean();}catch(RuntimeException e){done=true;}if(done)synchronized(WATCHERS){WATCHERS.remove(w);}}
+	}
+	/** Driven mode: watchers waiting (the player keeps pumping while there are). */
+	static boolean watching(){synchronized(WATCHERS){return !WATCHERS.isEmpty();}}
 	private Thread thread;private volatile boolean failed;
 
 	/** True once the output line could not be opened: voices end at once, nothing is played. */
@@ -257,15 +300,15 @@ final class SoundMixer68k {
 	}
 
 	private void ensureThread(){
-		if(thread!=null||failed)return;
-		thread=new Thread(new Runnable(){@Override public void run(){pump();}},"68K sound mixer");thread.setDaemon(true);thread.setPriority(Thread.MAX_PRIORITY-1);thread.start();
+		if(thread!=null||failed||driven)return;
+		thread=new Thread(new Runnable(){@Override public void run(){pump();}},"68K sound mixer");thread.setDaemon(true);thread.setPriority(Thread.MAX_PRIORITY-1);Platform.get().start(thread);
 	}
 
 	/** Debug: -Dhz68k.soundcapture=FILE appends everything mixed (44.1 kHz 16-bit big-endian stereo, raw) to FILE. */
 	private java.io.OutputStream capture;private boolean captureTried;
 	private void capture(byte[] out){
 		if(!captureTried){captureTried=true;String f=System.getProperty("hz68k.soundcapture");
-			if(f!=null)try{capture=new java.io.BufferedOutputStream(new java.io.FileOutputStream(f));Runtime.getRuntime().addShutdownHook(new Thread(()->{try{capture.flush();}catch(java.io.IOException ignored){}}));}catch(java.io.IOException e){System.err.println("[68K] sound capture: "+e);}}
+			if(f!=null)try{capture=new java.io.BufferedOutputStream(new java.io.FileOutputStream(f));Toolbox68k.PARTS.atQuit(()->{try{capture.flush();}catch(java.io.IOException ignored){}},"68K sound capture");}catch(java.io.IOException e){System.err.println("[68K] sound capture: "+e);}}
 		if(capture!=null)try{capture.write(out);}catch(java.io.IOException e){capture=null;}
 	}
 
@@ -277,7 +320,7 @@ final class SoundMixer68k {
 			try{line=AudioSystem.getSourceDataLine(format);line.open(format,CHUNK_FRAMES*4*4);line.start();}
 			catch(LineUnavailableException|RuntimeException e){
 				line=null;
-				if(attempt<3&&!(e instanceof LineUnavailableException)&&!(e instanceof SecurityException)){try{Thread.sleep(50);}catch(InterruptedException ie){}continue;}
+				if(attempt<3&&!(e instanceof LineUnavailableException)&&!(e instanceof SecurityException)){try{Platform.get().sleep(50);}catch(InterruptedException ie){}continue;}
 				failed=true;List<Voice> pending;synchronized(lock){pending=new ArrayList<Voice>(voices);voices.clear();}for(Voice v:pending)v.finish();return;
 			}
 		}
@@ -300,7 +343,7 @@ final class SoundMixer68k {
 			else{ // silence: keep the line primed a little, then just wait for work (write() would block on a full buffer anyway)
 				if(idleSince==0)idleSince=System.nanoTime();
 				if(System.nanoTime()-idleSince<200_000_000L)line.write(out,0,out.length);
-				else synchronized(lock){try{lock.wait(50);}catch(InterruptedException e){return;}}
+				else synchronized(lock){try{Platform.get().waitOn(lock,50);}catch(InterruptedException e){return;}}
 			}
 		}
 	}

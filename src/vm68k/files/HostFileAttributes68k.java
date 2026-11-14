@@ -2,10 +2,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.attribute.BasicFileAttributeView;
-import java.nio.file.attribute.FileTime;
-import java.nio.file.attribute.PosixFileAttributes;
-import java.nio.file.attribute.PosixFilePermission;
 
 /**
  * What the Finder keeps of a file beside its forks and Finder info - its lock, its creation date, its comment - on the host file
@@ -21,7 +17,7 @@ import java.nio.file.attribute.PosixFilePermission;
  * - The comment is the Spotlight comment attribute the Finder writes (com.apple.metadata:kMDItemFinderComment, a binary property
  *   list holding one string) on macOS, and the AppleDouble sidecar's Comment entry (ID 4) where the host has no forks.
  */
-final class HostFileAttributes68k {
+class HostFileAttributes68k {
 	private HostFileAttributes68k(){}
 
 	/** True when the host keeps the file from being written (the Finder's Locked, read-only): the file is locked to programs. */
@@ -33,10 +29,8 @@ final class HostFileAttributes68k {
 	 * Space Joust and Killer Box Virus with "-45" (fLckdErr), StarGates with "Please run this program from a Hard-disk.".
 	 */
 	static boolean readOnlyCopy(File file){
-		if(file==null||!GMenu.isMacOSX()||!file.isFile()||file.canWrite())return false;
-		try{PosixFileAttributes a=Files.readAttributes(file.toPath(),PosixFileAttributes.class);
-			return !a.permissions().contains(PosixFilePermission.OWNER_WRITE)&&a.owner().getName().equals(System.getProperty("user.name"));}
-		catch(IOException|UnsupportedOperationException|SecurityException e){return false;}
+		if(file==null||!HostXattr68k.macOS()||!file.isFile()||file.canWrite())return false;
+		return HostXattr68k.host().ownerReadOnly(file);
 	}
 
 	/** True when the file can be written, or can be once {@link #makeWritable} gives a {@link #readOnlyCopy} its write permission back. */
@@ -45,7 +39,7 @@ final class HostFileAttributes68k {
 	/** Makes a {@link #readOnlyCopy} writable for its owner (what a program writing it finds on a Mac); false when the file stays unwritable (Locked, or the host refused). */
 	static boolean makeWritable(File file){
 		if(file==null||file.canWrite())return file!=null;
-		if(!readOnlyCopy(file)||!file.setWritable(true,true)||!file.canWrite())return false;
+		if(!readOnlyCopy(file)||!Files68k.setWritable(file,true,true)||!file.canWrite())return false;
 		System.err.println("[file] "+file.getName()+": read-only copy made writable for the program");
 		return true;
 	}
@@ -53,18 +47,13 @@ final class HostFileAttributes68k {
 	/** Locks or unlocks the file on the host; false when the host refused. */
 	static boolean setLocked(File file,boolean locked){
 		if(file==null||!file.exists())return false;
-		if(GMenu.isMacOSX()){
-			try{Process p=new ProcessBuilder("/usr/bin/chflags",locked?"uchg":"nouchg",file.getPath()).redirectErrorStream(true).start();
-				p.getInputStream().readAllBytes();if(p.waitFor()==0)return true;}
-			catch(IOException e){}catch(InterruptedException e){Thread.currentThread().interrupt();}
-		}
+		if(HostXattr68k.macOS()&&HostXattr68k.host().finderLock(file,locked))return true;
 		return file.setWritable(!locked);
 	}
 
 	/** Sets the host file's creation (birth) time; false where the host keeps none or refused. */
 	static boolean setCreationTime(File file,long millis){
-		try{Files.getFileAttributeView(file.toPath(),BasicFileAttributeView.class).setTimes(null,null,FileTime.fromMillis(millis));return true;}
-		catch(IOException|UnsupportedOperationException|SecurityException e){return false;}
+		return HostXattr68k.host().birthTime(file,millis);
 	}
 
 	// ------------------------------------------------------------------ Finder comments
@@ -77,7 +66,7 @@ final class HostFileAttributes68k {
 		if(ResourceFile68k.nativeForks()){byte[] plist=FinderInfo68k.attribute(file,COMMENT_ATTRIBUTE);String s=plist==null?null:plistString(plist);return s==null?"":s;}
 		File sidecar=ResourceFile68k.AppleDouble.findSidecar(file);
 		if(sidecar==null)return "";
-		try{byte[] c=ResourceFile68k.AppleDouble.comment(Files.readAllBytes(sidecar.toPath()));return c==null?"":new String(c,StandardCharsets.UTF_8);}
+		try{byte[] c=ResourceFile68k.AppleDouble.comment(Files68k.read(sidecar));return c==null?"":new String(c,StandardCharsets.UTF_8);}
 		catch(IOException e){return "";}
 	}
 
@@ -87,10 +76,10 @@ final class HostFileAttributes68k {
 		if(ResourceFile68k.nativeForks())return comment.isEmpty()?FinderInfo68k.removeAttribute(file,COMMENT_ATTRIBUTE):FinderInfo68k.setAttribute(file,COMMENT_ATTRIBUTE,plist(comment));
 		try{
 			File found=ResourceFile68k.AppleDouble.findSidecar(file),sidecar=ResourceFile68k.AppleDouble.sidecarOf(file);
-			byte[] data=found==null?null:Files.readAllBytes(found.toPath());
+			byte[] data=found==null?null:Files68k.read(found);
 			byte[] fork=data==null?null:HCResource.extractResourceForkFromAppleDouble(data),info=data==null?null:ResourceFile68k.AppleDouble.finderInfo(data);
 			if(fork==null&&info==null&&comment.isEmpty())return true;
-			Files.write(sidecar.toPath(),ResourceFile68k.AppleDouble.build(fork==null?new byte[0]:fork,info,comment.isEmpty()?null:comment.getBytes(StandardCharsets.UTF_8)));
+			Files68k.write(sidecar,ResourceFile68k.AppleDouble.build(fork==null?new byte[0]:fork,info,comment.isEmpty()?null:comment.getBytes(StandardCharsets.UTF_8)));
 			return true;
 		}catch(IOException e){return false;}
 	}
@@ -98,7 +87,7 @@ final class HostFileAttributes68k {
 	/** A binary property list ("bplist00") holding one string, as the Finder writes a comment. */
 	static byte[] plist(String s){
 		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
-		out.writeBytes("bplist00".getBytes(StandardCharsets.US_ASCII));
+		{byte[] magic="bplist00".getBytes(StandardCharsets.US_ASCII);out.write(magic,0,magic.length);}
 		boolean ascii=s.chars().allMatch(c->c<0x80);
 		byte[] body=ascii?s.getBytes(StandardCharsets.US_ASCII):s.getBytes(StandardCharsets.UTF_16BE);
 		int count=ascii?body.length:body.length/2;
@@ -106,12 +95,12 @@ final class HostFileAttributes68k {
 		else{out.write((ascii?0x50:0x60)|15);
 			if(count<0x100){out.write(0x10);out.write(count);}else if(count<0x10000){out.write(0x11);out.write(count>>8);out.write(count);}
 			else{out.write(0x12);for(int k=24;k>=0;k-=8)out.write(count>>k);}}
-		out.writeBytes(body);
+		out.write(body,0,body.length);
 		int table=out.size();
 		out.write(8); // the offset table: the one object is at 8
 		byte[] trailer=new byte[32];trailer[6]=1;trailer[7]=1;trailer[15]=1; // offsetIntSize 1, objectRefSize 1, one object, top object 0
 		for(int k=0;k<8;k++)trailer[24+k]=(byte)((long)table>>(56-8*k));
-		out.writeBytes(trailer);
+		out.write(trailer,0,trailer.length);
 		return out.toByteArray();
 	}
 	/** The string a binary property list holds at its top, or null when it holds no string. */

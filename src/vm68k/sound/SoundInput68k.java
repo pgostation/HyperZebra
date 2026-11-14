@@ -15,7 +15,7 @@ import javax.sound.sampled.TargetDataLine;
  * parameter block are only touched between the program's own instructions); the level meter, SPBGetDeviceInfo/
  * SetDeviceInfo, the sound header helpers and the SndRecord dialog are here too.
  */
-final class SoundInput68k {
+class SoundInput68k {
 	private static final int NO_ERR=0,SI_NO_SOUND_IN_HARDWARE=-220,SI_BAD_SOUND_IN_DEVICE=-221,SI_INVALID_SAMPLE_RATE=-225,SI_INVALID_SAMPLE_SIZE=-226,SI_DEVICE_BUSY=-227,SI_BAD_REF_NUM=-229,SI_UNKNOWN_INFO_TYPE=-231,USER_CANCELED=-128,ABORT_ERR=-27;
 	private final M68kMemory memory;private final Mac68kApi macApi;
 	private final Map<Integer,Device> devices=new HashMap<Integer,Device>();
@@ -43,7 +43,7 @@ final class SoundInput68k {
 			case 0x18:{int refPtr=memory.readLong(sp); // SPBOpenDevice(deviceName, permission, VAR inRefNum): any name opens the device
 				// the microphone question waits for SPBRecord: ScreenMovie opens the device at start-up (to offer sound with its
 				// captures) and sat behind the Sandbox dialog before it had shown a window
-				if(!TSound.use||!hostHasInput()){result=SI_NO_SOUND_IN_HARDWARE;if(refPtr!=0)memory.writeLong(refPtr,0);break;}
+				if(!UiHost.get().soundOn()||!hostHasInput()){result=SI_NO_SOUND_IN_HARDWARE;if(refPtr!=0)memory.writeLong(refPtr,0);break;}
 				Device d=new Device(nextReference++);devices.put(d.reference,d);if(refPtr!=0)memory.writeLong(refPtr,d.reference);break;}
 			case 0x1c:{Device d=devices.remove(memory.readLong(sp));if(d==null)result=SI_BAD_REF_NUM;else{Recorder r=d.recorder;if(r!=null)r.stop();}break;} // SPBCloseDevice
 			case 0x20:{boolean async=memory.readByte(sp)!=0;int spb=memory.readLong(sp+2);cpu.a[7]+=argBytes;memory.writeWord(cpu.a[7],record(cpu,spb,async));return true;} // SPBRecord(inParamPtr, asynchFlag)
@@ -77,7 +77,28 @@ final class SoundInput68k {
 	}
 
 	private static boolean hostHasInput(){
+		if(SoundMixer68k.driven){PlayerHost h=PlayerInput.host;return h!=null&&h.microphoneAvailable();} // the browser player: the page's microphone
 		try{return AudioSystem.isLineSupported(new javax.sound.sampled.DataLine.Info(TargetDataLine.class,new AudioFormat(22050,8,1,false,true)));}catch(RuntimeException e){return false;}
+	}
+
+	/**
+	 * Mono 16-bit samples at {@code fromRate} (the browser's microphone) as frames of {@code format} (8-bit unsigned or 16-bit
+	 * signed big-endian, mono or stereo, the program's rate): linear interpolation, {@code state} = {position, last sample}
+	 * carried from one piece to the next.
+	 */
+	static byte[] convert(short[] in,int n,double fromRate,AudioFormat format,double[] state){
+		double step=fromRate/format.getSampleRate();if(step<=0)return new byte[0];
+		int channels=format.getChannels(),bytes=format.getSampleSizeInBits()/8;
+		java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream();
+		double pos=state[0];double last=state[1];
+		while(pos<n){
+			int i=(int)Math.floor(pos);double f=pos-i,a=i<0?last:in[i],b=i+1<n?in[i+1]:(i<0?in[0]:in[i]);
+			int v=(int)Math.round(a+(b-a)*f);
+			for(int c=0;c<channels;c++){if(bytes==1)out.write((v>>8)+128);else{out.write(v>>8);out.write(v);}}
+			pos+=step;
+		}
+		state[0]=pos-n;state[1]=n>0?in[n-1]:last;
+		return out.toByteArray();
 	}
 
 	private int getInfo(Device d,int type,int infoData) throws M68kCpuException {
@@ -158,18 +179,19 @@ final class SoundInput68k {
 		if(milliseconds>0)target=Math.min(target,(long)(milliseconds*d.rate/1000)*d.frameBytes());
 		if(buffer!=0&&target<=0){memory.writeLong(spb+4,0);memory.writeLong(spb+8,0);memory.writeWord(spb+32,0);return NO_ERR;}
 		Recorder r=new Recorder(d,spb,buffer,target);d.recorder=r;
-		if(!TSound.use){r.finished=true;finish(r,ABORT_ERR);return NO_ERR;}
+		if(!UiHost.get().soundOn()){r.finished=true;finish(r,ABORT_ERR);return NO_ERR;}
 		memory.writeWord(spb+32,1); // in progress: the error field stays positive until the recording is complete
-		Thread t=new Thread(r,"68K sound input");t.setDaemon(true);t.start();
+		if(SoundMixer68k.driven)r.startDriven(); // the browser player: the page's microphone, read as the player mixes
+		else{Thread t=new Thread(r,"68K sound input");t.setDaemon(true);Platform.get().start(t);}
 		if(async)return NO_ERR;
-		while(!r.finished)try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();r.stop();break;}
+		while(!r.finished)try{Platform.get().sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();r.stop();break;}
 		r.deliverNow();r.finishAsync();return NO_ERR;
 	}
 	/** Why SPBRecord cannot start (no such device, it records already, the microphone is not allowed), else noErr. */
 	private int recordRefused(int spb) throws M68kCpuException {
 		Device d=devices.get(memory.readLong(spb));if(d==null)return SI_BAD_REF_NUM;
 		if(d.recorder!=null&&!d.recorder.finished)return SI_DEVICE_BUSY;
-		if(TSound.use&&!Sandbox.allowOther(macApi.application().name,Sandbox.USE_MICROPHONE,""))return SI_NO_SOUND_IN_HARDWARE; // recording is what reaches the microphone
+		if(UiHost.get().soundOn()&&!Sandbox68k.allowOther(macApi.application().name,Sandbox68k.USE_MICROPHONE,""))return SI_NO_SOUND_IN_HARDWARE; // recording is what reaches the microphone
 		return NO_ERR;
 	}
 	/** Writes the final counts into the SPB and runs the completion routine (pascal proc(inParamPtr), A0 = the block). */
@@ -203,7 +225,7 @@ final class SoundInput68k {
 				AudioFormat format=device.format();line=AudioSystem.getTargetDataLine(format);line.open(format);line.start();
 				byte[] chunk=new byte[Math.max(256,(int)(format.getFrameRate()*format.getFrameSize()/20))];long total=0;
 				while(!stopped&&total<target){
-					if(paused){try{Thread.sleep(10);}catch(InterruptedException e){break;}continue;}
+					if(paused){try{Platform.get().sleep(10);}catch(InterruptedException e){break;}continue;}
 					int n=line.read(chunk,0,(int)Math.min(chunk.length,target-total));if(n<=0)break;
 					synchronized(this){captured.write(chunk,0,n);}total+=n;device.level=meter(chunk,n,format);
 					macApi.application().later(new Runnable(){@Override public void run(){try{deliverNow();}catch(M68kCpuException e){throw Toolbox68k.wrap(e);}}});
@@ -212,6 +234,28 @@ final class SoundInput68k {
 			}catch(LineUnavailableException|IllegalArgumentException|SecurityException unavailable){error=SI_NO_SOUND_IN_HARDWARE;if(Mac68kApi.TRACE)System.err.println("[68K] sound input: "+unavailable);
 			}finally{if(line!=null)try{line.close();}catch(RuntimeException ignored){}finished=true;device.level=0;
 				macApi.application().later(new Runnable(){@Override public void run(){try{deliverNow();if(device.recorder==Recorder.this)finishAsync();}catch(M68kCpuException e){throw Toolbox68k.wrap(e);}}});}
+		}
+		// ---- the browser player (SoundMixer68k.driven): no thread; a step at each pass of the player's sound reads the microphone
+		private long total;private final short[] mic=new short[8192];private final double[] resample=new double[2];
+		void startDriven(){PlayerHost h=PlayerInput.host;if(h!=null)h.microphoneOn(true);SoundMixer68k.watch(this::step);}
+		private boolean step(){
+			PlayerHost h=PlayerInput.host;
+			if(h==null){error=SI_NO_SOUND_IN_HARDWARE;endDriven(h);return true;}
+			if(stopped||total>=target){if(stopped&&total<target)error=ABORT_ERR;endDriven(h);return true;}
+			if(paused){h.microphone(mic);return false;} // (what comes while paused is not kept)
+			int n=h.microphone(mic);
+			if(n<0){error=SI_NO_SOUND_IN_HARDWARE;endDriven(h);return true;}
+			if(n==0||h.microphoneRate()<=0)return false;
+			AudioFormat format=device.format();byte[] b=convert(mic,n,h.microphoneRate(),format,resample);
+			int keep=(int)Math.min(b.length,target-total);
+			synchronized(this){captured.write(b,0,keep);}total+=keep;device.level=meter(b,keep,format);
+			macApi.application().later(new Runnable(){@Override public void run(){try{deliverNow();}catch(M68kCpuException e){throw Toolbox68k.wrap(e);}}});
+			return false;
+		}
+		private void endDriven(PlayerHost h){
+			if(h!=null)h.microphoneOn(false);
+			finished=true;device.level=0;
+			macApi.application().later(new Runnable(){@Override public void run(){try{deliverNow();if(device.recorder==Recorder.this)finishAsync();}catch(M68kCpuException e){throw Toolbox68k.wrap(e);}}});
 		}
 		private boolean completed;
 		/** The completion routine once, from the emulation thread (a synchronous SPBRecord already ran it). */
@@ -236,32 +280,10 @@ final class SoundInput68k {
 		try{return macApi.fileManager().writeReference(fRefNum,0,aiff(pcm,22050,8,1))?NO_ERR:-51;}catch(IOException e){return -36;}
 	}
 	private byte[] recordWithDialog(){
-		if(!TSound.use||!hostHasInput()||java.awt.GraphicsEnvironment.isHeadless())return null;
+		if(!UiHost.get().soundOn()||!hostHasInput()||!SoundMixer68k.driven&&java.awt.GraphicsEnvironment.isHeadless())return null; // (the browser player's dialogs are the page's)
 		// the Sandbox decides first, as for SPBRecord: Rinaldi's SoundRecord XCMD reached the microphone with access denied
-		if(!Sandbox.allowOther(macApi.application().name,Sandbox.USE_MICROPHONE,""))return null;
-		final AudioFormat format=new AudioFormat(22050,8,1,false,true);final ByteArrayOutputStream out=new ByteArrayOutputStream();
-		final boolean[] recording=new boolean[1],stop=new boolean[1],started=new boolean[1];final int[] choice={-1};
-		// the line opens at the first click on Record, not when the dialog appears (the microphone stays closed if it is cancelled)
-		final Thread capture=new Thread(new Runnable(){@Override public void run(){
-			try{TargetDataLine line=AudioSystem.getTargetDataLine(format);line.open(format);line.start();byte[] chunk=new byte[2205];
-				while(!stop[0]){int n=line.read(chunk,0,chunk.length);if(n<=0)break;if(recording[0])synchronized(out){out.write(chunk,0,n);}}
-				line.close();}catch(LineUnavailableException|RuntimeException e){}}},"68K SndRecord");
-		capture.setDaemon(true);
-		try{
-			javax.swing.SwingUtilities.invokeAndWait(new Runnable(){@Override public void run(){
-				final javax.swing.JDialog dialog=new javax.swing.JDialog((java.awt.Frame)null,"Record",true);
-				final javax.swing.JLabel status=new javax.swing.JLabel("Click Record to start.");
-				javax.swing.JButton record=new javax.swing.JButton("Record"),stopButton=new javax.swing.JButton("Stop"),save=new javax.swing.JButton("Save"),cancel=new javax.swing.JButton("Cancel");
-				stopButton.setEnabled(false);save.setEnabled(false);
-				record.addActionListener(e->{synchronized(out){out.reset();}recording[0]=true;if(!started[0]){started[0]=true;capture.start();}status.setText("Recording...");record.setEnabled(false);stopButton.setEnabled(true);});
-				stopButton.addActionListener(e->{recording[0]=false;status.setText("Recorded "+(out.size()/22050.0)+" s.");stopButton.setEnabled(false);record.setEnabled(true);save.setEnabled(true);});
-				save.addActionListener(e->{choice[0]=1;dialog.dispose();});cancel.addActionListener(e->{choice[0]=0;dialog.dispose();});
-				javax.swing.JPanel buttons=new javax.swing.JPanel();buttons.add(record);buttons.add(stopButton);buttons.add(save);buttons.add(cancel);
-				dialog.getContentPane().add(status,java.awt.BorderLayout.NORTH);dialog.getContentPane().add(buttons,java.awt.BorderLayout.SOUTH);
-				dialog.pack();dialog.setLocationRelativeTo(null);dialog.setVisible(true);}});
-		}catch(InterruptedException|java.lang.reflect.InvocationTargetException e){choice[0]=0;}
-		stop[0]=true;recording[0]=false;
-		if(choice[0]!=1)return null;synchronized(out){return out.toByteArray();}
+		if(!Sandbox68k.allowOther(macApi.application().name,Sandbox68k.USE_MICROPHONE,""))return null;
+		return Toolbox68k.PARTS.recordWithDialog(); // the desktop's Swing dialog (Toolbox68kDesktopParts); the browser player records nothing
 	}
 
 	// ------------------------------------------------------------------ headers

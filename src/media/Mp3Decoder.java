@@ -84,13 +84,13 @@ final class Mp3Decoder {
 	/** Whether the file starts like MPEG audio Layer III: an ID3v2 tag, or two frames in a row at its start. */
 	static boolean looksLikeMp3(File file){
 		byte[] head=new byte[8192];int n;
-		try(InputStream in=new java.io.FileInputStream(file)){n=in.readNBytes(head,0,head.length);}catch(IOException e){return false;}
+		try(InputStream in=new java.io.FileInputStream(file)){n=Platform.readNBytes(in, head, 0, head.length);}catch(IOException e){return false;}
 		if(n>=10&&head[0]=='I'&&head[1]=='D'&&head[2]=='3'&&(head[3]&0xff)<5)return true;
 		head=Arrays.copyOf(head,n);
 		Header h=Header.at(head,0);
 		return h!=null&&h.layer==3&&h.sameStream(Header.at(head,h.length));
 	}
-	static Stream scan(File file) throws IOException {return scan(java.nio.file.Files.readAllBytes(file.toPath()));}
+	static Stream scan(File file) throws IOException {return scan(Platform.get().readAllBytes(file));}
 	/** The Layer III frames of {@code data}; IOException when there are none. */
 	static Stream scan(byte[] data) throws IOException {
 		int pos=0;

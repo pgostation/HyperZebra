@@ -11,7 +11,7 @@ import java.util.List;
  * synthesis, and the synthetic menu-bar events used to report native menu
  * selections.
  */
-final class EventManager68k implements MacAppHost.Listener {
+final class EventManager68k implements VmHostListener {
 	static final int NULL_EVENT=0,MOUSE_DOWN=1,MOUSE_UP=2,KEY_DOWN=3,KEY_UP=4,AUTO_KEY=5,UPDATE_EVT=6,DISK_EVT=7,ACTIVATE_EVT=8,OS_EVT=15,HIGH_LEVEL_EVT=23;
 	static final int MOUSE_DOWN_MASK=2,MOUSE_UP_MASK=4,KEY_DOWN_MASK=8,KEY_UP_MASK=16,AUTO_KEY_MASK=32,UPDATE_MASK=64,ACTIVATE_MASK=256,OS_MASK=1<<15,HIGH_LEVEL_MASK=1<<10;
 
@@ -78,7 +78,7 @@ final class EventManager68k implements MacAppHost.Listener {
 			case 0x974:tb.runDeferred();tb.menus.flushIfDirty();tb.mousePolled(cpu);tb.writeBoolean(cpu.a[7],tb.host().isMouseDown());return true; // menus changed in a loop that polls Button/GetKeys instead of WaitNextEvent (Factory's day) reach the host bar too
 			case 0x977:{tb.mousePolled(cpu);boolean down=tb.host().isMouseDown();if(!down)discardNextMouseUp();tb.writeBoolean(cpu.a[7],down);return true;}
 			case 0x975:{int tick=tb.tickCountPolled();tb.updateTicks(tick);memory.writeLong(cpu.a[7],tick);return true;}
-			case 0x976:{int keyMap=memory.readLong(cpu.a[7]);cpu.a[7]+=4;tb.menus.flushIfDirty();lastKeyPoll=System.nanoTime();memory.fill(keyMap,16,0);writeKeys(keyMap);if(tb.host().external)GUI.noteKeyPoll();return true;} // an XCMD reading the keys (KStealKeyX) owns them
+			case 0x976:{int keyMap=memory.readLong(cpu.a[7]);cpu.a[7]+=4;tb.menus.flushIfDirty();lastKeyPoll=System.nanoTime();memory.fill(keyMap,16,0);writeKeys(keyMap);if(tb.host().external())UiHost.get().gUINoteKeyPoll();return true;} // an XCMD reading the keys (KStealKeyX) owns them
 			default:return false;
 		}
 	}
@@ -137,12 +137,12 @@ final class EventManager68k implements MacAppHost.Listener {
 		while(true){
 			Object[] r;synchronized(lock){r=hostDrags.pollFirst();}if(r==null)return;
 			int phase=(int)r[0];List<File> files=(List<File>)r[4];
-			boolean taken=tb.drag.external(cpu,phase,(int)r[1],(int)r[2],files,(int)r[3]);
+			boolean taken=tb.drag!=null&&tb.drag.external(cpu,phase,(int)r[1],(int)r[2],files,(int)r[3]);
 			if(phase==DragManager68k.EXTERNAL_DROP&&!taken&&files!=null&&!files.isEmpty())postOpenDocuments(files);
 		}
 	}
-	@Override public int[] textCaret(){int[] inline=tb.textServices.inlineCaret();return inline!=null?inline:tb.textEdit.caretLocation();}
-	@Override public boolean postInputMethodText(String committed,String composing,int[] styles,int caret){return tb.textServices.offer(committed,composing,styles,caret);}
+	@Override public int[] textCaret(){int[] inline=tb.textServices==null?null:tb.textServices.inlineCaret();return inline!=null?inline:tb.textEdit.caretLocation();}
+	@Override public boolean postInputMethodText(String committed,String composing,int[] styles,int caret){return tb.textServices!=null&&tb.textServices.offer(committed,composing,styles,caret);}
 	/** Whether a Command-period (or Escape) key-down waits in the queue; it is taken out when {@code take}. */
 	boolean commandPeriodQueued(boolean take){
 		synchronized(lock){
@@ -231,7 +231,7 @@ final class EventManager68k implements MacAppHost.Listener {
 	/** The made-up menu-bar click is over (its MenuSelect, or the program's next event call): the host gets the menus now. */
 	void endMenuProbe(){
 		java.util.concurrent.CountDownLatch done=probeDone;probeDone=null;probeTaken=false;
-		if(done!=null){tb.menus.markDirty();tb.menus.flush();done.countDown();}
+		if(done!=null){tb.menus.markDirty();tb.menus.flush();if(tb.hosted())tb.host().menuProbeEnded();done.countDown();}
 	}
 	/** The enable state of the menus when a menu choice of the host bar reached the program (see MenuManager68k.noteMenuSelect). */
 	int[] menusAtClick;
@@ -547,9 +547,9 @@ final class EventManager68k implements MacAppHost.Listener {
 	// ------------------------------------------------------------------ queue -> application
 
 	/** Host clicks already turned into events (see {@link #hostClicks}). */
-	private int seenPresses=GUI.mousePresses;private boolean seenDown=GUI.mouseDown;
+	private int seenPresses=UiHost.get().cardMousePresses();private boolean seenDown=UiHost.get().cardMouseDown();
 	/** An external starts a call: clicks made before it (the one on the button that ran the script) are not its events. */
-	void resyncHostClicks(){seenPresses=GUI.mousePresses;seenDown=GUI.mouseDown;installCardKeyWatcher();synchronized(cardKeys){seenCardKey=firstWaitingCardKey()-1;}}
+	void resyncHostClicks(){seenPresses=UiHost.get().cardMousePresses();seenDown=UiHost.get().cardMouseDown();installCardKeyWatcher();synchronized(cardKeys){seenCardKey=firstWaitingCardKey()-1;}}
 	/**
 	 * The oldest card key still waiting for HyperCard (its key message not taken yet: a handler was running when it was typed), or
 	 * the next key to come. On a Mac such a key waits in the one event queue until someone takes it: MyDialogs' dialog loop calls
@@ -574,7 +574,7 @@ final class EventManager68k implements MacAppHost.Listener {
 	 */
 	private void hostClicks(){
 		if(!hostClicksEnabled||tb.stack==null||tb.app!=null)return;
-		int presses=GUI.mousePresses;boolean down=GUI.mouseDown;
+		int presses=UiHost.get().cardMousePresses();boolean down=UiHost.get().cardMouseDown();
 		if(presses==seenPresses&&down==seenDown)return;
 		if(Mac68kApi.TRACE)System.err.println("[68K] host click for the external: presses "+seenPresses+" -> "+presses+", down "+down);
 		Point p=tb.host().mouseLocation();int mods=tb.host().modifiers()&~0x80;
@@ -702,9 +702,9 @@ final class EventManager68k implements MacAppHost.Listener {
 			// with a short wait that ends early plus a precise park for the rest. SoundApp's 20 ms MIDI clock task fired ~2 ms
 			// late each time, and its music ran 10% slow
 			long nanos=Math.min(remaining,due);
-			if(due<=remaining&&nanos<2_000_000L){java.util.concurrent.locks.LockSupport.parkNanos(nanos);continue;}
+			if(due<=remaining&&nanos<2_000_000L){Platform.get().parkNanos(nanos);continue;}
 			long millis=due<=remaining?(nanos-1_500_000L)/1_000_000L:nanos/1_000_000L;
-			synchronized(lock){try{lock.wait(Math.max(1,Math.min(millis,20)));}catch(InterruptedException e){Thread.currentThread().interrupt();return;}}
+			synchronized(lock){try{Platform.get().waitOn(lock,Math.max(1,Math.min(millis,20)));}catch(InterruptedException e){Thread.currentThread().interrupt();return;}}
 		}
 	}
 
@@ -737,7 +737,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		if(tb.app!=null&&tb.hosted())tb.host().programWaiting(); // no window and no menus: the stand-in is its drop target
 		// WaitNextEvent gives the drivers and accessories their time as SystemTask does (a program using it need not call
 		// SystemTask): QuicKeys plays a shortcut from its driver's accRun
-		tb.desk.systemTask(cpu);
+		if(tb.desk!=null)tb.desk.systemTask(cpu);
 		if(cpu.patchedTrap(0xa970)!=0&&eventPtr!=0)return waitThroughGetNextEvent(cpu,mask,eventPtr,sleep);
 		Boolean os=takeThroughGetOSEvent(cpu,mask,eventPtr);
 		Event e=os!=null?null:take(mask,true);
@@ -755,12 +755,12 @@ final class EventManager68k implements MacAppHost.Listener {
 		if(os==null){writeEvent(eventPtr,e);delivered(e);}
 		int what=memory.readWord(eventPtr);
 		if(Mac68kApi.TRACE&&what!=NULL_EVENT)System.err.printf("[68K] WaitNextEvent(mask $%04X) -> what=%d message=$%08X modifiers $%04X%s%n",mask,what,memory.readLong(eventPtr+2),memory.readWord(eventPtr+14),os!=null?" (through GetOSEvent)":"");
-		boolean result=os!=null?os:e!=null&&e.what!=NULL_EVENT;if(result&&tb.desk.offerEvent(cpu,eventPtr))result=false;
+		boolean result=os!=null?os:e!=null&&e.what!=NULL_EVENT;if(result&&tb.desk!=null&&tb.desk.offerEvent(cpu,eventPtr))result=false;
 		if(result&&tb.windows.offerSystemWindowEvent(cpu,eventPtr)){result=false;memory.writeWord(eventPtr,NULL_EVENT);}
 		if(result&&what==UPDATE_EVT)updateGiven=memory.readLong(eventPtr+2);
 		tb.writeBoolean(cpu.a[7],gneFilter(cpu,eventPtr,result)); // WaitNextEvent is GetNextEvent to SystemEvent and the filter too
 		firstEventCallMade=true;
-		tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu); // input-method text for the TSM document, then other threads get their turn
+		if(tb.textServices!=null)tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu); // input-method text for the TSM document, then other threads get their turn
 		return true;
 	}
 
@@ -793,12 +793,12 @@ final class EventManager68k implements MacAppHost.Listener {
 		if(os==null){writeEvent(eventPtr,e);if(remove)delivered(e);}
 		if(Mac68kApi.TRACE&&eventPtr!=0&&memory.readWord(eventPtr)!=NULL_EVENT)System.err.printf("[68K] %s(mask $%04X) -> what=%d message=$%08X%s%n",remove?"GetNextEvent":"EventAvail",mask,memory.readWord(eventPtr),memory.readLong(eventPtr+2),os!=null?" (through GetOSEvent)":"");
 		boolean result=os!=null?os:e!=null&&e.what!=NULL_EVENT;
-		if(remove&&result&&tb.desk.offerEvent(cpu,eventPtr))result=false;
+		if(remove&&result&&tb.desk!=null&&tb.desk.offerEvent(cpu,eventPtr))result=false;
 		if(remove&&result&&tb.windows.offerSystemWindowEvent(cpu,eventPtr)){result=false;memory.writeWord(eventPtr,NULL_EVENT);}
 		if(remove&&result&&memory.readWord(eventPtr)==UPDATE_EVT)updateGiven=memory.readLong(eventPtr+2);
 		if(remove){result=gneFilter(cpu,eventPtr,result);firstEventCallMade=true;}
 		tb.writeBoolean(cpu.a[7],result);
-		if(remove){tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu);}
+		if(remove){if(tb.textServices!=null)tb.textServices.deliverPending(cpu);tb.threads.yieldAtEventLoop(cpu);}
 		return true;
 	}
 
@@ -935,7 +935,7 @@ final class EventManager68k implements MacAppHost.Listener {
 	/** Polling loops without WaitNextEvent sleep would spin; yield a little. */
 	private void idleOnce(){
 		long now=System.nanoTime();
-		if(now-lastIdleNanos<2_000_000L){try{Thread.sleep(1);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
+		if(now-lastIdleNanos<2_000_000L){try{Platform.get().sleep(1);}catch(InterruptedException e){Thread.currentThread().interrupt();}}
 		lastIdleNanos=System.nanoTime();
 	}
 
@@ -945,7 +945,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		// a resume says whether the clipboard changed while the program was in the background (convertClipboard): another
 		// program or host application put something new on the host clipboard since its suspend
 		if(e!=null&&e.what==OS_EVT&&(e.message>>>24)==SUSPEND_RESUME_MESSAGE&&!e.clipboardNoted){e.clipboardNoted=true;
-			ScrapManager68k scrap=tb.api.scrapManager();if((e.message&1)==0)scrap.suspended();else if(scrap.changedSinceSuspend())e.message|=2;}
+			ScrapManager68k scrap=tb.api.scrapManager();if(scrap==null){}else if((e.message&1)==0)scrap.suspended();else if(scrap.changedSinceSuspend())e.message|=2;}
 		memory.writeWord(eventPtr,what);
 		memory.writeLong(eventPtr+2,e==null?0:e.message);
 		memory.writeLong(eventPtr+6,tb.tickCount());
@@ -960,7 +960,7 @@ final class EventManager68k implements MacAppHost.Listener {
 		if(e!=null&&e.probe)probeTaken=true;
 		else if(e!=null&&e.what==MOUSE_DOWN&&e.menuId>0)menusAtClick=tb.menus.enableState();
 		if(e!=null&&e.what==KEY_DOWN&&e.menuId!=0)tb.menus.pendingMenuKey(e.menuId,e.menuItem);
-		if(e!=null&&e.what==HIGH_LEVEL_EVT)tb.appleEvents.queued(e);
+		if(e!=null&&e.what==HIGH_LEVEL_EVT&&tb.appleEvents!=null)tb.appleEvents.queued(e);
 	}
 
 	/**
@@ -1078,8 +1078,8 @@ final class EventManager68k implements MacAppHost.Listener {
 	/** A key pressed in HyperCard's card window, and the key messages HyperZebra had queued before it (the one it queues for
 	 *  this key is not among them). */
 	static final class CardKey {
-		final int seq;final java.awt.event.KeyEvent event;final java.util.Set<Object> before;
-		CardKey(int seq,java.awt.event.KeyEvent event,java.util.Set<Object> before){this.seq=seq;this.event=event;this.before=before;}
+		final int seq;final Object event;final java.util.Set<Object> before;
+		CardKey(int seq,Object event,java.util.Set<Object> before){this.seq=seq;this.event=event;this.before=before;}
 	}
 	private static final java.util.ArrayDeque<CardKey> cardKeys=new java.util.ArrayDeque<CardKey>();
 	private static int cardKeySeq;
@@ -1090,17 +1090,11 @@ final class EventManager68k implements MacAppHost.Listener {
 	 *  its own got them on a Mac, where HyperCard's keys and its are one queue (Caliban's keyEvent()). */
 	private static synchronized void installCardKeyWatcher(){
 		if(cardKeyWatcher)return;cardKeyWatcher=true;
-		try{java.awt.Toolkit.getDefaultToolkit().addAWTEventListener(e->{
-			if(e.getID()!=java.awt.event.KeyEvent.KEY_PRESSED||!(e.getSource() instanceof java.awt.Component))return;
-			java.awt.Component c=(java.awt.Component)e.getSource();PCARD pc=PCARD.pc;
-			java.awt.Window w=c instanceof java.awt.Window?(java.awt.Window)c:javax.swing.SwingUtilities.getWindowAncestor(c);
-			if(pc!=null&&w==pc)noteCardKey((java.awt.event.KeyEvent)e);
-		},java.awt.AWTEvent.KEY_EVENT_MASK);}
-		catch(RuntimeException e){} // no toolkit: no keys to watch
+		Toolbox68k.PARTS.watchCardKeys(EventManager68k::noteCardKey);
 	}
 	/** Records a key pressed on the card (the watcher; tests call it directly). */
-	static void noteCardKey(java.awt.event.KeyEvent e){
-		switch(e.getKeyCode()){case java.awt.event.KeyEvent.VK_SHIFT:case java.awt.event.KeyEvent.VK_CONTROL:case java.awt.event.KeyEvent.VK_ALT:case java.awt.event.KeyEvent.VK_META:case java.awt.event.KeyEvent.VK_CAPS_LOCK:return;default:break;}
+	static void noteCardKey(Object e){
+		if(Toolbox68k.PARTS.modifierKey(e))return;
 		java.util.Set<Object> before=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Object,Boolean>());
 		synchronized(TTalk.messageList){for(Message m:TTalk.messageList)if(isKeyMessage(m))before.add(m);}
 		synchronized(cardKeys){cardKeys.addLast(new CardKey(++cardKeySeq,e,before));while(cardKeys.size()>32)cardKeys.removeFirst();}
@@ -1115,10 +1109,10 @@ final class EventManager68k implements MacAppHost.Listener {
 		List<CardKey> fresh=new ArrayList<CardKey>();
 		synchronized(cardKeys){if(seenCardKey==cardKeySeq)return;for(CardKey k:cardKeys)if(k.seq>seenCardKey)fresh.add(k);seenCardKey=cardKeySeq;}
 		for(CardKey k:fresh){
-			int keyCode=MacAppHost.macKeyCode(k.event.getKeyCode(),k.event.getKeyLocation()),ch=tb.host().macChar(k.event);
+			int[] key=Toolbox68k.PARTS.cardKey(k.event,tb.host());int keyCode=key[0],ch=key[1];
 			if(ch<0&&keyCode<0)continue;
 			if(Mac68kApi.TRACE)System.err.println("[68K] host key for the external: code "+keyCode+" char "+ch);
-			Event e=new Event(KEY_DOWN);e.message=((keyCode<0?0:keyCode)<<8)|(ch<0?0:ch&0xff);e.modifiers=tb.host().hostModifiers(k.event.getModifiersEx())|0x80;
+			Event e=new Event(KEY_DOWN);e.message=((keyCode<0?0:keyCode)<<8)|(ch<0?0:ch&0xff);e.modifiers=key[2]|0x80;
 			Point p=tb.host().mouseLocation();e.whereH=p.x;e.whereV=p.y;e.cardKey=k;post(e);
 		}
 	}

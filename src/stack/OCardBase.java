@@ -38,8 +38,7 @@ public class OCardBase extends OObject {
 		if(compositeCache!=null && compositeVersion==layerVersion && compositeBase==pict) return compositeCache;
 		int w = stack!=null ? stack.width : (pict!=null ? pict.getWidth() : 1);
 		int h = stack!=null ? stack.height : (pict!=null ? pict.getHeight() : 1);
-		for(PaintLayer l : layers) if(l.image!=null){ w = Math.max(w, l.image.getWidth()); h = Math.max(h, l.image.getHeight()); }
-		compositeCache = PaintLayers.flatten(pict, layers, w, h);
+		compositeCache = UiHost.get().withPaintLayers(pict, layers, w, h);
 		compositeVersion = layerVersion;
 		compositeBase = pict;
 		return compositeCache;
@@ -105,7 +104,7 @@ public class OCardBase extends OObject {
 			if(partsList!=null) members.addAll(partsList);
 			if(shapeList!=null) members.addAll(shapeList);
 			//部品ごとにEDTへ同期で渡すと、数千部品のPanel(スクロールするマップ)では1回の移動に数十msかかる
-			PCARD.batchOnEDT(() -> {
+			Host.get().batchOnEDT(() -> {
 				for(OObject part : members){
 					if(part==anchor || part.panelId!=anchor.panelId) continue;
 					if(part instanceof OButton) ((OButton)part).setTopLeft(part.left+dx, part.top+dy);
@@ -164,7 +163,7 @@ public class OCardBase extends OObject {
 		return id;
 	}
 	/** The next part id for the stack XML: written only when it says more than the parts do (a part with a higher id was deleted). */
-	void writeNextPartId(javax.xml.stream.XMLStreamWriter writer) throws javax.xml.stream.XMLStreamException {
+	void writeNextPartId(XmlOut writer) throws XmlException {
 		int max = 0;
 		if(partsList!=null) for(OObject p : partsList) max = Math.max(max, p.id);
 		if(nextPartId<=max+1) return;
@@ -195,13 +194,13 @@ public class OCardBase extends OObject {
 		changed = true;
 	}
 	/** The panel elements, after the parts and shapes of a card or background. */
-	void writePanels(javax.xml.stream.XMLStreamWriter writer) throws javax.xml.stream.XMLStreamException {
+	void writePanels(XmlOut writer) throws XmlException {
 		for(OPanel p : panelList){
 			p.writeXML(writer);
 			writer.writeCharacters("\n\t\t");
 		}
 	}
-	void readPanel(javax.xml.stream.XMLStreamReader reader) throws javax.xml.stream.XMLStreamException {
+	void readPanel(XmlIn reader) throws XmlException {
 		OPanel p = OPanel.readXML(reader, this);
 		if(p.id<=0 || panelById(p.id)!=null){
 			int id = 1;
@@ -489,22 +488,9 @@ public class OCardBase extends OObject {
 	 * did it (Rescue George UR brings the clicked piece forward), so the release went to the frame and mouseUp never came.
 	 * false when the components do not match the parts; the caller then rebuilds the card.
 	 */
-	boolean restackComponents(){
-		PCARD pc = PCARD.pc;
-		if(pc==null || pc.mainPane==null || pc.stack==null || pc.stack.curCard==null) return true;
-		OCard cur = pc.stack.curCard;
-		if(this!=cur && this!=cur.bg) return !(id==(this instanceof OBackground ? cur.bgid : cur.id)); //見えていないカード
-		boolean[] done = {false};
-		Runnable run = () -> done[0] = restackComponentsOnEDT(pc.mainPane);
-		if(SwingUtilities.isEventDispatchThread()) run.run();
-		else{
-			try{ SwingUtilities.invokeAndWait(run); }
-			catch(Exception e){ return false; }
-		}
-		return done[0];
-	}
+	boolean restackComponents(){ return UiHost.get().restackComponents(this); }
 
-	private boolean restackComponentsOnEDT(java.awt.Container pane){
+	boolean restackComponentsOnEDT(java.awt.Container pane){
 		ArrayList<java.awt.Component> front = new ArrayList<java.awt.Component>();
 		ArrayList<OObject> order = stacking();
 		for(int i=order.size()-1; i>=0; i--){
@@ -532,7 +518,7 @@ public class OCardBase extends OObject {
 		for(int i=0; i<desired.size(); i++){
 			if(pane.getComponentZOrder(desired.get(i))!=i) pane.setComponentZOrder(desired.get(i), i);
 		}
-		if(!PCARD.lockedScreen) pane.repaint();
+		if(!HZ.lockedScreen) pane.repaint();
 		return true;
 	}
 
@@ -553,64 +539,13 @@ public class OCardBase extends OObject {
 		//removeDataはスクリプト実行スレッドとEDTの両方から呼ばれ得るため、
 		//すでにEDT上ならそのまま実行し、そうでなければinvokeAndWaitで同期的に実行する
 		//(このあとの処理が「除去済み」を前提にしているためinvokeLaterでは不可)
-		if(SwingUtilities.isEventDispatchThread()){
-			PCARDFrame.pc.mainPane.removeAll();
-		}else{
-			try{
-				SwingUtilities.invokeAndWait(new Runnable(){
-					public void run(){
-						PCARDFrame.pc.mainPane.removeAll();
-					}
-				});
-			}catch(Exception e){
-				PCARDFrame.pc.mainPane.removeAll();
-			}
-		}
-		for(int i=0; i<btnList.size(); i++) {
-			if(btnList.get(i).btn!=null) {
-				//PCARD.pc.mainPane.remove(btnList.get(i).btn);
-				btnList.get(i).btn.btnData = null;
-				btnList.get(i).btn=null;
-			}
-			if(btnList.get(i).chkbox!=null) {
-				//PCARD.pc.mainPane.remove(btnList.get(i).chkbox);
-				btnList.get(i).chkbox.btnData = null;
-				btnList.get(i).chkbox=null;
-			}
-			if(btnList.get(i).radio!=null) {
-				//PCARD.pc.mainPane.remove(btnList.get(i).radio);
-				btnList.get(i).radio.btnData = null;
-				btnList.get(i).radio=null;
-			}
-			if(btnList.get(i).popup!=null) {
-				//PCARD.pc.mainPane.remove(btnList.get(i).popup);
-				btnList.get(i).popup.btnData = null;
-				btnList.get(i).popup=null;
-			}
-			//btnList.get(i).card = null;
-			//btnList.get(i).bkgd = null;
-		}
-		for(int i=0; i<fldList.size(); i++) {
-			if(fldList.get(i).fld!=null){
-				//PCARD.pc.mainPane.remove(fldList.get(i).fld);
-				fldList.get(i).fld.fldData = null;
-				fldList.get(i).fld=null;
-			}
-			//fldList.get(i).card = null;
-			//fldList.get(i).bkgd = null;
-		}
+		UiHost.get().clearCardPane(this);
+		UiHost.get().dropButtonViews(this);
+		UiHost.get().dropFieldViews(this);
 		//(removeAll済みなので、参照だけ捨てる。以前はremove(i)しながら回して
 		//半分しか消えていなかった)
 		paneList.clear();
-		if(label!=null) {
-			//PCARD.pc.mainPane.remove(label);
-			label.cd = null;
-			label=null;
-			pict=null;
-			picture=null;
-		}
-		for(int i=0;i<OButton.btnGroup.length; i++){
-			OButton.btnGroup[i] = null;
-		}
+		UiHost.get().removeDataView605(this);
+		UiHost.get().clearButtonGroups();
 	}
 }

@@ -12,7 +12,7 @@ import java.util.Map;
  * standard cursors and patterns), read/write access, and the classic
  * search order (current file first, then the files opened before it).
  */
-final class ResourceManager68k {
+class ResourceManager68k {
 	static final int NO_ERR=0,RES_NOT_FOUND=-192,RES_FILE_NOT_FOUND=-193,ADD_RES_FAILED=-194,ADD_REF_FAILED=-195,RMV_RES_FAILED=-196,RMV_REF_FAILED=-197,RES_ATTR_ERR=-198,MAP_READ_ERR=-199,MEM_FULL_ERR=-108,EOF_ERR=-39,FNF_ERR=-43,PERM_ERR=-54,OP_WR_ERR=-49,DUP_FN_ERR=-48;
 	private static final int RES_ERR_ADDRESS=0x0a60;
 	/** Low-memory globals of the map chain: TopMapHndl, SysMapHndl, SysMap, CurMap. */
@@ -456,7 +456,7 @@ final class ResourceManager68k {
 	int openDataForkFile(File file,int permission) throws M68kCpuException {
 		followGuest();
 		if(file==null||!file.isFile()){setError(FNF_ERR);return -1;}
-		if(!Sandbox.allowFile(file,Sandbox.Access.READ,tb.name)){setError(PERM_ERR);return -1;}
+		if(!Sandbox68k.allowFile(file,Sandbox68k.Access.READ,tb.name)){setError(PERM_ERR);return -1;}
 		try{
 			String path=file.getCanonicalPath();
 			for(ResourceFile68k f:files.values())if(f.storage==ResourceFile68k.Storage.DATA&&f.file!=null&&f.file.getCanonicalPath().equals(path)){setCurrent(f.refNum);setError(NO_ERR);return f.refNum;}
@@ -583,7 +583,7 @@ final class ResourceManager68k {
 			int h=memory.readLong(entry+8);
 			if(h!=0){byte[] out=tb.api.handleContents(h);tb.api.disposeHandleAndFree(h);if(out!=null&&out.length>0){r.setData(out);r.expanded=true;
 				if(Mac68kApi.TRACE&&out.length!=data.length)System.err.println("[68K] $A0FC engine expanded "+ResourceFile68k.typeName(r.type)+" "+r.id+": "+data.length+" -> "+out.length+" bytes");
-				String dump=System.getProperty("hz68k.snapshot");if(dump!=null&&out.length!=data.length)try{java.nio.file.Files.write(new File(dump,ResourceFile68k.typeName(r.type).trim()+"-"+r.id+".bin").toPath(),out);}catch(IOException ignored){}
+				String dump=System.getProperty("hz68k.snapshot");if(dump!=null&&out.length!=data.length)try{Files68k.write(new File(dump,ResourceFile68k.typeName(r.type).trim()+"-"+r.id+".bin"),out);}catch(IOException ignored){}
 				return out;}}
 			if(Mac68kApi.TRACE)System.err.println("[68K] $A0FC engine did not expand "+ResourceFile68k.typeName(r.type)+" "+r.id+" (ResErr "+(short)memory.readWord(0xa60)+")");
 		}catch(M68kException e){
@@ -765,6 +765,7 @@ final class ResourceManager68k {
 	/** The chosen printer's resource file the PrLink glue opens by name (PrintManager68k.printerFile), a fresh one each time it is not open. */
 	private int openPrinterFile() throws M68kCpuException {
 		for(ResourceFile68k f:files.values())if(f.printer){setCurrent(f.refNum);setError(NO_ERR);return f.refNum;}
+		if(tb.print==null){setError(-193);return -1;} // no Printing Manager (the browser player's VM): resFNotFound
 		ResourceFile68k rf=tb.print.printerFile();rf.printer=true;rf.writable=false;
 		int ref=open(rf);setCurrent(ref);setError(NO_ERR);return ref;
 	}
@@ -788,13 +789,13 @@ final class ResourceManager68k {
 		followGuest();
 		// a stack's own path ("the long name of this stack": its .hzb without the extension) where no HyperCard file it was converted
 		// from lies: the stack's resource file (G-XCollection's installer copies its XCMDs out of MtCRX pathThis())
-		if(file!=null&&!file.exists())for(ResourceFile68k f:files.values())if(f.stack!=null&&Mac68kResourceManager.isStackPath(f.stack,file)){setCurrent(f.refNum);setError(NO_ERR);return f.refNum;}
+		if(file!=null&&!file.exists())for(ResourceFile68k f:files.values())if(f.stack!=null&&Mac68kResourceManager.isStackPath(f.stack,file))return reuseStackFile(f.refNum);
 		// the stand-in of a stack named by path (StackFile68k) whose resources this VM has open already (the stack on show, one in
 		// use): that file, so what the external adds is seen at once
 		OStack named=tb.files==null?null:tb.files.fileManager.stackOfShadow(file);
-		if(named!=null)for(ResourceFile68k f:files.values())if(f.stack!=null&&(f.stack==named||Xcmd68k.sameStack(f.stack,named))){setCurrent(f.refNum);setError(NO_ERR);return f.refNum;}
+		if(named!=null)for(ResourceFile68k f:files.values())if(f.stack!=null&&(f.stack==named||Xcmd68k.sameStack(f.stack,named)))return reuseStackFile(f.refNum);
 		if(file==null||!file.isFile()){setError(FNF_ERR);return -1;}
-		if(!Sandbox.allowFile(file,Sandbox.Access.READ,tb.name)){setError(PERM_ERR);return -1;}
+		if(!Sandbox68k.allowFile(file,Sandbox68k.Access.READ,tb.name)){setError(PERM_ERR);return -1;}
 		try{
 			String path=file.getCanonicalPath();
 			if(tb.files!=null&&tb.app!=null&&path.equals(tb.files.systemFile().getCanonicalPath())){setCurrent(systemRefNum);setError(NO_ERR);return systemRefNum;} // "System Folder:System" on disk is a stub: its resources are the built-in System file's
@@ -812,6 +813,18 @@ final class ResourceManager68k {
 			rf.writable=HostFileAttributes68k.mayBecomeWritable(file); // a read-only copy from a CD is made writable at the first write (flush)
 			int ref=open(rf);if(permission==FS_RD_PERM)readOnlyRefs.add(ref);setCurrent(ref);setError(NO_ERR);return ref;
 		}catch(IOException e){setError(MAP_READ_ERR);return -1;}
+	}
+
+	/**
+	 * OpenResFile of a stack whose resources this VM has open (a stack in use, named by its path): its file, raised for the
+	 * program as an open file is (openFile); the program's CloseResFile puts it back below the application instead of
+	 * closing it (closeResFile keeps a stack in use open). RAVEN -Wings ZERO-'s MtGetRsrcList and UxReadTXTRes open and close the map stack in use by path; in the web
+	 * player (no HyperCard file beside the .hzb, so this path) the close took the stack out of the chain for good, and its
+	 * TXT and PICT resources were gone: the events found no map, the game went back to its title.
+	 */
+	private int reuseStackFile(int ref) throws M68kCpuException {
+		if(belowApplication.remove(ref)){raisedByProgram.add(ref);toTop(ref);relinkMaps();}
+		setCurrent(ref);setError(NO_ERR);return ref;
 	}
 
 	/** A file the program opened itself (not the application, the System, or a file a loader holds for an extension or component). */
@@ -856,6 +869,9 @@ final class ResourceManager68k {
 		int next=applicationRefNum;if(current==ref){List<ResourceFile68k> c=chain(false);if(c.size()>1)for(Map.Entry<Integer,ResourceFile68k> e:files.entrySet())if(e.getValue()==c.get(1)){next=e.getKey();break;}}
 		if(raisedByProgram.remove(ref)&&files.containsKey(ref)){belowApplication.add(ref);backToLoader(ref);if(current==ref)setCurrent(next);relinkMaps();setError(NO_ERR);return;} // the loader's file stays open for its owner
 		if(pinnedFiles.contains(ref)){backToLoader(ref);if(current==ref)setCurrent(next);setError(NO_ERR);return;} // an extension's file never closes, but the program's current file moves on
+		// a stack in use stays open for as long as HyperCard uses it, whoever closes it (reuseStackFile); the current file is
+		// the stack's own again, as after HyperCard's external call
+		if(stacksInUse.containsValue(ref)&&files.containsKey(ref)){if(current==ref)setCurrent(applicationRefNum);setError(NO_ERR);return;}
 		ResourceFile68k f=files.remove(ref);belowApplication.remove(ref);belowSystem.remove(ref);detached.remove(ref);closedByLoader.remove(ref);reopenedFromLoader.remove(ref);
 		if(f==null){setError(RES_FILE_NOT_FOUND);return;}
 		if(f.dirty)try{flush(f);}catch(IOException e){}
@@ -881,9 +897,9 @@ final class ResourceManager68k {
 		// a folder has no resource fork: an FSSpec FSMakeFSSpec left naming the parent folder (dirNFErr) is no file to make
 		// (UxCardToPICS went on with noErr and then reported "Can't open file" instead of "Can't create file")
 		if(file.isDirectory()){setError(-1302);return;} // notAFileErr
-		if(!Sandbox.allowFile(file,Sandbox.Access.WRITE,tb.name)){setError(PERM_ERR);return;}
+		if(!Sandbox68k.allowFile(file,Sandbox68k.Access.WRITE,tb.name)){setError(PERM_ERR);return;}
 		try{
-			if(!file.exists()){java.nio.file.Files.write(file.toPath(),new byte[0]);Sandbox.created(tb.name,file);}
+			if(!file.exists()){Files68k.write(file,new byte[0]);Sandbox68k.created(tb.name,file);}
 			byte[] existing=ResourceFile68k.readForkBytes(file,null);
 			// a fork that holds a map already is left alone with dupFNErr (Inside Macintosh: More Toolbox, CreateResFile): Disk Copy 6.3
 			// calls HCreateResFile on its prefs file at every start and took noErr for "new prefs" - licence again, settings lost
@@ -921,11 +937,11 @@ final class ResourceManager68k {
 	private void guardCode(ResourceFile68k f){
 		codeRefused=false;
 		ProgramGuard68k.Changes changes=ProgramGuard68k.changes(f);
-		if(changes==null||changes.empty()||Sandbox.allowProgramChange(f.file,tb.name))return;
+		if(changes==null||changes.empty()||Sandbox68k.allowProgramChange(f.file,tb.name))return;
 		changes.revert(f,byHandle);codeRefused=true;
 	}
-	private void flush(ResourceFile68k f) throws IOException {if(f.stack!=null){storeInStack(f);return;}if(f.file==null||!f.writable)return;guardCode(f);if(!Sandbox.allowFile(f.file,Sandbox.Access.WRITE,tb.name))throw new IOException("write not allowed");if(!HostFileAttributes68k.makeWritable(f.file))throw new IOException("read-only");f.write();tb.files.fileManager.resourceForkRewritten(f.file);}
-	void flushAll(){for(ResourceFile68k f:files.values()){if(f.stack!=null){storeInStack(f);continue;}if(f.dirty&&f.writable&&f.file!=null)try{for(ResourceFile68k.Resource r:f.ordered)if(r.changed)captureHandle(r);guardCode(f);if(Sandbox.allowFile(f.file,Sandbox.Access.WRITE,tb.name)&&HostFileAttributes68k.makeWritable(f.file))f.write();}catch(Exception ignored){}}}
+	private void flush(ResourceFile68k f) throws IOException {if(f.stack!=null){storeInStack(f);return;}if(f.file==null||!f.writable)return;guardCode(f);if(!Sandbox68k.allowFile(f.file,Sandbox68k.Access.WRITE,tb.name))throw new IOException("write not allowed");if(!HostFileAttributes68k.makeWritable(f.file))throw new IOException("read-only");f.write();tb.files.fileManager.resourceForkRewritten(f.file);}
+	void flushAll(){for(ResourceFile68k f:files.values()){if(f.stack!=null){storeInStack(f);continue;}if(f.dirty&&f.writable&&f.file!=null)try{for(ResourceFile68k.Resource r:f.ordered)if(r.changed)captureHandle(r);guardCode(f);if(Sandbox68k.allowFile(f.file,Sandbox68k.Access.WRITE,tb.name)&&HostFileAttributes68k.makeWritable(f.file))f.write();}catch(Exception ignored){}}}
 	/** XCMD mode, after each external call: what it added to or changed in a stack's resource file goes into the stack, as
 	 *  HyperCard's open stack has it at once (an external need not call UpdateResFile: MtMakeIcon's ICON is a button icon next). */
 	void storeStackFiles(){

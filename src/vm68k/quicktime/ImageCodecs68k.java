@@ -14,7 +14,7 @@ import java.util.Map;
  * <li>'raw ', 32-bit xRGB rows; 'jpeg' (Photo JPEG) through ImageIO (PictureCompression68k.encode).</li>
  * </ul>
  */
-final class ImageCodecs68k {
+class ImageCodecs68k {
 	static final int SMC=0x736d6320,RLE=0x726c6520,RAW=0x72617720,JPEG=0x6a706567;
 	private ImageCodecs68k(){}
 

@@ -18,7 +18,7 @@ import java.util.Map;
  * the importer's port), as QuickTime's PICT importer does. Whatever the file is called or typed, the data decides which
  * importer serves it: MacBeat's skin has PICT files named and typed as PNG (Star.png, 'PNGf') and draws them this way.
  */
-final class GraphicsImporter68k implements Components68k.Native {
+class GraphicsImporter68k implements Components68k.Native {
 	static final int GRIP=0x67726970,APPL=0x6170706c;
 	/** Subtypes served: the file/data types QuickTime's importers carry. */
 	static final int[] SUBTYPES={0x504e4766 /* PNGf */,0x4a504547 /* JPEG */,0x47494666 /* GIFf */,0x424d5066 /* BMPf */,0x54494646 /* TIFF */,0x50494354 /* PICT */};
@@ -145,7 +145,7 @@ final class GraphicsImporter68k implements Components68k.Native {
 				if(ref.length<4)return new Reference(null,null,PARAM_ERR);
 				int h=(ref[0]&0xff)<<24|(ref[1]&0xff)<<16|(ref[2]&0xff)<<8|ref[3]&0xff;
 				byte[] data=h==0?null:tb.api.handleContents(h);
-				String name=ref.length>4&&(ref[4]&0xff)>0&&ref.length>=5+(ref[4]&0xff)?new String(ref,5,ref[4]&0xff,java.nio.charset.Charset.forName("x-MacRoman")):null;
+				String name=ref.length>4&&(ref[4]&0xff)>0&&ref.length>=5+(ref[4]&0xff)?new String(ref,5,ref[4]&0xff,Platform.get().charset("x-MacRoman")):null;
 				return data==null?new Reference(null,null,PARAM_ERR):new Reference(data,name,0);}
 			case POINTER_REF:{
 				if(ref.length<8)return new Reference(null,null,PARAM_ERR);

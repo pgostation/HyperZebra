@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * <p>The compact Mac's sound buffer (SoundBase) is in the same region, at base + {@link #SOUND_OFFSET}: writes to it are
  * played ({@link SoundBuffer68k}), switched by VIA1 port B bit 7 and with the volume of port A bits 0-2.
  */
-final class MacIo68k implements M68kMemory.IoDevice, M68kCpu.InterruptSource {
+class MacIo68k implements M68kMemory.IoDevice, M68kCpu.InterruptSource {
 	static final int VIA2_OFFSET=0x2000,SCC_OFFSET=0x4000,SOUND_OFFSET=0x4008,LENGTH=SOUND_OFFSET+SoundBuffer68k.BYTES;
 	/** VIA input clock: the 68000's 7.8336 MHz / 10. */
 	private static final double VIA_HZ=783360;
@@ -124,7 +124,7 @@ final class MacIo68k implements M68kMemory.IoDevice, M68kCpu.InterruptSource {
 		finally{System.arraycopy(d,0,cpu.d,0,8);System.arraycopy(a,0,cpu.a,0,8);cpu.sr=sr;}
 	}
 
-	void shutDown(){sound.stop();scc.a.stop();scc.b.stop();if(listening){MidiHost68k.removeListener(hostListener);listening=false;}}
+	void shutDown(){sound.stop();scc.a.stop();scc.b.stop();if(listening){MidiPorts68k.removeListener(hostListener);listening=false;}}
 
 	// ------------------------------------------------------------------ 6522 VIA
 
@@ -203,7 +203,7 @@ final class MacIo68k implements M68kMemory.IoDevice, M68kCpu.InterruptSource {
 	// ------------------------------------------------------------------ Z8530 SCC
 
 	private final class Scc {
-		final Channel a=new Channel(MidiHost68k.MODEM,"A"),b=new Channel(MidiHost68k.PRINTER,"B");
+		final Channel a=new Channel(MidiPorts68k.MODEM,"A"),b=new Channel(MidiPorts68k.PRINTER,"B");
 		int wr9;
 		int read(int offset){
 			Channel c=(offset&2)!=0?a:b;
@@ -297,17 +297,17 @@ final class MacIo68k implements M68kMemory.IoDevice, M68kCpu.InterruptSource {
 			if(have==need){byte[] m=new byte[need+1];m[0]=(byte)status;System.arraycopy(message,1,m,1,need);send(m);have=0;if(status>=0xf0)status=0;}
 		}
 		private boolean used;
-		private void send(byte[] m){used=true;if(TRACE)System.err.println("[io] MIDI out "+name+": "+MidiHost68k.hex(m));MidiHost68k.send(port,m);}
+		private void send(byte[] m){used=true;if(TRACE)System.err.println("[io] MIDI out "+name+": "+MidiPorts68k.hex(m));MidiPorts68k.send(port,m);}
 		void stop(){ // notes left sounding when the program quits mid-song
-			if(used)for(int ch=0;ch<16;ch++)MidiHost68k.send(port,new byte[]{(byte)(0xb0|ch),123,0});
+			if(used)for(int ch=0;ch<16;ch++)MidiPorts68k.send(port,new byte[]{(byte)(0xb0|ch),123,0});
 		}
 	}
 
 	private boolean listening;
-	private final MidiHost68k.Listener hostListener=(port,bytes)->{
-		Channel c=port==MidiHost68k.MODEM?scc.a:scc.b;
+	private final MidiPorts68k.Listener hostListener=(port,bytes)->{
+		Channel c=port==MidiPorts68k.MODEM?scc.a:scc.b;
 		for(byte x:bytes)c.rx.add(x&0xff);
 		wake();
 	};
-	private void listen(){if(!listening){listening=true;MidiHost68k.addListener(hostListener);}}
+	private void listen(){if(!listening){listening=true;MidiPorts68k.addListener(hostListener);}}
 }

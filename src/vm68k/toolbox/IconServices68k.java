@@ -19,7 +19,7 @@ import java.util.Map;
  * registered. Two files of the same type and creator share one IconRef, as on a Mac. Drawing goes through the port as
  * PlotIconSuite's does; hit tests and regions follow the icon's mask.
  */
-final class IconServices68k {
+class IconServices68k {
 	private final Toolbox68k tb;
 	private final M68kMemory memory;
 	IconServices68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;}
@@ -389,7 +389,7 @@ final class IconServices68k {
 	/** An icon family from a host file's resource fork: its 'icns' of that ID first, else the classic members. */
 	private Map<Integer,byte[]> forkMembers(File file,int id){
 		Map<Integer,byte[]> m=new HashMap<Integer,byte[]>();
-		if(file==null||!Sandbox.allowFile(file,Sandbox.Access.READ,tb.name))return m;
+		if(file==null||!Sandbox68k.allowFile(file,Sandbox68k.Access.READ,tb.name))return m;
 		try{
 			byte[] fork=ResourceFile68k.readForkBytes(file,null);if(fork==null||fork.length<16)return m;
 			byte[] icns=FinderIcons68k.byId(fork,ICON_FAMILY,id);
@@ -515,14 +515,14 @@ final class IconServices68k {
 	private byte[] readIconFile(int spec,int[] e){
 		File f=spec==0?null:hostFile(spec);
 		if(f==null||!f.isFile()){e[0]=FNF_ERR;return null;}
-		if(!Sandbox.allowFile(f,Sandbox.Access.READ,tb.name)){e[0]=-54;return null;} // permErr
+		if(!Sandbox68k.allowFile(f,Sandbox68k.Access.READ,tb.name)){e[0]=-54;return null;} // permErr
 		try{byte[] b=java.nio.file.Files.readAllBytes(f.toPath());if(parseFamily(b)==null){e[0]=PARAM_ERR;return null;}return b;}
 		catch(IOException x){e[0]=IO_ERR;return null;}
 	}
 	private int writeIconFile(int family,int spec) throws M68kCpuException {
 		byte[] b=family==0?null:tb.api.handleContents(family);if(b==null||parseFamily(b)==null)return PARAM_ERR;
 		File f=spec==0?null:hostFile(spec);if(f==null||f.isDirectory())return FNF_ERR;
-		if(!Sandbox.allowFile(f,Sandbox.Access.WRITE,tb.name))return -54;
+		if(!Sandbox68k.allowFile(f,Sandbox68k.Access.WRITE,tb.name))return -54;
 		try{java.nio.file.Files.write(f.toPath(),java.util.Arrays.copyOf(b,Math.min(b.length,Math.max(8,u4(b,4)))));return NO_ERR;}catch(IOException x){return IO_ERR;}
 	}
 

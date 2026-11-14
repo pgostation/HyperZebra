@@ -16,23 +16,7 @@ import javax.sound.sampled.UnsupportedAudioFileException;
  * missing/fails, so callers can report the usual "unsupported format".
  */
 final class MaceConverter {
-	private static Boolean ffmpegAvailable;
-
 	private MaceConverter() {
-	}
-
-	static boolean isFfmpegAvailable(){
-		if(ffmpegAvailable==null){
-			try {
-				Process p = new ProcessBuilder("ffmpeg", "-version").start();
-				p.getInputStream().readAllBytes();
-				p.getErrorStream().readAllBytes();
-				ffmpegAvailable = p.waitFor()==0;
-			} catch (Exception e) {
-				ffmpegAvailable = false;
-			}
-		}
-		return ffmpegAvailable;
 	}
 
 	static AudioInputStream open(File file) throws IOException {
@@ -63,31 +47,20 @@ final class MaceConverter {
 		if(!isMace(aifc)) return null;
 		AudioInputStream decoded = decodeMace(aifc);
 		if(decoded!=null) return decoded;
-		if(!isFfmpegAvailable()) return null;
-		File in = TempFiles.createFile("hyperzebra-mace-", ".aifc");
-		File out = new File(in.getPath()+".wav");
-		try {
-			Files.write(in.toPath(), aifc);
-			ArrayList<String> cmd = new ArrayList<String>();
-			cmd.add("ffmpeg"); cmd.add("-y"); cmd.add("-i"); cmd.add(in.getPath());
-			cmd.add("-acodec"); cmd.add("pcm_s16le"); cmd.add("-f"); cmd.add("wav"); cmd.add(out.getPath());
-			Process p = new ProcessBuilder(cmd).start();
-			p.getInputStream().readAllBytes();
-			p.getErrorStream().readAllBytes();
-			int status;
-			try { status = p.waitFor(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
-			if(status!=0 || !out.isFile()) return null;
-			byte[] wav = Files.readAllBytes(out.toPath());
-			try {
-				return AudioSystem.getAudioInputStream(new ByteArrayInputStream(wav));
-			} catch (UnsupportedAudioFileException e) {
-				return null;
-			}
-		} finally {
-			in.delete();
-			out.delete();
-		}
+		return FFMPEG==null ? null : FFMPEG.convert(aifc);
 	}
+
+	/** What the native decoder declines, converted by an installed ffmpeg: the desktop's MaceFfmpeg (found by name); the browser
+	 *  player has none (P4 sound) */
+	interface Fallback { AudioInputStream convert(byte[] aifc) throws IOException; }
+	private static final Fallback FFMPEG = findFallback();
+	private static Fallback findFallback() {
+		try { return (Fallback) Class.forName("MaceFfmpeg").getDeclaredConstructor().newInstance(); }
+		catch (ReflectiveOperationException | RuntimeException | LinkageError e) { return null; }
+	}
+	static boolean isFfmpegAvailable(){ return FFMPEG instanceof MaceFfmpegCheck c && c.available(); }
+	/** The fallback can say whether ffmpeg is there */
+	interface MaceFfmpegCheck { boolean available(); }
 
 	/** MACE AIFF-C decoded by the native {@link MaceDecoder} (COMM: numChannels, sampleRate; SSND: the packets); null for other formats. */
 	private static AudioInputStream decodeMace(byte[] aifc){

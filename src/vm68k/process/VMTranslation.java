@@ -17,7 +17,7 @@ import java.util.concurrent.*;
  *
  * Usable on macOS 26 and later only; elsewhere {@link #unavailableReason()} says why and the settings are disabled.
  */
-final class VMTranslation {
+class VMTranslation {
 	private VMTranslation(){}
 
 	/** What a text is: menus and window/dialog texts are short and have their own standard terms; TEXT is anything drawn. */
@@ -107,14 +107,14 @@ final class VMTranslation {
 		if("none".equals(p))return null; // as on a computer without the translators (Resource Translation with AI Chat…, tests)
 		if(p!=null)candidates.add(new File(p));
 		try{
-			File jar=new File(VMTranslation.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-			File dir=jar.isFile()?jar.getParentFile():jar;
-			candidates.add(new File(dir,"hz-translate"));
-			if(dir.getParentFile()!=null)candidates.add(new File(dir.getParentFile(),"hz-translate"));
+			File jar=Toolbox68k.PARTS.codeLocation();
+			if(jar!=null){File dir=jar.isFile()?jar.getParentFile():jar;
+				candidates.add(new File(dir,"hz-translate"));
+				if(dir.getParentFile()!=null)candidates.add(new File(dir.getParentFile(),"hz-translate"));}
 		}catch(Exception ignored){}
 		candidates.add(new File("build/hz-translate"));
 		candidates.add(new File("hz-translate"));
-		for(File f:candidates)if(f.isFile()&&f.canExecute())return f;
+		for(File f:candidates)if(f.isFile()&&Toolbox68k.PARTS.canExecute(f))return f;
 		return null;
 	}
 
@@ -142,7 +142,7 @@ final class VMTranslation {
 		if(now-llmCheckedAt>300_000){
 			llmCheckedAt=now;
 			Thread t=new Thread(()->{Status st=status("en","ja");llmUsable=st!=null&&st.llmReady();},"Translation status");
-			t.setDaemon(true);t.start();
+			t.setDaemon(true);Platform.get().start(t);
 		}
 		Boolean b=llmUsable;return b!=null&&b;
 	}
@@ -874,7 +874,7 @@ final class VMTranslation {
 			t.again=again;
 			List<ProgramText> texts=programTexts(rf,encoding);
 			Set<String> inPictures=new HashSet<String>();
-			if(ResourceTranslation.supports(c.to)&&PictureTranslation.enabledFor(program))texts.addAll(PictTranslation.texts(rf,from,encoding,pictures,inPictures)); // the text in its PICT resources
+			if(ResourceTranslation.supports(c.to)&&UiHost.get().pictureTranslationEnabledFor(program))texts.addAll(PictTranslation.texts(rf,from,encoding,pictures,inPictures)); // the text in its PICT resources
 			int count=0;for(ProgramText g:texts)for(String line:g.lines)if(Piece.of(line)!=null)count++;
 			int sent=t.prefetchProgram(texts,Integer.MAX_VALUE);
 			Ahead a=new Ahead(t,from,c.to,c.engine,count,sent);
@@ -938,7 +938,7 @@ final class VMTranslation {
 			return lead+translated+trail;
 		}
 		private static boolean isIdeograph(String s){
-			for(int i=0;i<s.length();i++)if(Character.UnicodeScript.of(s.charAt(i))==Character.UnicodeScript.HAN)return true;
+			for(int i=0;i<s.length();i++)if(UScript.of(s.charAt(i))==UScript.HAN)return true;
 			return false;
 		}
 	}
@@ -985,8 +985,8 @@ final class VMTranslation {
 		return out;
 	}
 	private static boolean cjk(int cp){
-		Character.UnicodeScript sc=Character.UnicodeScript.of(cp);
-		return sc==Character.UnicodeScript.HAN||sc==Character.UnicodeScript.HIRAGANA||sc==Character.UnicodeScript.KATAKANA||sc==Character.UnicodeScript.HANGUL
+		UScript sc=UScript.of(cp);
+		return sc==UScript.HAN||sc==UScript.HIRAGANA||sc==UScript.KATAKANA||sc==UScript.HANGUL
 			||cp>=0x3000&&cp<0x3040||cp>=0xff00&&cp<0xffef;
 	}
 	private static boolean opening(int cp){return "([{「『（［｛〈《【〔‘“".indexOf(cp)>=0;}
@@ -1001,9 +1001,7 @@ final class VMTranslation {
 
 	private static final Map<String,Map<String,String>> caches=new ConcurrentHashMap<String,Map<String,String>>();
 	private static final Set<String> dirty=Collections.newSetFromMap(new ConcurrentHashMap<String,Boolean>());
-	private static final ScheduledExecutorService timer=Executors.newSingleThreadScheduledExecutor(r->{
-		Thread t=new Thread(r,"VMTranslation");t.setDaemon(true);return t;
-	});
+	private static final Toolbox68kParts.Timer68k timer=Toolbox68k.PARTS.timer("VMTranslation");
 
 	/** How many translated runs and boxes were drawn into programs' ports (tests and tracing). */
 	static final java.util.concurrent.atomic.AtomicInteger drawn=new java.util.concurrent.atomic.AtomicInteger();
@@ -1013,7 +1011,7 @@ final class VMTranslation {
 	/** Runs {@code r} on the translation timer after {@code ms} milliseconds. */
 	static void later(long ms,Runnable r){timer.schedule(r,ms,TimeUnit.MILLISECONDS);}
 
-	static File cacheDirectory(){return new File(AppPaths.stateDirectory(),"Translations");}
+	static File cacheDirectory(){return new File(UiHost.get().appPathsStateDirectory(),"Translations");}
 
 	private static String cacheName(String from,String to,String engine){
 		return (from+"_"+to+"_"+engine).replaceAll("[^A-Za-z0-9_-]","");
@@ -1035,6 +1033,16 @@ final class VMTranslation {
 			}
 			return m;
 		});
+	}
+
+	/** Whether any engine's cache has translations from one language into another (on disk or made in this session). */
+	static boolean hasCache(String from,String to){
+		for(String engine:ENGINES){
+			String name=cacheName(from,to,engine);
+			Map<String,String> m=caches.get(name);
+			if(m!=null?!m.isEmpty():new File(cacheDirectory(),name+".tsv").isFile())return true;
+		}
+		return false;
 	}
 
 	private static void saveLater(String from,String to,String engine){
@@ -1231,7 +1239,7 @@ final class VMTranslation {
 	interface Reply { void received(Map<?,?> reply); }
 
 	static final class HelperClient {
-		private Process process;
+		private Toolbox68kParts.HelperProcess68k process;
 		private Writer in;
 		private final Map<Integer,Reply> waiting=new ConcurrentHashMap<Integer,Reply>();
 		private int nextId=1;
@@ -1260,22 +1268,22 @@ final class VMTranslation {
 		}
 
 		private boolean running(){
-			if(process!=null&&process.isAlive())return true;
+			if(process!=null&&process.alive())return true;
 			if(System.currentTimeMillis()-failedAt<10000)return false; // a helper that just died is not restarted in a loop
 			File exe=helper();
 			if(exe==null){failedAt=System.currentTimeMillis();return false;}
 			try{
-				process=new ProcessBuilder(exe.getAbsolutePath()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-				in=new BufferedWriter(new OutputStreamWriter(process.getOutputStream(),StandardCharsets.UTF_8));
-				Process p=process;
+				process=Toolbox68k.PARTS.startProcess(exe);
+				in=new BufferedWriter(new OutputStreamWriter(process.stdin(),StandardCharsets.UTF_8));
+				Toolbox68kParts.HelperProcess68k p=process;
 				Thread reader=new Thread(()->read(p),"VMTranslation helper");
-				reader.setDaemon(true);reader.start();
+				reader.setDaemon(true);Platform.get().start(reader);
 				return true;
 			}catch(IOException e){failedAt=System.currentTimeMillis();process=null;return false;}
 		}
 
-		private void read(Process p){
-			try(BufferedReader r=new BufferedReader(new InputStreamReader(p.getInputStream(),StandardCharsets.UTF_8))){
+		private void read(Toolbox68kParts.HelperProcess68k p){
+			try(BufferedReader r=new BufferedReader(new InputStreamReader(p.stdout(),StandardCharsets.UTF_8))){
 				for(String line;(line=r.readLine())!=null;){
 					Object o;
 					try{o=TalkJson.parse(line);}catch(xTalkException e){continue;}

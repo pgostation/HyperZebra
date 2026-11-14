@@ -77,12 +77,33 @@ class MyPanel extends JPanel{
 	//絵が、Swingが独自に行う再描画によって消されてしまい(チラつきの原因)、
 	//しかもスプライトで隠していたはずのカード本体の絵(白黒のビットマップ等)が
 	//一瞬見えてしまう。
+	/** Inside paintScreenEffects: the card itself */
+	private boolean screenPass;
+
+	private void paintScreenEffects(Graphics g){
+		int w = getWidth(), h = getHeight();
+		if(w<=0 || h<=0) return;
+		if(TalkImage.screenFilter==null){
+			screenPass = true;
+			try{ paint(g); }finally{ screenPass = false; }
+		}else{
+			//the whole card, whatever the clip: blur and vignette look at more than the part being repainted
+			BufferedImage off = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+			Graphics2D og = off.createGraphics();
+			screenPass = true;
+			try{ paint(og); }finally{ screenPass = false; og.dispose(); }
+			g.drawImage(TalkImage.filterScreen(off), 0, 0, null);
+		}
+		BufferedImage overlay = TalkImage.screenOverlay;
+		if(overlay!=null) PCARD.drawScaled(g, overlay, 0, 0, null);
+	}
+
 	@Override
 	public void paint(Graphics g){
 		//68K XCMDがビデオドライバのガンマテーブルを変えている間(Best of HC ExternalsのFade)は、Macの画面と同じく
 		//カードウインドウ全体をその表に通して見せる。外部コマンドが読むカードの絵(capturingEffect)は表を通さない
 		int[] gamma = CardWindow68k.gamma;
-		if(gamma!=null && !PCARD.capturingEffect && !gammaPass && PCARD.pc!=null && PCARD.pc.mainPane==this){
+		if(gamma!=null && !HZ.capturingEffect && !gammaPass && PCARD.pc!=null && PCARD.pc.mainPane==this){
 			paintThroughGamma(g, gamma);
 			return;
 		}
@@ -91,7 +112,7 @@ class MyPanel extends JPanel{
 		//描かれて部品が白抜けするため、ロック開始時の完成画面をパネル全体として
 		//描き戻す。visual effect用のオフスクリーン取得中だけ通常描画を許可する。
 		BufferedImage frozen = VEffect.oldoff;
-		if(PCARD.lockedScreen && !PCARD.capturingEffect && frozen!=null){
+		if(HZ.lockedScreen && !HZ.capturingEffect && frozen!=null){
 			g.drawImage(frozen, 0, 0, getWidth(), getHeight(),
 				0, 0, frozen.getWidth(), frozen.getHeight(), null);
 			//68K XCMDがカードウインドウに直接描いた絵はロック中も見える(lock screenが止めるのはHyperCard自身のカードの描画だけ。
@@ -102,14 +123,19 @@ class MyPanel extends JPanel{
 		}
 		//部品の表示/非表示を68K XCMD(ColorizeHC)が描き直す間は、変更前の画面のまま(CardWindow68k.holdScreen)
 		BufferedImage held = CardWindow68k.held;
-		if(held!=null && !PCARD.capturingEffect && PCARD.pc!=null && PCARD.pc.mainPane==this){
+		if(held!=null && !HZ.capturingEffect && PCARD.pc!=null && PCARD.pc.mainPane==this){
 			g.drawImage(held, 0, 0, null);
 			return;
 		}
-		if(PCARD.lockedScreen && !PCARD.capturingEffect && VEffect.lazyLock){
+		if(HZ.lockedScreen && !HZ.capturingEffect && VEffect.lazyLock){
 			//絵なしの lock screen: 部品はまだロック開始時のままなので、そのまま描けばロック中の画面になる
-			PCARD.capturingEffect = true;
-			try{ paint(g); }finally{ PCARD.capturingEffect = false; }
+			HZ.capturingEffect = true;
+			try{ paint(g); }finally{ HZ.capturingEffect = false; }
+			return;
+		}
+		//the screenFilter / screenOverlay of a script (TalkImage): the card drawn as always, then through the filter, the overlay on top
+		if((TalkImage.screenFilter!=null || TalkImage.screenOverlay!=null) && !screenPass && PCARD.pc!=null && PCARD.pc.mainPane==this){
+			paintScreenEffects(g);
 			return;
 		}
 		BufferedImage addColor = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.addColor : null;
@@ -130,10 +156,6 @@ class MyPanel extends JPanel{
 			}
 		}
 		else super.paint(g);
-		BufferedImage overlay = TXcmd.terazzaOverlay;
-		if(TXcmd.terazzaAry != null && overlay != null){
-			g.drawImage(overlay, 0, 0, null);
-		}
 		//68K XCMDが「カードウインドウ」に直接描いた絵(論理座標なのでscale()倍する)
 		BufferedImage external = CardWindow68k.overlay;
 		if(external != null){

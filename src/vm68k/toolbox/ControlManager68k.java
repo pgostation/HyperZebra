@@ -93,7 +93,7 @@ final class ControlManager68k {
 	/** The control holding the keyboard focus of each window (SetKeyboardFocus). */
 	private final Map<Integer,Integer> focus=new HashMap<Integer,Integer>();
 
-	ControlManager68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;appearanceKinds=new AppearanceControls68k(tb,this);}
+	ControlManager68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;appearanceKinds=Toolbox68k.PARTS.appearanceControls(tb,this);}
 
 	/** The classic procID an Appearance-era one behaves as: kControlScrollBarProc/LiveProc (384, 386) are scroll bars and
 	 *  kControlPopupButtonProc (400) the pop-up menu (same variant bits); the others stay as they are. */
@@ -173,7 +173,7 @@ final class ControlManager68k {
 		// the clock only has flag bits 0 (display only) and 1 (live): a program passing others (HyperStudio's Stack To Go asks for
 		// procID 240 with 0x0B / 0x86 for its own text CDEF 15, which only the full application carries) wants a CDEF that is not
 		// there, and NewControl fails like it does without one instead of drawing the time into every text object
-		if((procId>>4)==AppearanceControls68k.CLOCK&&(value&~3)!=0&&!registeredDefs.containsKey(procId>>4)&&tb.resources.find(0x43444546,procId>>4)==null){memory.writeLong(cpu.a[7],0);return true;}
+		if((procId>>4)==AppearanceControls68k.CLOCK&&(value&~3)!=0&&!registeredDefs.containsKey(procId>>4)&&guestCdef(procId>>4)==null){memory.writeLong(cpu.a[7],0);return true;}
 		int handle=create(window,(short)memory.readWord(bounds),(short)memory.readWord(bounds+2),(short)memory.readWord(bounds+4),(short)memory.readWord(bounds+6),tb.readPascalBytes(title),visible,value,min,max,procId,refCon);
 		memory.writeLong(cpu.a[7],handle);return true;
 	}
@@ -230,7 +230,7 @@ final class ControlManager68k {
 		refreshLinks(window,list);
 		if(definition==null)attachDefProc(c,data);
 		c.defProcSeen=memory.readLong(data+24);
-		if(c.cdef==0&&c.nativeDef==null&&AppearanceControls68k.handles(procId))c.nativeDef=appearanceKinds.attach(handle,procId); // no CDEF resource of that ID: the Java one
+		if(c.cdef==0&&c.nativeDef==null&&appearanceKinds!=null&&AppearanceControls68k.handles(procId))c.nativeDef=appearanceKinds.attach(handle,procId); // no CDEF resource of that ID: the Java one
 		if(visible)draw(handle);
 		return handle;
 	}
@@ -248,13 +248,22 @@ final class ControlManager68k {
 	 *  panel's own CDEF 5 would otherwise draw every progress bar in its process). */
 	private static final java.util.Set<Integer> NATIVE_CDEFS=new java.util.HashSet<Integer>();
 	static{for(String id:System.getProperty("hz68k.nativecdef","").split(","))if(!id.trim().isEmpty())try{NATIVE_CDEFS.add(Integer.parseInt(id.trim()));}catch(NumberFormatException ignored){}}
+	/** HyperZebra's own System CDEF {@code id} (SystemResources68k's stub into the native drawing), not a program's or an extension's. */
+	private static boolean isSystemStub(ResourceFile68k.Resource res,int id){
+		try{return java.util.Arrays.equals(res.data(),SystemResources68k.nativeDefStub(ResourceManager68k.CDEF_SELECTOR|id));}catch(RuntimeException e){return false;}
+	}
+	/** The CDEF resource {@code id} that is a real definition procedure: none when only the System's native stub has that ID. */
+	private ResourceFile68k.Resource guestCdef(int id) throws M68kCpuException {
+		ResourceFile68k.Resource res=tb.resources.find(0x43444546,id);
+		return res!=null&&isSystemStub(res,id)?null:res;
+	}
 	private void attachDefProc(Control c,int data) throws M68kException {
 		int id=c.procId>>4;
 		Integer registered=registeredDefs.get(id);
 		if(registered!=null){c.cdef=registered;memory.writeLong(data+24,registered);callDefProc(c,INIT_CNTL,0);return;} // FutureBASIC's Carbon runtime registers its custom controls
 		if(NATIVE_CDEFS.contains(id))return;
 		ResourceFile68k.Resource res=tb.resources.find(0x43444546,id); // 'CDEF'
-		if((id==0||id==1||id==63||id==24||id==25)&&!(GUEST_CDEFS&&res!=null)){ // natively drawn (24, 25: the Appearance scroll bar and pop-up button): contrlDefProc still carries the Handle a program may read (the System stub)
+		if((id==0||id==1||id==63||id==24||id==25||res!=null&&isSystemStub(res,id))&&!(GUEST_CDEFS&&res!=null)){ // natively drawn (24, 25: the Appearance scroll bar and pop-up button): contrlDefProc still carries the Handle a program may read (the System stub)
 			if(res!=null){int h=tb.resources.handleFor(res);if(h!=0)memory.writeLong(data+24,h);}
 			return;
 		}
@@ -359,14 +368,15 @@ final class ControlManager68k {
 	}
 
 	void dispose(int handle,boolean redraw) throws M68kCpuException {
+		int d=data(handle); // (data() answers 0 once the control is out of the table)
 		Control c=controls.remove(handle);if(c==null)return;
 		if(tb.appearance!=null)tb.appearance.forget(handle);
 		focus.values().removeIf(f->f==handle);
 		Integer aux=auxRecords.remove(handle);if(aux!=null){unlinkAuxRecord(aux);tb.api.disposeHandle(aux);}
-		adoptDefProc(c,data(handle));
+		adoptDefProc(c,d);
 		if(c.cdef!=0)try{defProc(c,DISP_CNTL,0);}catch(RuntimeException ignored){}
 		if(c.nativeDef!=null)try{c.nativeDef.dispose(handle);}catch(M68kCpuException e){throw e;}catch(M68kException e){throw Toolbox68k.wrap(e);}
-		if(redraw)try{erase(handle);}catch(M68kCpuException ignored){}
+		if(redraw)try{erase(c,d);}catch(M68kCpuException ignored){} // (out of the table already: erase(handle) found nothing and DisposeControl erased nothing)
 		List<Integer> list=byWindow.get(c.window);if(list!=null){list.remove((Integer)handle);refreshLinks(c.window,list);if(list.isEmpty())byWindow.remove(c.window);}
 		disposeControlData(c,handle);
 		tb.api.disposeHandleAndFree(handle);
@@ -665,14 +675,20 @@ final class ControlManager68k {
 		int handle=liveThumb;if(handle==0)return;liveThumb=0;
 		if(!tb.host().isMouseDown())return;
 		int d=data(handle);Control c=controls.get(handle);if(d==0||c==null||memory.readByte(d+16)==0||memory.readByte(d+17)==255)return;
-		WindowManager68k.Window w=tb.windows.window(c.window);if(w==null||!w.visible)return;
+		// the window's content on the screen: a Window Manager window's, or HyperCard's card window (no window of the Window
+		// Manager: ScrollControl XCMD's scroll bar over a button stopped after the first step of every thumb drag)
+		WindowManager68k.Window w=tb.windows.window(c.window);int originH,originV;
+		if(w!=null){if(!w.visible)return;originH=w.left;originV=w.top;}
+		else if(tb.cardWindow!=null&&c.window==tb.cardWindow.record&&memory.readByte(c.window+110)!=0){
+			int[] place=tb.cardWindow.screenPlace();originH=place[0]-(short)memory.readWord(c.window+18);originV=place[1]-(short)memory.readWord(c.window+16);}
+		else return;
 		int top=(short)memory.readWord(d+8),left=(short)memory.readWord(d+10),bottom=(short)memory.readWord(d+12),right=(short)memory.readWord(d+14);
 		boolean vertical=(bottom-top)>=(right-left);int min=(short)memory.readWord(d+20),max=(short)memory.readWord(d+22),value=(short)memory.readWord(d+18);
 		KaleidoscopeScheme68k.Bar bar=bar(top,left,bottom,right,min,max,value);
 		int pos=bar.thumbStart+Math.max(0,Math.min(bar.thumbEnd-bar.thumbStart-1,liveGrab));
 		int h=vertical?(left+right)/2:left+pos,v=vertical?top+pos:(top+bottom)/2;
 		liveThumb=handle; // stays live until the button goes up or the program stops tracking it
-		tb.events.postContinuedPress(h+w.left,v+w.top);
+		tb.events.postContinuedPress(h+originH,v+originV);
 	}
 
 	/** Tracks the mouse in a control until the button is released; returns the part code hit. */
@@ -741,9 +757,13 @@ final class ControlManager68k {
 		KaleidoscopeScheme68k.Bar bar=bar(top,left,bottom,right,min,max,startValue);
 		int travel=Math.max(1,(bar.trackEnd-bar.trackStart)-(bar.thumbEnd-bar.thumbStart));
 		int grab=liveThumb==handle?liveGrab:(vertical?startV-top:startH-left)-bar.thumbStart;liveThumb=0;
+		int pressed=vertical?startV-top:startH-left;
 		while(tb.host().isMouseDown()){
-			int[] m=tb.events.localMouse();int delta=vertical?m[1]-startV:m[0]-startH;
-			int value=clamp(startValue+(int)Math.round((double)delta*(max-min)/travel),min,max);
+			// the value of where the thumb is dragged to (the pointer less where it holds the thumb), once the pointer moved: a
+			// step from the last value at each live re-press lost the rounding every time (ScrollControl XCMD's 1-50 bar
+			// dragged 47 pixels came to 21, not 26)
+			int[] m=tb.events.localMouse();int along=vertical?m[1]-top:m[0]-left;
+			int value=along==pressed?startValue:clamp(min+(int)Math.round((double)(along-grab-bar.trackStart)*(max-min)/travel),min,max);
 			if(value!=(short)memory.readWord(d+18)){
 				memory.writeWord(d+18,value);draw(handle);if(action!=0)callAction(action,handle,IN_THUMB);
 				if(LIVE_SCROLL){liveThumb=handle;liveGrab=grab;return IN_THUMB;}
@@ -884,7 +904,7 @@ final class ControlManager68k {
 			g.setFont(font);FontMetrics fm=Fonts68k.metrics(font); // an installed Chicago strike measures and draws itself (Fonts68k.drawString)
 			KaleidoscopeScheme68k scheme=KaleidoscopeScheme68k.active(tb);
 			if(scheme!=null&&kind==0&&base==0&&scheme.element(KaleidoscopeScheme68k.PUSH)!=null){
-				boolean ring=tb.appearance.isDefaultButton(handle);
+				boolean ring=tb.appearance!=null&&tb.appearance.isDefaultButton(handle);
 				if(c.ringDrawn&&!ring){g.setColor(new Color(tb.api.quickDraw().colorsOf(window)[1]));g.fillRect(left-5,top-5,right-left+10,bottom-top+10);}
 				if(ring)scheme.drawDefaultRing(g,left,top,right,bottom,disabled);
 				c.ringDrawn=ring;
@@ -895,7 +915,7 @@ final class ControlManager68k {
 			else if(kind==0&&base==0){
 				// With the Appearance Manager, CDEF 0's push button is the Appearance one: SetControlData('dflt') puts the
 				// default ring round it (ADM, Acrobat 5's dialogs, marks OK that way, not with a user item)
-				boolean ring=tb.appearance.isDefaultButton(handle);
+				boolean ring=tb.appearance!=null&&tb.appearance.isDefaultButton(handle);
 				if(ring||c.ringDrawn){int arc=Math.min(bottom-top,16)+6;
 					g.setColor(ring?(disabled?DISABLED:Color.BLACK):new Color(tb.api.quickDraw().colorsOf(window)[1]));g.setStroke(new BasicStroke(3f));
 					g.drawRoundRect(left-3,top-3,right-left+5,bottom-top+5,arc,arc);g.setStroke(new BasicStroke(1f));}
@@ -946,15 +966,33 @@ final class ControlManager68k {
 	 *  takes the 4 pixels round it as well, where its default ring is drawn: HyperCard hides its script window's scroll bars at
 	 *  every deactivate and ValidRects each control rectangle, and the rings left over made one update of the whole window -
 	 *  TEUpdate drew the script over itself without an erase, and its smoothed letters grew darker at each switch. */
-	private void erase(int handle) throws M68kCpuException {
-		int d=data(handle);Control c=controls.get(handle);if(d==0||c==null)return;
+	private void erase(int handle) throws M68kCpuException {erase(controls.get(handle),data(handle));}
+	private void erase(Control c,int d) throws M68kCpuException {
+		if(d==0||c==null)return;
 		int top=(short)memory.readWord(d+8),left=(short)memory.readWord(d+10),bottom=(short)memory.readWord(d+12),right=(short)memory.readWord(d+14);
 		int window=owner(c,d),kind=classic(c.procId)&0xfff0,base=c.procId&7; // pushButProc, or the Appearance one (368, 374/375 with an icon)
 		int m=(kind==0||kind==368)&&base!=1&&base!=2?4:0;
-		Graphics2D g=tb.quickDraw.windowSurface(window,top-4,-32768,bottom+4,32767);if(g==null)return;
-		try{g.setColor(new Color(tb.api.quickDraw().colorsOf(window)[1]));g.fillRect(left-m,top-m,right-left+2*m,bottom-top+2*m);}
-		finally{g.dispose();}
+		Color back=new Color(tb.api.quickDraw().colorsOf(window)[1]);
+		Graphics2D g=tb.quickDraw.windowSurface(window,top-4,-32768,bottom+4,32767);
+		if(g!=null){
+			try{g.setColor(back);g.fillRect(left-m,top-m,right-left+2*m,bottom-top+2*m);}
+			finally{g.dispose();}
+		}
+		else if(right>left&&bottom>top&&(long)(right-left+2*m)*(bottom-top+2*m)<=16_777_216L){
+			// no direct 32-bit surface (the browser player's card window): through QuickDraw, as drawAs draws then
+			java.awt.image.BufferedImage staged=new java.awt.image.BufferedImage(right-left+2*m,bottom-top+2*m,java.awt.image.BufferedImage.TYPE_INT_ARGB);
+			Graphics2D s=staged.createGraphics();try{s.setColor(back);s.fillRect(0,0,staged.getWidth(),staged.getHeight());}finally{s.dispose();}
+			QuickDraw68k qd=tb.api.quickDraw();int saved=qd.currentPortAddress(),port=tb.quickDraw.controlPort(window);
+			try{if(saved!=port)setPort(tb.cpu,port);tb.quickDraw.drawImage(staged,top-m,left-m,bottom+m,right+m);}
+			catch(M68kException e){if(e instanceof M68kCpuException)throw (M68kCpuException)e;}
+			finally{if(saved!=port&&saved!=0)try{setPort(tb.cpu,saved);}catch(M68kException ignored){}}
+		}
 		if(tb.windows.isWindow(window))tb.windows.invalidate(window,top-m,left-m,bottom+m,right+m);
+		// HyperCard's card window (no window of the VM's Window Manager): the erased part is HyperCard's to update after the call,
+		// as an InvalRect there is. ScrollControl XCMD's scroll bar, disposed when the mouse leaves its button, stayed on the card
+		// over the button it was drawn in
+		else if(tb.cardWindow!=null&&window==tb.cardWindow.record){int pt=(short)memory.readWord(window+16),pl=(short)memory.readWord(window+18);
+			tb.cardWindow.invalidate(top-m-pt,left-m-pl,bottom+m-pt,right+m-pl);}
 	}
 
 	/** Whether a standard check box or radio button (kind 0, base 1/2) is too narrow to show any of its title: the title starts 19 pixels in. */

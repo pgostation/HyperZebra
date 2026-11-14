@@ -32,7 +32,7 @@ import java.util.Set;
  * section options are a host dialog. The Exp variants show the same dialogs: a program's expansion items and hook are not
  * shown or called.
  */
-final class EditionManager68k {
+class EditionManager68k {
 	static final int NO_ERR=0,IO_ERR=-36,EOF_ERR=-39,FNF_ERR=-43,FL_LCKED_ERR=-45,F_BSY_ERR=-47,PARAM_ERR=-50,RF_NUM_ERR=-51,PERM_ERR=-54,
 		WR_PERM_ERR=-61,NO_TYPE_ERR=-102,DIR_NF_ERR=-120,USER_CANCELED_ERR=-128,EDITION_MGR_INIT_ERR=-450,BAD_SECTION_ERR=-451,
 		NOT_REGISTERED_SECTION_ERR=-452,BAD_SUB_PART_ERR=-454,MULTIPLE_PUBLISHER_WRN=-460,CONTAINER_NOT_FOUND_WRN=-461,NOT_THE_PUBLISHER_WRN=-463;
@@ -100,12 +100,12 @@ final class EditionManager68k {
 	}
 	private String requester(){return tb.files.fileManager.requester();}
 	/** The edition in a container file, read for the program (the permission gate decides); null when it is not one. */
-	private Edition load(File f) throws IOException {Sandbox.checkFile(f,Sandbox.Access.READ,requester());return parse(Files.readAllBytes(f.toPath()));}
+	private Edition load(File f) throws IOException {Sandbox68k.checkFile(f,Sandbox68k.Access.READ,requester());return parse(Files.readAllBytes(f.toPath()));}
 	/** The edition in a container file for a host dialog's preview: no program reads it. */
 	static Edition peek(File f){try{return f!=null&&f.isFile()&&f.length()<64L*1024*1024?parse(Files.readAllBytes(f.toPath())):null;}catch(IOException|RuntimeException e){return null;}}
 	/** Writes an edition into its container and sets the container's type, creator and modification date. */
 	private int store(File f,Edition e,int creator) throws IOException {
-		Sandbox.checkFile(f,Sandbox.Access.WRITE,requester());
+		Sandbox68k.checkFile(f,Sandbox68k.Access.WRITE,requester());
 		Files.write(f.toPath(),build(e));
 		byte[] info=new byte[16];byte[] old=FinderInfo68k.read(f);if(old!=null)System.arraycopy(old,0,info,0,Math.min(16,old.length));
 		putLong(info,0,e.fileType());if(creator!=0)putLong(info,4,creator);
@@ -122,7 +122,7 @@ final class EditionManager68k {
 	/** The date of the latest edition in a container: its header's, else the file's modification date. */
 	private int editionDate(File f){
 		if(f==null||!f.isFile())return 0;
-		try{if(Sandbox.allowFile(f,Sandbox.Access.READ,requester())){Edition e=parse(Files.readAllBytes(f.toPath()));if(e!=null&&e.mdDate!=0)return e.mdDate;if(e!=null&&e.formats.isEmpty())return 0;}}catch(IOException e){}
+		try{if(Sandbox68k.allowFile(f,Sandbox68k.Access.READ,requester())){Edition e=parse(Files.readAllBytes(f.toPath()));if(e!=null&&e.mdDate!=0)return e.mdDate;if(e!=null&&e.formats.isEmpty())return 0;}}catch(IOException e){}
 		return FileManager68k.macDate(f.lastModified());
 	}
 	private static boolean isEditionType(int type){return type==EDTP||type==EDTT||type==EDTS||type==EDTU;}
@@ -652,7 +652,7 @@ final class EditionManager68k {
 		else{final File start=folder;final String defaultName=name;
 			chosen=tb.host().ask(()->EditionDialogs.publish(tb.host().anyWindow(),start,defaultName,previewFormat,preview,tb.encoding));}
 		if(chosen==null)return USER_CANCELED_ERR;
-		Sandbox.chosenByUser(tb.name,chosen,true);
+		Sandbox68k.chosenByUser(tb.name,chosen,true);
 		memory.writeByte(reply,0);memory.writeByte(reply+1,chosen.exists()?1:0);
 		writeContainerSpec(reply+12,chosen);
 		return NO_ERR;
@@ -671,7 +671,7 @@ final class EditionManager68k {
 		else{final File start=folder,selected=def!=null&&def.isFile()?def:null;final int formats=mask;
 			chosen=tb.host().ask(()->EditionDialogs.subscribe(tb.host().anyWindow(),start,selected,formats,tb.files.fileManager::shownType,tb.encoding));}
 		if(chosen==null||!chosen.isFile())return USER_CANCELED_ERR;
-		Sandbox.chosenByUser(tb.name,chosen,false);
+		Sandbox68k.chosenByUser(tb.name,chosen,false);
 		memory.writeByte(reply,0);
 		writeContainerSpec(reply+2,chosen);
 		return NO_ERR;

@@ -70,27 +70,27 @@ msgctxt "menu"
 msgid "Print…"
 msgstr "プリント…"
 
-#: GMenu.java GPreferencesDialog.java LlmTranslation.java VMTranslation.java
+#: GMenu.java GPreferencesDialog.java JapaneseMenuNames.java LlmTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Preferences…"
 msgstr "環境設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Stack Settings…"
 msgstr "スタック設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Settings…"
 msgstr "設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "VM Settings…"
 msgstr "VM設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Mac Application Settings…"
 msgstr "Macアプリ設定…"
@@ -100,7 +100,7 @@ msgctxt "menu"
 msgid "Show Launcher"
 msgstr "ランチャーを表示"
 
-#: BuiltinCommandMessage.java GMenu.java HyperZebra.java TTalk.java
+#: BuiltinCommandMessage.java ExternalMenusUI.java GMenu.java HyperZebra.java JapaneseMenuNames.java TTalk.java
 msgctxt "menu"
 msgid "Quit HyperCard"
 msgstr "HyperCard終了"
@@ -185,7 +185,7 @@ msgctxt "menu"
 msgid "Copy Card"
 msgstr "コピーカード"
 
-#: CardClipboard.java GMenu.java
+#: CardClipboard.java GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Card"
 msgstr "ペースト カード"
@@ -210,117 +210,117 @@ msgctxt "menu"
 msgid "Resource…"
 msgstr "リソース編集…"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Sound Editor"
 msgstr "サウンド編集"
 
-#: FileManager68k.java GAppInfoWindow.java ResEdit.java ShapeInfoPanel.java SoundEditor.java StandardFile68k.java StrEditor.java TTalk.java VariableWatcher.java
+#: FileManager68k.java GAppInfoWindow.java JapaneseMenuNames.java ResEdit.java ShapeInfoPanel.java SoundEditor.java StandardFile68k.java StrEditor.java TTalk.java VariableWatcher.java
 msgctxt "menu"
 msgid "Name"
 msgstr "名前"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Duration"
 msgstr "長さ"
 
-#: SoundEditor.java VMTranslation.java
+#: JapaneseMenuNames.java SoundEditor.java VMTranslation.java
 msgctxt "menu"
 msgid "Format"
 msgstr "形式"
 
-#: GVisualEffectWindow.java OObject.java SoundEditor.java
+#: GVisualEffectWindow.java JapaneseMenuNames.java SoundEditor.java WindowUI.java
 msgctxt "menu"
 msgid "Play"
 msgstr "再生"
 
-#: GTranslateAheadDialog.java GVisualEffectWindow.java SoundEditor.java SoundInput68k.java VMTranslation.java
+#: GTranslateAheadDialog.java GVisualEffectWindow.java JapaneseMenuNames.java SoundEditor.java Toolbox68kDesktopParts.java Toolbox68kParts.java VMTranslation.java
 msgctxt "menu"
 msgid "Stop"
 msgstr "停止"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "New Sound"
 msgstr "新規サウンド"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Cut Selection"
 msgstr "選択範囲を切り取り"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "Volume"
 msgstr "音量"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Pitch"
 msgstr "音階"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "semitones"
 msgstr "半音"
 
-#: GLlmTranslationDialog.java SoundEditor.java VMTranslation.java
+#: GLlmTranslationDialog.java JapaneseMenuNames.java SoundEditor.java VMTranslation.java
 msgctxt "menu"
 msgid "Apply"
 msgstr "適用"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Copy Selection"
 msgstr "選択範囲をコピー"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Insert Silence"
 msgstr "無音を挿入"
 
-#: SoundEditor.java TTalk.java
+#: JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "sec"
 msgstr "秒"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Button"
 msgstr "カット ボタン"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Button"
 msgstr "コピー ボタン"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Button"
 msgstr "ペースト ボタン"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Button"
 msgstr "消去 ボタン"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Field"
 msgstr "カット フィールド"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Field"
 msgstr "コピー フィールド"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Field"
 msgstr "ペースト フィールド"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Field"
 msgstr "消去 フィールド"
@@ -415,12 +415,12 @@ msgctxt "menu"
 msgid "Show Balloons"
 msgstr "バルーンヘルプを表示"
 
-#: GMenu.java
+#: GMenu.java GPaintMenu.java
 msgctxt "menu"
 msgid "Tool"
 msgstr "ツール"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Hide ToolBar"
 msgstr "ツールバーを隠す"
@@ -450,7 +450,7 @@ msgctxt "menu"
 msgid "Objects"
 msgstr "オブジェクト"
 
-#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: ExternalMenusUI.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java ShapeInfoPanel.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Font"
 msgstr "フォント"
@@ -495,38 +495,47 @@ msgctxt "menu"
 msgid "Zoom"
 msgstr "表示倍率"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 25%"
 msgstr "25%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 50%"
 msgstr "50%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 100%"
 msgstr "100%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 200%"
 msgstr "200%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 300%"
 msgstr "300%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 400%"
 msgstr "400%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 800%"
 msgstr "800%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 1600%"
 msgstr "1600%"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 3200%"
 msgstr "3200%"
@@ -575,26 +584,32 @@ msgctxt "menu"
 msgid "Drawing Grid Size"
 msgstr "描画グリッドサイズ"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 2"
 msgstr "描画グリッドサイズ2"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 4"
 msgstr "描画グリッドサイズ4"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 8"
 msgstr "描画グリッドサイズ8"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 16"
 msgstr "描画グリッドサイズ16"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 32"
 msgstr "描画グリッドサイズ32"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 64"
 msgstr "描画グリッドサイズ64"
@@ -623,38 +638,47 @@ msgctxt "menu"
 msgid "Multiple Space"
 msgstr "連続描画の間隔"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 1"
 msgstr "連続描画の間隔1"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 2"
 msgstr "連続描画の間隔2"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 3"
 msgstr "連続描画の間隔3"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 4"
 msgstr "連続描画の間隔4"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 5"
 msgstr "連続描画の間隔5"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 6"
 msgstr "連続描画の間隔6"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 7"
 msgstr "連続描画の間隔7"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 8"
 msgstr "連続描画の間隔8"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 9"
 msgstr "連続描画の間隔9"
@@ -669,27 +693,27 @@ msgctxt "menu"
 msgid "Show Layers"
 msgstr "レイヤーパレット"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "New Layer"
 msgstr "新規レイヤー"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Duplicate Layer"
 msgstr "レイヤーを複製"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Layer"
 msgstr "レイヤーを削除"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Merge Down"
 msgstr "下のレイヤーと結合"
 
-#: GMenu.java GPaintMenu.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Flatten Layers"
 msgstr "レイヤーを統合"
@@ -709,42 +733,42 @@ msgctxt "menu"
 msgid "Rename Layer…"
 msgstr "レイヤー名を変更…"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Card Layers"
 msgstr "カードのレイヤー"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Background Layers"
 msgstr "バックグラウンドのレイヤー"
 
-#: PaintLayer.java
+#: JapaneseMenuNames.java PaintLayers.java
 msgctxt "menu"
 msgid "Card Paint"
 msgstr "カードピクチャ"
 
-#: PaintLayer.java
+#: JapaneseMenuNames.java PaintLayers.java
 msgctxt "menu"
 msgid "Background Paint"
 msgstr "バックグラウンドピクチャ"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Alpha Lock"
 msgstr "透明部分を保護"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Clip to Below"
 msgstr "下のレイヤーでクリップ"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Blend Mode"
 msgstr "合成モード"
 
-#: PaintLayer.java Q3Metafile.java TUtil.java VMTranslation.java
+#: HeadlessProps.java PaintLayer.java Q3Metafile.java ToolsUI.java VMTranslation.java
 msgid "Normal"
 msgstr "通常"
 
@@ -757,27 +781,27 @@ msgctxt "menu"
 msgid "Symmetry"
 msgstr "対称描画"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Symmetry Off"
 msgstr "対称描画なし"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Vertical Symmetry"
 msgstr "左右対称"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Horizontal Symmetry"
 msgstr "上下対称"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Quadrant Symmetry"
 msgstr "上下左右対称"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Radial Symmetry…"
 msgstr "放射対称…"
@@ -825,22 +849,22 @@ msgctxt "menu"
 msgid "Color"
 msgstr "色"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Left"
 msgstr "左へずらす"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Right"
 msgstr "右へずらす"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Up"
 msgstr "上へずらす"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Down"
 msgstr "下へずらす"
@@ -1012,7 +1036,7 @@ msgstr "広げる幅(ピクセル):"
 msgid "Shrink by (pixels):"
 msgstr "狭める幅(ピクセル):"
 
-#: GPaintMenu.java TTalk.java
+#: EditorsUI.java GPaintMenu.java TTalk.java
 msgid "No selection"
 msgstr "選択範囲がありません"
 
@@ -1130,7 +1154,7 @@ msgctxt "menu"
 msgid "Stamp"
 msgstr "スタンプ"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Strength"
 msgstr "強さ"
@@ -1140,16 +1164,17 @@ msgctxt "menu"
 msgid "Transparency"
 msgstr "透明度"
 
-#: GPaintDialog.java GPaintPalette.java
+#: GPaintDialog.java GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Gradation"
 msgstr "グラデーション"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Angle"
 msgstr "角度"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Don't Fill"
 msgstr "塗りつぶさない"
@@ -1174,17 +1199,17 @@ msgctxt "menu"
 msgid "New Shape"
 msgstr "新規シェイプ"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Shape"
 msgstr "カット シェイプ"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Shape"
 msgstr "コピー シェイプ"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Shape"
 msgstr "ペースト シェイプ"
@@ -1194,7 +1219,7 @@ msgctxt "menu"
 msgid "Shape Info…"
 msgstr "シェイプ情報…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Edit Shapes"
 msgstr "シェイプを編集"
@@ -1209,11 +1234,12 @@ msgctxt "menu"
 msgid "Export Card Image…"
 msgstr "カード画像を書き出す…"
 
-#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
+#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java JapaneseMenuNames.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Resource Translation…"
 msgstr "リソース翻訳…"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Show Translation"
 msgstr "翻訳を表示"
@@ -1253,12 +1279,12 @@ msgctxt "menu"
 msgid "New Field"
 msgstr "新規フィールド"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "New Shape…"
 msgstr "新規シェイプ…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Shape"
 msgstr "消去 シェイプ"
@@ -1403,7 +1429,7 @@ msgctxt "menu"
 msgid "HyperTalk Reference"
 msgstr "HyperTalk 簡易リファレンス"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "New Item"
 msgstr "新規作成"
@@ -1418,22 +1444,22 @@ msgctxt "menu"
 msgid "Create New Resource"
 msgstr "新規リソース作成"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "Get Resource Info…"
 msgstr "リソース情報…"
 
-#: ResEdit.java VMTranslation.java
+#: JapaneseMenuNames.java ResEdit.java VMTranslation.java
 msgctxt "menu"
 msgid "Duplicate"
 msgstr "複製"
 
-#: SoundEditor.java StrEditor.java
+#: JapaneseMenuNames.java SoundEditor.java StrEditor.java
 msgctxt "menu"
 msgid "Apply to Resource"
 msgstr "リソースに反映"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Applied"
 msgstr "反映済み"
@@ -1448,7 +1474,7 @@ msgctxt "menu"
 msgid "Image Size…"
 msgstr "サイズ変更…"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "View File"
 msgstr "ファイルを表示"
@@ -1474,7 +1500,7 @@ msgstr "スタック設定"
 msgid "Settings"
 msgstr "設定"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "Settings…"
 msgstr "設定…"
 
@@ -1519,11 +1545,11 @@ msgstr "VM設定"
 msgid "Mac Application Settings"
 msgstr "Macアプリ設定"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "Stack Settings…"
 msgstr "スタック設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "VM Settings…"
 msgstr "VM設定…"
 
@@ -1655,9 +1681,11 @@ msgstr "68040のMac / iMac G3の速さで動かします。オフだとゲーム
 msgid "HyperTalk JIT compiler"
 msgstr "HyperTalkのJITコンパイラ"
 
+#: GPreferencesDialog.java
 msgid "Runs scripts faster. Off: the interpreter only."
 msgstr "スクリプトを速く動かします。オフ: インタプリタだけ"
 
+#: GPreferencesDialog.java
 msgid "PowerPC JIT compiler"
 msgstr "PowerPCのJITコンパイラ"
 
@@ -2177,7 +2205,7 @@ msgstr "パッドの操作"
 msgid "Types"
 msgstr "入力されるもの"
 
-#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java OButton.java PanelChooser.java PpcCarbon.java PpcGameSprockets.java TTalk.java
+#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java JapaneseMenuNames.java OButton.java PanelChooser.java PlayerLoop.java PpcCarbon.java PpcGameSprockets.java StandardMenus.java TTalk.java
 msgid "Button"
 msgstr "ボタン"
 
@@ -2261,7 +2289,7 @@ msgstr "shift"
 msgid "Control"
 msgstr "control"
 
-#: DiskImages.java FileManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperCard68kCallbacks.java ResEdit.java ResEditIndex.java TTalk.java VMTranslation.java
+#: DiskImages.java ExternalMenusUI.java FileManager68k.java GMenu.java GToolBar.java GamepadHost.java HeadlessMenus.java HyperCard68kCallbacks.java JapaneseMenuNames.java ResEdit.java ResEditIndex.java StandardMenus.java VMTranslation.java
 msgid "Delete"
 msgstr "delete"
 
@@ -2353,7 +2381,7 @@ msgstr "HyperCard, MacintoshはApple Inc.の商標です。本プロジェクト
 msgid "Launcher"
 msgstr "ランチャー"
 
-#: GLauncher.java GMenu.java
+#: GLauncher.java GMenu.java JapaneseMenuNames.java
 msgid "Show Launcher"
 msgstr "ランチャーを表示"
 
@@ -2361,7 +2389,7 @@ msgstr "ランチャーを表示"
 msgid "Window"
 msgstr "ウインドウ"
 
-#: GLauncher.java GMenu.java HyperCardResources68k.java TTalk.java TUtil.java VMTranslation.java
+#: ExternalMenusUI.java GLauncher.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java WindowUI.java
 msgid "Tools"
 msgstr "ツール"
 
@@ -2409,7 +2437,7 @@ msgstr "失敗"
 msgid "cannot list the folder"
 msgstr "フォルダの内容を読めません"
 
-#: GLauncher.java Q3.java TUtil.java VMTranslation.java
+#: GLauncher.java Q3.java VMTranslation.java WindowUI.java
 msgid "View"
 msgstr "表示"
 
@@ -2509,7 +2537,7 @@ msgstr "24ビット"
 msgid "32-bit"
 msgstr "32ビット"
 
-#: BuiltinCommandMessage.java DeskAccessoryHost68k.java GAppInfoWindow.java GLauncher.java GMenu.java HyperCardResources68k.java IconEditor.java LlmTranslation.java MenuManager68k.java PCARD.java Q3.java ResEdit.java ResEditIndex.java ScriptEditor.java TTalk.java VMTranslation.java
+#: BuiltinCommandMessage.java DeskAccessoryHost68k.java ExternalMenusUI.java GAppInfoWindow.java GLauncher.java GMenu.java HyperCardResources68k.java IconEditor.java JapaneseMenuNames.java LlmTranslation.java MenuManager68k.java PCARD.java Q3.java ResEdit.java ResEditIndex.java ScriptEditor.java StandardMenus.java TTalk.java VMTranslation.java
 msgid "File"
 msgstr "ファイル"
 
@@ -2585,7 +2613,7 @@ msgstr "SIZEリソース"
 msgid "preferred"
 msgstr "推奨"
 
-#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
+#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HeadlessProps.java HyperCard68kCallbacks.java HzCursors.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TalkImage.java Toolbox68k.java ToolsUI.java VMTranslation.java
 msgid "none"
 msgstr "なし"
 
@@ -2657,7 +2685,7 @@ msgstr "場所"
 msgid "Home Folder"
 msgstr "ホーム"
 
-#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java StandardFile68k.java VMTranslation.java WorkingCopies.java
+#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java StandardFile68k.java VMTranslation.java VirusScan68k.java WorkingCopies.java
 msgid "Desktop"
 msgstr "デスクトップ"
 
@@ -2708,7 +2736,7 @@ msgstr "スタック"
 msgid "Mac program"
 msgstr "Macアプリ"
 
-#: GLauncher.java HyperTalkReference.java
+#: GLauncher.java HyperTalkReference.java PlayerSaving.java
 msgid "Stack"
 msgstr "スタック"
 
@@ -2716,11 +2744,11 @@ msgstr "スタック"
 msgid "running"
 msgstr "起動中"
 
-#: BuiltinCommandMessage.java GLauncher.java IconServices68k.java MacApp68k.java MidiHost68k.java MiscManagers68k.java OStack.java PpcStdio.java ResEdit.java ScriptEditor.java ScriptLint.java TTalk.java TUtil.java
+#: BuiltinCommandMessage.java GLauncher.java IconServices68k.java MacApp68k.java MidiHost68k.java MiscManagers68k.java OStack.java PpcStdio.java ProgramsUI.java ResEdit.java ScriptLint.java TTalk.java TUtil.java TalkWords.java
 msgid "open"
 msgstr "表示中"
 
-#: EventManager68k.java GLauncher.java GMenu.java GStackWindow.java PCARD.java TTalk.java
+#: EventManager68k.java ExternalMenusUI.java GLauncher.java GMenu.java GStackWindow.java HeadlessMenus.java JapaneseMenuNames.java PCARD.java StandardMenus.java
 msgid "Close Stack"
 msgstr "スタックを閉じる"
 
@@ -2756,7 +2784,7 @@ msgstr "HyperZebra HDを開く"
 msgid "Home stack not found"
 msgstr "Homeスタックが見つかりません"
 
-#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
+#: AppPaths.java FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
 msgid "HyperZebra HD"
 msgstr "HyperZebra HD"
 
@@ -2764,7 +2792,7 @@ msgstr "HyperZebra HD"
 msgid "Drop programs or stacks here to open them."
 msgstr "アプリやスタックをここにドロップすると開きます。"
 
-#: CommToolbox68k.java FileManager68k.java GLauncher.java HyperCardResources68k.java PpcNavServices.java ResEdit.java ResEditIndex.java StandardFile68k.java VMTranslation.java
+#: PlayerUiHost.java
 msgid "Open"
 msgstr "開く"
 
@@ -2796,7 +2824,7 @@ msgstr "\"{0}\" の個別設定…"
 msgid "Colors, screen size and speed for one program"
 msgstr "色数・画面サイズ・速度などをアプリごとに変更"
 
-#: FieldTextMenus.java GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java JapaneseMenuNames.java TTalk.java
 msgid "Other…"
 msgstr "その他…"
 
@@ -2836,7 +2864,7 @@ msgstr "選択した {0} 項目を履歴から削除"
 msgid "Clear History"
 msgstr "履歴をすべて消去"
 
-#: AppleEvents68k.java GAppInfoWindow.java GLauncher.java GMenu.java LlmTranslation.java MenuManager68k.java TTalk.java VMTranslation.java
+#: AppleEvents68k.java ExternalMenusUI.java GAppInfoWindow.java GLauncher.java GMenu.java JapaneseMenuNames.java LlmTranslation.java MenuManager68k.java TTalk.java VMTranslation.java
 msgid "Quit"
 msgstr "終了"
 
@@ -3090,7 +3118,7 @@ msgstr "Macアプリのファイルダイアログを広くする(変更日・�
 msgid "Save PICT files that Mac programs create as PNG, and show them PNG files as PICT"
 msgstr "Macアプリが作ったPICTファイルをPNGで保存し、PNGをPICTとして見せる"
 
-#: OStack.java PCARD.java
+#: PCARD.java ProgramsUI.java
 msgid "Can't launch the Mac application."
 msgstr "Macアプリケーションを起動できません。"
 
@@ -3154,19 +3182,19 @@ msgstr "が次のフォルダの中身を一覧しようとしています:"
 msgid "wants to run the program:"
 msgstr "が次のプログラムを起動しようとしています:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to open a TCP connection to:"
 msgstr "が次の相手にTCP接続しようとしています:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to accept TCP connections on:"
 msgstr "が次のポートでTCP接続を受け付けようとしています:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to send and receive UDP packets on:"
 msgstr "が次の相手とUDPパケットをやりとりしようとしています:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to look up the host name:"
 msgstr "が次のホスト名を問い合わせようとしています:"
 
@@ -3178,7 +3206,7 @@ msgstr "がこのコンピュータのプログラムを起動しようとして
 msgid "wants to run an AppleScript:"
 msgstr "がAppleScriptを実行しようとしています:"
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to record from the microphone."
 msgstr "がマイクから録音しようとしています。"
 
@@ -3325,7 +3353,7 @@ msgstr "フルカラー"
 msgid "Thousands of colors"
 msgstr "約32000色"
 
-#: GAppInfoWindow.java GPreferencesDialog.java
+#: GAppInfoWindow.java GPreferencesDialog.java IndexedScreenText.java
 msgid "256 colors"
 msgstr "256色"
 
@@ -3353,7 +3381,7 @@ msgstr "スクリプトエディタ"
 msgid "Script is not saved."
 msgstr "スクリプトが保存されていません"
 
-#: ScriptEditor.java
+#: PlayerUiHost.java ScriptEditor.java StationeryPads.java
 msgid "Save"
 msgstr "保存する"
 
@@ -3385,7 +3413,7 @@ msgstr "閉じる前に“%1”のスクリプトの変更を保存しますか�
 msgid "The resources could not be saved."
 msgstr "リソースを保存できませんでした。"
 
-#: DiskImages.java GMenu.java PpcUrlAccess.java ResSession.java VMTranslation.java
+#: DiskImages.java GMenu.java PpcUrlAccess.java ResSession.java VMTranslation.java WebExport.java
 msgid "Untitled"
 msgstr "名称未設定"
 
@@ -3413,7 +3441,7 @@ msgstr "ペーストするリソースのうち %1 個は、このスタック�
 msgid "Unique ID"
 msgstr "別のIDにする"
 
-#: ResClipboard.java ScriptEditor.java
+#: PlayerUiHost.java
 msgid "Replace"
 msgstr "置き換える"
 
@@ -3512,7 +3540,7 @@ msgstr "幅:"
 msgid "Height:"
 msgstr "高さ:"
 
-#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java TTalk.java
+#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java PlayerUiHost.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java StationeryPads.java TTalk.java WebExport.java
 msgid "Cancel"
 msgstr "キャンセル"
 
@@ -3524,11 +3552,11 @@ msgstr "スクリプト"
 msgid "Debug"
 msgstr "デバッグ"
 
-#: HyperCardResources68k.java ScriptEditor.java TTalk.java TUtil.java VariableWatcher.java
+#: HyperCardResources68k.java JapaneseMenuNames.java ScriptEditor.java TTalk.java VariableWatcher.java WindowUI.java
 msgid "Variable Watcher"
 msgstr "変数表示ウィンドウ"
 
-#: HyperCardResources68k.java MessageWatcher.java ScriptEditor.java TTalk.java TUtil.java
+#: HyperCardResources68k.java JapaneseMenuNames.java MessageWatcher.java ScriptEditor.java TTalk.java WindowUI.java
 msgid "Message Watcher"
 msgstr "メッセージ表示ウィンドウ"
 
@@ -3544,7 +3572,7 @@ msgstr "名前"
 msgid "Value"
 msgstr "値"
 
-#: CardWindow68k.java GMenu.java GMsg.java MessageWatcher.java TTalk.java TUtil.java
+#: CardWindow68k.java ExternalMenusUI.java GMenu.java GMsg.java JapaneseMenuNames.java MessageWatcher.java PlayerUiHost.java StandardMenus.java TUtil.java WindowUI.java
 msgid "Message"
 msgstr "メッセージ"
 
@@ -3599,6 +3627,7 @@ msgstr "値を変更するにはスクリプトを一時停止してください
 msgid "globals"
 msgstr "グローバル変数"
 
+#: TalkJit.java
 msgid "locals"
 msgstr "ローカル変数"
 
@@ -3942,7 +3971,7 @@ msgstr "新しい色"
 msgid "Original color (click to restore)"
 msgstr "元の色(クリックで戻す)"
 
-#: Q3.java StrEditor.java TXcmd.java
+#: Q3.java StrEditor.java
 msgid "String"
 msgstr "文字列"
 
@@ -3986,11 +4015,11 @@ msgstr "新規"
 msgid "unreadable"
 msgstr "読み込めません"
 
-#: PpcCoreFoundation.java StrEditor.java
+#: PpcCoreFoundation.java StrEditor.java TalkJit.java
 msgid "strings"
 msgstr "個"
 
-#: StrEditor.java
+#: StrEditor.java TTalk.java TalkWords.java
 msgid "bytes"
 msgstr "バイト"
 
@@ -4091,16 +4120,17 @@ msgctxt "menu"
 msgid "Other Colors…"
 msgstr "その他の色…"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Foreground Color"
 msgstr "前景色"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Brush Size"
 msgstr "ブラシの大きさ"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Hardness"
 msgstr "硬さ"
@@ -4110,27 +4140,27 @@ msgctxt "menu"
 msgid "Opacity"
 msgstr "不透明度"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Spacing"
 msgstr "間隔"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Stabilizer"
 msgstr "手ぶれ補正"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Pen Pressure"
 msgstr "筆圧"
 
-#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java JapaneseMenuNames.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgctxt "menu"
 msgid "Size"
 msgstr "大きさ"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Line Size"
 msgstr "線の太さ"
@@ -4140,27 +4170,27 @@ msgctxt "menu"
 msgid "Draw Filled"
 msgstr "塗りつぶし"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Spray Size"
 msgstr "スプレーの広がり"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Polygon Sides"
 msgstr "多角形の辺の数"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Color Tolerance"
 msgstr "色の許容範囲"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Fill Tolerance"
 msgstr "塗りつぶしの許容範囲"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Eraser Size"
 msgstr "消しゴムの大きさ"
@@ -4180,17 +4210,17 @@ msgctxt "menu"
 msgid "Fill Style"
 msgstr "塗りの種類"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Color / Pattern"
 msgstr "色/パターン"
 
-#: GToolOptions.java Q3Metafile.java
+#: GToolOptions.java JapaneseMenuNames.java Q3Metafile.java
 msgctxt "menu"
 msgid "Linear"
 msgstr "線形"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Radial"
 msgstr "放射状"
@@ -4200,7 +4230,7 @@ msgctxt "menu"
 msgid "Texture"
 msgstr "テクスチャ"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Custom Texture"
 msgstr "読み込んだテクスチャ"
@@ -4215,42 +4245,42 @@ msgctxt "menu"
 msgid "Texture from Selection"
 msgstr "選択範囲からテクスチャ"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Wood"
 msgstr "木目"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Marble"
 msgstr "大理石"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Clouds"
 msgstr "雲"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Sand"
 msgstr "砂"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Granite"
 msgstr "御影石"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Brick"
 msgstr "レンガ"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Canvas"
 msgstr "キャンバス"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Water"
 msgstr "水面"
@@ -4290,67 +4320,67 @@ msgctxt "menu"
 msgid "Export All Patterns…"
 msgstr "すべてのパターンを書き出す…"
 
-#: AuthDialog.java GPaintPalette.java
+#: AuthDialog.java GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Background Color"
 msgstr "背景色"
 
-#: AuthDialog.java
+#: AuthDialog.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Text Color"
 msgstr "文字色"
 
-#: FieldTextMenus.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GMenu.java HyperCardResources68k.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Plain"
 msgstr "標準"
 
-#: FieldTextMenus.java GFontDialog.java PpcAtsui.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java GMenu.java HeadlessMenus.java JapaneseMenuNames.java PpcAtsui.java ShapeInfoPanel.java TTalk.java TUtil.java VMTranslation.java
 msgctxt "menu"
 msgid "Bold"
 msgstr "ボールド"
 
-#: FieldTextMenus.java GFontDialog.java PpcAtsui.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java PpcAtsui.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Italic"
 msgstr "イタリック"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Underline"
 msgstr "アンダーライン"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Outline"
 msgstr "アウトライン"
 
-#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java TTalk.java VMTranslation.java
+#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java PartInfo.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Shadow"
 msgstr "シャドウ"
 
-#: FieldTextMenus.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Condense"
 msgstr "コンデンス"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Extend"
 msgstr "エクステンド"
 
-#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java Q3.java TTalk.java
+#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java Q3.java TTalk.java
 msgctxt "menu"
 msgid "Group"
 msgstr "グループ"
 
-#: FieldTextMenus.java GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java JapaneseMenuNames.java TTalk.java
 msgctxt "menu"
 msgid "Other…"
 msgstr "その他…"
 
-#: FieldTextMenus.java
+#: FieldTextMenus.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Text Color…"
 msgstr "文字色…"
@@ -4526,11 +4556,11 @@ msgstr "透明度"
 msgid "Font"
 msgstr "フォント"
 
-#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java JapaneseMenuNames.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgid "Size"
 msgstr "サイズ"
 
-#: FieldTextMenus.java GMenu.java HyperCardResources68k.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
+#: ExternalMenusUI.java FieldTextMenus.java GMenu.java HyperCardResources68k.java JapaneseMenuNames.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
 msgid "Style"
 msgstr "スタイル"
 
@@ -4613,7 +4643,7 @@ msgstr "MacBinaryエンコードされたHyperCardスタックの読み込みで
 msgid "Resource data is not found."
 msgstr "リソースファイルが見つかりませんでした"
 
-#: OStack.java
+#: StacksUI.java
 msgid "This version of Java Runtime is not supported streaming API for XML."
 msgstr "Javaランタイムのバージョンが古いためXML読み込み機能が使えません"
 
@@ -4625,7 +4655,7 @@ msgstr "XMLデータの読み込み中にエラーが発生しました"
 msgid "XML end tag is not found."
 msgstr "XMLファイルを最後まで読めませんでした"
 
-#: XMLRead.java
+#: SwingUiHost.java
 msgid "The stack is opened read-only."
 msgstr "内容が失われないよう、このスタックは書き込み禁止で開きます"
 
@@ -4773,7 +4803,7 @@ msgstr "この種類のディスクイメージはまだ開けません。"
 msgid "Mounting the disk image"
 msgstr "ディスクイメージをマウントしています:"
 
-#: TTalk.java
+#: WindowUI.java
 msgid "Can't mount the disk image."
 msgstr "ディスクイメージをマウントできませんでした。"
 
@@ -5919,17 +5949,17 @@ msgctxt "reference"
 msgid "Properties"
 msgstr "プロパティ"
 
-#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java OButton.java PanelChooser.java PpcCarbon.java PpcGameSprockets.java TTalk.java
+#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java JapaneseMenuNames.java OButton.java PanelChooser.java PlayerLoop.java PpcCarbon.java PpcGameSprockets.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Button"
 msgstr "ボタン"
 
-#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GScriptReference.java GToolBar.java HyperTalkReference.java PanelChooser.java TTalk.java
+#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GScriptReference.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PanelChooser.java PlayerLoop.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Field"
 msgstr "フィールド"
 
-#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GToolBar.java HyperTalkReference.java PanelChooser.java Q3.java ShapeEditor.java ShapeInfoPanel.java TTalk.java
+#: CardUI.java ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PanelChooser.java PlayerLoop.java Q3.java ShapeEditor.java ShapeInfoPanel.java SwingUiHost.java TTalk.java
 msgctxt "reference"
 msgid "Shape"
 msgstr "シェイプ"
@@ -5939,12 +5969,12 @@ msgctxt "reference"
 msgid "Card"
 msgstr "カード"
 
-#: GMenu.java GPaintMenu.java GToolBar.java HyperTalkReference.java ShapeInfoPanel.java TTalk.java TUtil.java
+#: ExternalMenusUI.java GMenu.java GPaintMenu.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PlayerLoop.java ProgramsUI.java ShapeInfoPanel.java StandardMenus.java TUtil.java
 msgctxt "reference"
 msgid "Background"
 msgstr "バックグラウンド"
 
-#: GLauncher.java HyperTalkReference.java
+#: GLauncher.java HyperTalkReference.java PlayerSaving.java
 msgctxt "reference"
 msgid "Stack"
 msgstr "スタック"
@@ -5964,7 +5994,7 @@ msgctxt "reference"
 msgid "Menu"
 msgstr "メニュー"
 
-#: CommToolbox68k.java GLayerPalette.java GMenu.java GPaintMenu.java HyperCardResources68k.java HyperTalkReference.java IconEditor.java PaintFile.java PaintTool.java PpcRuntime.java TTalk.java
+#: CommToolbox68k.java GLayerPalette.java GMenu.java GPaintMenu.java HyperCardResources68k.java HyperTalkReference.java IconEditor.java JapaneseMenuNames.java PaintFile.java PaintTool.java PpcRuntime.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Paint"
 msgstr "ペイント"
@@ -7152,12 +7182,12 @@ msgctxt "reference"
 msgid "A list allowing several lines"
 msgstr "複数行選択できるリスト"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgctxt "reference"
 msgid "Wide margins"
 msgstr "余白を広く"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgctxt "reference"
 msgid "Fixed line height"
 msgstr "行の高さを固定"
@@ -7346,7 +7376,7 @@ msgctxt "reference"
 msgid "Loops"
 msgstr "くり返し再生"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "reference"
 msgid "Volume"
 msgstr "音量"
@@ -8529,12 +8559,12 @@ msgctxt "shape"
 msgid "Contrast"
 msgstr "コントラスト"
 
-#: GMenu.java GPaintMenu.java GPaintPalette.java HyperCardResources68k.java IconEditor.java PaintTool.java PpcRuntime.java ShapeFilterPanel.java
+#: GMenu.java GPaintMenu.java GPaintPalette.java HyperCardResources68k.java IconEditor.java JapaneseMenuNames.java PaintTool.java PpcRuntime.java ShapeFilterPanel.java StandardMenus.java
 msgctxt "shape"
 msgid "Invert"
 msgstr "階調の反転"
 
-#: CompactColorChooserPanel.java GLayerPalette.java GToolOptions.java ShapeFilterPanel.java
+#: CompactColorChooserPanel.java GLayerPalette.java GToolOptions.java JapaneseMenuNames.java ShapeFilterPanel.java
 msgctxt "shape"
 msgid "Opacity"
 msgstr "不透明度"
@@ -8642,7 +8672,7 @@ msgstr "メニューから操作するか、開きたい書類をここにドロ
 msgid "Closing this window quits the application."
 msgstr "このウインドウを閉じるとアプリケーションを終了します。"
 
-#: TalkCollection.java
+#: TTalk.java TalkCollection.java
 msgid "An array or a dictionary is required"
 msgstr "配列または辞書が必要です"
 
@@ -8650,11 +8680,10 @@ msgstr "配列または辞書が必要です"
 msgid "Invalid collection data"
 msgstr "コレクションのデータが不正です"
 
-#: TalkCollection.java
 msgid "Collection is too large"
 msgstr "コレクションが大きすぎます"
 
-#: TalkCollection.java
+#: TalkCollection.java TalkLive.java
 msgid "Array index is too large"
 msgstr "配列の添字が大きすぎます"
 
@@ -8674,7 +8703,7 @@ msgstr "{0}の条件にはtrueかfalseが必要です:{1}"
 msgid "The wait duration is not a number: {0}"
 msgstr "waitの時間が数値ではありません:{0}"
 
-#: TTalk.java TXcmd.java
+#: PlayerExternals68k.java TTalk.java TXcmd.java
 msgid "Too much handler recursion: {0} [{1}]"
 msgstr "ハンドラの再帰が深すぎます(too much recursion): {0} [{1}]"
 
@@ -8694,6 +8723,7 @@ msgstr "end repeatが見つかりません"
 msgid "Cannot understand the arguments to repeat with"
 msgstr "repeat withの引数が分かりません"
 
+#: TTalk.java
 msgid "Cannot understand the arguments of {0}"
 msgstr "“{0}”の引数がわかりません。"
 
@@ -8705,11 +8735,11 @@ msgstr "repeat withには開始値とtoが必要です"
 msgid "repeat with requires an end value"
 msgstr "repeat withには終了値が必要です"
 
-#: TTalk.java
+#: TTalk.java TalkJit.java
 msgid "repeat with requires integer bounds"
 msgstr "repeat withの範囲には整数が必要です"
 
-#: TTalk.java
+#: TTalk.java TalkJit.java
 msgid "The repeat count is not a number: {0}"
 msgstr "repeatの繰り返し回数が数値ではありません:{0}"
 
@@ -8729,11 +8759,11 @@ msgstr "passが分かりません"
 msgid "Misplaced end"
 msgstr "endが不正な位置にあります"
 
-#: TTalk.java
+#: TTalk.java ToolsUI.java
 msgid "choose tool requires an integer from 1 to 18"
 msgstr "choose toolには1から18の整数が必要です"
 
-#: TTalk.java
+#: TTalk.java ToolsUI.java
 msgid "No such tool: \"{0}\""
 msgstr "ツール\"{0}\"はありません"
 
@@ -8761,7 +8791,7 @@ msgstr "pictureを持つカードまたはバックグラウンドが分かり�
 msgid "menuItem requires of menu"
 msgstr "menuItemにはof menuが必要です"
 
-#: GMenu.java TTalk.java
+#: GMenu.java HeadlessMenus.java TTalk.java
 msgid "No such menu: {0}"
 msgstr "メニューがありません:{0}"
 
@@ -8909,7 +8939,7 @@ msgstr "sendにはtoが必要です"
 msgid "Cannot understand send to"
 msgstr "send toが分かりません"
 
-#: TTalk.java
+#: FilesUI.java TTalk.java
 msgid "No such stack: {0}"
 msgstr "スタックがありません:{0}"
 
@@ -8921,83 +8951,83 @@ msgstr "スタックを開けません:{0}"
 msgid "Cannot identify the object to send the message to"
 msgstr "sendでメッセージを送信するオブジェクトが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand edit"
 msgstr "editが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java ScriptWeb.java
 msgid "File access was denied: {0}"
 msgstr "ファイルへのアクセスが許可されませんでした:{0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "edit requires of"
 msgstr "editにはofが必要です"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand edit of"
 msgstr "edit ofが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot identify the object to edit"
 msgstr "editで編集するオブジェクトが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "This stack's scripts cannot be viewed (cantPeek)"
 msgstr "このスタックのスクリプトは見られません(cantPeek)"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot edit {0}"
 msgstr "{0}は編集できません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand export"
 msgstr "exportが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "export paint requires to file"
 msgstr "export paintにはto fileが必要です"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand export paint to file"
 msgstr "export paint to fileが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "No image to export"
 msgstr "書き出す画像がありません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not export to file: {0}"
 msgstr "ファイルに書き出せませんでした:{0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "{0} requires a width in pixels"
 msgstr "{0}には幅(ピクセル)が必要です"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "The width for {0} must be a number: {1}"
 msgstr "{0}の幅には数値を指定してください:{1}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "The width for {0} must be at least 0"
 msgstr "{0}の幅には0以上を指定してください"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand import"
 msgstr "importが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "import paint requires from file"
 msgstr "import paintにはfrom fileが必要です"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand import paint from file"
 msgstr "import paint from fileが分かりません"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not read file: {0}"
 msgstr "ファイルを読み込めませんでした:{0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not read the file as an image"
 msgstr "画像として読み込めませんでした"
 
@@ -9045,39 +9075,39 @@ msgstr "popが分かりません:{0}"
 msgid "Missing container for pop card {0}"
 msgstr "pop card {0}のコンテナがありません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for click at"
 msgstr "click atの座標がありません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for click at"
 msgstr "click atの座標がわかりません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot understand click"
 msgstr "clickが分かりません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for drag from"
 msgstr "drag fromの座標がありません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for drag from"
 msgstr "drag fromの座標がわかりません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing from"
 msgstr "fromがありません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for drag to"
 msgstr "drag toの座標がありません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for drag to"
 msgstr "drag toの座標がわかりません"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing to"
 msgstr "toがありません"
 
@@ -9117,7 +9147,6 @@ msgstr "controlKeyには有効な文字番号が必要です"
 msgid "Cannot understand reset"
 msgstr "resetが分かりません"
 
-#: TTalk.java
 msgid "Cannot understand delete"
 msgstr "deleteが分かりません"
 
@@ -9153,11 +9182,11 @@ msgstr "domenuが分かりません"
 msgid "Cannot understand copy (only copy template is supported)"
 msgstr "copyが分かりません(copy templateのみ)"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand request"
 msgstr "requestが分かりません"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "request requires from program"
 msgstr "requestにはfrom programが必要です"
 
@@ -9165,19 +9194,19 @@ msgstr "requestにはfrom programが必要です"
 msgid "Cannot identify the card for {0}"
 msgstr "{0}するカードが分かりません"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "Cannot identify the stack to save"
 msgstr "saveするスタックが分かりません"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "save requires as <filename>"
 msgstr "saveにはas <ファイル名>が必要です"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "This stack cannot be saved"
 msgstr "このスタックは保存できません"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "Missing destination for save as"
 msgstr "save asの保存先がありません"
 
@@ -9209,11 +9238,11 @@ msgstr "フィールドとポップアップボタン以外のテキストは選
 msgid "select supports only buttons, fields, shapes and text"
 msgstr "selectできるのはボタン/フィールド/シェイプ/テキストです"
 
-#: TTalk.java
+#: ToolsUI.java
 msgid "Cannot understand choose"
 msgstr "chooseが分かりません"
 
-#: TTalk.java
+#: ToolsUI.java
 msgid "Tool \"{0}\" is not yet supported"
 msgstr "ツール\"{0}\"はまだサポートされていません"
 
@@ -9301,7 +9330,7 @@ msgstr "readにはuntilかforが必要です"
 msgid "Cannot understand read from file for"
 msgstr "read from file forが分かりません"
 
-#: TTalk.java
+#: TTalk.java TUtil.java TalkBinary.java
 msgid "A number is required here: {0}"
 msgstr "ここには数値が必要です:{0}"
 
@@ -9469,23 +9498,23 @@ msgstr "withの後にはshiftKey/optionKey/commandKey/controlKeyを指定して�
 msgid "Movie does not exist: {0}"
 msgstr "そのムービーはありません:{0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Missing object to print"
 msgstr "printするものがありません"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "The card count for print … cards is not a number: {0}"
 msgstr "print … cardsの枚数が数値ではありません:{0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "The card count for print … cards must be at least 1: {0}"
 msgstr "print … cardsの枚数は1以上で指定してください:{0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "print card from requires to"
 msgstr "print card fromにはtoが必要です"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand the coordinates in print card from"
 msgstr "print card fromの座標が分かりません"
 
@@ -9553,7 +9582,7 @@ msgstr "or演算には真偽値(true/false)が必要です"
 msgid "Cannot interpret {0} {1}"
 msgstr "{0} {1}がわかりません"
 
-#: OsaScript.java TTalk.java
+#: OsaScript.java TTalk.java TalkJit.java UiHost.java
 msgid "Cannot interpret {0}"
 msgstr "{0}がわかりません"
 
@@ -9932,15 +9961,15 @@ msgstr "正規表現が複雑すぎます"
 msgid "Unimplemented XCMD/XFCN: {0}"
 msgstr "未実装のXCMD/XFCN:{0}"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Called an unsupported Mac API ({1})"
 msgstr "{0}: 未対応のMac APIを呼び出しました ({1})"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Aborted"
 msgstr "{0}: 中止されました"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Cannot read the XCMD/XFCN resource ({1})"
 msgstr "{0}: XCMD/XFCNリソースを読み込めません ({1})"
 
@@ -9948,7 +9977,7 @@ msgstr "{0}: XCMD/XFCNリソースを読み込めません ({1})"
 msgid "No card to copy"
 msgstr "コピーするカードがありません"
 
-#: CardClipboard.java
+#: CardClipboard.java HeadlessMenus.java
 msgid "Cannot copy card: {0}"
 msgstr "カードをコピーできません: {0}"
 
@@ -9960,7 +9989,7 @@ msgstr "ペーストするカードがありません"
 msgid "No destination to paste into"
 msgstr "ペーストする場所がありません"
 
-#: CardClipboard.java
+#: CardClipboard.java HeadlessMenus.java
 msgid "Cannot paste card: {0}"
 msgstr "カードをペーストできません: {0}"
 
@@ -9980,11 +10009,11 @@ msgstr "JSONのオブジェクトが必要です"
 msgid "Invalid JSON (position {0}): {1}"
 msgstr "JSONが不正です (位置 {0}): {1}"
 
-#: ScriptEditor.java
+#: TalkWords.java
 msgid "there is not requires a/an"
 msgstr "there is notの後にa/anが必要です"
 
-#: ScriptEditor.java
+#: TalkWords.java
 msgid "there is requires a/an"
 msgstr "there isの後にa/anが必要です"
 
@@ -10015,18 +10044,19 @@ msgstr "ゼロによる mod 演算 (x mod 0) はできません。"
 msgid "Division by zero: x div 0"
 msgstr "ゼロによる div 演算 (x div 0) はできません。"
 
-#: TTalk.java TUtil.java
+#: PlayerUiHost.java TTalk.java TUtil.java ToolsUI.java WindowUI.java
 msgid "A number is required here"
 msgstr "ここには数値が必要です"
 
+#: TUtil.java
 msgid "Not a scrolling field."
 msgstr "そのフィールドはスクロールできません。"
 
-#: TUtil.java
+#: TUtil.java WindowUI.java
 msgid "A rectangle is required here"
 msgstr "ここには矩形指定が必要です"
 
-#: TUtil.java
+#: TUtil.java WindowUI.java
 msgid "Coordinates are required here"
 msgstr "ここには座標が必要です"
 
@@ -10086,7 +10116,7 @@ msgstr "familyの番号が数値ではありません:{0}"
 msgid "family must be between 1 and 15: {0}"
 msgstr "familyは1から15です:{0}"
 
-#: TUtil.java
+#: PlayerUiHost.java UiHost.java WindowUI.java
 msgid "palette requires a palette name"
 msgstr "paletteにはパレット名が必要です"
 
@@ -10094,19 +10124,19 @@ msgstr "paletteにはパレット名が必要です"
 msgid "rect requires four coordinates"
 msgstr "rectには4つの座標が必要です"
 
-#: TUtil.java
+#: ToolsUI.java UiHost.java
 msgid "No such pattern"
 msgstr "パターンがありません"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} requires 8, 16, 32 or 64 (ppat format)"
 msgstr "{0}には8、16、32、64のどれかを指定してください(ppatの規則)"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "Incorrect imageData length ({0} bytes required)"
 msgstr "imageDataの長さが合いません({0}バイト必要)"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "pattern has no property {0}"
 msgstr "patternにプロパティ{0}はありません"
 
@@ -10358,110 +10388,110 @@ msgstr "userLevelには1から5の整数を指定してください"
 msgid "A boolean is required here"
 msgstr "ここには真偽値が必要です"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "editBkgnd requires userLevel 3 or higher"
 msgstr "editBkgndにはuserLevel 3以上が必要です"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "multiSpace must be between 1 and {0}"
 msgstr "multiSpaceには1から{0}を指定してください"
 
 msgid "polySides must be between 3 and 50"
 msgstr "polySidesには3から50を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "gradient requires off, linear, radial or texture"
 msgstr "gradientにはoff、linear、radial、textureのどれかを指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "fillTexture requires a built-in texture name or an image file: {0}"
 msgstr "fillTextureには内蔵テクスチャの名前か画像ファイルを指定してください: {0}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "fillTolerance must be between 0 and 100"
 msgstr "fillToleranceには0から100を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushSize must be between 1 and 256"
 msgstr "brushSizeには1から256を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushHardness must be between 0 and 100"
 msgstr "brushHardnessには0から100を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "smudgeStrength must be between 1 and 100"
 msgstr "smudgeStrengthには1から100を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "stampSource requires \"x,y\""
 msgstr "stampSourceには「x,y」を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushOpacity must be between 1 and 100"
 msgstr "brushOpacityには1から100を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushSpacing must be between 1 and 200"
 msgstr "brushSpacingには1から200を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushPressure must be size, opacity, both or none"
 msgstr "brushPressureにはsize・opacity・both・noneのどれかを指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "Can't set the penPressure"
 msgstr "penPressureは設定できません"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} must be between 0 and 98"
 msgstr "{0}には0から98を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoom requires a number (%)"
 msgstr "zoomには数値(%)を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoom must be between {0} and {1}"
 msgstr "zoomには{0}から{1}を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoomOrigin requires a point (x,y)"
 msgstr "zoomOriginには点(x,y)を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "gridSize must be between 1 and {0}"
 msgstr "gridSizeには1から{0}を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "No such layer: {0}"
 msgstr "そのレイヤーはありません:{0}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "layerOpacity must be between 0 and 100"
 msgstr "layerOpacityには0から100を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "layerBlend requires a blend mode name (Normal, Multiply, etc.)"
 msgstr "layerBlendには合成モードの名前(Normal, Multiply など)を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetry requires none, vertical, horizontal, quadrant or radial"
 msgstr "symmetryにはnone, vertical, horizontal, quadrant, radialのいずれかを指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetryAxes must be between {0} and {1}"
 msgstr "symmetryAxesには{0}から{1}を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetryCenter requires \"x,y\""
 msgstr "symmetryCenterには「x,y」を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "lineSize requires a number"
 msgstr "lineSizeには数値を指定してください"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} must be between 1 and 40"
 msgstr "{0}には1から40を指定してください"
 
@@ -10652,7 +10682,7 @@ msgstr "サウンド\"{0}\"の音声ファイルに対応していません"
 msgid "Cannot open sound \"{0}\""
 msgstr "サウンド\"{0}\"を開けません"
 
-#: FieldTable.java
+#: FieldTableData.java
 msgid "columnWidths requires comma-separated widths such as \"120,80,200\""
 msgstr "columnWidthsには「120,80,200」のように幅をカンマで区切って指定してください"
 
@@ -10708,7 +10738,7 @@ msgstr "テキストシェイプには変えられません"
 msgid "{0} requires {1} numbers"
 msgstr "{0}には{1}つの数値が必要です"
 
-#: OObject.java
+#: UiHost.java WindowUI.java
 msgid "Cannot set zoomed on this window"
 msgstr "このウィンドウにはzoomedを設定できません"
 
@@ -10752,19 +10782,19 @@ msgstr "matchTextには文字列と正規表現(と結果を入れる変数)が�
 msgid "matchChunk requires a string, a regular expression and optional position variables"
 msgstr "matchChunkには文字列と正規表現(と位置を入れる変数)が必要です"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set visible on this object?"
 msgstr "このオブジェクトには可視を設定できません??"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set left on this object?"
 msgstr "このオブジェクトにはleftを設定できません??"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set top on this object?"
 msgstr "このオブジェクトにはtopを設定できません??"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set topleft on this object?"
 msgstr "このオブジェクトにはtopleftを設定できません??"
 
@@ -10772,7 +10802,7 @@ msgstr "このオブジェクトにはtopleftを設定できません??"
 msgid "Cannot set loc on this object?"
 msgstr "このオブジェクトにはlocを設定できません??"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set rect on this object?"
 msgstr "このオブジェクトにはrectを設定できません??"
 
@@ -10942,7 +10972,7 @@ msgstr "HyperZebraに無いHyperCardのメニュー:{0}"
 msgid "line {0} of {1}"
 msgstr "{1}の{0}行目"
 
-#: ScriptDebugger.java TTalk.java TXcmd.java
+#: EditorsUI.java PlayerExternals68k.java ScriptDebugger.java TTalk.java TXcmd.java
 msgid "user abort."
 msgstr "ユーザーによって中止されました。"
 
@@ -10966,7 +10996,7 @@ msgstr "オフ: HyperCardと同じく、ハイライト時にボタンを反転�
 msgid "Translation Settings"
 msgstr "翻訳設定"
 
-#: GAppSettingsDialog.java GLauncher.java GMenu.java
+#: GAppSettingsDialog.java GLauncher.java GMenu.java JapaneseMenuNames.java
 msgid "Translation Settings…"
 msgstr "翻訳設定…"
 
@@ -10975,7 +11005,7 @@ msgctxt "menu"
 msgid "Translation Settings…"
 msgstr "翻訳設定…"
 
-#: GLauncher.java PpcRuntime.java
+#: GLauncher.java PpcLibraries.java PpcRuntime.java
 msgid "Translation"
 msgstr "翻訳"
 
@@ -11127,7 +11157,7 @@ msgctxt "menu"
 msgid "Individual Stack Settings…"
 msgstr "スタック個別設定…"
 
-#: GAppSettingsDialog.java GLauncher.java GMenu.java StackSettings.java
+#: GAppSettingsDialog.java GLauncher.java GMenu.java JapaneseMenuNames.java StackSettings.java
 msgid "Individual Stack Settings…"
 msgstr "スタック個別設定…"
 
@@ -11175,7 +11205,7 @@ msgstr "拡大表示・キー・ゲームコントローラ・アクセスの確
 msgid "Not a HyperZebra stack"
 msgstr "HyperZebraスタックではありません"
 
-#: GAppSettingsDialog.java GMenu.java
+#: GAppSettingsDialog.java GMenu.java JapaneseMenuNames.java
 msgid "Zoom"
 msgstr "拡大表示"
 
@@ -11211,11 +11241,11 @@ msgstr "使うには Kaleidoscope コントロールパネルを「コントロ�
 msgid "Lets more than one line be selected in a list field (Auto select, table or outline). It does not limit typing."
 msgstr "リストのフィールド(自動的に選択・表・アウトライン)で複数の行を選べるようにします。入力できる行数とは関係ありません。"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgid "Button Info"
 msgstr "ボタン情報"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgid "Field Info"
 msgstr "フィールド情報"
 
@@ -11475,7 +11505,7 @@ msgstr "パネルから外す"
 msgid "Panel “{0}” · {1} parts"
 msgstr "パネル「{0}」· {1}個"
 
-#: GLauncher.java GLlmTranslationDialog.java GTranslationSettingsDialog.java MacAppHost.java
+#: GLauncher.java GLlmTranslationDialog.java GTranslationSettingsDialog.java JapaneseMenuNames.java MacAppHost.java
 msgctxt "menu"
 msgid "Resource Translation with AI Chat…"
 msgstr "AIチャットでリソース翻訳…"
@@ -11716,7 +11746,7 @@ msgstr "そのオブジェクトはありません"
 msgid "set without to"
 msgstr "setにtoがありません"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand reply"
 msgstr "replyがわかりません"
 
@@ -11835,7 +11865,7 @@ msgstr "Tesseractのインストーラを探しています…"
 msgid "The Tesseract installer was not found."
 msgstr "Tesseractのインストーラが見つかりませんでした。"
 
-#: TesseractInstall.java
+#: TesseractInstall.java WebAotBuild.java
 msgid "Cancelled."
 msgstr "中止しました。"
 
@@ -11847,7 +11877,7 @@ msgstr "Tesseractのインストーラを開きました。インストールが
 msgid "Install the tesseract-ocr packages of your system."
 msgstr "システムのtesseract-ocrパッケージを入れてください。"
 
-#: TesseractInstall.java
+#: TesseractInstall.java WebAotBuild.java
 msgid "Downloading failed: {0}"
 msgstr "ダウンロードできませんでした: {0}"
 
@@ -11987,7 +12017,7 @@ msgstr "サウンドやムービーのファイルではありません。"
 msgid "Loop"
 msgstr "繰り返し"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgid "Volume"
 msgstr "音量"
 
@@ -12331,7 +12361,7 @@ msgstr "Homeをこのままにする"
 msgid "Restore the Last Copy"
 msgstr "最後のコピーに戻す"
 
-#: StackVirusScan.java
+#: StackGuard.java
 msgid "Handlers added or changed: {0}"
 msgstr "追加・変更されるハンドラ: {0}"
 
@@ -12339,7 +12369,7 @@ msgstr "追加・変更されるハンドラ: {0}"
 msgid "Virus Found"
 msgstr "ウイルスが見つかりました"
 
-#: HomeGuard.java
+#: StackVirusScan.java
 msgid "The stack \"{0}\" carries the MerryXmas virus, which copies itself into the Home stack and into every stack you open."
 msgstr "スタック「{0}」にMerryXmasウイルスが入っています。このウイルスはHomeスタックと、開いたすべてのスタックに自分をコピーします。"
 
@@ -12371,41 +12401,721 @@ msgstr "Homeスタックのスクリプトはすべてのスタックで動き�
 msgid "Old stacks spread viruses by writing into other stacks: allow this only for an installation you started yourself."
 msgstr "古いスタックのウイルスは他のスタックに書き込んで広がります。自分で始めたインストールのときだけ許可してください。"
 
+#: Sandbox.java
 msgid "wants to change the program code of:"
 msgstr "が次のプログラムのコードを書き換えようとしています:"
 
+#: Sandbox.java
 msgid "would load extensions that are new or have changed:"
 msgstr "に、新しいか変更された機能拡張が読み込まれます:"
 
+#: Sandbox.java
 msgid "is an extension infected with the virus:"
 msgstr "は次のウイルスに感染した機能拡張です:"
 
+#: Sandbox.java
 msgid "Viruses of the classic Mac spread by adding their code to programs. Allow this only for an installation or update you started yourself."
 msgstr "旧Macのウイルスは、プログラムに自分のコードを追加して広がりました。自分で始めたインストールやアップデートのときだけ許可してください。"
 
+#: Sandbox.java
 msgid "An extension runs inside every program, and viruses of the classic Mac stayed resident this way. Allow this if you installed them yourself; otherwise they stay out for now."
 msgstr "機能拡張はすべてのプログラムの中で動くため、旧Macのウイルスはこの方法で常駐しました。自分でインストールしたものなら許可してください。許可しなければ、今回は読み込みません。"
 
+#: Sandbox.java
 msgid "It stays out unless you allow it."
 msgstr "許可しない限り読み込みません。"
 
+#: VirusScan68k.java
 msgid "It holds a virus and was not opened."
 msgstr "ウイルスが含まれているため、開きませんでした。"
 
+#: VirusScan68k.java
 msgid "\"{0}\" is infected with the virus {1}."
 msgstr "「{0}」はウイルス {1} に感染しています。"
 
+#: VirusScan68k.java
 msgid "Repairing puts the program back as it was; the infected file is kept in Deleted Files."
 msgstr "駆除するとプログラムは元の状態に戻ります。感染したファイルは「Deleted Files」に保管されます。"
 
+#: VirusScan68k.java
 msgid "HyperZebra cannot repair this file. If you open it anyway, changes it tries to make to other programs are still refused."
 msgstr "HyperZebraではこのファイルを駆除できません。開いた場合でも、他のプログラムを書き換えようとすれば確認します。"
 
+#: VirusScan68k.java
 msgid "Don't Open"
 msgstr "開かない"
 
+#: VirusScan68k.java
 msgid "Repair and Open"
 msgstr "駆除して開く"
 
+#: VirusScan68k.java
 msgid "Open Anyway"
 msgstr "そのまま開く"
+
+#: ScriptWeb.java
+msgid "No such file: {0}"
+msgstr "そのファイルはありません: {0}"
+
+#: ScriptWeb.java
+msgid "The file is too large: {0}"
+msgstr "ファイルが大きすぎます: {0}"
+
+#: ScriptWeb.java
+msgid "Cannot read the file: {0}"
+msgstr "ファイルを読めません: {0}"
+
+#: ScriptWeb.java
+msgid "put into URL writes only file: and binfile: URLs"
+msgstr "put into URL で書き込めるのは file: と binfile: の URL だけです"
+
+#: ScriptWeb.java
+msgid "Can't create that file."
+msgstr "そのファイルを作れません。"
+
+#: ScriptWeb.java
+msgid "Cannot write the file: {0}"
+msgstr "ファイルに書き込めません: {0}"
+
+#: TTalk.java
+msgid "read from file: more than 512 MB at once"
+msgstr "read from file: 一度に読めるのは512 MBまでです"
+
+#: TTalk.java
+msgid "The file was opened for read: {0}"
+msgstr "このファイルは読み込み専用 (for read) で開いています: {0}"
+
+#: TUtil.java TalkBinary.java TalkImage.java
+msgid "Wrong number of arguments for {0}: {1}"
+msgstr "{0} の引数の数が違います: {1}"
+
+#: TalkBinary.java
+msgid "binaryEncode: unknown data type {0}"
+msgstr "binaryEncode: 知らないデータ型です: {0}"
+
+#: TalkBinary.java
+msgid "binaryEncode: not enough values for the format"
+msgstr "binaryEncode: 形式に対して値が足りません"
+
+#: TalkBinary.java
+msgid "binaryEncode: not a hexadecimal digit: {0}"
+msgstr "binaryEncode: 16進数の数字ではありません: {0}"
+
+#: TalkBinary.java
+msgid "binaryEncode: a number is required here: {0}"
+msgstr "binaryEncode: ここには数値が必要です: {0}"
+
+#: TalkBinary.java
+msgid "binaryDecode: unknown data type {0}"
+msgstr "binaryDecode: 知らないデータ型です: {0}"
+
+#: TalkBinary.java
+msgid "base64Decode: not base 64 data"
+msgstr "base64Decode: Base64のデータではありません"
+
+#: TalkBinary.java
+msgid "decompress: not compressed data"
+msgstr "decompress: 圧縮されたデータではありません"
+
+#: TalkBinary.java
+msgid "messageDigest: unknown digest {0}"
+msgstr "messageDigest: 知らないダイジェストです: {0}"
+
+#: TalkBinary.java
+msgid "Unknown text encoding: {0}"
+msgstr "知らない文字コードです: {0}"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "imageToArray: the image is too large"
+msgstr "imageToArray: 画像が大きすぎます"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage requires an array of rows of pixels"
+msgstr "arrayToImage には画素の行の配列が必要です"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the array has no pixels"
+msgstr "arrayToImage: 配列に画素がありません"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the image is too large"
+msgstr "arrayToImage: 画像が大きすぎます"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the format must be png, jpeg, gif or bmp: {0}"
+msgstr "arrayToImage: 形式は png、jpeg、gif、bmp のどれかです: {0}"
+
+#: EditorsUI.java PlayerUiHost.java TalkImage.java
+msgid "arrayToImage: cannot write {0}"
+msgstr "arrayToImage: {0} を書き出せません"
+
+#: TalkBinary.java
+msgid "arrayToImage: a pixel needs numbers like 255,0,0,255: {0}"
+msgstr "arrayToImage: 画素には 255,0,0,255 のような数値が必要です: {0}"
+
+msgctxt "reference"
+msgid "How many elements an array or a dictionary has"
+msgstr "配列や辞書の要素の数"
+
+msgctxt "reference"
+msgid "Opens a file read-only, emptied for writing, for reading and writing, or to add to its end; binary reads and writes the bytes as they are"
+msgstr "ファイルを開く: 読み込みだけ・空にして書き込み・読み書き・末尾に追加。binary ならバイトをそのまま読み書きする"
+
+msgctxt "reference"
+msgid "Reads n bytes (into it); in a binary file each byte is one character"
+msgstr "n バイト読む (it へ)。バイナリのファイルでは1バイトが1文字"
+
+msgctxt "reference"
+msgid "A file's bytes as a value; put <data> into|after URL \"binfile:<file>\" writes them, \"file:\" is for text"
+msgstr "ファイルのバイトを値として。put <data> into|after URL \"binfile:<file>\" で書き込む。テキストは \"file:\""
+
+msgctxt "reference"
+msgid "The nth byte of binary data (the same as char)"
+msgstr "バイナリデータの n バイト目 (char と同じ)"
+
+msgctxt "reference"
+msgid "How many bytes"
+msgstr "バイト数"
+
+msgctxt "reference"
+msgid "The number of a byte (0-255)"
+msgstr "バイトの数値 (0〜255)"
+
+msgctxt "reference"
+msgid "The byte of a number (0-255); numToChar is for text"
+msgstr "数値のバイト (0〜255)。テキストには numToChar"
+
+msgctxt "reference"
+msgid "Binary data from values: c C 1 byte, s S i I 2/4 bytes low byte first, n m N M 2/4 bytes high byte first, f d floating point, a A text, H h hexadecimal, B b bits, x a zero byte; a count or * after a letter"
+msgstr "値からバイナリデータを作る: c C 1バイト、s S i I 2/4バイト下位から、n m N M 2/4バイト上位から、f d 浮動小数点、a A テキスト、H h 16進、B b ビット、x 0のバイト。文字の後に個数か *"
+
+msgctxt "reference"
+msgid "Puts the values in binary data into variables (the letters of binaryEncode); gives how many it converted"
+msgstr "バイナリデータの値を変数へ (binaryEncode と同じ文字)。変換した数を返す"
+
+msgctxt "reference"
+msgid "Base 64 text of data (lines of 72 characters), and the data back"
+msgstr "データの Base64 テキスト (72文字ごとの行) と、その逆"
+
+msgctxt "reference"
+msgid "gzip compression"
+msgstr "gzip 圧縮"
+
+msgctxt "reference"
+msgid "The hash of data as bytes (binaryDecode(\"H*\", …) gives hexadecimal)"
+msgstr "データのハッシュ (バイト。binaryDecode(\"H*\", …) で16進に)"
+
+msgctxt "reference"
+msgid "Text as the bytes of an encoding (return is CR in Mac encodings, LF in others)"
+msgstr "テキストをその文字コードのバイトに (return は Mac の文字コードでは CR、ほかは LF)"
+
+msgctxt "reference"
+msgid "Text from the bytes of an encoding (every line end becomes return)"
+msgstr "その文字コードのバイトからテキストに (行末はすべて return に)"
+
+msgctxt "reference"
+msgid "Where bytes are in data (0 when they are not)"
+msgstr "データの中のバイトの位置 (無ければ0)"
+
+msgctxt "reference"
+msgid "The pixels of PNG, JPEG, GIF, BMP or PICT data as rows of \"r,g,b,a\" (0-255), so px[y][x] counts from 1 at the top left"
+msgstr "PNG・JPEG・GIF・BMP・PICT データの画素を \"r,g,b,a\" (0〜255) の行の配列に。px[y][x] は左上から1で数える"
+
+msgctxt "reference"
+msgid "Image file data from rows of \"r,g,b\" or \"r,g,b,a\" pixels"
+msgstr "\"r,g,b\" か \"r,g,b,a\" の画素の行から画像ファイルのデータを作る"
+
+#: HyperTalkReference.java
+msgctxt "reference"
+msgid "Binary data & images"
+msgstr "バイナリデータと画像"
+
+#: GHelpWindow.java
+msgctxt "help"
+msgid "Binary data and images"
+msgstr "バイナリデータと画像"
+
+msgctxt "help"
+msgid ""
+"Scripts can read and write any file byte by byte, and turn a picture into an array of pixels and back. The names and the syntax are LiveCode's, so examples written for LiveCode work as they are.\n"
+"\n"
+"Binary data\n"
+"  Binary data is text with one character for each byte. byte n of data is char n of data, and byteToNum and numToByte give the number of a byte (0 to 255) and the byte of a number. Use them for binary data rather than charToNum and numToChar, which follow the stack's text encoding.\n"
+"    put URL \"binfile:photo.png\" into data\n"
+"    put the number of bytes in data into size\n"
+"    put byteToNum(byte 1 of data) into first\n"
+"    put data into URL \"binfile:copy.png\"\n"
+"  A file name without a folder is in the stack's folder. URL \"file:notes.txt\" reads and writes text instead; put … after URL adds to the end of a file. HyperZebra asks before a stack reads or writes a file outside its own places (Settings: access confirmation).\n"
+"\n"
+"Files\n"
+"    open file \"data.bin\" for binary read\n"
+"    read from file \"data.bin\" for 4 bytes\n"
+"    put it into header\n"
+"    read from file \"data.bin\" until eof\n"
+"    close file \"data.bin\"\n"
+"  The modes are read (the file is only read), write (the file is emptied first), update (read and written, nothing is cut) and append (written at the end). Without binary the file is text, as before. open file without a mode works as in HyperCard.\n"
+"\n"
+"Numbers in binary data\n"
+"    put binaryEncode(\"NnC\", 100000, 2, 255) into data\n"
+"    get binaryDecode(\"NnC\", data, a, b, c)\n"
+"  Each letter is a value: c C a byte (with or without a sign), s S i I 2 and 4 bytes with the low byte first (Intel order), n m N M 2 and 4 bytes with the high byte first (n N with a sign), f d floating-point numbers, a A text, H h hexadecimal, B b bits, x a zero byte that is skipped. A count after a letter takes that many values, * all the rest. binaryDecode puts the values into the variables and gives how many it converted.\n"
+"    get binaryDecode(\"H*\", sha1Digest(data), hex)\n"
+"  Also for binary data: base64Encode and base64Decode, compress and decompress (gzip), md5Digest, sha1Digest, messageDigest(data, \"SHA-256\"), and textEncode(text, \"UTF-8\") and textDecode(data, \"UTF-8\"), which turn text into the bytes of an encoding and back.\n"
+"\n"
+"Images as arrays of pixels\n"
+"  imageToArray turns PNG, JPEG, GIF, BMP or PICT data into an array of rows. Each pixel is \"r,g,b,a\" (red, green, blue, opacity, from 0 to 255), so px[y][x] is the pixel x from the left in row y from the top, counting from 1. arrayToImage makes PNG data from such an array, or \"jpeg\", \"gif\" or \"bmp\". A pixel may also be \"r,g,b\" (opaque) or [r, g, b, a].\n"
+"    put imageToArray(URL \"binfile:photo.png\") into px\n"
+"    put the number of items of px into h\n"
+"    put the number of items of px[1] into w\n"
+"    repeat with y = 1 to h\n"
+"      repeat with x = 1 to w\n"
+"        put px[y][x] into c\n"
+"        put 255 - item 1 of c & \",\" & 255 - item 2 of c & \",\" & 255 - item 3 of c & \",\" & item 4 of c into px[y][x]\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put arrayToImage(px) into URL \"binfile:negative.png\"\n"
+"  Changing an array one element at a time is quick: a loop over every pixel of a 640 x 480 picture takes a fraction of a second."
+msgstr ""
+"スクリプトからどんなファイルもバイト単位で読み書きでき、画像を画素の配列にしたり配列から画像に戻したりできます。名前と構文は LiveCode と同じなので、LiveCode 向けの例がそのまま動きます。\n"
+"\n"
+"バイナリデータ\n"
+"  バイナリデータは1バイトを1文字としたテキストです。byte n of data は char n of data と同じで、byteToNum と numToByte でバイトの数値 (0〜255) と数値のバイトを相互に変換します。charToNum と numToChar はスタックの文字コードに従うので、バイナリデータにはこちらを使ってください。\n"
+"    put URL \"binfile:photo.png\" into data\n"
+"    put the number of bytes in data into size\n"
+"    put byteToNum(byte 1 of data) into first\n"
+"    put data into URL \"binfile:copy.png\"\n"
+"  フォルダの無いファイル名はスタックのフォルダの中です。URL \"file:notes.txt\" はテキストとして読み書きします。put … after URL はファイルの末尾に追加します。スタックが自分の場所の外のファイルを読み書きするときは確認します（設定: アクセスの確認）。\n"
+"\n"
+"ファイル\n"
+"    open file \"data.bin\" for binary read\n"
+"    read from file \"data.bin\" for 4 bytes\n"
+"    put it into header\n"
+"    read from file \"data.bin\" until eof\n"
+"    close file \"data.bin\"\n"
+"  モードは read（読むだけ）、write（最初に空にする）、update（読み書きし、何も切り詰めない）、append（末尾に書く）です。binary を付けなければ今までどおりテキストのファイルです。モードを付けない open file は HyperCard と同じに動きます。\n"
+"\n"
+"バイナリデータの中の数値\n"
+"    put binaryEncode(\"NnC\", 100000, 2, 255) into data\n"
+"    get binaryDecode(\"NnC\", data, a, b, c)\n"
+"  文字1つが値1つです: c C 1バイト（符号あり・なし）、s S i I 2バイトと4バイトで下位バイトが先（Intel の順）、n m N M 2バイトと4バイトで上位バイトが先（n N は符号あり）、f d 浮動小数点数、a A テキスト、H h 16進数、B b ビット、x 読み飛ばす0のバイト。文字の後に個数を書くとその数の値、* は残り全部です。binaryDecode は値を変数に入れ、変換した数を返します。\n"
+"    get binaryDecode(\"H*\", sha1Digest(data), hex)\n"
+"  ほかにバイナリデータに使えるもの: base64Encode と base64Decode、compress と decompress（gzip）、md5Digest、sha1Digest、messageDigest(data, \"SHA-256\")、そしてテキストとその文字コードのバイトを相互に変換する textEncode(text, \"UTF-8\") と textDecode(data, \"UTF-8\")。\n"
+"\n"
+"画像を画素の配列に\n"
+"  imageToArray は PNG・JPEG・GIF・BMP・PICT のデータを行の配列にします。画素はそれぞれ \"r,g,b,a\"（赤、緑、青、不透明度。0〜255）なので、px[y][x] は上から y 行目の左から x 番目の画素です（1から数えます）。arrayToImage はそのような配列から PNG のデータを作ります（\"jpeg\"、\"gif\"、\"bmp\" も可）。画素は \"r,g,b\"（不透明）や [r, g, b, a] でもかまいません。\n"
+"    put imageToArray(URL \"binfile:photo.png\") into px\n"
+"    put the number of items of px into h\n"
+"    put the number of items of px[1] into w\n"
+"    repeat with y = 1 to h\n"
+"      repeat with x = 1 to w\n"
+"        put px[y][x] into c\n"
+"        put 255 - item 1 of c & \",\" & 255 - item 2 of c & \",\" & 255 - item 3 of c & \",\" & item 4 of c into px[y][x]\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put arrayToImage(px) into URL \"binfile:negative.png\"\n"
+"  配列の要素を1つずつ書き換えるのは速く、640 x 480 の画像の全画素を回すループでも1秒かかりません。"
+
+#: PlayerUiHost.java TalkImage.java
+msgid "{0}: not image data (PNG, JPEG, GIF, BMP or PICT)"
+msgstr "{0}: 画像のデータ (PNG、JPEG、GIF、BMP、PICT) ではありません"
+
+#: TalkImage.java
+msgid "{0}: the image is too large"
+msgstr "{0}: 画像が大きすぎます"
+
+#: TalkImage.java
+msgid "imageCombine: unknown mode {0} (normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity)"
+msgstr "imageCombine: 知らないモードです: {0} (normal、add、subtract、multiply、screen、darken、lighten、difference、hue、color、saturation、luminosity)"
+
+#: TalkImage.java
+msgid "imageCreate: the image is too large or empty: {0} x {1}"
+msgstr "imageCreate: 画像が大きすぎるか空です: {0} x {1}"
+
+#: TalkImage.java
+msgid "{0}: a number is required here: {1}"
+msgstr "{0}: ここには数値が必要です: {1}"
+
+#: TalkImage.java
+msgid "Not a colour: {0} (a name, #RRGGBB or r,g,b)"
+msgstr "色ではありません: {0} (名前、#RRGGBB、r,g,b のどれか)"
+
+msgctxt "reference"
+msgid "Draws top on base with its top left at x,y; modes normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity; opacity 0-100"
+msgstr "base の x,y を左上に top を描く。モードは normal、add、subtract、multiply、screen、darken、lighten、difference、hue、color、saturation、luminosity、不透明度は 0〜100"
+
+msgctxt "reference"
+msgid "A new image, clear or of one colour (a name, #RRGGBB, #RRGGBBAA or r,g,b)"
+msgstr "新しい画像。透明か単色 (名前、#RRGGBB、#RRGGBBAA、r,g,b)"
+
+msgctxt "reference"
+msgid "The width and height of image data (width,height)"
+msgstr "画像データの幅と高さ (幅,高さ)"
+
+msgctxt "reference"
+msgid "An image shown over the card window from its top left; empty removes it"
+msgstr "カードウインドウの左上から重ねて見せる画像。empty で消える"
+
+msgctxt "reference"
+msgid "The paint picture, the card with its parts, or the card window as it looks, as PNG data"
+msgstr "ペイントの絵、部品込みのカード、今見えているカードウインドウを PNG データとして"
+
+msgctxt "reference"
+msgid "Draws image data on the card picture (the background's while editing it)"
+msgstr "画像データをカードの絵に描く (バックグラウンドの編集中はバックグラウンドの絵に)"
+
+#: GHelpWindow.java
+msgctxt "help"
+msgid "Image effects"
+msgstr "画像の効果"
+
+#: TalkPixelScript.java
+msgid "Can't understand the image script at line {0}: {1}"
+msgstr "画像スクリプトの {0} 行目がわかりません: {1}"
+
+#: TalkPixelScript.java
+msgid "The image script runs too long at the pixel {0},{1}"
+msgstr "画像スクリプトがピクセル {0},{1} で長くかかりすぎています"
+
+#: TalkPixelScript.java
+msgid "The image script was interrupted"
+msgstr "画像スクリプトを中断しました"
+
+msgctxt "reference"
+msgid "Runs a pixel script (HyperTalk on numbers) for every pixel: r, g, b, a are the pixel, x, y where it is, w, h the image's size; what r, g, b, a hold at the end is the new pixel"
+msgstr "ピクセルスクリプト (数値の HyperTalk) をピクセルごとに実行する。r、g、b、a がピクセル、x、y が位置、w、h が画像の大きさ。最後の r、g、b、a が新しいピクセル"
+
+msgctxt "reference"
+msgid "In imageFilter and the screenFilter: put, add, subtract, multiply, divide, if and repeat on numbers; get pixel takes another pixel, red(x, y) and the like read one"
+msgstr "imageFilter と screenFilter で使える: 数値の put、add、subtract、multiply、divide、if、repeat。get pixel でほかのピクセルを取り、red(x, y) などで読む"
+
+msgctxt "reference"
+msgid "The card window is shown through a pixel script (as imageFilter's) until it is set to empty; the stack does not change"
+msgstr "empty にするまで、カードウインドウをピクセルスクリプト (imageFilter と同じ) を通して見せる。スタックは変わらない"
+
+msgctxt "help"
+msgid ""
+"Whole images can be changed at once, far faster than pixel by pixel in a repeat loop: to touch up a picture, or for effects in a game. An image is image data as URL \"binfile:…\" gives it (PNG, JPEG, GIF, BMP or PICT); the functions give PNG data.\n"
+"\n"
+"imageFilter(data, script)\n"
+"  Runs a short script for every pixel. It is HyperTalk on numbers: r, g, b and a hold the pixel's red, green, blue and opacity (0 to 255), x and y where it is (from 0 at the top left), w and h the size of the image. What r, g, b and a hold at the end is the new pixel.\n"
+"    put \"put 255 - r into r; put 255 - g into g; put 255 - b into b\" into invert\n"
+"    put imageFilter(URL \"binfile:photo.jpg\", invert) into URL \"binfile:negative.png\"\n"
+"  Lines are separated by return or by ;. The script may use put, add, subtract, multiply, divide, if … then … else, repeat (with, times, while, until, exit repeat, next repeat), + - * / div mod ^, comparisons, and, or, not, and abs, min, max, sqrt, sin, cos, tan, atan, exp, ln, round, trunc, random and pi. Its own variables start at 0 for every pixel. red(x, y), green(x, y), blue(x, y), alpha(x, y) and lum(x, y) (brightness) read any pixel of the image, and get pixel x, y takes all of one; numbers between two pixels blend them. A script that runs too long stops with an error, and Command-period stops it too.\n"
+"\n"
+"Filters to copy\n"
+"  These are pixel scripts: keep the ones you use in a field or a variable, as in imageFilter(img, field \"Sepia\"). Values can be put in with &: \"multiply a by\" && opacity.\n"
+"  Grayscale:\n"
+"    put r * 0.3 + g * 0.59 + b * 0.11 into v; put v into r; put v into g; put v into b\n"
+"  Sepia:\n"
+"    put r * 0.39 + g * 0.77 + b * 0.19 into nr; put r * 0.35 + g * 0.69 + b * 0.17 into ng\n"
+"    put r * 0.27 + g * 0.53 + b * 0.13 into b; put nr into r; put ng into g\n"
+"  Brightness and contrast (20 lighter, 1.4 times the contrast):\n"
+"    put (r - 128) * 1.4 + 148 into r; put (g - 128) * 1.4 + 148 into g; put (b - 128) * 1.4 + 148 into b\n"
+"  Black and white:\n"
+"    if lum(x, y) > 128 then put 255 into v else put 0 into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  A red flash, half way to red:\n"
+"    put r + (255 - r) / 2 into r; multiply g by 0.5; multiply b by 0.5\n"
+"  Green screen (that green becomes clear):\n"
+"    if g > 150 and r < 120 and b < 120 then put 0 into a\n"
+"  Blur (the average of 5 by 5 pixels):\n"
+"    repeat with dy = -2 to 2\n"
+"      repeat with dx = -2 to 2\n"
+"        add red(x + dx, y + dy) to sr; add green(x + dx, y + dy) to sg; add blue(x + dx, y + dy) to sb\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put sr / 25 into r; put sg / 25 into g; put sb / 25 into b\n"
+"  Outlines of what is drawn:\n"
+"    put abs(lum(x + 1, y) - lum(x - 1, y)) + abs(lum(x, y + 1) - lum(x, y - 1)) into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  Mosaic, mirror and wave:\n"
+"    get pixel x - x mod 8, y - y mod 8\n"
+"    get pixel w - 1 - x, y\n"
+"    get pixel x + 6 * sin(y / 12), y\n"
+"  Darker corners, scan lines and noise:\n"
+"    put ((x - w / 2) ^ 2 + (y - h / 2) ^ 2) / ((w / 2) ^ 2 + (h / 2) ^ 2) * 0.8 into d\n"
+"    multiply r by 1 - d; multiply g by 1 - d; multiply b by 1 - d\n"
+"    put 1 - y mod 2 * 0.4 into k; multiply r by k; multiply g by k; multiply b by k\n"
+"    put random(41) - 21 into n; add n to r; add n to g; add n to b\n"
+"\n"
+"Other sizes\n"
+"  imageFilter(data, script, width, height) makes an image of that size: the script runs for each of its pixels (width and height hold its size) and takes the original's with get pixel.\n"
+"    put imageFilter(img, \"get pixel x * w / width, y * h / height\", 320, 240) into small\n"
+"    put imageFilter(img, \"get pixel y, h - 1 - x\", item 2 of imageSize(img), item 1 of imageSize(img)) into turned\n"
+"\n"
+"Combining and making images\n"
+"    put imageCreate(200, 40, \"#00000080\") into bar\n"
+"    put imageCombine(img, bar, 10, 300) into img\n"
+"    put imageCombine(img, sprite, x, y, \"screen\", 70) into img\n"
+"  imageCombine draws the second image on the first with its top left at x,y. The mode is normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation or luminosity, and the opacity is from 0 to 100. imageSize gives width,height.\n"
+"\n"
+"Pictures of the stack\n"
+"    export card to snap\n"
+"    import paint from imageFilter(snap, field \"Sepia\")\n"
+"  export paint, export card and export screen to a variable give the paint picture, the card with its buttons and fields, or the card window as it looks now. import paint from image data draws it on the card picture (on the background's while you edit the background).\n"
+"\n"
+"Screen effects\n"
+"    set the screenFilter to field \"Grayscale\"\n"
+"    set the screenFilter to empty\n"
+"  The screenFilter shows the card window through a pixel script while the stack stays as it is: for a flashback, a pause screen or a dream. There x and y are pixels of the screen, and scale is how much it is magnified (2 when the card is shown at 200%). The screenOverlay is an image shown over the card from its top left, for a flash of colour or a status panel. Both end when the stack closes, and lock screen and visual effects show them as well.\n"
+"    repeat with i = 1 to 10\n"
+"      put 1 - i / 10 into k\n"
+"      set the screenFilter to \"multiply r by\" && k & \"; multiply g by\" && k & \"; multiply b by\" && k\n"
+"      wait 2 ticks\n"
+"    end repeat\n"
+"    set the screenOverlay to imageCreate(the width of this card, the height of this card, \"#FF000060\")\n"
+"    wait 5 ticks\n"
+"    set the screenOverlay to empty\n"
+"  A colour script costs well under a millisecond each time the card is drawn; one that reads 25 pixels for each, like the blur, about 15."
+msgstr ""
+"画像全体を一度に、repeat ループでピクセルごとに処理するよりずっと速く変えられます。写真の手直しにも、ゲームの演出にも使えます。画像は URL \"binfile:…\" で得られる画像データ (PNG、JPEG、GIF、BMP、PICT) で、関数は PNG のデータを返します。\n"
+"\n"
+"imageFilter(データ, スクリプト)\n"
+"  短いスクリプトをピクセルごとに実行します。数値だけの HyperTalk です。r、g、b、a にはピクセルの赤・緑・青・不透明度 (0〜255)、x と y には位置 (左上が 0)、w と h には画像の大きさが入っています。最後に r、g、b、a に入っている値が新しいピクセルになります。\n"
+"    put \"put 255 - r into r; put 255 - g into g; put 255 - b into b\" into invert\n"
+"    put imageFilter(URL \"binfile:photo.jpg\", invert) into URL \"binfile:negative.png\"\n"
+"  行は改行か ; で区切ります。使えるのは put、add、subtract、multiply、divide、if … then … else、repeat (with、times、while、until、exit repeat、next repeat)、+ - * / div mod ^、比較、and、or、not、それに abs、min、max、sqrt、sin、cos、tan、atan、exp、ln、round、trunc、random、pi です。スクリプト自身の変数はピクセルごとに 0 から始まります。red(x, y)、green(x, y)、blue(x, y)、alpha(x, y)、lum(x, y) (明るさ) で画像のどのピクセルでも読め、get pixel x, y で1つのピクセルを丸ごと取れます。ピクセルの間の数を指定すると混ぜた色になります。長くかかりすぎるスクリプトはエラーで止まり、Command-ピリオドでも止められます。\n"
+"\n"
+"コピーして使えるフィルタ\n"
+"  どれもピクセルスクリプトです。使うものはフィールドや変数に入れておき、imageFilter(img, field \"Sepia\") のように使います。値は & で組み込めます: \"multiply a by\" && opacity。\n"
+"  グレースケール:\n"
+"    put r * 0.3 + g * 0.59 + b * 0.11 into v; put v into r; put v into g; put v into b\n"
+"  セピア:\n"
+"    put r * 0.39 + g * 0.77 + b * 0.19 into nr; put r * 0.35 + g * 0.69 + b * 0.17 into ng\n"
+"    put r * 0.27 + g * 0.53 + b * 0.13 into b; put nr into r; put ng into g\n"
+"  明るさとコントラスト (20 明るく、コントラスト 1.4 倍):\n"
+"    put (r - 128) * 1.4 + 148 into r; put (g - 128) * 1.4 + 148 into g; put (b - 128) * 1.4 + 148 into b\n"
+"  白黒:\n"
+"    if lum(x, y) > 128 then put 255 into v else put 0 into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  赤いフラッシュ (赤へ半分):\n"
+"    put r + (255 - r) / 2 into r; multiply g by 0.5; multiply b by 0.5\n"
+"  グリーンバック (その緑が透明に):\n"
+"    if g > 150 and r < 120 and b < 120 then put 0 into a\n"
+"  ぼかし (5×5 ピクセルの平均):\n"
+"    repeat with dy = -2 to 2\n"
+"      repeat with dx = -2 to 2\n"
+"        add red(x + dx, y + dy) to sr; add green(x + dx, y + dy) to sg; add blue(x + dx, y + dy) to sb\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put sr / 25 into r; put sg / 25 into g; put sb / 25 into b\n"
+"  描かれたものの輪郭:\n"
+"    put abs(lum(x + 1, y) - lum(x - 1, y)) + abs(lum(x, y + 1) - lum(x, y - 1)) into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  モザイク、鏡像、波:\n"
+"    get pixel x - x mod 8, y - y mod 8\n"
+"    get pixel w - 1 - x, y\n"
+"    get pixel x + 6 * sin(y / 12), y\n"
+"  四隅を暗く、走査線、ノイズ:\n"
+"    put ((x - w / 2) ^ 2 + (y - h / 2) ^ 2) / ((w / 2) ^ 2 + (h / 2) ^ 2) * 0.8 into d\n"
+"    multiply r by 1 - d; multiply g by 1 - d; multiply b by 1 - d\n"
+"    put 1 - y mod 2 * 0.4 into k; multiply r by k; multiply g by k; multiply b by k\n"
+"    put random(41) - 21 into n; add n to r; add n to g; add n to b\n"
+"\n"
+"ほかの大きさ\n"
+"  imageFilter(データ, スクリプト, 幅, 高さ) はその大きさの画像を作ります。スクリプトはその画像のピクセルごとに実行され (width と height にその大きさが入ります)、get pixel で元の画像のピクセルを取ります。\n"
+"    put imageFilter(img, \"get pixel x * w / width, y * h / height\", 320, 240) into small\n"
+"    put imageFilter(img, \"get pixel y, h - 1 - x\", item 2 of imageSize(img), item 1 of imageSize(img)) into turned\n"
+"\n"
+"画像を重ねる・作る\n"
+"    put imageCreate(200, 40, \"#00000080\") into bar\n"
+"    put imageCombine(img, bar, 10, 300) into img\n"
+"    put imageCombine(img, sprite, x, y, \"screen\", 70) into img\n"
+"  imageCombine は2つ目の画像を1つ目の上に、左上を x,y に合わせて描きます。モードは normal、add、subtract、multiply、screen、darken、lighten、difference、hue、color、saturation、luminosity のどれかで、不透明度は 0〜100 です。imageSize は 幅,高さ を返します。\n"
+"\n"
+"スタックの絵\n"
+"    export card to snap\n"
+"    import paint from imageFilter(snap, field \"Sepia\")\n"
+"  export paint、export card、export screen で変数に書き出すと、ペイントの絵、ボタンやフィールドも含めたカード、今見えているとおりのカードウインドウが得られます。import paint from に画像データを渡すと、カードの絵に描きます (バックグラウンドの編集中はバックグラウンドの絵に)。\n"
+"\n"
+"画面効果\n"
+"    set the screenFilter to field \"Grayscale\"\n"
+"    set the screenFilter to empty\n"
+"  screenFilter を設定すると、スタックはそのままで、カードウインドウがピクセルスクリプトを通して見えます。回想シーン、ポーズ画面、夢の場面などに使えます。このとき x と y は画面のピクセルで、scale は拡大率 (カードを 200% で表示しているときは 2) です。screenOverlay はカードの左上から重ねて見せる画像で、色のフラッシュやステータス表示に使えます。どちらもスタックを閉じると消え、lock screen や visual effect でもそのまま見えます。\n"
+"    repeat with i = 1 to 10\n"
+"      put 1 - i / 10 into k\n"
+"      set the screenFilter to \"multiply r by\" && k & \"; multiply g by\" && k & \"; multiply b by\" && k\n"
+"      wait 2 ticks\n"
+"    end repeat\n"
+"    set the screenOverlay to imageCreate(the width of this card, the height of this card, \"#FF000060\")\n"
+"    wait 5 ticks\n"
+"    set the screenOverlay to empty\n"
+"  色だけのスクリプトは、カードを描くたびにかかる時間が 1 ミリ秒よりずっと短く、ぼかしのように1ピクセルにつき 25 ピクセルを読むものは 15 ミリ秒ほどです。"
+
+#: GMenu.java
+msgctxt "menu"
+msgid "Export for Web…"
+msgstr "Web用に書き出す…"
+
+#: WebExport.java
+msgid "The web player is not in this copy of HyperZebra."
+msgstr "このHyperZebraにはWebプレーヤーが入っていません。"
+
+#: WebExport.java
+msgid "It belongs in the folder Support Files/WebPlayer beside the application."
+msgstr "Webプレーヤーは、アプリケーションの隣のSupport Files/WebPlayerフォルダに置きます。"
+
+#: WebExport.java
+msgid "Try in Browser"
+msgstr "ブラウザで試す"
+
+#: WebExport.java
+msgid "Could not start the test server."
+msgstr "テスト用サーバーを起動できませんでした。"
+
+#: WebExport.java
+msgid "Test Server"
+msgstr "テスト用サーバー"
+
+#: WebExport.java
+msgid "The test server is running (this computer only)."
+msgstr "テスト用サーバーを起動中です(このコンピュータだけから接続できます)。"
+
+#: WebExport.java
+msgid "Open in Browser"
+msgstr "ブラウザで開く"
+
+#: WebExport.java
+msgid "Stop Server"
+msgstr "サーバーを停止"
+
+#: WebExport.java
+msgid "Export for Web"
+msgstr "Web用に書き出す"
+
+#: WebExport.java
+msgid "A file or folder with that name already exists. Choose another name."
+msgstr "同じ名前のファイルかフォルダがあります。別の名前にしてください。"
+
+#: WebExport.java
+msgid "The stack was exported for the web."
+msgstr "スタックをWeb用に書き出しました。"
+
+#: WebExport.java
+msgid "Put the folder on a web server and open index.html there (opened as a file, it does not run)."
+msgstr "フォルダをWebサーバーに置いて、そこでindex.htmlを開いてください(ファイルとして開くと動きません)。"
+
+#: WebExport.java
+msgid "Could not export the stack for the web."
+msgstr "スタックをWeb用に書き出せませんでした。"
+
+#: WebExport.java
+msgid "Icons not found (the buttons show none): %s"
+msgstr "見つからないアイコン(ボタンには何も出ません): %s"
+
+#: WebExport.java
+msgid "The stack's 68K external commands need the 68K web player, which is not in this copy of HyperZebra: they do nothing in the browser."
+msgstr "このスタックの68Kの外部コマンドには68K入りのWebプレーヤーが要りますが、このHyperZebraには入っていません: ブラウザでは何もしません。"
+
+#: WebExport.java
+msgid "The stack's Private Access does not apply in the browser: anyone who has the page can open the stack."
+msgstr "このスタックのプライベートアクセスはブラウザでは効きません: ページを持っている人は誰でもスタックを開けます。"
+
+#: WebExport.java
+msgid "A stack this stack uses was left out: %s"
+msgstr "このスタックが使うスタックを入れられませんでした: %s"
+
+#: WebExport.java
+msgid "A file this stack uses was left out: %s"
+msgstr "このスタックが使うファイルを入れられませんでした: %s"
+
+#: WebExport.java
+msgid "These external commands need PowerPC code, which the web player does not run: %s"
+msgstr "次の外部コマンドにはPowerPCのコードが要りますが、Webプレーヤーでは動きません: %s"
+
+#: WebExport.java
+msgid "Show the menu bar on the page"
+msgstr "ページにメニューバーを表示"
+
+#: PlayerUiHost.java
+msgid "Replace existing “{0}”?"
+msgstr "既存の「{0}」を置き換えますか?"
+
+#: PlayerUiHost.java
+msgid "Upload…"
+msgstr "アップロード…"
+
+#: PlayerUiHost.java
+msgid "The file is too large to open here."
+msgstr "このファイルは大きすぎてここでは開けません。"
+
+#: WebExport.java
+msgid "Compile the scripts (faster in the browser)"
+msgstr "スクリプトをコンパイルする(ブラウザで速くなります)"
+
+#: WebExport.java
+msgid "Compiling the scripts for the web…"
+msgstr "スクリプトをWeb用にコンパイルしています…"
+
+#: WebExport.java
+msgid "The scripts were not compiled (they run as they are, more slowly): %s"
+msgstr "スクリプトはコンパイルされませんでした(そのまま、より遅く動きます): %s"
+
+#: WebExport.java
+msgid "Needs the script compiler, which this copy does not have"
+msgstr "スクリプトのコンパイラーが必要ですが、このHyperZebraには入っていません"
+
+#: WebExport.java
+msgid "Download the Script Compiler ({0})…"
+msgstr "スクリプトのコンパイラーをダウンロード({0})…"
+
+#: WebExport.java
+msgid "Script Compiler"
+msgstr "スクリプトのコンパイラー"
+
+#: WebExport.java
+msgid "Downloading the script compiler…"
+msgstr "スクリプトのコンパイラーをダウンロードしています…"
+
+#: WebAotBuild.java
+msgid "Downloading the script compiler ({0})…"
+msgstr "スクリプトのコンパイラーをダウンロードしています({0})…"
+
+#: WebAotBuild.java
+msgid "The downloaded script compiler is not the one of this HyperZebra (its checksum differs)."
+msgstr "ダウンロードしたスクリプトのコンパイラーはこのHyperZebraのものではありません(チェックサムが違います)。"
+
+#: WebAotBuild.java
+msgid "Unpacking the script compiler…"
+msgstr "スクリプトのコンパイラーを展開しています…"
+
+#: WebAotBuild.java
+msgid "The download has no script compiler."
+msgstr "ダウンロードしたものにスクリプトのコンパイラーが入っていません。"
+
+#: WebAotBuild.java
+msgid "This copy of HyperZebra does not say where its script compiler is."
+msgstr "このHyperZebraには、スクリプトのコンパイラーの置き場所が書かれていません。"
+
+#: WebExport.java
+msgid "up, down, left, right, space, return, shift, option, command, control, a letter or digit; empty: no game pad"
+msgstr "up, down, left, right, space, return, shift, option, command, control, 文字や数字。空ならゲームパッドなし"
+
+#: WebExport.java
+msgid "Press Keys…"
+msgstr "キーを押して登録…"
+
+#: WebExport.java
+msgid "Press the keys to add them; click again when done"
+msgstr "キーを押すと追加します。終わったらもう一度クリック"
+
+#: WebExport.java
+msgid "Game pad keys (phones and tablets):"
+msgstr "ゲームパッドのキー(スマホ・タブレット):"
+
+#: UiHost.java
+msgid "Images are not available here: {0}"
+msgstr "ここでは画像を利用できません: {0}"
+
+#: UiHost.java
+msgid "Can't understand {0}"
+msgstr "{0}を理解できません"
+
+#: UiHost.java
+msgid "Cannot open URL: {0}"
+msgstr "URLを開けません: {0}"
+
+#: WebExport.java
+msgid "Done"
+msgstr "完了"
+

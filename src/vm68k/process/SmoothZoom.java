@@ -28,7 +28,7 @@ import java.util.Map;
  * changed). A program drawing over hi-res text at 1x changes the 1x colours, so that part is scaled up again - always
  * consistent, at worst blockier.
  */
-final class SmoothZoom {
+class SmoothZoom {
 	static final int OFF=0,BRESENHAM=SmoothScaler.BRESENHAM,BICUBIC=SmoothScaler.BICUBIC,SCALE2X=SmoothScaler.SCALE2X,AUTO=SmoothScaler.AUTO;
 	/** The choices in the order the pop-ups list them (the stored values stay 0..4 whatever the order). */
 	static final int[] CHOICES={OFF,AUTO,SCALE2X,BICUBIC,BRESENHAM};
@@ -85,7 +85,7 @@ final class SmoothZoom {
 	private final Map<Integer,Plane> planes=new HashMap<Integer,Plane>();
 	/** Hi-res pixels of all planes, against {@link #BUDGET}: least recently used offscreen planes go first. */
 	private long planePixels;
-	private static final long BUDGET=Math.max(16L<<20,Runtime.getRuntime().maxMemory()/3/4);
+	private static final long BUDGET=Math.max(16L<<20,Platform.get().maxMemory()/3/4);
 	/** The hi-res pixels all planes may take together (a third of the heap). */
 	static long budget(){return BUDGET;}
 	/** The largest plane (hi-res pixels) made for an offscreen buffer: a sprite sheet the size of a poster stays 1x. */
@@ -134,7 +134,6 @@ final class SmoothZoom {
 	/** The plane at {@code base} whatever its geometry, or null. */
 	synchronized Plane existing(int base){return planes.get(base);}
 
-	private static final java.lang.invoke.VarHandle BITS=java.lang.invoke.MethodHandles.arrayElementVarHandle(long[].class);
 	/** A hi-res rendering of text for {@link Plane}s: the coverage image at {@code scale} times the size of the 1x mask, same origin. */
 	interface Text {BufferedImage render(int scale);}
 
@@ -194,7 +193,7 @@ final class SmoothZoom {
 			for(int i=from>>>6,last=(to-1)>>>6;i<=last;i++){
 				if(bits[i]==0)continue;
 				long mask=-1L;if(i==from>>>6)mask&=-1L<<(from&63);if(i==last&&(to&63)!=0)mask&=-1L>>>(64-(to&63));
-				long got=(long)BITS.getAndBitwiseAnd(bits,i,~mask)&mask;
+				long got=BigEndian68k.BYTES.clearBits(bits,i,mask)&mask;
 				while(got!=0){int b=(i<<6)+Long.numberOfTrailingZeros(got)-from;got&=got-1;
 					int p0=b*8/depth,p1=Math.min(width,(b*8+7)/depth+1);if(p0<width)disown(y,p0,p1);}
 			}
@@ -204,7 +203,7 @@ final class SmoothZoom {
 			int from=y*rowBytes+b0,to=y*rowBytes+b1;
 			for(int i=from>>>6,last=(to-1)>>>6;i<=last;i++){
 				long mask=-1L;if(i==from>>>6)mask&=-1L<<(from&63);if(i==last&&(to&63)!=0)mask&=-1L>>>(64-(to&63));
-				if((bits[i]&mask)!=0)BITS.getAndBitwiseAnd(bits,i,~mask);
+				if((bits[i]&mask)!=0)BigEndian68k.BYTES.clearBits(bits,i,mask);
 			}
 		}
 		/** The plane as an image (TYPE_INT_RGB over {@link #hi}: what is drawn into it is the plane). */
@@ -231,9 +230,9 @@ final class SmoothZoom {
 			byte[] raw=memory.raw();int rowStart=base+y*rowBytes;
 			if(rowStart<0||rowStart+rowBytes>raw.length){Arrays.fill(out,0,n,0xffffff);return;}
 			int bit=x*depth,lead=depth<8?(bit&7)/depth:0;
-			if(lead==0){MacAppHost.readPixels(raw,rowStart+(bit>>>3),depth,colors,n,out,0);return;}
+			if(lead==0){Pixels68k.readPixels(raw,rowStart+(bit>>>3),depth,colors,n,out,0);return;}
 			int[] tmp=row.length>=n+lead?row:(row=new int[n+lead+8]);
-			MacAppHost.readPixels(raw,rowStart+(bit>>>3),depth,colors,n+lead,tmp,0);System.arraycopy(tmp,lead,out,0,n);
+			Pixels68k.readPixels(raw,rowStart+(bit>>>3),depth,colors,n+lead,tmp,0);System.arraycopy(tmp,lead,out,0,n);
 		}
 		/** The colours for converting indexed pixels: the given table, or QuickDraw's reading of a table-less bitmap (0 white, else black). */
 		private int[] colors(int[] given){
@@ -364,7 +363,7 @@ final class SmoothZoom {
 				if(l<=l0&&r>=r0){redoLeft[y]=Integer.MAX_VALUE;redoRight[y]=-1;}
 				rowVersion[y]=v;
 			};
-			if(area*s*s>(1<<18)&&bottom-top>=8)java.util.stream.IntStream.rangeClosed(top,bottom).parallel().forEach(work);
+			if(area*s*s>(1<<18)&&bottom-top>=8)Toolbox68k.PARTS.parallelRows(top,bottom,work);
 			else for(int y=top;y<=bottom;y++)work.accept(y);
 			int t=Integer.MAX_VALUE,b=-1;for(int y=redoTop;y<=redoBottom;y++)if(redoRight[y]>redoLeft[y]){if(y<t)t=y;b=y;}
 			redoTop=t;redoBottom=b;

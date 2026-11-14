@@ -127,8 +127,8 @@ final class ToolUtils68k {
 		cpu.d[0]=(int)(negative?-value:value);return true;
 	}
 
-	private String macRoman(int address,int length) throws M68kCpuException {byte[] bytes=new byte[length];for(int i=0;i<length;i++)bytes[i]=(byte)memory.readByte(address+i);return new String(bytes,java.nio.charset.Charset.forName("x-MacRoman"));}
-	private static String stripMarks(String value){return java.text.Normalizer.normalize(value,java.text.Normalizer.Form.NFD).replaceAll("\\p{M}+","");}
+	private String macRoman(int address,int length) throws M68kCpuException {byte[] bytes=new byte[length];for(int i=0;i<length;i++)bytes[i]=(byte)memory.readByte(address+i);return new String(bytes,Platform.get().charset("x-MacRoman"));}
+	private static String stripMarks(String value){return Platform.get().normalize(value,UnicodeNorm.Form.NFD).replaceAll("\\p{M}+","");}
 
 	static String name(int trap) {
 		switch(trap) {

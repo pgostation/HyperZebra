@@ -1,4 +1,3 @@
-import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -39,6 +38,10 @@ import java.util.TreeSet;
  * put/add/... ({@link #pathClear}), a stack's externals changing, and the states in {@link #slow}: a compiled block checks
  * them before each statement and the interpreter takes over from there on.
  * <p>Settings: PCARD.talkJit (Preferences), -Dhz.talk.jit=false, -Dhz.talk.jitthreshold=N, -Dhz.talk.jittrace=true.
+ * <p><b>Ahead of time (the web player):</b> Export for Web compiles every block of the stack's scripts with the same {@link Gen}
+ * (TalkJitAot, on the desktop) into ordinary classes that TeaVM builds into the player's Wasm with the rest of the core. The
+ * runtime here is the same: {@link #aotScript} registers a script's code by its text, and a script whose text, words and
+ * constants are not exactly those it was compiled from runs in the interpreter ({@link Aot}). The player has no {@link #compiler}.
  */
 final class TalkJit {
 	private TalkJit(){}
@@ -55,15 +58,24 @@ final class TalkJit {
 	private static final int MAX_EXPRESSION_DEPTH = 40;
 
 	/** Bumped when a script changes (its handlers with it), for {@link #pathClear}. */
-	static volatile int scriptEpoch;
 
 	static volatile int compiled, failures;
 	private static int failureReports;
 
-	private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
-
 	/** Generated classes implement this. */
-	interface Code { Result run(Frame f) throws xTalkException; }
+	interface Code {
+		Result run(Frame f) throws xTalkException;
+		/** Ahead-of-time code (TalkJitAot): the code of entry {@code which} of the same script */
+		default Code entry(int which){ return null; }
+	}
+
+	/** Compiles a block at run time: the desktop's (Gen to a hidden class, {@link #compileHidden}); null in the web player, which runs
+	 *  only the code compiled when the stack was exported */
+	interface Compiler { Code compile(ScriptCode sc, OObject object, int start, int end, MemoryData mem, boolean counted) throws Throwable; }
+	static volatile Compiler compiler;
+	private static volatile boolean compilerAsked;
+	/** Sets the run-time compiler (null: none, as in the web player) instead of the UiHost's */
+	static void useCompiler(Compiler c){ compiler = c; compilerAsked = true; }
 
 	/** What is known of one script. */
 	static final class ScriptCode {
@@ -78,6 +90,16 @@ final class TalkJit {
 		final ArrayList<String> names = new ArrayList<String>();
 		final HashMap<String,Integer> nameIndex = new HashMap<String,Integer>();
 		final ArrayList<Object> constants = new ArrayList<Object>();
+		/** Ahead-of-time code of this script by {@link Aot#key}, or null (compiled at run time if at all) */
+		HashMap<Long,Code> aotCodes;
+		/** The string constants of ahead-of-time code, interned as ldc would give them (Gen.ldc) */
+		String[] strings;
+		/** It had ahead-of-time code that did not fit what is here (Aot.attach) */
+		boolean aotRefused;
+		/** By line, ahead of time: 0 not asked, 1 the interpreter read it as compiled code has it, 2 otherwise (readAs) */
+		byte[] lineState;
+		/** pathClear's last answer for this script's object */
+		PathState path;
 
 		ScriptCode(ArrayList<String> scriptList, Rsrc rsrc, int xcmdGeneration){
 			this.scriptList = scriptList;
@@ -190,7 +212,7 @@ final class TalkJit {
 		ScriptCode sc = scriptCode(object, scriptList);
 		Block block = sc.blocks[start];
 		if(block==null || block.end!=end) sc.blocks[start] = block = new Block(end);
-		return run(block, sc, talk, object, target, message, start, end, mem, params, mode, false, 0, 0);
+		return run(block, sc, talk, object, target, message, start, end, mem, params, mode, false, false, 0, 0);
 	}
 
 	/** The repeat statement from {@code line} to {@code endRepeat} as a block; see TTalk.compiledLoop */
@@ -200,7 +222,7 @@ final class TalkJit {
 		ScriptCode sc = scriptCode(object, scriptList);
 		Block block = sc.loops[line];
 		if(block==null || block.end!=endRepeat) sc.loops[line] = block = new Block(endRepeat);
-		return run(block, sc, talk, object, target, message, line, endRepeat, mem, params, mode, false, 0, 0);
+		return run(block, sc, talk, object, target, message, line, endRepeat, mem, params, mode, true, false, 0, 0);
 	}
 
 	/** The rest of a repeat with or repeat n times; see TTalk.compiledCount */
@@ -210,24 +232,38 @@ final class TalkJit {
 		ScriptCode sc = scriptCode(object, scriptList);
 		Block block = sc.loops[line];
 		if(block==null || block.end!=endRepeat) sc.loops[line] = block = new Block(endRepeat);
-		return run(block, sc, talk, object, target, message, line, endRepeat, mem, params, mode, true, from, to);
+		return run(block, sc, talk, object, target, message, line, endRepeat, mem, params, mode, true, true, from, to);
 	}
 
 	private static ScriptCode scriptCode(OObject object, ArrayList<String> scriptList){
 		ScriptCode sc = object.jit;
-		Rsrc rsrc = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.rsrc : null;
-		if(sc==null || sc.scriptList!=scriptList || sc.blocks.length!=scriptList.size() || sc.rsrc!=rsrc || sc.xcmdGeneration!=Rsrc.xcmdGeneration)
+		OStack stack = HZ.stack();
+		Rsrc rsrc = stack!=null ? stack.rsrc : null;
+		if(sc==null || sc.scriptList!=scriptList || sc.blocks.length!=scriptList.size() || sc.rsrc!=rsrc || sc.xcmdGeneration!=Rsrc.xcmdGeneration){
 			object.jit = sc = new ScriptCode(scriptList, rsrc, Rsrc.xcmdGeneration);
+			if(!AOT.isEmpty()) Aot.attach(sc, object);
+		}
 		return sc;
 	}
 
 	private static Result run(Block block, ScriptCode sc, TTalk talk, OObject object, OObject target, String message, int start, int end,
-			MemoryData mem, String[] params, int mode, boolean counted, int from, int to) throws xTalkException {
+			MemoryData mem, String[] params, int mode, boolean loop, boolean counted, int from, int to) throws xTalkException {
+		//the web player: a loop TalkWasmLoops has (or has not decided on yet) goes on in the interpreter, pass by pass, through it
+		if(loop && sc.aotCodes!=null && TalkWasmLoops.taken(object, sc.scriptList, start)!=0) return null;
 		Code code = block.code;
 		if(code==null){
-			if(block.failed || ++block.count<THRESHOLD) return null;
-			code = compile(sc, block, object, start, end, mem, counted);
-			if(code==null) return null;
+			if(block.failed) return null;
+			if(sc.aotCodes!=null){ //compiled when the stack was exported: no run-time compiler, no threshold
+				code = sc.aotCodes.get(Aot.key(counted, start, end));
+				if(code==null){ block.failed = true; return null; }
+				block.code = code;
+			}
+			else{
+				if(!compilerAsked){ compilerAsked = true; if(compiler==null) compiler = UiHost.get().talkJitCompiler(); }
+				if(compiler==null || ++block.count<THRESHOLD) return null;
+				code = compile(sc, block, object, start, end, mem, counted);
+				if(code==null) return null;
+			}
 		}
 		if(slow(object)) return null;
 		Frame frame = mem.jitFrame;
@@ -242,17 +278,10 @@ final class TalkJit {
 	}
 
 	private static Code compile(ScriptCode sc, Block block, OObject object, int start, int end, MemoryData mem, boolean counted) {
-		long t0 = System.nanoTime();
 		try{
-			Gen gen = new Gen(sc, object, mem);
-			gen.goesOnAt = counted ? start : -1;
-			byte[] bytes = gen.generate(start, end);
-			Class<?> cls = LOOKUP.defineHiddenClass(bytes, true).lookupClass();
-			Code code = (Code)cls.getDeclaredConstructor().newInstance();
+			Code code = compiler.compile(sc, object, start, end, mem, counted);
 			block.code = code;
 			compiled++;
-			if(TRACE) System.err.printf("[talk jit] %s lines %d-%d: %d bytes, %d fast, %d interpreted, %d us%n", object.getShortName(), start+1, end+1,
-				bytes.length, gen.fastStatements, gen.slowStatements, (System.nanoTime()-t0)/1000);
 			return code;
 		}catch(Throwable t){
 			block.failed = true;
@@ -261,6 +290,225 @@ final class TalkJit {
 			if(TRACE) t.printStackTrace();
 			return null;
 		}
+	}
+
+	/** The desktop's {@link #compiler}: Gen's class as a hidden class of this package (only the desktop installs it: the web player
+	 *  has no class definition at run time) */
+	static Code compileHidden(ScriptCode sc, OObject object, int start, int end, MemoryData mem, boolean counted) throws Throwable {
+		long t0 = System.nanoTime();
+		Gen gen = new Gen(sc, object, mem);
+		gen.goesOnAt = counted ? start : -1;
+		byte[] bytes = gen.generate(start, end);
+		Class<?> cls = Hidden.LOOKUP.defineHiddenClass(bytes, true).lookupClass();
+		Code code = (Code)cls.getDeclaredConstructor().newInstance();
+		if(TRACE) System.err.printf("[talk jit] %s lines %d-%d: %d bytes, %d fast, %d interpreted, %d us%n", object.getShortName(), start+1, end+1,
+			bytes.length, gen.fastStatements, gen.slowStatements, (System.nanoTime()-t0)/1000);
+		return code;
+	}
+	private static final class Hidden { static final java.lang.invoke.MethodHandles.Lookup LOOKUP = java.lang.invoke.MethodHandles.lookup(); }
+
+	// ------------------------------------------------------------------ ahead of time (the web player)
+
+	/** The scripts compiled when the stack was exported, by their text (OObject.setScript's lines joined by returns) */
+	static final HashMap<String,Aot> AOT = new HashMap<String,Aot>();
+	/** Development counters: scripts registered, scripts that took their code, scripts that ran interpreted because something differed */
+	static int aotScripts, aotAttached, aotRefused;
+
+	/** Called by the generated TalkAot classes (TalkAotIndex.install): a script's code, its text and its data in pieces (a class
+	 *  file's string constant holds at most 65535 bytes) */
+	static void aotScript(Code proto, String[] text, String[] data){
+		AOT.put(String.join("", text), new Aot(proto, String.join("", data)));
+		aotScripts++;
+	}
+
+	/**
+	 * One script's ahead-of-time code. Its data (TalkJitAot writes it) holds what Gen took from the script at export and what it
+	 * left in ScriptCode: the variable names in their order, the string constants, the entries (block, counted loop), the constants
+	 * (global names, a statement's words, an if branch) as how to make them again here, and a print of every text whose words the
+	 * code depends on. The code is used only if every print is the same here: the words depend on the stacks' externals too.
+	 * Fields are length:text so any text fits.
+	 */
+	static final class Aot {
+		final Code proto;
+		final String data;
+		/** The last check of the prints: for this current stack's resources and externals */
+		private Rsrc checkedRsrc;
+		private int checkedGeneration = -1;
+		private boolean checkedSame;
+
+		Aot(Code proto, String data){ this.proto = proto; this.data = data; }
+
+		static long key(boolean counted, int start, int end){ return (counted ? 1L<<62 : 0) | ((long)start<<31) | end; }
+
+		/** Gives a new ScriptCode the script's code, or leaves it to the interpreter (and to nothing else: the player has no compiler) */
+		static void attach(ScriptCode sc, OObject object){
+			Aot a = AOT.get(String.join("\n", sc.scriptList));
+			if(a==null) return;
+			boolean taken = false;
+			try{ taken = a.apply(sc, object); }
+			catch(xTalkException | RuntimeException e){ taken = false; }
+			if(taken){ aotAttached++; return; }
+			aotRefused++;
+			sc.aotCodes = null;
+			sc.strings = null;
+			sc.constants.clear();
+			sc.aotRefused = true;
+		}
+
+		private boolean apply(ScriptCode sc, OObject object) throws xTalkException {
+			Fields r = new Fields(data);
+			if(!r.next().equals("hzaot1")) return false;
+			int names = r.number();
+			if(!sc.names.isEmpty()) return false;
+			for(int i=0; i<names; i++) if(sc.variable(r.next())!=i) return false;
+			String[] strings = new String[r.number()];
+			for(int i=0; i<strings.length; i++) strings[i] = r.next().intern(); //what ldc gives on the JVM: the interned string
+			int entries = r.number();
+			HashMap<Long,Code> codes = new HashMap<Long,Code>();
+			for(int i=0; i<entries; i++){
+				boolean counted = r.number()!=0;
+				int start = r.number(), end = r.number();
+				Code code = proto.entry(i);
+				if(code==null) return false;
+				codes.put(key(counted, start, end), code);
+			}
+			int constants = r.number();
+			ArrayList<String[]> recipes = new ArrayList<String[]>();
+			for(int i=0; i<constants; i++){
+				String kind = r.next();
+				int fields = kind.equals("N") || kind.equals("V") ? r.number() : kind.equals("W") ? 2 : 3;
+				String[] recipe = new String[fields+1];
+				recipe[0] = kind;
+				for(int k=1; k<=fields; k++) recipe[k] = r.next();
+				recipes.add(recipe);
+			}
+			int checks = r.number();
+			String[][] prints = new String[checks][];
+			for(int i=0; i<checks; i++) prints[i] = new String[]{r.next(), r.next(), r.next()};
+			if(!r.done()) return false;
+			if(!samePrints(sc, prints)) return false;
+			for(String[] recipe : recipes){
+				Object constant = make(sc, object, recipe);
+				if(constant==null) return false;
+				sc.constants.add(constant);
+			}
+			sc.strings = strings;
+			sc.aotCodes = codes;
+			return true;
+		}
+
+		/** The words of each text Gen read are the same here (the tokenizer looks at the current stack's externals as well) */
+		private boolean samePrints(ScriptCode sc, String[][] prints){
+			if(checkedRsrc==sc.rsrc && checkedGeneration==sc.xcmdGeneration) return checkedSame;
+			boolean same = true;
+			for(String[] p : prints){
+				String text = p[1].startsWith("L") ? lineAt(sc.scriptList, p[1]) : p[1].substring(1);
+				if(text==null || !Long.toString(tokenPrint(text, p[0].equals("1"))).equals(p[2])){ same = false; break; }
+			}
+			checkedRsrc = sc.rsrc;
+			checkedGeneration = sc.xcmdGeneration;
+			checkedSame = same;
+			return same;
+		}
+
+		private static String lineAt(ArrayList<String> script, String ref){
+			int line = Integer.parseInt(ref.substring(1));
+			return line>=0 && line<script.size() ? script.get(line) : null;
+		}
+
+		/** A constant of ScriptCode.constants made again as Gen made it: N names (global), W isCmd text (words), B line end ordinal (if branch) */
+		private static Object make(ScriptCode sc, OObject object, String[] recipe) throws xTalkException {
+			switch(recipe[0]){
+			case "N": return Arrays.copyOfRange(recipe, 1, recipe.length);
+			case "W": return words(recipe[2], recipe[1].equals("1"));
+			case "V":{
+				Words w = new Words(new ArrayList<String>(), new ArrayList<TTalk.wordType>());
+				TreeSet<String> variables = new TreeSet<String>(Arrays.asList(recipe).subList(3, recipe.length));
+				TTalk.fullresolution(recipe[2], w.words, w.types, new TreeSet<String>(variables), recipe[1].equals("1"));
+				w.text = recipe[2];
+				w.isCmd = recipe[1].equals("1");
+				w.variables = variables;
+				return w;
+			}
+			case "B":{
+				int line = Integer.parseInt(recipe[1]), end = Integer.parseInt(recipe[2]), ordinal = Integer.parseInt(recipe[3]);
+				if(line<0 || line>=sc.scriptList.size()) return null;
+				Words w = words(sc.scriptList.get(line), true);
+				ArrayList<TTalk.IfBranch> branches = new ArrayList<TTalk.IfBranch>();
+				ifBranches(TTalk.cachedIfStructure(object, sc.scriptList, line, end, w.words, w.types), branches);
+				return ordinal>=0 && ordinal<branches.size() ? branches.get(ordinal) : null;
+			}
+			default: return null;
+			}
+		}
+	}
+
+	/** The branches of an if, nested ones after the one they are in: how Gen counts a branch it keeps (Aot's B constants) */
+	static void ifBranches(TTalk.IfStructure structure, ArrayList<TTalk.IfBranch> out){
+		for(TTalk.IfBranch b : structure.branches){
+			out.add(b);
+			if(b.nested!=null) ifBranches(b.nested, out);
+		}
+	}
+
+	/** The words of a text not yet run, as the interpreter reads them when no word of it is a variable yet */
+	static Words words(String text, boolean isCmd){
+		Words w = new Words(new ArrayList<String>(), new ArrayList<TTalk.wordType>());
+		TTalk.fullresolution(text, w.words, w.types, new TreeSet<String>(), isCmd);
+		w.text = text;
+		w.isCmd = isCmd;
+		return w;
+	}
+
+	/**
+	 * What the code compiled from a text depends on in its words: its words and their kinds when none of them is a variable, the
+	 * variables reading it declares, and the words when all the words the tokenizer asks about are variables. The same on the
+	 * desktop when the stack is exported and in the player, or the player interprets the script.
+	 */
+	static long tokenPrint(String text, boolean isCmd){
+		long h = 0xcbf29ce484222325L;
+		TreeSet<String> declared = new TreeSet<String>();
+		ArrayList<String> w = new ArrayList<String>();
+		ArrayList<TTalk.wordType> t = new ArrayList<TTalk.wordType>();
+		TTalk.fullresolution(text, w, t, declared, isCmd);
+		h = print(h, w, t);
+		for(String d : declared) h = print(h, d);
+		h = print(h, "\u0001");
+		ArrayList<String> w2 = new ArrayList<String>();
+		ArrayList<TTalk.wordType> t2 = new ArrayList<TTalk.wordType>();
+		TTalk.fullresolution(text, w2, t2, new TreeSet<String>(TTalk.variableCandidates(text, isCmd)), isCmd);
+		return print(h, w2, t2);
+	}
+	private static long print(long h, ArrayList<String> words, ArrayList<TTalk.wordType> types){
+		h = print(h, Integer.toString(words.size()));
+		for(int i=0; i<words.size(); i++){
+			h = print(h, words.get(i));
+			h = print(h, types.get(i).name());
+		}
+		return h;
+	}
+	private static long print(long h, String s){
+		for(int i=0; i<s.length(); i++){ h ^= s.charAt(i); h *= 0x100000001b3L; }
+		h ^= 0xffff;
+		return h*0x100000001b3L;
+	}
+
+	/** length:text fields */
+	static final class Fields {
+		private final String s;
+		private int at;
+		Fields(String s){ this.s = s; }
+		String next(){
+			int colon = s.indexOf(':', at);
+			int n = Integer.parseInt(s.substring(at, colon));
+			String v = s.substring(colon+1, colon+1+n);
+			at = colon+1+n;
+			return v;
+		}
+		int number(){ return Integer.parseInt(next()); }
+		boolean done(){ return at==s.length(); }
+		static void put(StringBuilder b, String v){ b.append(v.length()).append(':').append(v); }
+		static void put(StringBuilder b, long v){ put(b, Long.toString(v)); }
 	}
 
 	// ------------------------------------------------------------------ guards
@@ -284,12 +532,12 @@ final class TalkJit {
 	/** All these change by what compiled code does not do itself, so the answer holds until it leaves ({@link #sync}) or {@link #tick} wants a new one. */
 	private static boolean check(Frame f) throws xTalkException {
 		if(slow(f.object)) return false;
-		if(Xcmd68k.hasSessionsHint()){
+		if(UiHost.get().xcmd68kHasSessionsHint()){
 			sync(f);
-			Xcmd68k.pumpIfDue();
+			UiHost.get().xcmd68kPumpIfDue();
 		}
-		if(f.talk.sendPending() || !pathClear(f.object)) return false;
-		f.functions = pathState.functionsClear;
+		if(f.talk.sendPending() || !pathClear(f.sc, f.object)) return false;
+		f.functions = f.sc.path.functionsClear;
 		f.checked = true;
 		return true;
 	}
@@ -306,8 +554,8 @@ final class TalkJit {
 	/** Before an expression that calls built-in functions directly: nobody takes over those either. */
 	static boolean functionsClear(Frame f){
 		if(f.checked) return f.functions;
-		pathClear(f.object);
-		return pathState.functionsClear;
+		pathClear(f.sc, f.object);
+		return f.sc.path.functionsClear;
 	}
 
 	private static final String[] COMMANDS = {"put", "get", "add", "subtract", "multiply", "divide"};
@@ -315,27 +563,35 @@ final class TalkJit {
 	 *  as the first: Math.random, nothing a script can seed). */
 	private static final java.util.Set<String> PURE_FUNCTIONS = java.util.Set.of("abs", "annuity", "atan", "average", "compound", "cos", "exp", "exp1", "exp2",
 		"ln", "ln1", "log2", "max", "min", "random", "round", "sin", "sqrt", "sum", "tan", "trunc", "length", "offset", "chartonum", "numtochar");
+	/** Built-in functions of text whose value follows from their arguments alone, nothing changed, nothing read but them: run
+	 *  directly as PURE_FUNCTIONS are, but only as name(…) (the web player's JSONValue, replaceText, compress… were each a
+	 *  message up the path with the rest of the statement in the interpreter). */
+	private static final java.util.Set<String> TEXT_FUNCTIONS = java.util.Set.of("jsonvalue", "replacetext", "textencode", "textdecode",
+		"compress", "decompress", "base64encode", "base64decode", "md5digest", "sha1digest", "messagedigest", "binaryencode", "bytetonum",
+		"numtobyte", "byteoffset");
+	/** Called directly (PURE_FUNCTIONS or TEXT_FUNCTIONS) */
+	private static boolean direct(String name){ return PURE_FUNCTIONS.contains(name) || TEXT_FUNCTIONS.contains(name); }
 	/** the ticks and the like: functions of the "the" pass of evalProperties, which calls them without a message */
 	private static final java.util.Set<String> CLOCK_FUNCTIONS = java.util.Set.of("ticks", "seconds", "secs", "milliseconds");
 	private record PathState(OObject object, OStack stack, OCard card, int epoch, int xcmdGeneration, OStack[] using, boolean clear, boolean functionsClear) {}
-	private static PathState pathState;
+	/** (Kept by ScriptCode.path, one per script: a handler that sends to another object's handler in a loop asked again at every call
+	 *  with a single one) */
 	private static final OStack[] NO_STACKS = new OStack[0];
 
 	/** No handler on the message path and no XCMD catches the commands fast statements run (as CommandExecStatement looks). */
-	private static boolean pathClear(OObject object){
-		PathState s = pathState;
-		PCARD pc = PCARD.pc;
-		OStack stack = pc==null ? null : pc.stack;
+	private static boolean pathClear(ScriptCode sc, OObject object){
+		PathState s = sc.path;
+		OStack stack = HZ.stack();
 		OCard card = stack==null ? null : stack.curCard;
 		ArrayList<OStack> using = stack==null ? null : stack.usingStacks;
-		if(s!=null && s.object==object && s.stack==stack && s.card==card && s.epoch==scriptEpoch && s.xcmdGeneration==Rsrc.xcmdGeneration && sameStacks(s.using, using))
+		if(s!=null && s.object==object && s.stack==stack && s.card==card && s.epoch==HZ.scriptEpoch && s.xcmdGeneration==Rsrc.xcmdGeneration && sameStacks(s.using, using))
 			return s.clear;
-		int epoch = scriptEpoch, generation = Rsrc.xcmdGeneration;
+		int epoch = HZ.scriptEpoch, generation = Rsrc.xcmdGeneration;
 		boolean clear = true;
 		for(int i=0; clear && i<COMMANDS.length; i++) clear = TTalk.commandHandlerKind(COMMANDS[i], object)==0;
 		OStack[] copy = using==null || using.isEmpty() ? NO_STACKS : using.toArray(new OStack[0]);
 		boolean functions = functionsClear(object, stack);
-		pathState = new PathState(object, stack, card, epoch, generation, copy, clear, functions);
+		sc.path = new PathState(object, stack, card, epoch, generation, copy, clear, functions);
 		return clear;
 	}
 
@@ -346,7 +602,10 @@ final class TalkJit {
 		while(owner!=null && !(owner instanceof OStack)) owner = owner.parent;
 		if(owner!=stack && (stack==null || stack.usingStacks==null || !stack.usingStacks.contains(owner))) return false;
 		for(String name : PURE_FUNCTIONS){
-			if(TTalk.commandHandlerKind(name, object)!=0 || TXcmd.externalOwner(name, "function")!=null) return false;
+			if(TTalk.commandHandlerKind(name, object)!=0 || UiHost.get().tXcmdExternalOwner(name, "function")!=null) return false;
+		}
+		for(String name : TEXT_FUNCTIONS){
+			if(TTalk.commandHandlerKind(name, object)!=0 || UiHost.get().tXcmdExternalOwner(name, "function")!=null) return false;
 		}
 		return true;
 	}
@@ -447,7 +706,34 @@ final class TalkJit {
 		catch(NumberFormatException e){ throw new xTalkException("The repeat count is not a number: {0}", value); }
 	}
 
+	/** Ahead-of-time code at a repeat in the web player: the interpreter runs the loop, which TalkWasmLoops then runs as Wasm (it
+	 *  has it, or decides after the first passes); compiled code runs a loop it has given up */
+	static boolean wasmLoop(Frame f, int line){ return TalkWasmLoops.taken(f.object, f.scriptList, line)!=0; }
+
+	/** exit/pass name: as doScriptLines compares (the web build's WasmRewrite makes compareToIgnoreCase a static HzFast call in both) */
 	static boolean isMessage(Frame f, String word){ return 0==word.compareToIgnoreCase(f.message); }
+
+	/** The interpreter has read this line of the object's script (OObject.stringList, which keeps a line's words from its first
+	 *  reading) as the words of constant {@code words}, up to X and VARIABLE: ahead-of-time code runs such a line (Gen.matchLines)
+	 *  only then. Once read a line keeps its words until the script changes (and ScriptCode with it), so the answer is kept. */
+	static boolean readAs(Frame f, int line, int words){
+		ScriptCode sc = f.sc;
+		byte[] state = sc.lineState;
+		if(state==null) sc.lineState = state = new byte[sc.scriptList.size()];
+		if(state[line]!=0) return state[line]==1;
+		OObject o = f.object;
+		if(f.scriptList!=o.scriptList || o.stringList==null || line>=o.stringList.length || o.stringList[line]==null) return false;
+		Words w = (Words)sc.constants.get(words);
+		ArrayList<String> read = o.stringList[line];
+		ArrayList<TTalk.wordType> types = o.typeList[line];
+		boolean same = read.size()==w.size() && types!=null && types.size()==w.size();
+		for(int i=0; same && i<read.size(); i++){
+			TTalk.wordType x = types.get(i), y = w.types.get(i);
+			same = read.get(i).equals(w.get(i)) && (x==y || (x==TTalk.wordType.X || x==TTalk.wordType.VARIABLE) && (y==TTalk.wordType.X || y==TTalk.wordType.VARIABLE));
+		}
+		state[line] = (byte)(same ? 1 : 2);
+		return same;
+	}
 
 	/** The Result of a statement that has none to speak of: compiled code changes a copy of it ({@link #own}) */
 	static final Result NOTHING = new Result();
@@ -518,6 +804,58 @@ final class TalkJit {
 		if(!seesGlobal) return 0;
 		int global = g.indexOfName(name);
 		return global>=0 ? -global-1 : 0;
+	}
+
+	/** The collection in variable v as it is changed in place (ValueList/LiveNode); null when it holds none just now */
+	private static LiveNode liveOf(Frame f, int v){
+		int s = slot(f, v);
+		if(s==0) return null;
+		if(v<f.tags.length && (f.tags[v]&DIRTY)!=0) return null;//a number, held by the compiled code
+		ArrayList<String> list = s>0 ? f.mem.valueList : TTalk.globalData.valueList;
+		if(!(list instanceof ValueList)) return null;
+		try{ return ((ValueList)list).live(s>0 ? s-1 : -s-1); }
+		catch(xTalkException e){ return null; }
+	}
+
+	/** v[k] (TTalk.reduceCollections); null leaves it to the interpreter, which reports what is wrong */
+	static String index1(Frame f, int v, String k){
+		if(k==null) return null;
+		LiveNode n = liveOf(f, v);
+		if(n==null) return null;
+		try{ return n.get(k); }catch(xTalkException e){ return null; }
+	}
+
+	/** v[k1][k2] */
+	static String index2(Frame f, int v, String k1, String k2){
+		if(k1==null || k2==null) return null;
+		LiveNode n = liveOf(f, v);
+		if(n==null) return null;
+		try{
+			LiveNode child = n.child(k1);
+			return child==null ? null : child.get(k2);
+		}catch(xTalkException e){ return null; }
+	}
+
+	/** put value into v[k] (TTalk.collectionPutCommand); false: nothing changed, the interpreter does it */
+	static boolean putIndex1(Frame f, int v, String k, String value){
+		if(k==null || value==null) return false;
+		LiveNode n = liveOf(f, v);
+		if(n==null) return false;
+		try{ n.put(k, value); return true; }catch(xTalkException e){ return false; }
+	}
+
+	/** put value into v[k1][k2] */
+	static boolean putIndex2(Frame f, int v, String k1, String k2, String value){
+		if(k1==null || k2==null || value==null) return false;
+		LiveNode n = liveOf(f, v);
+		if(n==null) return false;
+		try{
+			LiveNode child = n.child(k1);
+			if(child==null) return false;
+			child.put(k2, value);
+			n.touch();
+			return true;
+		}catch(xTalkException e){ return false; }
 	}
 
 	private static String value(Frame f, int s){
@@ -674,7 +1012,7 @@ final class TalkJit {
 		try{ value = TTalk.parseNumber(s); }
 		catch(NumberFormatException e){ return -1; }
 		boolean real = TTalk.isRealNumber(s);
-		if(!real && (value!=Math.rint(value) || Math.abs(value)>2147483648d)) return -1; //"0x1p-1": mod and the like count on it being an integer
+		if(!real && (value!=HzMath.rint(value) || Math.abs(value)>2147483648d)) return -1; //"0x1p-1": mod and the like count on it being an integer
 		return (real ? REAL : 0)|(TTalk.mayBeNumber(s) ? 0 : ODD);
 	}
 
@@ -792,7 +1130,7 @@ final class TalkJit {
 	/** x mod y, y not 0 */
 	static double modNumber(double x, double y, int a, int b){
 		if(((a|b)&REAL)==0) return Math.copySign((double)((int)x%(int)y), x); //kind 0 is a 32-bit integer or -0; the sign of the remainder, -0 too, is that of x
-		double value = Math.IEEEremainder(x, y);
+		double value = HzMath.IEEEremainder(x, y);
 		if(value<0) return value+y;
 		return value==0 ? 0 : value;
 	}
@@ -828,7 +1166,7 @@ final class TalkJit {
 	static double fnLog2(double v){ return Math.log(v)/Math.log(2); }
 	static double fnAbs(double v){ return v-(int)v==0 ? (int)(v>0 ? v : -v) : v>0 ? v : -v; }
 	static double fnTrunc(double v){ return int32(v<0 ? Math.ceil(v) : Math.floor(v)); }
-	static double fnRound(double v){ return int32(Math.rint(v)); }
+	static double fnRound(double v){ return int32(HzMath.rint(v)); }
 	/** computed: v's kind, if it is a computed number: of the math functions only this one takes the argument as text, formatted. NaN: the interpreter sees to it. */
 	static double fnRandom(double v, int computed){
 		if((computed&REAL)!=0){
@@ -854,7 +1192,7 @@ final class TalkJit {
 	/** The kind of an integer or real function's value; of abs, an integer when it is whole */
 	static int realKind(double value){ return norm(value, 1); }
 	static int integerKind(double value){ return norm(value, 0); }
-	static int absKind(double value){ return norm(value, value==Math.rint(value) ? 0 : 1); }
+	static int absKind(double value){ return norm(value, value==HzMath.rint(value) ? 0 : 1); }
 
 	// ------------------------------------------------------------------ values (compiled expressions call these)
 	// null in, null out. Each gives what the pass of Evalution2 gives; what it reports as an error is null here.
@@ -1017,6 +1355,30 @@ final class TalkJit {
 		return a+b;
 	}
 
+	/** a & b & c …, left to right: null where a cat of two would give null. A text made of the pieces that starts as a
+	 *  collection would have been one on the way (each is a start of the whole): the interpreter sees to that.
+	 *  Java's own + (one string made at once) is quicker here than a StringBuilder. */
+	private static boolean piece(String p){ return p!=null && !TalkCollection.isCollection(p); }
+	private static String whole(String text){ return TalkCollection.isCollection(text) ? null : text; }
+	static String cat3(String a, String b, String c){
+		return piece(a) && piece(b) && piece(c) ? whole(a+b+c) : null;
+	}
+	static String cat4(String a, String b, String c, String d){
+		return piece(a) && piece(b) && piece(c) && piece(d) ? whole(a+b+c+d) : null;
+	}
+	static String cat5(String a, String b, String c, String d, String e){
+		return piece(a) && piece(b) && piece(c) && piece(d) && piece(e) ? whole(a+b+c+d+e) : null;
+	}
+	static String cat6(String a, String b, String c, String d, String e, String f){
+		return piece(a) && piece(b) && piece(c) && piece(d) && piece(e) && piece(f) ? whole(a+b+c+d+e+f) : null;
+	}
+	static String cat7(String a, String b, String c, String d, String e, String f, String g){
+		return piece(a) && piece(b) && piece(c) && piece(d) && piece(e) && piece(f) && piece(g) ? whole(a+b+c+d+e+f+g) : null;
+	}
+	static String cat8(String a, String b, String c, String d, String e, String f, String g, String h){
+		return piece(a) && piece(b) && piece(c) && piece(d) && piece(e) && piece(f) && piece(g) && piece(h) ? whole(a+b+c+d+e+f+g+h) : null;
+	}
+
 	/** && */
 	static String cat2(String a, String b){
 		if(a==null || b==null || TalkCollection.isCollection(a) || TalkCollection.isCollection(b)) return null;
@@ -1105,7 +1467,19 @@ final class TalkJit {
 	static String copy(String s){ return new String(s); }
 
 	static String chunk(String mode, String first, String container){
-		if(first==null || container==null || TalkCollection.isCollection(container) || !chunkNumber(first)) return null;
+		if(first==null || container==null || TalkCollection.isCollection(container)) return null;
+		long n = smallInt(first);
+		if(n==NO_INT) return null;
+		//item n / char n of a short text with n from 1 (the mode is the compiled constant): what getChunk does for them
+		if(n>=1 && container.length()<TTalk.CHUNK_INDEX_MIN_LENGTH){
+			if(mode=="item"){
+				String d = TTalk.itemDelimiter;
+				if(container.isEmpty()) return "";
+				if(d!=null && d.length()==1) return TTalk.delimitedChunk(container, d.charAt(0), (int)n, (int)n);
+				if(d==null || d.isEmpty()) return TTalk.delimitedChunk(container, ',', (int)n, (int)n);
+			}
+			else if(mode=="char" || mode=="character") return n>container.length() ? "" : container.substring((int)n-1, (int)n);
+		}
 		return TTalk.getChunk(mode, first, null, container);
 	}
 
@@ -1253,7 +1627,7 @@ final class TalkJit {
 	// ------------------------------------------------------------------ expression trees
 
 	/** Not something this compiler takes: the statement stays with the interpreter. */
-	private static final class Reject extends Exception {
+	static final class Reject extends Exception {
 		private static final long serialVersionUID = 1L;
 		Reject(String why){ super(why, null, false, TRACE); }
 	}
@@ -1354,6 +1728,24 @@ final class TalkJit {
 		@Override boolean truthByNumbers(){ return inner.truthByNumbers(); }
 	}
 
+	/** v[k1] or v[k1][k2]: an element of the collection in a variable, read where it is (LiveNode) */
+	private static final class Index extends Node {
+		final int variable;
+		final Node first, second;
+		Index(int variable, Node first, Node second){ this.variable = variable; this.first = first; this.second = second; }
+		@Override int depth(){ return 2 + Math.max(first.depth(), second==null ? 0 : 1+second.depth()); }
+		@Override void emit(Gen g, JitClassFile.Code c) throws Reject {
+			c.var(JitClassFile.ALOAD, 0);
+			c.iconst(variable);
+			first.emit(g, c);
+			if(second==null) c.invokestatic(RT, "index1", "(L"+FRAME+";IL"+STR+";)L"+STR+";");
+			else{
+				second.emit(g, c);
+				c.invokestatic(RT, "index2", "(L"+FRAME+";IL"+STR+";L"+STR+";)L"+STR+";");
+			}
+		}
+	}
+
 	/** A helper of String arguments */
 	private static class Call extends Node {
 		final String method;
@@ -1372,6 +1764,17 @@ final class TalkJit {
 			if(prefix!=null){ g.ldc(c, prefix); descriptor.append('L').append(STR).append(';'); }
 			for(Node n : args){ n.emit(g, c); descriptor.append('L').append(STR).append(';'); }
 			c.invokestatic(RT, method, descriptor.append(")L").append(STR).append(';').toString());
+		}
+	}
+
+	/** a & b [& c …]: cat, cat3 … cat8 */
+	private static final class Cat extends Call {
+		static final int MAX = 8;
+		Cat(Node... args){ super(args.length==2 ? "cat" : "cat"+args.length, false, null, args); }
+		Cat with(Node next){
+			Node[] more = Arrays.copyOf(args, args.length+1);
+			more[args.length] = next;
+			return new Cat(more);
 		}
 	}
 
@@ -1769,7 +2172,7 @@ final class TalkJit {
 			nodes = new Node[types.length];
 			boolean any = false;
 			for(int i=1; i<types.length; i++)
-				if(types[i]==TTalk.wordType.LFUNC && !PURE_FUNCTIONS.contains(words.get(i-1))) any = true;
+				if(types[i]==TTalk.wordType.LFUNC && !direct(words.get(i-1))) any = true;
 			ordered = any;
 		}
 
@@ -1811,6 +2214,7 @@ final class TalkJit {
 				if(TTalk.literalNumber(s, false)) throw new Reject("literal "+s);
 				return new Lit(s, TTalk.isQuotedNumberLiteral(s));
 			}
+			collections(start, end);
 			check(start, end);
 			brackets(start, end);
 			constantsAndVariables(start, end);
@@ -1827,6 +2231,44 @@ final class TalkJit {
 			logic(start, end);
 			for(int i=start+1; i<=end; i++) if(types[i]!=TTalk.wordType.NOP) throw new Reject("left over: "+word(i));
 			return node(start);
+		}
+
+		/** reduceCollections: v[k] and v[k1][k2] of a variable (the first pass of Evalution2); literals stay with the interpreter */
+		private void collections(int start, int end) throws Reject {
+			for(int i=start; i<=end; i++){
+				TTalk.wordType t = types[i];
+				if(t==TTalk.wordType.RCOLLECTION || t==TTalk.wordType.LDICTIONARY || t==TTalk.wordType.RDICTIONARY || t==TTalk.wordType.COLON) throw new Reject("collection");
+				if(t!=TTalk.wordType.LCOLLECTION) continue;
+				int v = i-1;
+				if(v<start || types[v]!=TTalk.wordType.X && types[v]!=TTalk.wordType.VARIABLE || !plainVariable(word(v)) ||
+						TTalk.OBJECT_WORDS.contains(word(v))) throw new Reject("collection literal");
+				if(v>start && types[v-1]!=TTalk.wordType.STRING && (is(v-1, "the") || is(v-1, "of"))) throw new Reject("the v[]");
+				if(ordered) throw new Reject("index with calls");
+				ArrayList<Node> keys = new ArrayList<Node>();
+				int open = i, last;
+				while(true){
+					int close = collectionClose(open, end);
+					if(close==open+1) throw new Reject("empty index");
+					keys.add(textOperand(eval(open+1, close-1)));
+					last = close;
+					if(close+1<=end && types[close+1]==TTalk.wordType.LCOLLECTION){ open = close+1; continue; }
+					break;
+				}
+				if(keys.size()>2) throw new Reject("index of an index of an index");
+				nodes[v] = new Index(sc.variable(word(v)), keys.get(0), keys.size()>1 ? keys.get(1) : null);
+				types[v] = TTalk.wordType.STRING;
+				nop(i, last);
+				i = last;
+			}
+		}
+
+		private int collectionClose(int open, int end) throws Reject {
+			int depth = 0;
+			for(int k=open; k<=end; k++){
+				if(types[k]==TTalk.wordType.LCOLLECTION) depth++;
+				else if(types[k]==TTalk.wordType.RCOLLECTION && --depth==0) return k;
+			}
+			throw new Reject("no ]");
 		}
 
 		/** Only words whose passes are here */
@@ -1899,7 +2341,7 @@ final class TalkJit {
 			String name = word(i-1);
 			TTalk.wordType type = types[i-1];
 			if(type!=TTalk.wordType.FUNC && type!=TTalk.wordType.USER_FUNC && type!=TTalk.wordType.XFCN) throw new Reject("call of "+name);
-			if(name.equals("number") || name.equals("selectedbutton") || name.equals("matchtext") || name.equals("matchchunk") || name.equals("of")) throw new Reject("call of "+name);
+			if(name.equals("number") || name.equals("selectedbutton") || name.equals("matchtext") || name.equals("matchchunk") || name.equals("binarydecode") || name.equals("of")) throw new Reject("call of "+name);
 			if(i-2>=start && (is(i-2, "the") || is(i-2, "of"))) throw new Reject("the "+name);
 			int j = close(i, end);
 			ArrayList<Node> args = new ArrayList<Node>();
@@ -1923,7 +2365,7 @@ final class TalkJit {
 				}
 			}
 			Node[] arguments = args.toArray(new Node[0]);
-			if(PURE_FUNCTIONS.contains(name) && arguments.length>0){
+			if(direct(name) && arguments.length>0){
 				functions = true;
 				//below a declaration of that name the interpreter has no such function
 				if(!sc.neverDeclared(name)) notVariables.add(name);
@@ -2201,7 +2643,13 @@ final class TalkJit {
 						if(i+2>end) throw new Reject("&& at the end");
 						binary(i, j, i+2, new Call("cat2", false, null, textOperand(node(j)), textOperand(node(i+2))));
 					}
-					else binary(i, j, i+1, new Call("cat", false, null, textOperand(node(j)), textOperand(node(i+1))));
+					else{
+						//a & b & c …: one string made at the end (catN) rather than one for each &
+						Node left = node(j);
+						Node right = textOperand(node(i+1));
+						if(left instanceof Cat cat && cat.args.length<Cat.MAX) binary(i, j, i+1, cat.with(right));
+						else binary(i, j, i+1, new Cat(textOperand(left), right));
+					}
 				}
 			}
 		}
@@ -2291,7 +2739,7 @@ final class TalkJit {
 	private static final String RT = "TalkJit", FRAME = "TalkJit$Frame", RESULT = "Result", STR = "java/lang/String";
 
 	/** What a fast statement does with its value. */
-	private enum Kind { PUT, GET, AFTER, BEFORE, CHUNK, RETURN, COMMAND, GLOBAL }
+	private enum Kind { PUT, GET, AFTER, BEFORE, CHUNK, INDEX, RETURN, COMMAND, GLOBAL }
 
 	private static final class Plan {
 		final Kind kind;
@@ -2305,9 +2753,14 @@ final class TalkJit {
 	}
 
 	/** The words of a line or an expression */
-	private static final class Words {
+	static final class Words {
 		final ArrayList<String> words;
 		final ArrayList<TTalk.wordType> types;
+		/** Ahead of time: the text these are the words of, and how it was read (Aot's W constants) */
+		String text;
+		boolean isCmd;
+		/** Ahead of time: read with these words variables (Aot's V constants), or null: with none */
+		TreeSet<String> variables;
 		Words(ArrayList<String> words, ArrayList<TTalk.wordType> types){ this.words = words; this.types = types; }
 		int size(){ return words.size(); }
 		String get(int i){ return words.get(i); }
@@ -2316,41 +2769,165 @@ final class TalkJit {
 
 	// ------------------------------------------------------------------ code generation
 
-	private static final class Gen {
+	static final class Gen {
 		final ScriptCode sc;
 		final OObject object;
 		final ArrayList<String> script;
 		final TreeSet<String> known;
-		final JitClassFile cf = new JitClassFile("TalkJitCode", "java/lang/Object", "TalkJit$Code");
+		final JitClassFile cf;
+		/** The generated class's name: TalkJitCode for a hidden class, one of its own ahead of time */
+		final String className;
 		final HashMap<Long,String> blockMethods = new HashMap<Long,String>();
 		int methods, fastStatements, slowStatements;
 		/** A repeat with or repeat n times line that goes on from Frame.loopFrom (TTalk.compiledCount), or -1 */
 		int goesOnAt = -1;
+		/**
+		 * Ahead of time (TalkJitAot, Export for Web): nothing of the desktop's own run counts (the interpreter's words of the lines it
+		 * has run, the variables a handler has made), the words of a text are taken only when they are the same whichever words
+		 * are variables, every such text is noted ({@link #prints}), the constants are noted as how to make them again
+		 * ({@link #recipes}) and the string constants come from ScriptCode.strings, interned in the player as ldc gives them here.
+		 */
+		final boolean aot;
+		final ArrayList<String> aotStrings = new ArrayList<String>();
+		private final HashMap<String,Integer> aotStringIndex = new HashMap<String,Integer>();
+		/** By constant of ScriptCode.constants: N, W or B and the fields (see Aot.make) */
+		final ArrayList<String[]> recipes = new ArrayList<String[]>();
+		/** isCmd + text, by text read: the tokenPrint the player checks */
+		final java.util.LinkedHashMap<String,Long> prints = new java.util.LinkedHashMap<String,Long>();
 
-		Gen(ScriptCode sc, OObject object, MemoryData mem){
+		Gen(ScriptCode sc, OObject object, MemoryData mem){ this(sc, object, mem, "TalkJitCode", false); }
+
+		Gen(ScriptCode sc, OObject object, MemoryData mem, String className, boolean aot){
 			this.sc = sc;
 			this.object = object;
+			this.className = className;
+			this.aot = aot;
+			cf = new JitClassFile(className, "java/lang/Object", "TalkJit$Code");
 			script = sc.scriptList;
-			known = new TreeSet<String>(mem.treeset);
+			known = mem==null ? new TreeSet<String>() : new TreeSet<String>(mem.treeset);
+		}
+
+		/** A constant of ScriptCode.constants that compiled code reads by its index */
+		int constant(Object value, String... recipe){
+			sc.constants.add(value);
+			recipes.add(recipe);
+			return sc.constants.size()-1;
 		}
 
 		byte[] generate(int start, int end) throws Reject {
 			String entry = blockMethod(start, end);
 			JitClassFile.Code init = cf.method(0x0001, "<init>", "()V");
-			init.objectLocal("TalkJitCode");
+			init.objectLocal(className);
 			init.var(JitClassFile.ALOAD, 0);
 			init.invokespecial("java/lang/Object", "<init>", "()V");
 			init.op(JitClassFile.RETURN);
 			if(!init.finish()) throw new Reject("<init>");
 			JitClassFile.Code run = cf.method(0x0001, "run", "(L"+FRAME+";)L"+RESULT+";");
-			run.objectLocal("TalkJitCode");
+			run.objectLocal(className);
 			run.objectLocal(FRAME);
 			run.var(JitClassFile.ALOAD, 1);
 			run.invokestatic(RT, "nothing", "()L"+RESULT+";");
-			run.invokestatic("TalkJitCode", entry, BLOCK);
+			run.invokestatic(className, entry, BLOCK);
 			run.op(JitClassFile.ARETURN);
 			if(!run.finish()) throw new Reject("run");
 			return cf.toBytes();
+		}
+
+		/**
+		 * Ahead of time: the class of one script once its entries are made. An instance's field w is the entry run() runs; entry(i)
+		 * gives the code of entry i; the static install() registers the script with TalkJit.aotScript (TalkAotIndex calls it).
+		 */
+		byte[] finishAot(String[] entryMethods, int[] entryStarts, String text, String data) throws Reject {
+			cf.declareField(0x0012, "w", "I");
+			JitClassFile.Code init = cf.method(0x0001, "<init>", "(I)V");
+			init.objectLocal(className);
+			init.intLocal();
+			init.var(JitClassFile.ALOAD, 0);
+			init.invokespecial("java/lang/Object", "<init>", "()V");
+			init.var(JitClassFile.ALOAD, 0);
+			init.var(JitClassFile.ILOAD, 1);
+			init.putfield(className, "w", "I");
+			init.op(JitClassFile.RETURN);
+			if(!init.finish()) throw new Reject("<init>");
+			JitClassFile.Code run = cf.method(0x0001, "run", "(L"+FRAME+";)L"+RESULT+";");
+			run.objectLocal(className);
+			run.objectLocal(FRAME);
+			ArrayList<Integer> keys = new ArrayList<Integer>();
+			for(int i=0; i<entryMethods.length; i++) if(entryMethods[i]!=null) keys.add(i);
+			int[] keyArray = new int[keys.size()];
+			JitClassFile.Label[] targets = new JitClassFile.Label[keys.size()];
+			for(int i=0; i<keyArray.length; i++){ keyArray[i] = keys.get(i); targets[i] = run.label(); }
+			JitClassFile.Label none = run.label();
+			run.var(JitClassFile.ALOAD, 0);
+			run.getfield(className, "w", "I");
+			run.lookupswitch(keyArray, targets, none);
+			for(int i=0; i<keyArray.length; i++){
+				run.bind(targets[i]);
+				Integer match = matchLines.get(entryStarts[keyArray[i]]);
+				if(match!=null){
+					//an entry at a line the interpreter has not read as these words: not entered (null: the interpreter runs the block)
+					JitClassFile.Label go = run.label();
+					run.var(JitClassFile.ALOAD, 1);
+					run.iconst(entryStarts[keyArray[i]]);
+					run.iconst(match);
+					run.invokestatic(RT, "readAs", "(L"+FRAME+";II)Z");
+					run.jump(JitClassFile.IFNE, go);
+					run.op(JitClassFile.ACONST_NULL);
+					run.op(JitClassFile.ARETURN);
+					run.bind(go);
+				}
+				run.var(JitClassFile.ALOAD, 1);
+				run.invokestatic(RT, "nothing", "()L"+RESULT+";");
+				run.invokestatic(className, entryMethods[keyArray[i]], BLOCK);
+				run.op(JitClassFile.ARETURN);
+			}
+			run.bind(none);
+			run.op(JitClassFile.ACONST_NULL);
+			run.op(JitClassFile.ARETURN);
+			if(!run.finish()) throw new Reject("run");
+			JitClassFile.Code entry = cf.method(0x0001, "entry", "(I)LTalkJit$Code;");
+			entry.objectLocal(className);
+			entry.intLocal();
+			entry.op2(JitClassFile.NEW, cf.classRef(className));
+			entry.op(JitClassFile.DUP);
+			entry.var(JitClassFile.ILOAD, 1);
+			entry.invokespecial(className, "<init>", "(I)V");
+			entry.op(JitClassFile.ARETURN);
+			if(!entry.finish()) throw new Reject("entry");
+			JitClassFile.Code install = cf.method(0x0009, "install", "()V");
+			install.op2(JitClassFile.NEW, cf.classRef(className));
+			install.op(JitClassFile.DUP);
+			install.iconst(-1);
+			install.invokespecial(className, "<init>", "(I)V");
+			pieces(install, text);
+			pieces(install, data);
+			install.invokestatic(RT, "aotScript", "(LTalkJit$Code;[L"+STR+";[L"+STR+";)V");
+			install.op(JitClassFile.RETURN);
+			if(!install.finish()) throw new Reject("install");
+			return cf.toBytes();
+		}
+
+		/** A String[] of the text in pieces that fit a string constant (no surrogate pair split) */
+		private void pieces(JitClassFile.Code c, String text) throws Reject {
+			ArrayList<String> parts = new ArrayList<String>();
+			for(int at=0; at<text.length() || parts.isEmpty();){
+				int to = Math.min(text.length(), at+20000);
+				if(to<text.length() && Character.isHighSurrogate(text.charAt(to-1))) to--;
+				parts.add(text.substring(at, to));
+				at = to;
+				if(at>=text.length()) break;
+			}
+			c.maxStack = Math.max(c.maxStack, 8);
+			c.iconst(parts.size());
+			c.op2(JitClassFile.ANEWARRAY, cf.classRef(STR));
+			for(int i=0; i<parts.size(); i++){
+				int index = cf.string(parts.get(i));
+				if(index<0) throw new Reject("piece");
+				c.op(JitClassFile.DUP);
+				c.iconst(i);
+				c.ldc(index);
+				c.op(JitClassFile.AASTORE);
+			}
 		}
 
 		private static final String BLOCK = "(L"+FRAME+";L"+RESULT+";)L"+RESULT+";";
@@ -2380,10 +2957,22 @@ final class TalkJit {
 		}
 
 		void ldc(JitClassFile.Code c, String s) throws Reject {
+			if(aot){
+				//f.sc.strings[i]: the player's String.intern() of the text (TeaVM's literals need not be the interned strings)
+				Integer i = aotStringIndex.get(s);
+				if(i==null){ i = aotStrings.size(); aotStrings.add(s); aotStringIndex.put(s, i); }
+				c.var(JitClassFile.ALOAD, F);
+				c.getfield(FRAME, "sc", "L"+SCRIPT_CODE+";");
+				c.getfield(SCRIPT_CODE, "strings", "[L"+STR+";");
+				c.iconst(i);
+				c.op(JitClassFile.AALOAD);
+				return;
+			}
 			int index = cf.string(s);
 			if(index<0) throw new Reject("long text");
 			c.ldc(index);
 		}
+		private static final String SCRIPT_CODE = "TalkJit$ScriptCode";
 
 		/** The method of the block, made if need be. */
 		String blockMethod(int start, int end) throws Reject {
@@ -2395,6 +2984,41 @@ final class TalkJit {
 				new Method(name, start, end, true).generate(start);
 			}
 			return name;
+		}
+
+		/** Ahead of time: the method of a block that the interpreter may enter (TTalk.doScript, compiledLoop, compiledCount), or
+		 *  null when Gen does not take it; what a refused block had made of the class is dropped */
+		String entryMethod(boolean counted, int start, int end){
+			long key = (counted ? 1L<<63 : 0) | ((long)start<<32) | end;
+			String name = blockMethods.get(key);
+			if(name!=null) return name;
+			int methodCount = cf.methodCount(), constants = sc.constants.size(), was = methods;
+			java.util.HashMap<Long,String> before = new java.util.HashMap<Long,String>(blockMethods);
+			java.util.LinkedHashMap<String,Long> printsBefore = new java.util.LinkedHashMap<String,Long>(prints);
+			java.util.HashMap<Integer,Integer> matchBefore = new java.util.HashMap<Integer,Integer>(matchLines);
+			int saveGoesOnAt = goesOnAt;
+			try{
+				if(!counted) return blockMethod(start, end);
+				goesOnAt = start;
+				name = "c"+(methods++);
+				blockMethods.put(key, name);
+				new Method(name, start, end, true).generate(start);
+				return name;
+			}catch(Reject | RuntimeException e){
+				if(TRACE) System.err.println("[talk aot] lines "+(start+1)+"-"+(end+1)+(counted ? " (counted)" : "")+" left to the interpreter: "+e);
+				cf.dropMethods(methodCount);
+				while(sc.constants.size()>constants){ sc.constants.remove(sc.constants.size()-1); recipes.remove(recipes.size()-1); }
+				blockMethods.clear();
+				blockMethods.putAll(before);
+				prints.clear();
+				prints.putAll(printsBefore);
+				matchLines.clear();
+				matchLines.putAll(matchBefore);
+				methods = Math.max(methods, was);
+				return null;
+			}finally{
+				goesOnAt = saveGoesOnAt;
+			}
 		}
 
 		/** One generated method: a block or (segment) the part of one that did not fit into the method before. */
@@ -2463,12 +3087,13 @@ final class TalkJit {
 					if(next!=null){
 						c.var(JitClassFile.ALOAD, F);
 						c.var(JitClassFile.ALOAD, R);
-						c.invokestatic("TalkJitCode", next, BLOCK);
+						c.invokestatic(className, next, BLOCK);
 					}
 					else c.var(JitClassFile.ALOAD, R);
 					c.op(JitClassFile.ARETURN);
 				}
 				JitClassFile.Label handler = c.label();
+				if(aot) c.maxStack += 2; //f.sc.strings[i] takes two more than ldc
 				c.handler(tryStart, tryEnd, handler, "xTalkException");
 				c.handler(tryStart, tryEnd, handler, "java/lang/RuntimeException");
 				c.bindHandler(handler);
@@ -2516,7 +3141,11 @@ final class TalkJit {
 				c.bind(ok);
 			}
 
-			private void bailToInterpreter(int line){
+			private void bailToInterpreter(int line) throws Reject {
+				//ahead of time a block may start at a repeat (TTalk.compiledLoop): one that left it to the interpreter at once
+				//would be entered again after the interpreter's first pass, and again
+				if(aot && entry && line==start && TTalk.splitScriptWords(script.get(line)).length>0 && TTalk.splitScriptWords(script.get(line))[0].equalsIgnoreCase("repeat"))
+					throw new Reject("a loop the interpreter runs");
 				restHere(line);
 				open = false;
 			}
@@ -2530,6 +3159,18 @@ final class TalkJit {
 					return line;
 				}
 				if(w.size()==0) return line+1;
+				Integer match = aot ? matchLines.get(line) : null;
+				if(match!=null && line!=goesOnAt){
+					//not read by the interpreter as these words: it reads it (or has), with the rest of the block
+					JitClassFile.Label ok = c.label();
+					c.var(JitClassFile.ALOAD, F);
+					c.iconst(line);
+					c.iconst(match);
+					c.invokestatic(RT, "readAs", "(L"+FRAME+";II)Z");
+					c.jump(JitClassFile.IFNE, ok);
+					restHere(line);
+					c.bind(ok);
+				}
 				String first = w.get(0);
 				if(first=="repeat") return repeat(line, w);
 				if(first=="if") return ifStatement(line, w);
@@ -2651,21 +3292,24 @@ final class TalkJit {
 				steps(p.value, slow);
 				Node node = p.value.node;
 				if(p.kind==Kind.GLOBAL){
-					sc.constants.add(p.names);
+					String[] recipe = new String[p.names.length+1];
+					recipe[0] = "N";
+					System.arraycopy(p.names, 0, recipe, 1, p.names.length);
+					int names = constant(p.names, recipe);
 					c.var(JitClassFile.ALOAD, F);
-					c.iconst(sc.constants.size()-1);
+					c.iconst(names);
 					c.invokestatic(RT, "declare", "(L"+FRAME+";I)V");
 					nothing();
 					return;
 				}
 				if(node instanceof Command m){
-					sc.constants.add(m.words);
+					int words = constant(m.words, "W", m.words.isCmd ? "1" : "0", m.words.text);
 					c.var(JitClassFile.ALOAD, F);
 					c.iconst(statementLine);
 					ldc(c, m.name);
 					array(c, m.args);
 					c.iconst(m.mask);
-					c.iconst(sc.constants.size()-1);
+					c.iconst(words);
 					if(inlineBranch>=0){
 						c.iconst(inlineBranch);
 						c.invokestatic(RT, "inlineCommand", "(L"+FRAME+";IL"+STR+";[L"+STR+";III)L"+RESULT+";");
@@ -2701,7 +3345,7 @@ final class TalkJit {
 					if(!p.value.steps.isEmpty()) noCalls();
 					return;
 				}
-				if(node instanceof Var v && v.use==LONE && p.kind!=Kind.CHUNK && p.kind!=Kind.AFTER && p.kind!=Kind.BEFORE){
+				if(node instanceof Var v && v.use==LONE && p.kind!=Kind.CHUNK && p.kind!=Kind.INDEX && p.kind!=Kind.AFTER && p.kind!=Kind.BEFORE){
 					c.var(JitClassFile.ALOAD, F);
 					if(p.kind==Kind.RETURN){
 						c.iconst(v.index);
@@ -2776,6 +3420,24 @@ final class TalkJit {
 					else c.op(JitClassFile.ACONST_NULL);
 					c.var(JitClassFile.ALOAD, V);
 					c.invokestatic(RT, "putChunk", "(L"+FRAME+";IL"+STR+";L"+STR+";L"+STR+";L"+STR+";)Z");
+					c.jump(JitClassFile.IFEQ, slow);
+					break;
+				case INDEX:
+					p.first.emit(Gen.this, c);
+					c.var(JitClassFile.ASTORE, V2);
+					c.var(JitClassFile.ALOAD, V2);
+					c.jump(JitClassFile.IFNULL, slow);
+					c.var(JitClassFile.ALOAD, F);
+					c.iconst(p.variable);
+					c.var(JitClassFile.ALOAD, V2);
+					if(p.last!=null){
+						p.last.emit(Gen.this, c);
+						c.var(JitClassFile.ALOAD, V);
+						c.invokestatic(RT, "putIndex2", "(L"+FRAME+";IL"+STR+";L"+STR+";L"+STR+";)Z");
+					}else{
+						c.var(JitClassFile.ALOAD, V);
+						c.invokestatic(RT, "putIndex1", "(L"+FRAME+";IL"+STR+";L"+STR+";)Z");
+					}
 					c.jump(JitClassFile.IFEQ, slow);
 					break;
 				default:
@@ -2860,9 +3522,24 @@ final class TalkJit {
 					return line;
 				}
 				marks(line, structure.endLine);
+				TTalk.IfStructure outer = topIf;
+				topIf = structure;
 				structure(line, structure);
+				topIf = outer;
 				endOnRet(true);
 				return structure.endLine+1;
+			}
+
+			/** The if statement being compiled at its line (the branches Aot's B constants count) */
+			TTalk.IfStructure topIf;
+
+			/** A branch of the if at line as a constant */
+			private int branchConstant(int line, TTalk.IfBranch branch) throws Reject {
+				ArrayList<TTalk.IfBranch> all = new ArrayList<TTalk.IfBranch>();
+				if(topIf!=null) ifBranches(topIf, all);
+				int ordinal = all.indexOf(branch);
+				if(aot && ordinal<0) throw new Reject("branch");
+				return constant(branch, "B", Integer.toString(line), Integer.toString(end), Integer.toString(ordinal));
 			}
 
 			/** Leaves the statement's Result in R */
@@ -2902,7 +3579,7 @@ final class TalkJit {
 				String method = blockMethod(first, last);
 				c.var(JitClassFile.ALOAD, F);
 				c.invokestatic(RT, "nothing", "()L"+RESULT+";");
-				c.invokestatic("TalkJitCode", method, BLOCK);
+				c.invokestatic(className, method, BLOCK);
 				c.var(JitClassFile.ASTORE, R);
 			}
 
@@ -2929,8 +3606,7 @@ final class TalkJit {
 						//an error of a global is the one of a line of its own (runInlineBranch)
 						if(plan!=null && plan.kind!=Kind.GLOBAL){
 							fastStatements++;
-							sc.constants.add(branch);
-							inlineBranch = sc.constants.size()-1;
+							inlineBranch = branchConstant(line, branch);
 							fast(plan, slow);
 							inlineBranch = -1;
 							if(plan.kind==Kind.RETURN) c.op(JitClassFile.ARETURN);
@@ -2942,11 +3618,11 @@ final class TalkJit {
 					}
 				}
 				c.bind(slow);
-				sc.constants.add(branch);
+				int constant = branchConstant(line, branch);
 				slowStatements++;
 				c.var(JitClassFile.ALOAD, F);
 				c.iconst(line);
-				c.iconst(sc.constants.size()-1);
+				c.iconst(constant);
 				c.invokestatic(RT, "inline", "(L"+FRAME+";II)L"+RESULT+";");
 				c.var(JitClassFile.ASTORE, R);
 				c.bind(next);
@@ -3037,7 +3713,25 @@ final class TalkJit {
 				marks(line, endRepeat);
 				int size = w.size();
 				ArrayList<String> s = w.words;
-				JitClassFile.Label loop = c.label(), exit = c.label();
+				JitClassFile.Label loop = c.label(), exit = c.label(), after = c.label();
+				boolean each = size>=6 && s.get(1).equalsIgnoreCase("for") && s.get(2).equalsIgnoreCase("each");
+				boolean with = size>1 && s.get(1).equalsIgnoreCase("with");
+				if(aot && line!=goesOnAt && !each && (!with || withShape(s))){
+					//the web player's Wasm loops first (wasmLoop): the whole repeat in the interpreter, which hands it to TalkWasmLoops
+					JitClassFile.Label compiledLoop = c.label();
+					c.var(JitClassFile.ALOAD, F);
+					c.iconst(line);
+					c.invokestatic(RT, "wasmLoop", "(L"+FRAME+";I)Z");
+					c.jump(JitClassFile.IFEQ, compiledLoop);
+					c.var(JitClassFile.ALOAD, F);
+					c.iconst(line);
+					c.iconst(endRepeat);
+					c.invokestatic(RT, "rest", "(L"+FRAME+";II)L"+RESULT+";");
+					c.var(JitClassFile.ASTORE, R);
+					endOnRet(true);
+					c.jump(JitClassFile.GOTO, after);
+					c.bind(compiledLoop);
+				}
 				if(line==goesOnAt && (size<=1 || s.get(1).startsWith("--") || s.get(1).equalsIgnoreCase("forever") || s.get(1).equalsIgnoreCase("while") || s.get(1).equalsIgnoreCase("until")))
 					throw new Reject("no count");
 				if(size<=1 || s.get(1).startsWith("--") || s.get(1).equalsIgnoreCase("forever")){
@@ -3115,6 +3809,7 @@ final class TalkJit {
 				c.var(JitClassFile.ALOAD, R);
 				c.op(JitClassFile.ICONST_0);
 				c.putfield(RESULT, "ret", "I");
+				c.bind(after);
 				return endRepeat+1;
 			}
 
@@ -3143,6 +3838,18 @@ final class TalkJit {
 				for(; next<w.size() && !w.get(next).startsWith("--"); next++)
 					prm.append(' ').append(w.types.get(next)==TTalk.wordType.STRING ? "\""+w.get(next)+"\"" : w.get(next));
 				return prm.toString();
+			}
+
+			/** repeat with's words as repeatWith takes them (it gives up before it writes any code otherwise) */
+			private boolean withShape(ArrayList<String> s){
+				if(s.size()<7 || !s.get(3).equals("=")) return false;
+				int separator = -1;
+				boolean down = false;
+				for(int next=4; next<s.size(); next++){
+					if(s.get(next).equalsIgnoreCase("to")){ separator = next; break; }
+					if(s.get(next).equalsIgnoreCase("down") && next+1<s.size() && s.get(next+1).equalsIgnoreCase("to")){ down = true; separator = next; break; }
+				}
+				return separator>4 && separator+(down ? 2 : 1)<s.size() && !s.get(2).isEmpty();
 			}
 
 			private boolean repeatWith(int line, Words w, int endRepeat, JitClassFile.Label loop, JitClassFile.Label exit) throws Reject {
@@ -3198,9 +3905,59 @@ final class TalkJit {
 		/** The words of the line as the interpreter has them, or would have them; null: not known. */
 		@SuppressWarnings("unchecked")
 		private Words lineWords(int line){
-			if(object.stringList!=null && line<object.stringList.length && object.stringList[line]!=null)
+			if(!aot && object.stringList!=null && line<object.stringList.length && object.stringList[line]!=null)
 				return new Words(object.stringList[line], object.typeList[line]);
-			return makesFunctionVariable(script.get(line)) ? null : tokens(script.get(line), true);
+			if(aot){
+				//a line whose first reading declares a function's or property's name (put … into value), or whose words depend on
+				//whether such a name is a variable yet (char 1 of value): compiled, but run compiled only once the interpreter has read
+				//it with these words (TalkJit.readAs), as the JIT compiles such a line only from the interpreter's words
+				String text = script.get(line);
+				boolean declares = makesFunctionVariable(text);
+				Words w = aotTokens(text, true, true);
+				if(w==null) return null;
+				if((declares || w.variables!=null) && !matchLines.containsKey(line)){
+					String[] recipe;
+					if(w.variables==null) recipe = new String[]{"W", "1", text};
+					else{
+						recipe = new String[3+w.variables.size()];
+						recipe[0] = "V"; recipe[1] = "1"; recipe[2] = text;
+						int k = 3;
+						for(String v : w.variables) recipe[k++] = v;
+					}
+					matchLines.put(line, constant(w, recipe));
+				}
+				return w;
+			}
+			if(makesFunctionVariable(script.get(line))) return null;
+			return tokens(script.get(line), true);
+		}
+
+		/** Ahead of time: lines compiled code runs only once the interpreter has read them as these words, by line: the constant
+		 *  of the words (TalkJit.readAs); before, the rest of the block is the interpreter's (an entry at such a line: all of it) */
+		final java.util.HashMap<Integer,Integer> matchLines = new java.util.HashMap<Integer,Integer>();
+
+		/** Ahead of time: the words a line of the script can make variables (its parameters, it, globals, what fullresolution
+		 *  declares as it reads each line, again with those until nothing is added); a variable made by do is no declaration */
+		private TreeSet<String> declarable;
+		private TreeSet<String> declarable(){
+			if(declarable!=null) return declarable;
+			TreeSet<String> set = new TreeSet<String>();
+			set.add("it");
+			for(String line : script){
+				String[] w = TTalk.splitScriptWords(line);
+				if(w.length>0 && DECLARING_LINES.contains(w[0].toLowerCase(Locale.ROOT)))
+					for(int i=1; i<w.length; i++) for(String name : w[i].split(",")) if(!name.isEmpty() && !name.startsWith("--")) set.add(name.toLowerCase(Locale.ROOT));
+			}
+			for(int pass=0; pass<4; pass++){
+				int before = set.size();
+				for(String line : script){
+					TreeSet<String> s = new TreeSet<String>(set);
+					TTalk.fullresolution(line, new ArrayList<String>(), new ArrayList<TTalk.wordType>(), s, true);
+					set.addAll(s);
+				}
+				if(set.size()==before) break;
+			}
+			return declarable = set;
 		}
 
 		/**
@@ -3222,6 +3979,7 @@ final class TalkJit {
 		/** The words of a text not yet run. A word that is a variable or not by what the handler has declared so far: the
 		 *  same either way, or the text is left alone. */
 		private Words tokens(String text, boolean isCmd){
+			if(aot) return aotTokens(text, isCmd);
 			Words a = new Words(new ArrayList<String>(), new ArrayList<TTalk.wordType>());
 			Words b = new Words(new ArrayList<String>(), new ArrayList<TTalk.wordType>());
 			TTalk.fullresolution(text, a.words, a.types, new TreeSet<String>(known), isCmd);
@@ -3234,6 +3992,82 @@ final class TalkJit {
 			}
 			return a;
 		}
+
+		/**
+		 * Words that read the same whichever of the words the tokenizer asks about are variables when the line is read, up to X
+		 * and VARIABLE (compiled code finds out which a word is when it runs, as the interpreter does). A word counts only if a
+		 * line of the script can declare it (ScriptCode.neverDeclared: after into, to, from…, a parameter, a global), the JIT's
+		 * own rule for words it has not seen as variables (into, mod or put would read the line differently, but only a line that
+		 * declares them makes them variables). With few such words every combination is read; with more, each word alone, all
+		 * of them and all but one, with every combination of the declared function and property names.
+		 */
+		private static final int MAX_CANDIDATES = 8, MAX_DECLARED_NAMES = 6, MAX_PLAIN = 40;
+		private Words aotTokens(String text, boolean isCmd){ return aotTokens(text, isCmd, false); }
+
+		/** aotTokens; a whole line (dependentToo) whose words depend on a declared name being a variable gives them as read with all
+		 *  such names variables (Words.variables), which the interpreter must have read too (lineWords, TalkJit.readAs) */
+		private Words aotTokens(String text, boolean isCmd, boolean dependentToo){
+			Words none = words(text, isCmd);
+			ArrayList<String> plain = new ArrayList<String>(), named = new ArrayList<String>();
+			TreeSet<String> declared = declarable();
+			for(String c : TTalk.variableCandidates(text, isCmd)){
+				if(!declared.contains(c.toLowerCase(Locale.ROOT))) continue;
+				if(TTalk.funcSet.contains(c) || TTalk.propertySet.contains(c)) named.add(c);
+				else plain.add(c);
+			}
+			if(named.size()>MAX_DECLARED_NAMES || plain.size()>MAX_PLAIN){ aotTrace(text, "too many words that may be variables"); return null; }
+			ArrayList<TreeSet<String>> plainSets = new ArrayList<TreeSet<String>>();
+			if(plain.size()+named.size()<=MAX_CANDIDATES){
+				for(int mask=0; mask<(1<<plain.size()); mask++){
+					TreeSet<String> set = new TreeSet<String>();
+					for(int k=0; k<plain.size(); k++) if((mask&(1<<k))!=0) set.add(plain.get(k));
+					plainSets.add(set);
+				}
+			}else{
+				plainSets.add(new TreeSet<String>());
+				plainSets.add(new TreeSet<String>(plain));
+				for(String p : plain){
+					TreeSet<String> one = new TreeSet<String>(), others = new TreeSet<String>(plain);
+					one.add(p);
+					others.remove(p);
+					plainSets.add(one);
+					plainSets.add(others);
+				}
+			}
+			for(int mask=0; mask<(1<<named.size()); mask++){
+				for(TreeSet<String> p : plainSets){
+					if(mask==0 && p.isEmpty()) continue;
+					TreeSet<String> set = new TreeSet<String>(p);
+					for(int k=0; k<named.size(); k++) if((mask&(1<<k))!=0) set.add(named.get(k));
+					Words a = new Words(new ArrayList<String>(), new ArrayList<TTalk.wordType>());
+					TTalk.fullresolution(text, a.words, a.types, set, isCmd);
+					boolean same = a.size()==none.size();
+					for(int i=0; same && i<a.size(); i++){
+						TTalk.wordType x = a.types.get(i), y = none.types.get(i);
+						same = a.get(i).equals(none.get(i)) && (x==y || (x==TTalk.wordType.X || x==TTalk.wordType.VARIABLE) && (y==TTalk.wordType.X || y==TTalk.wordType.VARIABLE));
+					}
+					if(!same){
+						if(dependentToo){
+							TreeSet<String> all = new TreeSet<String>(plain);
+							all.addAll(named);
+							Words v = new Words(new ArrayList<String>(), new ArrayList<TTalk.wordType>());
+							TTalk.fullresolution(text, v.words, v.types, new TreeSet<String>(all), isCmd);
+							v.text = text;
+							v.isCmd = isCmd;
+							v.variables = all;
+							prints.put((isCmd ? "1" : "0")+text, tokenPrint(text, isCmd));
+							return v;
+						}
+						aotTrace(text, "reads differently when "+set+" are variables");
+						return null;
+					}
+				}
+			}
+			prints.put((isCmd ? "1" : "0")+text, tokenPrint(text, isCmd));
+			return none;
+		}
+
+		private static void aotTrace(String text, String why){ if(TRACE) System.err.println("[talk aot] not read: "+text.trim()+" ("+why+")"); }
 
 		/** The tree of a whole expression text, or null */
 		private Expression expression(String text){
@@ -3346,6 +4180,7 @@ final class TalkJit {
 				}
 			}
 			if(direction==null || next<2) return null;
+			if(direction.equals("into") && next+2<s.size() && t[next+2]==TTalk.wordType.LCOLLECTION) return planPutIndex(w, t, next);
 			if(next!=s.size()-2) return direction.equals("into") ? planPutChunk(w, t, next) : null;
 			if(!destination(w, next+1)) return null;
 			int variable = sc.variable(s.get(next+1));
@@ -3353,6 +4188,30 @@ final class TalkJit {
 			if(direction.equals("into")) return new Plan(Kind.PUT, variable, -1, value);
 			return new Plan(direction.equals("after") ? Kind.AFTER : Kind.BEFORE, variable, sc.variable("hzputaftervalue"),
 				value.with(textOperand(value.node)));
+		}
+
+		/** put value into v[k1] or v[k1][k2] (TTalk.collectionPutCommand on the variable's LiveNode) */
+		private Plan planPutIndex(Words w, TTalk.wordType[] t, int into) throws Reject {
+			ArrayList<String> s = w.words;
+			int dest = into+1, last = s.size()-1;
+			if(!destination(w, dest)) return null;
+			Sim sim = new Sim(sc, s, t);
+			if(sim.ordered) return null;
+			ArrayList<Node> keys = new ArrayList<Node>();
+			int open = dest+1;
+			while(open<=last){
+				if(t[open]!=TTalk.wordType.LCOLLECTION) return null;
+				int close = sim.collectionClose(open, last);
+				if(close==open+1) return null;
+				keys.add(textOperand(sim.eval(open+1, close-1)));
+				open = close+1;
+			}
+			if(keys.isEmpty() || keys.size()>2) return null;
+			Node text = textOperand(sim.eval(1, into-1));
+			Plan plan = new Plan(Kind.INDEX, sc.variable(s.get(dest)), -1, new Expression(text, sim));
+			plan.first = keys.get(0);
+			plan.last = keys.size()>1 ? keys.get(1) : null;
+			return plan;
 		}
 
 		/** put value into char|word|item|line n [to m] of variable */

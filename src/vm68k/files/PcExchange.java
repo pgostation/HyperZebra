@@ -1,7 +1,6 @@
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.text.Normalizer;
 
 /**
  * Reads the Mac side of files that Apple's PC Exchange kept on a DOS (FAT) disk: a folder's "FINDER.DAT" holds one 92-byte
@@ -10,7 +9,7 @@ import java.text.Normalizer;
  * A floppy copied this way (or such a folder kept in an archive or a git repository) has stacks whose icons, sounds and
  * externals are only there. Read only: a fork or Finder info written later goes where the host keeps its own.
  */
-final class PcExchange {
+class PcExchange {
 	private PcExchange(){}
 
 	static final int RECORD=92;
@@ -19,7 +18,7 @@ final class PcExchange {
 	static byte[] resourceFork(File file){
 		File fork=forkFile(file);
 		if(fork==null)return null;
-		try{byte[] data=Files.readAllBytes(fork.toPath());return data.length>=16?data:null;}catch(IOException e){return null;}
+		try{byte[] data=Files68k.read(fork);return data.length>=16?data:null;}catch(IOException e){return null;}
 	}
 
 	/** The 16 bytes of FInfo PC Exchange recorded for {@code file}, or null. */
@@ -49,8 +48,8 @@ final class PcExchange {
 		File finderDat=folder==null?null:child(folder,"FINDER.DAT");
 		if(finderDat==null||!finderDat.isFile()||finderDat.length()<RECORD||finderDat.length()>1<<20)return null;
 		byte[] all;
-		try{all=Files.readAllBytes(finderDat.toPath());}catch(IOException e){return null;}
-		String name=Normalizer.normalize(file.getName(),Normalizer.Form.NFC);
+		try{all=Files68k.read(finderDat);}catch(IOException e){return null;}
+		String name=Platform.get().normalize(file.getName(),UnicodeNorm.Form.NFC);
 		for(int at=0;at+RECORD<=all.length;at+=RECORD){
 			byte[] record=java.util.Arrays.copyOfRange(all,at,at+RECORD);
 			if(dosName(record).equalsIgnoreCase(name))return record;
@@ -58,7 +57,7 @@ final class PcExchange {
 			if(length<1||length>31)continue;
 			byte[] longName=java.util.Arrays.copyOfRange(record,1,1+length);
 			for(StackTextEncoding encoding:new StackTextEncoding[]{StackTextEncoding.ROMAN,StackTextEncoding.JAPANESE})
-				if(Normalizer.normalize(encoding.decode(longName),Normalizer.Form.NFC).replace('/',':').equals(name))return record;
+				if(Platform.get().normalize(encoding.decode(longName),UnicodeNorm.Form.NFC).replace('/',':').equals(name))return record;
 		}
 		return null;
 	}

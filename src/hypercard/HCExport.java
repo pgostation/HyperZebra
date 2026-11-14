@@ -240,7 +240,7 @@ final class HCExport {
 		if(privateAccess){
 			//チェックサムは暗号化前の内容で取る(HyperCardは復号してから確かめる)
 			StackProtection.xorHeader(b.array(), 0,
-				StackProtection.hash(StackProtection.passwordBytes(stack.unlockedPassword, stack.legacyTextEncoding)));
+				UiHost.get().stackProtectionHash(UiHost.get().stackProtectionPasswordBytes(stack.unlockedPassword, stack.legacyTextEncoding)));
 		}
 		return b.array();
 	}
@@ -411,7 +411,8 @@ final class HCExport {
 		for(OObject part: bg.partsList) if(!(part instanceof OField) || ((OField)part).sharedText) {
 			if(part.getText()==null || part.getText().isEmpty()) continue;
 			contents.add(content(partSet.ids.get(part), part.getText(),
-				part instanceof OField ? ((OField)part).styleList : null, encoder, styleIds));
+				part instanceof OField ? ((OField)part).styleList : null, encoder, styleIds,
+				part instanceof OField ? ((OField)part).textFont : null, stack));
 		}
 		ByteArrayOutputStream payload = new ByteArrayOutputStream();
 		DataOutputStream d = new DataOutputStream(payload);
@@ -436,14 +437,15 @@ final class HCExport {
 		ArrayList<byte[]> contents = new ArrayList<byte[]>();
 		for(OObject part: card.partsList) if(part.getText()!=null && !part.getText().isEmpty()) {
 			contents.add(content(-partSet.ids.get(part), part.getText(),
-				part instanceof OField ? ((OField)part).styleList : null, encoder, styleIds));
+				part instanceof OField ? ((OField)part).styleList : null, encoder, styleIds,
+				part instanceof OField ? ((OField)part).textFont : null, stack));
 		}
 		if(card.bgfldList!=null) for(OBgFieldData field: card.bgfldList) {
 			if(field.text!=null && !field.text.isEmpty()) contents.add(content(field.id, field.text,
-				field.styleList, encoder, styleIds));
+				field.styleList, encoder, styleIds, bgFieldFont(stack, card, field.id), stack));
 		}
 		if(card.bgbtnList!=null) for(OBgButtonData button: card.bgbtnList) {
-			if(button.check_hilite) contents.add(content(button.id, "1", null, encoder, styleIds));
+			if(button.check_hilite) contents.add(content(button.id, "1", null, encoder, styleIds, null, stack));
 		}
 		ByteArrayOutputStream payload = new ByteArrayOutputStream();
 		DataOutputStream d = new DataOutputStream(payload);
@@ -548,20 +550,35 @@ final class HCExport {
 	}
 
 	private static byte[] content(int signedPartId, String text, ArrayList<styleClass> styles,
-			StackTextEncoder encoder, Map<Integer,Integer> styleIds) throws IOException {
-		byte[] textBytes = encoded(text, encoder);
+			StackTextEncoder encoder, Map<Integer,Integer> styleIds, String fieldFont, OStack stack) throws IOException {
+		ArrayList<styleClass> valid = new ArrayList<styleClass>();
+		if(styles != null) for(styleClass run: styles) if(styleIds.containsKey(run.styleId)) valid.add(run);
+		//the text a run at a time: runs in a one-byte font are written a byte per character, as HCData.decodeOneByteFonts read them
+		String plain = text==null ? "" : text;
+		int[] byteOffsets = new int[valid.size()];
+		ByteArrayOutputStream textOut = new ByteArrayOutputStream();
+		int from = 0;
+		String font = fieldFont;
+		for(int i=0; i<=valid.size(); i++){
+			int to = i<valid.size() ? Math.max(from, Math.min(plain.length(), valid.get(i).textPosition)) : plain.length();
+			String part = plain.substring(from, to);
+			textOut.writeBytes(oneByteFont(stack, font, encoder) ? encodedOneByte(part) : encoded(part, encoder));
+			if(i<valid.size()){
+				byteOffsets[i] = textOut.size();
+				font = runFont(stack, valid.get(i).styleId, fieldFont);
+			}
+			from = to;
+		}
+		byte[] textBytes = textOut.toByteArray();
 		ByteArrayOutputStream body = new ByteArrayOutputStream();
 		DataOutputStream b = new DataOutputStream(body);
-		if(styles == null || styles.isEmpty()) {
+		if(valid.isEmpty() && (styles == null || styles.isEmpty())) {
 			b.writeByte(0); b.write(textBytes);
 		} else {
-			ArrayList<styleClass> valid = new ArrayList<styleClass>();
-			for(styleClass run: styles) if(styleIds.containsKey(run.styleId)) valid.add(run);
 			b.writeShort(0x8000 | (2+valid.size()*4));
-			for(styleClass run: valid) {
-				int charOffset = Math.max(0, Math.min(text.length(), run.textPosition));
-				b.writeShort(encoded(text.substring(0, charOffset), encoder).length);
-				b.writeShort(styleIds.get(run.styleId));
+			for(int i=0; i<valid.size(); i++) {
+				b.writeShort(byteOffsets[i]);
+				b.writeShort(styleIds.get(valid.get(i).styleId));
 			}
 			b.write(textBytes);
 		}
@@ -867,6 +884,56 @@ final class HCExport {
 	private static String joinScript(ArrayList<String> lines) {
 		if(lines==null || lines.isEmpty()) return "";
 		StringBuilder out=new StringBuilder(); for(int i=0;i<lines.size();i++){if(i>0)out.append('\n');out.append(lines.get(i));} return out.toString();
+	}
+	/** The font of the style run {@code styleId}: the style's own, else the field's */
+	private static String runFont(OStack stack, int styleId, String fieldFont){
+		if(stack==null) return fieldFont;
+		for(OStack.styleClass st: stack.styleList){
+			if(st.id!=styleId) continue;
+			if(st.font<0) return fieldFont;
+			for(OStack.fontClass f: stack.fontList) if(f.id==st.font) return f.name;
+			return fieldFont;
+		}
+		return fieldFont;
+	}
+	/** The font of background field {@code id} of {@code card}'s background */
+	private static String bgFieldFont(OStack stack, OCard card, int id){
+		if(stack==null) return null;
+		for(OBackground bg: stack.bgCacheList){
+			if(bg.id!=card.bgid) continue;
+			for(OObject part: bg.partsList) if(part instanceof OField && part.id==id) return ((OField)part).textFont;
+		}
+		return null;
+	}
+	/** A two-byte stack's own bitmap font in the Roman range that the host lacks: one character per byte (HCData.oneByteFont) */
+	private static boolean oneByteFont(OStack stack, String name, StackTextEncoder encoder){
+		if(name==null || name.isEmpty() || stack==null || stack.rsrc==null) return false;
+		StackTextEncoding e = encoder.encoding;
+		if(e!=StackTextEncoding.JAPANESE && e!=StackTextEncoding.SIMPLIFIED_CHINESE && e!=StackTextEncoding.TRADITIONAL_CHINESE &&
+			e!=StackTextEncoding.KOREAN) return false;
+		int id = -1;
+		for(OStack.fontClass f: stack.fontList) if(f.name.equals(name)){ id = f.id; break; }
+		if(id<2 || id==3 || id>=16384) return false;
+		if(stack.rsrc.getRsrcIdAll(name, "FOND")==0 && stack.rsrc.getRsrcIdAll(name, "font")==0) return false;
+		return !OObject.hostHasFamily(name);
+	}
+	private static java.nio.charset.Charset macRoman;
+	/** The inverse of HCData.decodeOneByte: ASCII, half-width katakana as $A1-$DF, other characters as Mac OS Roman ('?' if none) */
+	private static byte[] encodedOneByte(String text){
+		if(macRoman==null) macRoman = Platform.get().charset("x-MacRoman");
+		String value = text.replace("\r\n","\n").replace('\n','\r');
+		byte[] out = new byte[value.length()];
+		for(int i=0; i<value.length(); i++){
+			char c = value.charAt(i);
+			if(c<0x80) out[i] = (byte)c;
+			else if(c>=0xFF61 && c<=0xFF9F) out[i] = (byte)(0xA1+c-0xFF61);
+			else if(c>=MacJapaneseDecoder.RAW_BYTES && c<=MacJapaneseDecoder.RAW_BYTES+0xFF) out[i] = (byte)(c-MacJapaneseDecoder.RAW_BYTES);
+			else{
+				byte[] r = String.valueOf(c).getBytes(macRoman);
+				out[i] = r.length==1 ? r[0] : (byte)'?';
+			}
+		}
+		return out;
 	}
 	private static byte[] encoded(String text, StackTextEncoder encoder) {
 		return encoder.encode((text==null?"":text).replace("\r\n","\n").replace('\n','\r'));

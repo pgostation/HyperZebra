@@ -21,17 +21,17 @@ final class CursorManager68k {
 
 	CursorManager68k(M68kMemory memory) {this.memory=memory;}
 	CursorManager68k(M68kMemory memory,Mac68kApi macApi) {this.memory=memory;this.macApi=macApi;}
-	private MacAppHost host(){Toolbox68k tb=macApi==null?null:macApi.application();return tb==null||!tb.hosted()?null:tb.host();}
+	private VmHost host(){Toolbox68k tb=macApi==null?null:macApi.application();return tb==null||!tb.hosted()?null:tb.host();}
 
 	boolean handle(M68kCpu cpu,int trap) throws M68kCpuException {
 		switch(trap) {
-			case 0x850:initCursor();{MacAppHost h=host();if(h!=null){h.setCursorHidden(false);h.setCursor(java.awt.Cursor.getDefaultCursor());}}return true;
+			case 0x850:initCursor();{VmHost h=host();if(h!=null){h.setCursorHidden(false);h.setCursor(java.awt.Cursor.getDefaultCursor());}}return true;
 			case 0x851:return setCursor(cpu);
-			case 0x852:hideLevel++;if(CURSOR_LOG)System.err.println("[68K cursor] t="+System.currentTimeMillis()%100000+" HideCursor level "+hideLevel);{MacAppHost h=host();if(h!=null)h.setCursorHidden(true);}return true;
-			case 0x853:if(hideLevel>0)hideLevel--;if(CURSOR_LOG)System.err.println("[68K cursor] t="+System.currentTimeMillis()%100000+" ShowCursor level "+hideLevel);{MacAppHost h=host();if(h!=null){if(hideLevel==0)h.setCursorHidden(false);h.blitEnd();/* ShieldCursor..ShowCursor brackets a game's copy of its frame into screen memory (Dark Forces) */}}return true;
-			case 0x855:{MacAppHost h=host();if(h!=null)h.blitBegin();}return shieldCursor(cpu);
+			case 0x852:hideLevel++;if(CURSOR_LOG)System.err.println("[68K cursor] t="+System.currentTimeMillis()%100000+" HideCursor level "+hideLevel);{VmHost h=host();if(h!=null)h.setCursorHidden(true);}return true;
+			case 0x853:if(hideLevel>0)hideLevel--;if(CURSOR_LOG)System.err.println("[68K cursor] t="+System.currentTimeMillis()%100000+" ShowCursor level "+hideLevel);{VmHost h=host();if(h!=null){if(hideLevel==0)h.setCursorHidden(false);h.blitEnd();/* ShieldCursor..ShowCursor brackets a game's copy of its frame into screen memory (Dark Forces) */}}return true;
+			case 0x855:{VmHost h=host();if(h!=null)h.blitBegin();}return shieldCursor(cpu);
 			case 0x856:obscured=true;return true;
-			case INIT_CRSR:hideLevel=0;obscured=false;{MacAppHost h=host();if(h!=null)h.setCursorHidden(false);}return true;
+			case INIT_CRSR:hideLevel=0;obscured=false;{VmHost h=host();if(h!=null)h.setCursorHidden(false);}return true;
 			default:return false;
 		}
 	}
@@ -46,7 +46,7 @@ final class CursorManager68k {
 		if(valid){for(int i=0;i<cursor.length;i++)cursor[i]=(byte)memory.readByte(source+i);boolean visible=false;for(int i=0;i<64&&!visible;i++)visible=cursor[i]!=0;valid=visible;}
 		if(!valid){if(Mac68kApi.TRACE)System.err.println("[68K] SetCursor $"+Integer.toHexString(source)+": "+(source==0?"nil cursor":"empty cursor")+", showing the arrow");for(int i=0;i<cursor.length;i++)cursor[i]=0;}
 		if(CURSOR_LOG){StringBuilder b=new StringBuilder("[68K cursor] t="+System.currentTimeMillis()%100000+" SetCursor ");for(int i=0;i<8;i++)b.append(String.format("%02x",cursor[i]&255));b.append(" hot ").append((cursor[64]&255)<<8|cursor[65]&255).append(',').append((cursor[66]&255)<<8|cursor[67]&255);System.err.println(b);}
-		obscured=false;MacAppHost h=host();if(h!=null)h.setCursor(valid?MacAppHost.cursorFromData(cursor):java.awt.Cursor.getDefaultCursor());return true;
+		obscured=false;VmHost h=host();if(h!=null)h.setCursor(valid?UiHost.get().macAppHostCursorFromData(cursor):java.awt.Cursor.getDefaultCursor());return true;
 	}
 
 	private boolean shieldCursor(M68kCpu cpu) throws M68kCpuException {

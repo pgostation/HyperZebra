@@ -12,7 +12,7 @@ import java.util.Map;
  * documents, quit) that HyperZebra sends when documents are dropped on the
  * program's windows or when it is asked to quit.
  */
-final class AppleEvents68k {
+class AppleEvents68k {
 	static final int TYPE_AEVT=0x61657674,TYPE_LIST=0x6c697374,TYPE_RECO=0x7265636f,TYPE_ALIS=0x616c6973,TYPE_FSS=0x66737320,TYPE_FSREF=0x66737266,TYPE_PSN=0x70736e20,TYPE_NULL=0x6e756c6c,TYPE_LONG=0x6c6f6e67,TYPE_SHOR=0x73686f72,TYPE_TEXT=0x54455854,TYPE_BOOL=0x626f6f6c,TYPE_TYPE=0x74797065,TYPE_ENUM=0x656e756d,TYPE_CHAR=0x54455854,TYPE_WILD=0x2a2a2a2a;
 	static final int KEY_DIRECT=0x2d2d2d2d,KEY_ERROR_NUMBER=0x6572726e,KEY_ERROR_STRING=0x65727273,KEY_MISSED=0x6d697373,KEY_EVENT_CLASS=0x6576636c,KEY_EVENT_ID=0x65766964,KEY_ADDRESS=0x61646472,KEY_RETURN_ID=0x72746964,KEY_INTERACT=0x696e7465,KEY_TRANSACTION=0x7472616e,KEY_EVENT_SOURCE=0x65737263,KEY_TIMEOUT=0x74696d6f,KEY_ORIGINAL_ADDRESS=0x66726f6d;
 	static final int TYPE_SIGN=0x7369676e,TYPE_TARGET_ID=0x74617267;
@@ -692,7 +692,7 @@ final class AppleEvents68k {
 		if(desired==TYPE_TEXT&&from==TYPE_TYPE&&data.length>=4)return new int[]{TYPE_TEXT,tb.api.createHandle(java.util.Arrays.copyOf(data,4))};
 		if(desired==TYPE_TEXT&&(from==TYPE_TRUE||from==TYPE_FALSE||from==TYPE_BOOL&&data.length>=1))return new int[]{TYPE_TEXT,tb.api.createHandle(tb.encoding.encodeReplacing(from==TYPE_TRUE||from==TYPE_BOOL&&data[data.length-1]!=0?"true":"false"))};
 		if(desired==TYPE_TEXT&&from==TYPE_NULL)return new int[]{TYPE_TEXT,tb.api.createHandle(new byte[0])};
-		if(desired==TYPE_TEXT&&(from==TYPE_ALIS||from==TYPE_FSS)){File f=fileOf(from,data);String path=f==null?null:FileSystem68k.macPathOf(f);return path==null?HYPERCARD_REFUSED:new int[]{TYPE_TEXT,tb.api.createHandle(tb.encoding.encodeReplacing(path))};}
+		if(desired==TYPE_TEXT&&(from==TYPE_ALIS||from==TYPE_FSS)){File f=fileOf(from,data);String path=f==null?null:UiHost.get().fileSystem68kMacPathOf(f);return path==null?HYPERCARD_REFUSED:new int[]{TYPE_TEXT,tb.api.createHandle(tb.encoding.encodeReplacing(path))};}
 		if(desired==TYPE_TEXT&&from==TYPE_TARGET_ID&&data.length>=7)return new int[]{TYPE_TEXT,tb.api.createHandle(java.util.Arrays.copyOfRange(data,7,7+Math.min(Math.min(32,data[6]&255),data.length-7)))};
 		if(desired==TYPE_TEXT&&from==TYPE_PSN&&data.length>=8){int port=memory.allocate(0x48,2);
 			try{if(tb.writePortFor(MacApp68k.u4(data,4),port)!=0)return HYPERCARD_REFUSED;return new int[]{TYPE_TEXT,tb.api.createHandle(memory.readBytes(port+3,memory.readByte(port+2)))};}finally{memory.free(port);}}
@@ -978,8 +978,8 @@ final class AppleEvents68k {
 	private int send(int event,int replyDesc,int sendMode,int timeout) throws M68kException {
 		Record r=record(event);if(r==null)return ERR_DESC_NOT_FOUND;
 		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder("[ae] AESend "+fourcc(r.eventClass)+"/"+fourcc(r.eventId)+" params");
-			for(java.util.Map.Entry<Integer,int[]> e:r.items.entrySet()){byte[] d=tb.api.handleContents(e.getValue()[1]);sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue()[0])).append("=").append(d==null?"null":d.length<=64?MidiHost68k.hex(d):d.length+" bytes");}
-			int h=memory.readLong(event+4);byte[] raw=tb.api.handleContents(h);if(raw!=null)sb.append("\n[ae]   handle ").append(MidiHost68k.hex(java.util.Arrays.copyOf(raw,Math.min(raw.length,320))));
+			for(java.util.Map.Entry<Integer,int[]> e:r.items.entrySet()){byte[] d=tb.api.handleContents(e.getValue()[1]);sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue()[0])).append("=").append(d==null?"null":d.length<=64?MidiPorts68k.hex(d):d.length+" bytes");}
+			int h=memory.readLong(event+4);byte[] raw=tb.api.handleContents(h);if(raw!=null)sb.append("\n[ae]   handle ").append(MidiPorts68k.hex(java.util.Arrays.copyOf(raw,Math.min(raw.length,320))));
 			System.err.println(sb);}
 		// kAEDontExecute: the event is only for the recording of a script, nothing handles it (Disk Copy 6.3 sends itself 'Crea' so
 		// after making a new image - handled, it "imaged" an unnamed disk and failed the whole operation)
@@ -1026,13 +1026,13 @@ final class AppleEvents68k {
 			// specifier for the file's alias); they open the way HyperZebra opens a file the user double-clicks
 			if(r.eventClass==TYPE_AEVT&&r.eventId==0x6f646f63){List<File> files=new ArrayList<File>();filesIn(export(new int[]{TYPE_AEVT,memory.readLong(event+4)}).items.get(KEY_DIRECT),files,0);
 				if(Mac68kApi.TRACE)System.err.println("[68K] AESend aevt/odoc -> Finder "+files);
-				if(!files.isEmpty()&&tb.hosted())PCARD.openFromFinder(tb.app==null?Sandbox.scriptRequester():tb.app.name,files);}
+				if(!files.isEmpty()&&tb.hosted())PCARD.openFromFinder(tb.app==null?Sandbox68k.scriptRequester():tb.app.name,files);}
 			// 'FNDR'/'sope' (Finder suite Open Selection: the direct object is the items' folder, keySelection 'fsel' the items): A-Dock
 			// opens a favorite this way - a program that is not running is launched, a document opened, as from a double-click
 			if(r.eventClass==0x464e4452&&r.eventId==0x736f7065){Portable sope=export(new int[]{TYPE_AEVT,memory.readLong(event+4)});List<File> files=new ArrayList<File>();
 				filesIn(sope.items.get(0x6673656c),files,0);if(files.isEmpty())filesIn(sope.items.get(KEY_DIRECT),files,0);
 				if(Mac68kApi.TRACE)System.err.println("[68K] AESend FNDR/sope -> Finder "+files);
-				if(!files.isEmpty()&&tb.hosted())PCARD.openFromFinder(tb.app==null?Sandbox.scriptRequester():tb.app.name,files);}
+				if(!files.isEmpty()&&tb.hosted())PCARD.openFromFinder(tb.app==null?Sandbox68k.scriptRequester():tb.app.name,files);}
 			// The Finder suite's 'fndr'/'rest', 'shut', 'slep' (XTernal's RestartMac/ShutdownMac/SleepMac, a launcher's Shut Down): the host is never restarted, shut
 			// down or put to sleep. Before restarting a Finder asks every program to quit, so a program that asks for a restart or a shut
 			// down is told to quit as its own Quit item would (it may save, or cancel). An external's request does nothing: its
@@ -1077,7 +1077,7 @@ final class AppleEvents68k {
 			while(!p.answered&&System.currentTimeMillis()<deadline&&!target.finished)try{Thread.sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			if(!p.answered)return ERR_TIMEOUT;
 			if(Mac68kApi.TRACE&&p.reply!=null){StringBuilder sb=new StringBuilder("[68K] AE reply "+fourcc(p.eventClass)+"/"+fourcc(p.eventId)+" from "+target.name);
-				for(Map.Entry<Integer,Portable> e:p.reply.items.entrySet())sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue().type)).append("=").append(e.getValue().data==null?"(record)":MidiHost68k.hex(java.util.Arrays.copyOf(e.getValue().data,Math.min(e.getValue().data.length,256))));
+				for(Map.Entry<Integer,Portable> e:p.reply.items.entrySet())sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue().type)).append("=").append(e.getValue().data==null?"(record)":MidiPorts68k.hex(java.util.Arrays.copyOf(e.getValue().data,Math.min(e.getValue().data.length,256))));
 				System.err.println(sb);}
 			if(replyDesc!=0&&p.reply!=null){int[] reply=materialize(p.reply);writeDesc(replyDesc,reply[0],reply[1]);}
 			int[] error=p.reply==null?null:lookupPortable(p.reply,KEY_ERROR_NUMBER);
@@ -1149,7 +1149,7 @@ final class AppleEvents68k {
 		HYPERCARD_EVENTS.addLast(e);
 		try{result=hyperCardReceiver.receive(e);}finally{HYPERCARD_EVENTS.removeLastOccurrence(e);}
 		if(event.eventClass==TYPE_AEVT&&event.eventId==0x6f646f63&&result==ERR_NOT_HANDLED){List<File> files=new ArrayList<File>();filesIn(event.items.get(KEY_DIRECT),files,0);
-			if(!files.isEmpty()){if(tb.hosted()&&!java.awt.GraphicsEnvironment.isHeadless())PCARD.openFromFinder(Sandbox.scriptRequester(),files);result=0;}} // open documents: as HyperCard opens a stack the Finder hands it
+			if(!files.isEmpty()){if(tb.hosted()&&!java.awt.GraphicsEnvironment.isHeadless())PCARD.openFromFinder(Sandbox68k.scriptRequester(),files);result=0;}} // open documents: as HyperCard opens a stack the Finder hands it
 		// the error text of a failed script in the System's script: HyperZebra's message is in the user's language, and a Japanese one
 		// came out "baz???????" on a Roman System - there HyperCard's English text
 		if(e.englishError!=null&&tb.encoding!=StackTextEncoding.JAPANESE&&e.reply.containsKey(KEY_ERROR_STRING))e.reply.put(KEY_ERROR_STRING,e.englishError);
@@ -1221,7 +1221,7 @@ final class AppleEvents68k {
 		int self=tb.app==null?0:tb.app.serialNumber;
 		Portable from=new Portable();from.type=TYPE_PSN;from.data=new byte[8];putLong(from.data,4,self);answer.attributes.put(KEY_ORIGINAL_ADDRESS,from);
 		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder("[68K] AE reply "+fourcc(p.eventClass)+"/"+fourcc(p.eventId)+" queued to "+sender.name);
-			for(Map.Entry<Integer,Portable> e:answer.items.entrySet())sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue().type)).append("=").append(e.getValue().data==null?"(record)":MidiHost68k.hex(java.util.Arrays.copyOf(e.getValue().data,Math.min(e.getValue().data.length,256))));
+			for(Map.Entry<Integer,Portable> e:answer.items.entrySet())sb.append(" ").append(fourcc(e.getKey())).append(":").append(fourcc(e.getValue().type)).append("=").append(e.getValue().data==null?"(record)":MidiPorts68k.hex(java.util.Arrays.copyOf(e.getValue().data,Math.min(e.getValue().data.length,256))));
 			System.err.println(sb);}
 		sender.toolbox.events.postAppleEvent(answer,self);
 	}

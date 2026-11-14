@@ -266,70 +266,12 @@ class ScriptDebugger {
 
 	private static void pause(OObject object, int line, MemoryData memData, boolean error, String errorMessage)
 	throws xTalkException
-	{
-		paused = true;
-		pausedOnError = error;
-		pausedErrorMessage = errorMessage;
-		pausedObject = object;
-		pausedLine = line;
-		pausedMemData = memData;
-		try{
-			ScriptEditor.showDebugLine(object, line, error);
-			VariableWatcher.refresh();
+	{ UiHost.get().pause(object, line, memData, error, errorMessage); }
 
-			if(TTalk.tracemode==MODE_TRACE){
-				traceSleep();
-				return;
-			}
-
-			//ステップ実行: メニュー操作(stepflag)か中断(stop)を待つ
-			while(!TTalk.stepflag && !TTalk.stop){
-				try{
-					Thread.sleep(20);
-				}catch(InterruptedException e){
-					Thread.currentThread().interrupt();
-					break;
-				}
-				if(!scriptEditorVisible()){
-					//エディタを閉じたら通常実行に戻る
-					TTalk.tracemode = MODE_RUN;
-					break;
-				}
-			}
-			TTalk.stepflag = false;
-			if(TTalk.stop) throw new xTalkException("user abort.");
-		}finally{
-			paused = false;
-			pausedOnError = false;
-			pausedErrorMessage = null;
-			pausedMemData = null;
-		}
-	}
-
-	private static boolean scriptEditorVisible(){
-		if(PCARD.pc==null || PCARD.pc.stack==null) return true;
-		ScriptEditor editor = PCARD.pc.stack.scriptEditor;
-		return editor==null || editor.isVisible();
-	}
+	private static boolean scriptEditorVisible(){ return UiHost.get().scriptEditorVisible(); }
 
 	/** トレース中の文ごとの待ち時間(the traceDelay、ticks単位) */
-	private static void traceSleep(){
-		int ticks = 0;
-		try{
-			ticks = Integer.parseInt(TUtil.compatibilityProperty("tracedelay").trim());
-		}catch(NumberFormatException e){
-		}
-		if(ticks<=0) return;
-		long endTime = System.currentTimeMillis() + ticks*1000L/60L;
-		while(!TTalk.stop && System.currentTimeMillis()<endTime){
-			try{
-				Thread.sleep(20);
-			}catch(InterruptedException e){
-				Thread.currentThread().interrupt();
-				return;
-			}
-		}
-	}
+	private static void traceSleep(){ UiHost.get().traceSleep(); }
 
 	//---------------------------------------------------------------- 変数表示ウィンドウ用
 

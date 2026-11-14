@@ -393,7 +393,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 				return;
 			}
 			BufferedImage icon = hyperZebraIcon();
-			JOptionPane.showMessageDialog(null, PCARD.AppName+" "+PCARD.longVersion, text("About HyperZebra"),
+			JOptionPane.showMessageDialog(null, HZ.AppName+" "+HZ.longVersion, text("About HyperZebra"),
 				JOptionPane.PLAIN_MESSAGE, icon==null ? null : new ImageIcon(icon.getScaledInstance(64, 64, Image.SCALE_SMOOTH)));
 		}});
 	}
@@ -444,7 +444,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 	private static String text(String key){ return PCARD.pc!=null && PCARD.pc.intl!=null ? PCARD.pc.intl.getDialogText(key) : key; }
 
 	private GLauncher(){
-		super(PCARD.AppName+" "+text("Launcher"));
+		super(HZ.AppName+" "+text("Launcher"));
 		setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
 		if(PCARD.pc!=null && PCARD.pc.getIconImage()!=null) setIconImage(PCARD.pc.getIconImage());
 		//ツールチップはSwingの標準(4秒)では読み終わる前に消えるので、マウスが乗っている間は長めに出しておく
@@ -1020,7 +1020,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 		return panel;
 	}
 	private static String aboutMessage(){
-		return PCARD.AppName+" "+PCARD.longVersion+"\n\n"
+		return HZ.AppName+" "+HZ.longVersion+"\n\n"
             +text("Run HyperCard stacks and classic Mac apps (68K and PowerPC), all in one place.")+"\n\n"
             +text("Drop a file here or choose Open File. Your recent items will appear here, ready for next time.")+"\n\n"
             +text("Keep favorites in the dock. HyperZebra HD holds your virtual System Folder and shared files.")+"\n\n"
@@ -1133,7 +1133,7 @@ final class GLauncher extends JFrame implements LauncherStore.Listener, MacApp68
 
 	/** The language was changed on the Settings page: the launcher is rebuilt in it at once; the stack window's menus and dialogs follow at the next start. */
 	private void languageChanged(){
-		try{ PCARD.pc.lang = PCARD.language; PCARD.pc.intl = new International(PCARD.language); }
+		try{ PCARD.pc.lang = PCARD.language; HZ.setIntl(new International(PCARD.language)); }
 		catch(Exception ex){ return; }
 		//スタックを開いていなければ、カードウインドウのメニュー(ブラウズ用・ペイント用)も今の言語で作り直しておく
 		if(PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) PCARD.resetMenuBarAfterClose();

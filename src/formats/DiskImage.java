@@ -16,7 +16,7 @@ import java.util.List;
  * Everything here follows the published formats (Inside Macintosh: Files and Devices; the Disk Copy 4.2 header as
  * documented by Apple's Disk Copy notes); no Apple code or data is used.
  */
-final class DiskImage implements Closeable {
+class DiskImage implements Closeable {
 	/** Random-access bytes of a disk (a whole image, or a part of one). Reads past the end give zeros. */
 	interface Source extends Closeable {
 		long length();
@@ -101,7 +101,7 @@ final class DiskImage implements Closeable {
 		if(file==null||!file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".cue")||file.length()>65536)return file;
 		try{
 			java.util.regex.Pattern p=java.util.regex.Pattern.compile("^\\s*FILE\\s+(?:\"([^\"]+)\"|(\\S+))",java.util.regex.Pattern.CASE_INSENSITIVE);
-			for(String line:java.nio.file.Files.readAllLines(file.toPath(),java.nio.charset.StandardCharsets.ISO_8859_1)){
+			for(String line:Files68k.lines(file,java.nio.charset.StandardCharsets.ISO_8859_1)){
 				java.util.regex.Matcher m=p.matcher(line);
 				if(!m.find())continue;
 				File f=new File(file.getParentFile(),m.group(1)!=null?m.group(1):m.group(2));
@@ -302,7 +302,7 @@ final class DiskImage implements Closeable {
 			if(key>=0){
 				int end=xml.indexOf("</array>",key);if(end<0)end=xml.length();
 				java.util.regex.Matcher m=java.util.regex.Pattern.compile("<data>(.*?)</data>",java.util.regex.Pattern.DOTALL).matcher(xml.substring(key,end));
-				while(m.find())tables.add(java.util.Base64.getMimeDecoder().decode(m.group(1)));
+				while(m.find())tables.add(Platform.get().decodeMimeBase64(m.group(1)));
 			}
 		}
 		if(tables.isEmpty()){

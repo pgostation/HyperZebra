@@ -197,7 +197,7 @@ final class HyperCardResources68k {
 		for(int i=0;i<40;i++){
 			java.io.File file=new java.io.File("resource",("PAT_"+(i+1)+".png"));
 			java.awt.image.BufferedImage image;
-			try{image=file.isFile()?javax.imageio.ImageIO.read(file):null;}catch(java.io.IOException e){image=null;}
+			try{image=file.isFile()?Toolbox68k.PARTS.readImage(file):null;}catch(java.io.IOException e){image=null;}
 			if(image==null||image.getWidth()<8||image.getHeight()<8)return null;
 			for(int y=0;y<8;y++){int bits=0;
 				for(int x=0;x<8;x++){int argb=image.getRGB(x,y);int lum=((argb>>16&0xff)*30+(argb>>8&0xff)*59+(argb&0xff)*11)/100;if((argb>>>24)>=0x80&&lum<0x80)bits|=0x80>>x;}

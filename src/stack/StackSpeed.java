@@ -63,7 +63,7 @@ final class StackSpeed {
 	static final boolean TRACE = Boolean.getBoolean("hz.stack.speedtrace");
 	/** The display costs charged by other threads (the EDT redraws) since the script thread last paid. */
 	private static final AtomicLong pending = new AtomicLong();
-	/** Where the paced time stands (System.nanoTime terms). */
+	/** Where the paced time stands (Platform.nanoTime terms: System.nanoTime on the desktop). */
 	private static long deadline;
 	/** When the script thread last paid: display requests within {@link #SCRIPT_RECENT_NANOS} of it are the script's doing. */
 	private static volatile long lastStatement;
@@ -115,7 +115,7 @@ final class StackSpeed {
 	 * draws nothing for it, so the redraws HyperZebra asks for meanwhile are free.
 	 */
 	static void unchanged(){
-		if(!limited() || javax.swing.SwingUtilities.isEventDispatchThread()) return;
+		if(!limited() || UiHost.get().onEventThread()) return;
 		synchronized(LOCK){ drawnFree = true; }
 	}
 	/** A script set the text of a field to {@code length} characters. */
@@ -130,7 +130,7 @@ final class StackSpeed {
 	 * its next statement is still the last statement's (the next one has not run yet).
 	 */
 	static void redraw(java.awt.Rectangle r, double scale, boolean locked){
-		if(!limited() || r.isEmpty() || System.nanoTime()-lastStatement>SCRIPT_RECENT_NANOS) return;
+		if(!limited() || r.isEmpty() || Platform.get().nanoTime()-lastStatement>SCRIPT_RECENT_NANOS) return;
 		long cost;
 		synchronized(LOCK){
 			java.util.ArrayList<java.awt.Rectangle> list = waiting ? previous : drawn;
@@ -161,9 +161,9 @@ final class StackSpeed {
 	private static void pay(long cost){
 		double r = rate();
 		if(r<=0) return;
-		long now = System.nanoTime();
+		long now = Platform.get().nanoTime();
 		lastStatement = now;
-		if(javax.swing.SwingUtilities.isEventDispatchThread()){ pending.addAndGet(cost); return; } // paid by the script thread
+		if(UiHost.get().onEventThread()){ pending.addAndGet(cost); return; } // paid by the script thread
 		synchronized(LOCK){ // the statement before is done: what it draws from now on is late, the next statement's is its own
 			java.util.ArrayList<java.awt.Rectangle> t = previous; previous = drawn; drawn = t; drawn.clear();
 			previousFree = drawnFree; drawnFree = false;
@@ -177,11 +177,11 @@ final class StackSpeed {
 				wait = deadline-now;
 			}
 			while(wait>=500_000L && !TTalk.stop){ // Command-period still stops a slow script at once
-				java.util.concurrent.locks.LockSupport.parkNanos(Math.min(wait, 20_000_000L));
-				wait = deadlineNow()-System.nanoTime();
+				Platform.get().parkNanos(Math.min(wait, 20_000_000L));
+				wait = deadlineNow()-Platform.get().nanoTime();
 			}
 		}finally{ waiting = false; }
-		lastStatement = System.nanoTime();
+		lastStatement = Platform.get().nanoTime();
 	}
 	private static synchronized long deadlineNow(){ return deadline; }
 }

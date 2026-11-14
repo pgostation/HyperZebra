@@ -42,7 +42,7 @@ import java.util.Map;
  * Elements a scheme lacks come from the control panel file (its default look), else the native drawing is used.
  * -Dhz68k.kaleidoscope=false turns the schemes off.
  */
-final class KaleidoscopeScheme68k {
+class KaleidoscopeScheme68k {
 	static final boolean ENABLED=!"false".equals(System.getProperty("hz68k.kaleidoscope"));
 	/** "Scroll Bars have Double Arrows" (the panel's General Options; the real engine draws them in every case measured). */
 	static final boolean DOUBLE_ARROWS=!"false".equals(System.getProperty("hz68k.kaleidoscope.doublearrows"));
@@ -89,7 +89,7 @@ final class KaleidoscopeScheme68k {
 	private final ResourceFile68k scheme,panel;
 	// the program's thread draws controls with them, the EDT the frame round a game screen
 	private final Map<Integer,Img> images=new java.util.concurrent.ConcurrentHashMap<Integer,Img>();
-	private final java.util.Set<Integer> missing=java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private final java.util.Set<Integer> missing=java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<Integer,Boolean>());
 	final String name;
 	/** The accent colour in use (0 Lavender, the scheme's own elements; see the class comment). */
 	final int accent;
@@ -211,7 +211,7 @@ final class KaleidoscopeScheme68k {
 	 */
 	static File schemesFolder(File system){return new File(new File(system,"Apple Menu Items"),"Kaleidoscope Schemes");}
 	/** Copies a scheme into the virtual System Folder's {@link #schemesFolder}; returns the installed file. */
-	static File install(File source) throws IOException {return install(source,QuickTimeService.systemFolder());}
+	static File install(File source) throws IOException {return install(source,UiHost.get().quickTimeServiceSystemFolder());}
 	static File install(File source,File system) throws IOException {return Extensions68k.copyInto(source,schemesFolder(system));}
 	/** The file to use for a scheme the user opened: one already on the startup disk stays where it is, others are installed. */
 	static File installed(File source) throws IOException {
@@ -226,7 +226,7 @@ final class KaleidoscopeScheme68k {
 	 * (the other settings stay). {@link #active} reads the preferences on every call.
 	 */
 	static void select(File scheme) throws IOException {
-		File system=QuickTimeService.systemFolder(),panel=controlPanel(system);
+		File system=UiHost.get().quickTimeServiceSystemFolder(),panel=controlPanel(system);
 		chosenWhilePanelOpen=panel!=null&&MacApp68k.runningFrom(panel)!=null?scheme:null;
 		select(scheme,system);
 	}
@@ -977,7 +977,7 @@ final class KaleidoscopeScheme68k {
 		int[] content(){return new int[]{outsets[0],outsets[1],outsets[0]+contentHeight,outsets[1]+contentWidth};}
 	}
 	/** A document window frame of the scheme. */
-	interface WindowFrame extends ScreenWindowFrame.Look {
+	interface WindowFrame extends FrameLook68k {
 		FrameLayout layout(int w,int h,String title,int widgets,Font font);
 		/** The frame (ARGB, structure-sized, the content left clear), {@code pressed} = the widget drawn pressed (0 = none). */
 		BufferedImage paint(FrameLayout layout,String title,boolean active,int pressed,Font font);

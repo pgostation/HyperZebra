@@ -67,7 +67,8 @@ final class FieldTable extends MyScrollPane {
 	/** The press that sent nothing is the second click of a double-click (GUI.doublePress): mouseDoubleClick at its release. */
 	private boolean secondClick;
 	private boolean pointerInside;
-	private static final javax.swing.PopupFactory PLAIN_POPUPS = new javax.swing.PopupFactory();
+	/** Made when a table first shows a popup (the headless core never does). */
+	private static final class Popups { static final javax.swing.PopupFactory PLAIN = new javax.swing.PopupFactory(); }
 	/** Set when a press opened the column menu: its release neither sorts nor sends mouseUp. */
 	private boolean menuPress;
 	/** Set while a cell edit writes the field's text: the table already shows it, so the text change reloads nothing. */
@@ -91,7 +92,7 @@ final class FieldTable extends MyScrollPane {
 				return editing;
 			}
 			@Override public void paint(Graphics g){
-				if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+				if(HZ.lockedScreen && !HZ.capturingEffect) return;
 				super.paint(g);
 			}
 		};
@@ -146,7 +147,7 @@ final class FieldTable extends MyScrollPane {
 	}
 
 	private static boolean browsing(){
-		return PCARD.editMode==0 && AuthTool.tool==null && (PCARD.pc==null || PCARD.pc.tool==null);
+		return HZ.editMode==0 && !Host.get().authToolActive() && (!Host.get().hasCardWindow() || !Host.get().paintToolActive());
 	}
 
 	/** Cells are edited like the field's text: only with the browse tool and while lockText is false. */
@@ -169,16 +170,16 @@ final class FieldTable extends MyScrollPane {
 	}
 
 	/** Line widths and insets: the card magnification rounded to whole pixels (fonts and sizes use the exact one). */
-	private int scale(){ return Math.max(1, (int)Math.round(PCARD.scale())); }
+	private int scale(){ return Math.max(1, (int)Math.round(Host.get().scale())); }
 
 	/** The fonts, colours, border, grid and selection mode from the field's properties. */
 	void applyAppearance(){
 		OField f = fldData;
 		int scale = scale();
-		Font font = OObject.stackFont(f.textFont, f.textStyle&0x03, f.textSize*PCARD.scale());
+		Font font = OObject.stackFont(f.textFont, f.textStyle&0x03, f.textSize*Host.get().scale());
 		table.setFont(font);
 		table.getTableHeader().setFont(font);
-		table.setRowHeight(PCARD.toPhysical(Math.max(f.textHeight, f.textSize+2)));
+		table.setRowHeight(Host.get().toPhysical(Math.max(f.textHeight, f.textSize+2)));
 		table.setForeground(f.color);
 		table.setBackground(f.bgColor);
 		getViewport().setBackground(f.bgColor);
@@ -219,7 +220,7 @@ final class FieldTable extends MyScrollPane {
 	void applyColumnWidths(){
 		int count = table.getColumnCount();
 		if(count==0) return;
-		int[] widths = Data.parseWidths(fldData.columnWidths);
+		int[] widths = FieldTableData.parseWidths(fldData.columnWidths);
 		int given = 0, missing = 0;
 		for(int c=0; c<count; c++){ if(c<widths.length && widths[c]>0) given += widths[c]; else missing++; }
 		int inner = Math.max(0, fldData.width-2-(fldData.style==4 ? 2 : 0)); //the shadow takes 2 pixels on the right
@@ -229,8 +230,8 @@ final class FieldTable extends MyScrollPane {
 			for(int c=0; c<count; c++){
 				TableColumn column = table.getColumnModel().getColumn(c);
 				int w = c<widths.length && widths[c]>0 ? widths[c] : share;
-				column.setPreferredWidth(PCARD.toPhysical(w));
-				column.setWidth(PCARD.toPhysical(w));
+				column.setPreferredWidth(Host.get().toPhysical(w));
+				column.setWidth(Host.get().toPhysical(w));
 			}
 		}finally{ syncing = false; }
 	}
@@ -241,7 +242,7 @@ final class FieldTable extends MyScrollPane {
 		StringBuilder sb = new StringBuilder();
 		for(int c=0; c<count; c++){
 			if(c>0) sb.append(',');
-			sb.append(Math.max(1, Math.round(table.getColumnModel().getColumn(c).getWidth()/(float)PCARD.scale())));
+			sb.append(Math.max(1, Math.round(table.getColumnModel().getColumn(c).getWidth()/(float)Host.get().scale())));
 		}
 		fldData.columnWidths = sb.toString();
 		if(fldData.parent instanceof OCardBase) ((OCardBase)fldData.parent).changed = true;
@@ -257,9 +258,9 @@ final class FieldTable extends MyScrollPane {
 	void reload(){
 		if(fldData==null || fldData.fld==null) return;
 		if(table.isEditing()) table.getCellEditor().cancelCellEditing();
-		List<String[]> rows = Data.parseRows(fldData.getText());
-		String[] names = Data.parseNames(fldData.columnNames);
-		int columns = Math.max(1, Math.max(names.length, Data.columnCount(rows)));
+		List<String[]> rows = FieldTableData.parseRows(fldData.getText());
+		String[] names = FieldTableData.parseNames(fldData.columnNames);
+		int columns = Math.max(1, Math.max(names.length, FieldTableData.columnCount(rows)));
 		boolean structure = columns!=model.columns || !Arrays.equals(names, model.names);
 		model.rows = rows;
 		model.names = names;
@@ -328,7 +329,7 @@ final class FieldTable extends MyScrollPane {
 		if(table.isEditing()) table.getCellEditor().stopCellEditing();
 		boolean ascending = column==sortColumn ? !sortAscending : true;
 		String text = fldData.getText();
-		int[] order = Data.sortOrder(Data.parseRows(text), column, ascending);
+		int[] order = FieldTableData.sortOrder(FieldTableData.parseRows(text), column, ascending);
 		//the selected rows stay selected where they move to
 		int[] selected = fldData.selectedRows;
 		int[] moved = new int[selected.length];
@@ -341,7 +342,7 @@ final class FieldTable extends MyScrollPane {
 		sortAscending = ascending;
 		fldData.selectedRows = moved;
 		fldData.selectedLine = moved.length>0 ? moved[0] : 0;
-		fldData.setText(Data.reorder(text, order));
+		fldData.setText(FieldTableData.reorder(text, order));
 		table.getTableHeader().repaint();
 		TTalk.CallMessage("sortTable", new String[]{Integer.toString(column+1), ascending ? "ascending" : "descending"}, fldData);
 	}
@@ -381,7 +382,7 @@ final class FieldTable extends MyScrollPane {
 		}
 		javax.swing.PopupFactory shared = javax.swing.PopupFactory.getSharedInstance();
 		try{
-			if(menu.isLightWeightPopupEnabled()) javax.swing.PopupFactory.setSharedInstance(PLAIN_POPUPS);
+			if(menu.isLightWeightPopupEnabled()) javax.swing.PopupFactory.setSharedInstance(Popups.PLAIN);
 			menu.show(on, x, y);
 		}finally{ javax.swing.PopupFactory.setSharedInstance(shared); }
 		return true;
@@ -391,9 +392,9 @@ final class FieldTable extends MyScrollPane {
 	void insertColumn(int column){
 		if(table.isEditing()) table.getCellEditor().stopCellEditing();
 		OField f = fldData;
-		String text = Data.insertColumn(f.getText(), column, model.columns);
-		f.columnNames = Data.insertName(f.columnNames, column);
-		f.columnWidths = Data.insertWidth(f.columnWidths, column);
+		String text = FieldTableData.insertColumn(f.getText(), column, model.columns);
+		f.columnNames = FieldTableData.insertName(f.columnNames, column);
+		f.columnWidths = FieldTableData.insertWidth(f.columnWidths, column);
 		if(f.selectedColumn>=column) f.selectedColumn++;
 		if(sortColumn>=column-1) sortColumn++;
 		columnsChanged(text);
@@ -404,9 +405,9 @@ final class FieldTable extends MyScrollPane {
 		if(model.columns<=1) return;
 		if(table.isEditing()) table.getCellEditor().cancelCellEditing();
 		OField f = fldData;
-		String text = Data.deleteColumn(f.getText(), column);
-		f.columnNames = Data.deleteName(f.columnNames, column);
-		f.columnWidths = Data.deleteWidth(f.columnWidths, column);
+		String text = FieldTableData.deleteColumn(f.getText(), column);
+		f.columnNames = FieldTableData.deleteName(f.columnNames, column);
+		f.columnWidths = FieldTableData.deleteWidth(f.columnWidths, column);
 		if(f.selectedColumn==column) f.selectedColumn = 0;
 		else if(f.selectedColumn>column) f.selectedColumn--;
 		if(sortColumn==column-1) sortColumn = -1;
@@ -478,12 +479,12 @@ final class FieldTable extends MyScrollPane {
 			String v = value==null ? "" : value.toString();
 			if(v.equals(getValueAt(row, column))) return;
 			boolean added = row>=rows.size();
-			String text = Data.setCell(fldData.getText(), row+1, column+1, v);
+			String text = FieldTableData.setCell(fldData.getText(), row+1, column+1, v);
 			writingText = true;
 			try{ fldData.setText(text); }finally{ writingText = false; }
 			//the rows change here and now (not when the text's change comes round), so Return or Tab moves on from this cell
 			//and a typed new line has the next empty row under it
-			rows = Data.parseRows(text);
+			rows = FieldTableData.parseRows(text);
 			fireTableRowsUpdated(row, row);
 			if(added && newRow) fireTableRowsInserted(rows.size(), rows.size());
 			TTalk.CallMessage("closeField", fldData);
@@ -507,7 +508,7 @@ final class FieldTable extends MyScrollPane {
 		String all = fldData.columnNames;
 		if(all!=null && !all.isEmpty()){
 			String shown = StackTranslation.cell(fldData, all);
-			String[] names = Data.parseNames(shown);
+			String[] names = FieldTableData.parseNames(shown);
 			if(shown!=all && names.length==model.names.length && column<names.length && !names[column].isEmpty()) return names[column];
 		}
 		return StackTranslation.cell(fldData, name);
@@ -571,23 +572,23 @@ final class FieldTable extends MyScrollPane {
 			GUI.mouseDowned();
 			OField f = fldData;
 			if(f==null) return;
-			if(PCARD.editMode==0 && columnMenu(e)) return;
-			if(PCARD.editMode!=0){
+			if(HZ.editMode==0 && columnMenu(e)) return;
+			if(HZ.editMode!=0){
 				//Command-Option-Shift shows the field outlines: a click opens the script
 				//(key[]に Command-Option が残っていただけの普通のクリックならピークを終える)
 				if(!GUI.isPeekClick(e)) GUI.endPeek();
-				else if(GUI.stroke_frag==2 && PCARD.pc!=null && PCARD.pc.stack!=null){
-					ScriptEditor.openScriptEditor(PCARD.pc.stack.pcard, f);
+				else if(GUI.stroke_frag==2 && Host.get().hasCardWindow() && HZ.stack()!=null){
+					ScriptEditor.openScriptEditor(HZ.stack().pcard, f);
 					GUI.endPeek();
 				}
 				return;
 			}
 			if(!browsing()) return;
 			Point p = toPane(e);
-			GUI.clickH = f.left + PCARD.toLogical(p.x);
-			GUI.clickV = f.top + PCARD.toLogical(p.y);
+			GUI.clickH = f.left + Host.get().toLogical(p.x);
+			GUI.clickV = f.top + Host.get().toLogical(p.y);
 			GUI.noteFieldClick(f, p.x, p.y);
-			GUI.clickField = f;
+			HZ.clickField = f;
 			if(e.getSource()==table){
 				int row = table.rowAtPoint(e.getPoint());
 				int column = table.columnAtPoint(e.getPoint());
@@ -643,196 +644,4 @@ final class FieldTable extends MyScrollPane {
 		}
 	}
 
-	/** The field's text as rows of tab-delimited cells (no Swing: also used by the HyperTalk properties and the tests). */
-	static final class Data {
-		private Data(){}
-
-		/** The lines of the text (a final return does not start another row); each split at the tabs. */
-		static List<String[]> parseRows(String text){
-			List<String[]> rows = new ArrayList<String[]>();
-			if(text==null || text.isEmpty()) return rows;
-			String[] lines = lines(text);
-			for(String line : lines) rows.add(line.split("\t", -1));
-			return rows;
-		}
-
-		static String[] lines(String text){
-			String t = text.replace("\r\n", "\n").replace('\r', '\n');
-			if(t.endsWith("\n")) t = t.substring(0, t.length()-1);
-			return t.split("\n", -1);
-		}
-
-		static int columnCount(List<String[]> rows){
-			int n = 0;
-			for(String[] r : rows) n = Math.max(n, r.length);
-			return n;
-		}
-
-		/** "120,80,200" → {120,80,200}; an empty or non-number item leaves that column to share the rest (0). */
-		static int[] parseWidths(String spec){
-			if(spec==null || spec.trim().isEmpty()) return new int[0];
-			String[] items = spec.split(",", -1);
-			int[] widths = new int[items.length];
-			for(int i=0; i<items.length; i++){
-				try{ widths[i] = Math.max(0, (int)Math.round(Double.parseDouble(items[i].trim()))); }
-				catch(NumberFormatException e){ widths[i] = 0; }
-			}
-			return widths;
-		}
-
-		/** Checks a columnWidths value: numbers (or empty items) separated by commas. */
-		static String normalizeWidths(String spec) throws xTalkException {
-			if(spec==null || spec.trim().isEmpty()) return "";
-			String[] items = spec.split(",", -1);
-			StringBuilder sb = new StringBuilder();
-			for(int i=0; i<items.length; i++){
-				String item = items[i].trim();
-				if(i>0) sb.append(',');
-				if(item.isEmpty()) continue;
-				try{
-					double w = Double.parseDouble(item);
-					if(w<0) throw new NumberFormatException();
-					sb.append((int)Math.round(w));
-				}catch(NumberFormatException e){
-					throw new xTalkException("columnWidths requires comma-separated widths such as \"120,80,200\"");
-				}
-			}
-			return sb.toString();
-		}
-
-		/** Column names separated by tabs, or else by commas (a list typed in a script); a return also separates them. */
-		static String[] parseNames(String spec){
-			if(spec==null || spec.isEmpty()) return new String[0];
-			String s = spec.replace("\r\n", "\n").replace('\r', '\n');
-			String sep = s.indexOf('\t')>=0 ? "\t" : s.indexOf('\n')>=0 ? "\n" : ",";
-			if(s.endsWith(sep)) s = s.substring(0, s.length()-1);
-			return s.split(sep, -1);
-		}
-
-		/** Puts a value into item column of line row (1-based), adding lines and tabs as needed; tabs and returns in it become spaces. */
-		static String setCell(String text, int row, int column, String value){
-			if(text==null) text = "";
-			String v = value.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			List<String> lines = new ArrayList<String>(text.isEmpty() ? new ArrayList<String>() : Arrays.asList(lines(text)));
-			while(lines.size()<row) lines.add("");
-			List<String> cells = new ArrayList<String>(Arrays.asList(lines.get(row-1).split("\t", -1)));
-			while(cells.size()<column) cells.add("");
-			cells.set(column-1, v);
-			lines.set(row-1, String.join("\t", cells));
-			return String.join("\n", lines)+(finalReturn ? "\n" : "");
-		}
-
-		/**
-		 * The text with an empty cell put in at a column (1-based) of every row that reaches it (a shorter row shows the column
-		 * empty as it is; when none does, the first row is made to). Text without rows gets one empty row of the columns, the new
-		 * one too, so that the column shows.
-		 */
-		static String insertColumn(String text, int column, int columns){
-			if(text==null || text.isEmpty()) return "\t".repeat(Math.max(columns, column-1));
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			String[] lines = lines(text);
-			boolean reached = false;
-			for(int i=0; i<lines.length; i++){
-				List<String> cells = new ArrayList<String>(Arrays.asList(lines[i].split("\t", -1)));
-				if(cells.size()<column) continue;
-				cells.add(column-1, "");
-				lines[i] = String.join("\t", cells);
-				reached = true;
-			}
-			//a column after the last cells (at the end): the first row reaches it, so that the table has it
-			if(!reached) lines[0] = lines[0]+"\t".repeat(column-lines[0].split("\t", -1).length);
-			return String.join("\n", lines)+(finalReturn ? "\n" : "");
-		}
-
-		/** The text without one column (1-based): that cell taken out of every row that has it. */
-		static String deleteColumn(String text, int column){
-			if(text==null || text.isEmpty()) return "";
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			String[] lines = lines(text);
-			for(int i=0; i<lines.length; i++){
-				List<String> cells = new ArrayList<String>(Arrays.asList(lines[i].split("\t", -1)));
-				if(cells.size()<column) continue;
-				cells.remove(column-1);
-				lines[i] = String.join("\t", cells);
-			}
-			return String.join("\n", lines)+(finalReturn ? "\n" : "");
-		}
-
-		/** columnNames with an empty name put in at a column (1-based), in the same separators; no names stay no names. */
-		static String insertName(String spec, int column){ return editList(spec, nameSeparator(spec), column, true); }
-		static String deleteName(String spec, int column){ return editList(spec, nameSeparator(spec), column, false); }
-		/** columnWidths with an empty width (a share of the rest) put in at a column, or a column's width taken out. */
-		static String insertWidth(String spec, int column){ return editList(spec, ",", column, true); }
-		static String deleteWidth(String spec, int column){ return editList(spec, ",", column, false); }
-
-		private static String nameSeparator(String spec){
-			String s = spec==null ? "" : spec.replace("\r\n", "\n").replace('\r', '\n');
-			return s.indexOf('\t')>=0 ? "\t" : s.indexOf('\n')>=0 ? "\n" : ",";
-		}
-
-		private static String editList(String spec, String sep, int column, boolean insert){
-			if(spec==null || spec.isEmpty()) return "";
-			String s = spec.replace("\r\n", "\n").replace('\r', '\n');
-			boolean finalSep = s.endsWith(sep);
-			if(finalSep) s = s.substring(0, s.length()-1);
-			List<String> items = new ArrayList<String>(Arrays.asList(s.split(java.util.regex.Pattern.quote(sep), -1)));
-			if(items.size()<column) return spec;
-			if(insert) items.add(column-1, "");
-			else items.remove(column-1);
-			//nothing left (the only name or width taken out): no names, no widths
-			if(items.stream().allMatch(String::isEmpty)) return "";
-			return String.join(sep, items)+(finalSep ? sep : "");
-		}
-
-		/**
-		 * The new order of the rows (indexes into rows) sorted by one column: numerically when every non-empty cell of it is a
-		 * number, else as text ignoring case; empty cells go last; rows that compare equal keep their order.
-		 */
-		static int[] sortOrder(List<String[]> rows, int column, boolean ascending){
-			boolean numeric = true, any = false;
-			for(String[] r : rows){
-				String c = cell(r, column).trim();
-				if(c.isEmpty()) continue;
-				any = true;
-				if(number(c)==null){ numeric = false; break; }
-			}
-			final boolean byNumber = numeric && any;
-			java.text.Collator collator = java.text.Collator.getInstance();
-			collator.setStrength(java.text.Collator.SECONDARY);
-			Integer[] order = new Integer[rows.size()];
-			for(int i=0; i<order.length; i++) order[i] = i;
-			Arrays.sort(order, (a, b) -> {
-				String x = cell(rows.get(a), column).trim(), y = cell(rows.get(b), column).trim();
-				if(x.isEmpty() || y.isEmpty()) return x.isEmpty()==y.isEmpty() ? 0 : x.isEmpty() ? 1 : -1;
-				int c = byNumber ? Double.compare(number(x), number(y)) : collator.compare(x, y);
-				return ascending ? c : -c;
-			});
-			int[] result = new int[order.length];
-			for(int i=0; i<order.length; i++) result[i] = order[i];
-			return result;
-		}
-
-		/** The text with its lines in a new order (from sortOrder). */
-		static String reorder(String text, int[] order){
-			if(text==null || text.isEmpty()) return "";
-			String[] lines = lines(text);
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			StringBuilder sb = new StringBuilder();
-			for(int i=0; i<order.length; i++){
-				if(i>0) sb.append('\n');
-				sb.append(lines[order[i]]);
-			}
-			return sb.toString()+(finalReturn ? "\n" : "");
-		}
-
-		private static String cell(String[] row, int column){
-			return column<row.length ? row[column] : "";
-		}
-
-		private static Double number(String s){
-			try{ return Double.valueOf(s); }
-			catch(NumberFormatException e){ return null; }
-		}
-	}
 }

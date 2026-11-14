@@ -50,15 +50,6 @@ final class PpcBrowser68k {
 	private static int choose(String prompt,List<String> names){
 		java.util.function.BiFunction<String,List<String>,Integer> c=chooser;
 		if(c!=null)return c.apply(prompt,names);
-		if(java.awt.GraphicsEnvironment.isHeadless())return -1;
-		final int[] picked={-1};
-		Runnable show=()->{
-			Object[] values=names.toArray();
-			Object answer=javax.swing.JOptionPane.showInputDialog(null,prompt,"",javax.swing.JOptionPane.QUESTION_MESSAGE,null,values,values[0]);
-			picked[0]=answer==null?-1:names.indexOf(answer);
-		};
-		if(javax.swing.SwingUtilities.isEventDispatchThread())show.run();
-		else try{javax.swing.SwingUtilities.invokeAndWait(show);}catch(Exception e){return -1;}
-		return picked[0];
+		return Toolbox68k.PARTS.chooseFromList(prompt,names);
 	}
 }

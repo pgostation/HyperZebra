@@ -14,7 +14,7 @@ import java.util.List;
  * dinf/dref, stbl: stsd, stts, stsc, stsz, stco) - so QuickTimeFile, HyperZebra's own reader, and QuickTime both play them.
  * UxCardToMovie makes a movie of the cards ('smc ' samples) this way; MyMovieTool flattens a movie into a 'myMV' resource.
  */
-final class MovieWriter68k {
+class MovieWriter68k {
 	static final int MOVIE_TIME_SCALE=600;
 	static final int VIDE=0x76696465,SOUN=0x736f756e,ALIS=0x616c6973;
 
@@ -171,7 +171,7 @@ final class MovieWriter68k {
 		try{
 			long length=q.data().length();if(length>Integer.MAX_VALUE-16)return false;
 			byte[] data=length>0?q.data().read(0,(int)length):new byte[0];
-			if(q.source!=null&&q.source.startsWith("data fork")){java.nio.file.Files.write(out.toPath(),data);return true;}
+			if(q.source!=null&&q.source.startsWith("data fork")){try(java.io.FileOutputStream o=new java.io.FileOutputStream(out)){o.write(data);}return true;}
 			byte[] moov=q.moov.clone();
 			boolean wrapped=data.length>=8&&data[4]=='m'&&data[5]=='d'&&data[6]=='a'&&data[7]=='t';
 			int shift=wrapped?0:8;

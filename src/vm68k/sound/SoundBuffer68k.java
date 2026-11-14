@@ -19,7 +19,7 @@
  *
  * <p>Not emulated: the alternate sound buffer (port A bit 3), the disk-speed PWM in the low bytes.
  */
-final class SoundBuffer68k {
+class SoundBuffer68k {
 	/** Samples per frame. */
 	static final int WORDS=370;
 	/** Bytes taken in the VM (the words plus room up to a round size, as the old dummy buffer had). */
@@ -135,7 +135,7 @@ final class SoundBuffer68k {
 		if(v!=null){
 			long limit=now+100_000_000L;
 			if(head-tail>HIGH_SAMPLES)
-				while(head-tail>TARGET_SAMPLES&&!v.ended&&System.nanoTime()<limit)java.util.concurrent.locks.LockSupport.parkNanos(2_000_000L);
+				while(head-tail>TARGET_SAMPLES&&!v.ended&&System.nanoTime()<limit)Platform.get().parkNanos(2_000_000L);
 		}
 		else if(mixer!=null&&mixer.failed())tail=head; // no audio output: nothing to wait for
 		return made;

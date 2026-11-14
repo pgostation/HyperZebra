@@ -105,7 +105,7 @@ final class AdbManager68k {
 		// Once a tick: the poll comes every 4096 instructions and reading the host pointer is a native call (it can starve a
 		// music mixer); a real mouse reports at about that rate anyway.
 		int tick=tb.tickCount();if(tick==lastPollTick)return;lastPollTick=tick;
-		MacAppHost host=tb.host();java.awt.Point p=host.mouseLocation();boolean down=host.isMouseDown();
+		VmHost host=tb.host();java.awt.Point p=host.mouseLocation();boolean down=host.isMouseDown();
 		if(lastH==Integer.MIN_VALUE){lastH=p.x;lastV=p.y;lastDown=down;return;}
 		int dx=p.x-lastH,dy=p.y-lastV;boolean changed=down!=lastDown;
 		if(dx==0&&dy==0&&!changed)return;

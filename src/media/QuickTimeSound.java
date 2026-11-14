@@ -5,7 +5,6 @@ import java.util.List;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
 
 /**
  * The sound of a QuickTime movie decoded without QuickTime: every enabled sound track of a {@link QuickTimeFile} laid
@@ -34,6 +33,11 @@ final class QuickTimeSound {
 		byte[] bytes(){byte[] b=new byte[samples.length*2];for(int i=0;i<samples.length;i++){b[i*2]=(byte)(samples[i]>>8);b[i*2+1]=(byte)samples[i];}return b;}
 		AudioInputStream stream(){return new AudioInputStream(new ByteArrayInputStream(bytes()),format(),frames());}
 	}
+
+	/** A G.711 mu-law byte as a 16-bit sample */
+	static int ulaw(int u){u=~u&0xff;int sign=u&0x80,e=(u>>4)&7,m=u&0x0f;int s=(((m<<3)+0x84)<<e)-0x84;return sign!=0?-s:s;}
+	/** A G.711 A-law byte as a 16-bit sample */
+	static int alaw(int a){a^=0x55;int t=(a&0x0f)<<4,seg=(a&0x70)>>4;if(seg==0)t+=8;else if(seg==1)t+=0x108;else{t+=0x108;t<<=seg-1;}return (a&0x80)!=0?t:-t;}
 
 	/** Whether this decoder handles a description's format. */
 	static boolean canDecode(QuickTimeFile.SampleDescription d){
@@ -253,14 +257,10 @@ final class QuickTimeSound {
 			case "fl32":for(int i=0;i<n&&i*4+3<b.length;i++)out[i]=clip16(Math.round(Float.intBitsToFloat(QuickTimeFile.u4(b,i*4))*32768.0));return out;
 			case "fl64":for(int i=0;i<n&&i*8+7<b.length;i++)out[i]=clip16(Math.round(Double.longBitsToDouble(QuickTimeFile.u8(b,i*8))*32768.0));return out;
 			case "ulaw":case "alaw":{
-				// G.711 through Java Sound's converters
-				AudioFormat coded=new AudioFormat(format.equals("ulaw")?AudioFormat.Encoding.ULAW:AudioFormat.Encoding.ALAW,(float)d.sampleRate,8,ch,ch,(float)d.sampleRate,false);
-				AudioFormat pcm=new AudioFormat((float)d.sampleRate,16,ch,true,true);
+				// G.711, the same 16-bit values as Java Sound's converters gave (all 256 codes of both; the browser has no such converter)
+				boolean u=format.equals("ulaw");
 				int len=(int)Math.min(b.length,(long)n);
-				try(AudioInputStream in=new AudioInputStream(new ByteArrayInputStream(b,0,len),coded,len/ch);AudioInputStream conv=AudioSystem.getAudioInputStream(pcm,in)){
-					byte[] s=conv.readAllBytes();
-					for(int i=0;i<n&&i*2+1<s.length;i++)out[i]=(short)(s[i*2]<<8|(s[i*2+1]&0xff));
-				}
+				for(int i=0;i<n&&i<len;i++)out[i]=(short)(u?ulaw(b[i]&0xff):alaw(b[i]&0xff));
 				return out;
 			}
 			case "ima4":return ima4(b,ch,n);

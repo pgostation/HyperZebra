@@ -14,7 +14,8 @@ import java.util.regex.Pattern;
  *   long date      Monday, September 14, 2026
  *   short time     6:24 PM          (the time)
  *   long time      6:24:30 PM
- * 日本語環境では the date が "26.09.14"、the long date が "2026年 9月 14日 月曜日" になるので
+ * 日本語環境では the date が "26.9.14"、the long date が "2026年 9月 14日 月曜日"、the abbr date が
+ * "2026年 9月 14日 月曜" になるので(KanjiTalk 7.5.3 の itl0/itl1 16384: shrtDateFmt 0 = 月日も年の世紀もなし、abbrLen 4)
  * その形式も読み書きする。日付と時刻はスペース区切りで組み合わせられる("1/1/00 3:00 PM")。
  */
 class HCDateTime {
@@ -43,7 +44,7 @@ class HCDateTime {
 		"^([0-9]{1,4})年\\s*([0-9]{1,2})月\\s*([0-9]{1,2})日(?:\\s*\\(?([日月火水木金土])曜?日?\\)?)?$");
 
 	static boolean isJapanese(){
-		return PCARD.pc!=null && International.sameLanguage(PCARD.pc.lang, "ja");
+		return UiHost.get().japaneseCardWindow();
 	}
 
 	//---------------------------------------------------------------- 解析
@@ -52,6 +53,8 @@ class HCDateTime {
 	 *  birth" and "12/2/92 my daughter" convert, "abc,4/23/60" stays an invalid date) - HyperCard 10th Anniversary's Events field
 	 *  keeps "4/23/60,my birth" lines and converts them to seconds */
 	static Calendar parseForConvert(String text){
+		//HyperCard J-2.3 converts empty (or blanks) as 0 seconds: Kakeibo's + button on an empty "input date" gives "04.1.2"
+		if(text!=null && text.trim().isEmpty()) return fromMacSeconds(0);
 		Calendar whole = parse(text);
 		if(whole!=null || text==null) return whole;
 		Matcher m = LEADING_DATE.matcher(text.trim());
@@ -118,7 +121,9 @@ class HCDateTime {
 			if(ymd==null) return null;
 			year = ymd[0]; month = ymd[1]; day = ymd[2];
 		}
-		if(month<1 || month>12 || day<1 || day>31) return null;
+		//a day the month does not have is no date (the Script Manager's dateTimeInvalid: HyperCard J-2.3 leaves "26.11.31" and
+		//"2/30/2026" unconverted with "Invalid date"); dateItems still roll over ("2026,11,31,…" is Dec 1)
+		if(month<1 || month>12 || day<1 || day>daysInMonth(year, month)) return null;
 		cal.clear();
 		cal.set(year, month-1, day, hour, minute, second);
 		cal.getTimeInMillis();
@@ -165,6 +170,12 @@ class HCDateTime {
 		return year<40 ? 2000+year : 1900+year;
 	}
 
+	/** the days of the month, leap years by the Gregorian rule */
+	static int daysInMonth(int year, int month){
+		if(month==2) return (year%4==0 && year%100!=0) || year%400==0 ? 29 : 28;
+		return month==4 || month==6 || month==9 || month==11 ? 30 : 31;
+	}
+
 	private static int monthNumber(String name){
 		for(int i=0; i<12; i++){
 			if(MONTHS[i].equalsIgnoreCase(name) || SHORT_MONTHS[i].equalsIgnoreCase(name)) return i+1;
@@ -180,7 +191,7 @@ class HCDateTime {
 	/** 現在時刻。外部コマンドがSetDateTimeで変えたMacの時計(その実行中だけのずれ、ホストの時計はそのまま)に従う(XTernal CollectionのSetDateTime) */
 	static Calendar now(){
 		Calendar cal = Calendar.getInstance();
-		long offset = Toolbox68k.programClockSeconds();
+		long offset = UiHost.get().toolbox68kProgramClockSeconds();
 		if(offset!=0) cal.setTimeInMillis(cal.getTimeInMillis()+offset*1000L);
 		return cal;
 	}
@@ -243,11 +254,16 @@ class HCDateTime {
 			String yy = Integer.toString(Math.floorMod(year, 100));
 			if(yy.length()==1) yy = "0"+yy;
 			if(isJapanese()){
-				return yy+"."+pad2(month)+"."+pad2(day);
+				//no leading zeros on the month and the day (HyperCard J-2.3: "26.12.1", Kakeibo's own data "02.7.5")
+				return yy+"."+month+"."+day;
 			}
 			return month+"/"+day+"/"+yy;
 		}
 		if(f.equals("abbrev date")){
+			//the Japanese itl1's abbrLen is 4 bytes: the weekday's first two kanji (HyperCard J-2.3: "2026年 12月 1日 火曜")
+			if(isJapanese()){
+				return year+"年 "+month+"月 "+day+"日 "+JAPANESE_WEEKDAYS[dow].substring(0, 2);
+			}
 			return SHORT_WEEKDAYS[dow]+", "+SHORT_MONTHS[month-1]+" "+day+", "+year;
 		}
 		if(f.equals("long date")){

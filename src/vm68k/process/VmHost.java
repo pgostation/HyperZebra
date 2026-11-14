@@ -1,0 +1,168 @@
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Cursor;
+import java.awt.Image;
+import java.awt.Shape;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.awt.Window;
+import java.awt.event.KeyEvent;
+
+/**
+ * The host of a 68K VM as the Toolbox uses it (P4): the desktop's MacAppHost (Swing windows, the screen, the mouse and keys)
+ * or the browser player's. Toolbox68k.host() gives it.
+ */
+interface VmHost {
+	/** a host that keeps windows in memory only (tests, VMs without a display) */
+	boolean headless();
+	/** the host of a HyperCard external (its screen is HyperCard's) */
+	boolean external();
+	void setQuickDraw(QuickDraw68k quickDraw);
+	void setOwner(MacApp68k owner);
+	void setMenusUpdateOnOpening(boolean on);
+	boolean adoptDeviceWrites(int record);
+	boolean adoptDeviceWrites();
+	Window anyWindow();
+	<T> T ask(final java.util.concurrent.Callable<T> c);
+	/** The Color Picker's GetColor (Pack12 9): the colour chosen as 0xRRGGBB, -1 when it was cancelled; null when the host has
+	 *  no picker of its own (the desktop's chooser is shown through {@link #ask}) */
+	default Integer pickColor(String prompt, int rgb) { return null; }
+	void beginModalWindow(final int record);
+	boolean behindHyperCard(int record);
+	void bringToFront();
+	void bringToFront(int record,int behind);
+	boolean capsLocked();
+	void configureSmooth(boolean redraw);
+	VmWindow createWindow(final int record,final int left,final int top,final int width,final int height,final String title,final int procId,final boolean visible,final boolean goAway,final int pixelBase,final int rowBytes,final int depth);
+	VmWindow createWindow(final int record,final int left,final int top,final int width,final int height,final String title,final int procId,final boolean visible,final boolean goAway,final int pixelBase,final int rowBytes,final int depth,final boolean customFrame);
+	int[] devicePalette(int depth);
+	int[] devicePalette(int depth,int[] reuse);
+	void directScreenAccess(QuickDraw68k quickDraw);
+	int[] displacement(int record);
+	void dispose();
+	void disposeWindow(final int record);
+	void endComposition();
+	void endModalWindow(final int record);
+	void eventCall();
+	boolean extensionsDone();
+	void externalEntered();
+	Rectangle externalScreen();
+	void followStackZoom();
+	void hideBalloon();
+	void hideDragOutline();
+	void hideWindow(final int record);
+	void holdSyntheticPointer(Point p);
+	int hostModifiers(int ex);
+	BufferedImage imageOver(int base,int width,int height,int rowBytes);
+	BufferedImage imageOver(int base,int width,int height,int rowBytes,boolean alpha);
+	boolean isActiveWindow(int record);
+	boolean isKeyDown(int keyCode);
+	boolean isMouseDown();
+	void keyMap(byte[] map);
+	int macChar(KeyEvent e);
+	void markFrontTitle(boolean marked);
+	char menuCommand(int menuId,int item);
+	boolean modalWindowUp();
+	int modifiers();
+	Point mouseLocation();
+	void mousePoll();
+	void moveDragOutline(final int x,final int y);
+	void moveFrame(int record,int left,int top);
+	void moveWindow(final int record,final int left,final int top);
+	void moveWindow(final int record,final int left,final int top,boolean byUser);
+	void moveWindow(final int record,final int left,final int top,boolean byUser,int dispX,int dispY);
+	void placeBehind(final int record,final int behind);
+	int popUpLiveMenu(java.awt.image.BufferedImage image,LiveMenu68k live,int globalLeft,int globalTop);
+	int popUpMenuSelect(final MenuModel68k model,final int globalLeft,final int globalTop,final int initialItem);
+	void postText(String text);
+	int pressedWindowAt(int h,int v);
+	int[] programPlace(int record,int shownX,int shownY);
+	void programWaiting();
+	void publishWindowDrawing();
+	void repaintNow(int record);
+	void resizeWindow(final int record,final int width,final int height,final int pixelBase,final int rowBytes,final int depth);
+	void screenResized(final MacApp68k app,final Rectangle screen);
+	void screenSaverRestored();
+	void selectWindow(final int record);
+	boolean sendBackdropsBehindHyperCard(Rectangle card);
+	boolean sendBehindHyperCard(java.awt.Window w);
+	void setApplicationIcon(BufferedImage icon);
+	void setCompositionEnabled(final boolean on);
+	void setCursor(final Cursor c);
+	void setCustomFrame(final int record);
+	void setDragOutline(final int x,final int y,final int width,final int height);
+	void setFloatingLayer(int record);
+	void setIgnoresDeviceWrites(int record,boolean ignore);
+	void setMenuBar(List<MenuModel68k> menus);
+	/** A made-up menu-bar click of the host's (EventManager68k.postMenuProbe) is over, the menu bar flushed as the program left it
+	 *  at its MenuSelect: the menu being opened shows that bar, not one the program changes after MenuSelect returned. */
+	default void menuProbeEnded() {}
+	void setOverlay(int record,Image image);
+	void setSystemWindow(int record);
+	void setTitle(final int record,final String title);
+	void setTitleBand(final int record,final int rows);
+	void setTitleBand(final int record,final int rows,final int left,final int right);
+	void setWindoid(int record);
+	void setWindowResizable(final int record,final boolean resizable);
+	void setWindowShape(final int record,final java.awt.Shape shape);
+	void setWindowVariant(final int record,final int kind);
+	void showBalloon(final String text,final int tipX,final int tipY);
+	void showBalloonImage(final java.awt.image.BufferedImage image,final int tipX,final int tipY);
+	void showDragOutline(final int[] rect);
+	void showWindow(final int record);
+	void swapMMUMode();
+	Point toGuest(Point host);
+	Rectangle toGuestRect(Rectangle host);
+	Point toHost(int gx,int gy);
+	Point unpinnedMouseLocation();
+	int[] userDragArea();
+	void warpMouse(int h,int v);
+	void willShow(int record);
+	VmWindow window(int record);
+	void windowMovedByUser(int record);
+	void blitBegin();
+	void blitEnd();
+	void deactivateHost(VmWindow hw);
+	String debugOpenMenu(final int id);
+	String describeFocus();
+	String describeWindowSerials();
+	void dragScreenBar(int dx,int dy);
+	void extensionsLoaded();
+	Window frontFocusableWindow();
+	VmWindow frontWindow();
+	void injectActivate(int record);
+	void injectAwtMouse(final int id,final int sx,final int sy);
+	void injectClick(int record,int x,int y,int clicks);
+	void injectClick(int record,int x,int y,int clicks,int extraModifiers);
+	void injectDeactivate(int record);
+	void injectInputMethod(int record,final String composing,final String committed);
+	void injectKey(int record,int ch);
+	void injectKey(int record,int ch,int modifiers);
+	void injectOsClick(int record,int x,int y);
+	void injectPopupChoice(final int item);
+	void injectPopupChoice(final int item,final int subitem);
+	void injectWindowMove(int record,final int dx,final int dy);
+	void invalidateDisplays();
+	VmHostListener listener();
+	boolean ownsWindow(Window w);
+	void postCommandQ();
+	boolean processHidden();
+	Point rawPointerLocation();
+	Rectangle screenBarBounds();
+	void setKeyState(int keyCode,boolean down);
+	void setProcessHidden(final boolean hidden);
+	void simulateMouse(int sx,int sy,boolean down);
+	SmoothZoom smoothZoom();
+	void snapshot(java.io.File dir);
+	int warpSerial();
+	void fontSearching(boolean busy);
+	void garbledTextFixed(final String font,final String replacement,final Runnable undo);
+	void garbledTextNotFound();
+	void reposition(final MacApp68k app);
+	void resmooth();
+	void rezoom(final MacApp68k app);
+	void setCursorHidden(boolean hidden);
+	int[] windowPixels(int record,int x,int y,int w,int h);
+}

@@ -119,7 +119,7 @@ final class Sandbox {
 			own.add(canonical(ExtensionGuard.folder()));
 			hostOnly=own;
 			roots.add(canonical(AppPaths.stateDirectory()));
-			roots.add(canonical(new File(new File(System.getProperty("user.home","."),"Library"+File.separator+"Application Support"),"HyperZebra"))); // FileSystem68k's boot volume on every platform
+			roots.add(canonical(AppPaths.bootVolumeDirectory())); // the VM's startup disk: the same folder unless hz.state.dir moved the state
 			File home=HomeStack.folder();homeFolder=home.isDirectory()?canonical(home):null;
 			builtInFolders=roots;
 		}

@@ -1263,7 +1263,7 @@ final class PpcCarbonUtilities {
 	/** One SoundConverterOpen: input and output formats, the resampler's position and last frame, MACE state, FillBuffer's left-over output. */
 	private static final class Converter {
 		int inFormat,inChannels,inSize;double inRate;int outFormat,outChannels,outSize;double outRate;boolean noRate;
-		QuickTimeFile.SoundDescription in;MaceDecoder.Stream mace;
+		QuickTimeFile.SoundDescription in;MaceCodec.Stream mace;
 		double pos;short[] last;byte[] pending=new byte[0];
 		int outFrameBytes(){return outChannels*outBytesPerSample(outFormat,outSize);}
 	}
@@ -1282,7 +1282,7 @@ final class PpcCarbonUtilities {
 	}
 	private void setInput(Converter v,int format,int channels,int size,double rate){
 		v.inFormat=format;v.inChannels=channels;v.inSize=size;v.inRate=rate;v.in=inputDescription(format,channels,size,rate);
-		String t=ResourceFile68k.typeName(format);v.mace=t.equals("MAC3")||t.equals("MAC6")?new MaceDecoder.Stream(t.equals("MAC6"),channels):null;
+		String t=ResourceFile68k.typeName(format);v.mace=t.equals("MAC3")||t.equals("MAC6")?new MaceCodec.Stream(t.equals("MAC6"),channels):null;
 	}
 	/** {@code packets} (sample frames for uncompressed formats) of input bytes converted to output bytes. */
 	private byte[] convert(Converter v,byte[] b,int packets) throws java.io.IOException {

@@ -13,9 +13,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
 
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
 
 /**
  * The last line of defence for the Home stack, whose scripts run in every stack. The {@link Sandbox} and the {@link StackGuard}
@@ -167,22 +164,22 @@ final class HomeGuard {
 		catch(IOException e){ return ""; }
 		StringBuilder code = new StringBuilder();
 		try{
-			XMLStreamReader reader = XmlSafe.input().createXMLStreamReader(new ByteArrayInputStream(bytes));
+			XmlIn reader = Platform.get().xmlIn(new ByteArrayInputStream(bytes));
 			int depth = 0;
 			while(reader.hasNext()){
 				int event = reader.next();
-				if(event==XMLStreamConstants.START_ELEMENT){
+				if(event==XmlIn.START_ELEMENT){
 					if(depth==0 && !CODE.contains(reader.getLocalName())) continue;
 					depth++;
 					for(int i=0; i<reader.getAttributeCount(); i++) code.append(reader.getAttributeValue(i)).append('\n');
 				}
-				else if(event==XMLStreamConstants.END_ELEMENT){
+				else if(event==XmlIn.END_ELEMENT){
 					if(depth>0 && --depth==0) code.append('\n');
 				}
 				else if(depth>0 && reader.hasText()) code.append(reader.getText());
 			}
 			return code.toString();
-		}catch(XMLStreamException | RuntimeException e){
+		}catch(XmlException | RuntimeException e){
 			return new String(bytes, StandardCharsets.ISO_8859_1);
 		}
 	}

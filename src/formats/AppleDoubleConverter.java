@@ -100,5 +100,5 @@ final class AppleDoubleConverter {
 		return s.toString();
 	}
 
-	private static String text(String key){return PCARD.pc!=null&&PCARD.pc.intl!=null?PCARD.pc.intl.getDialogText(key):key;}
+	private static String text(String key){return Host.get().hasCardWindow()&&HZ.intl()!=null?HZ.intl().getDialogText(key):key;}
 }

@@ -296,7 +296,6 @@ public class PaintTool {
 	static float lineSize = 1;
 	static int alpha = 100;
 	static boolean antialias = false;
-	static boolean editBackground = false;
 	//HyperCardのOptionsメニュにある描画モード。IconEditorの
 	//FatBits表示グリッド(PCARDFrame.useGrid/gridSize)とは別物。
 	static boolean drawingGrid = false;
@@ -835,13 +834,28 @@ public class PaintTool {
 	private static boolean pressEndedSelection;
 
 	/**
-	 * The Paint menu's Select with nothing selected (HC J-2.3): the lasso closes in on all of the picture, however many separate shapes
-	 * it has, and the tool is the lasso while the selection lasts (HyperPiece++'s clock clears its hands with type "SX" with commandKey,
-	 * then goes on with the brush). With nothing to close in on, only the select tool is chosen.
+	 * The Paint menu's Select with nothing selected: the lasso closes in on the last thing painted since a tool was chosen
+	 * (HC 2.4 measured: of two rectangles drawn one after the other only the second; DoodlePaint's Square and Circle buttons
+	 * rubber-band a shape by drag, Select, Clear Picture while the mouse is down, and wiped the whole drawing when Select took
+	 * all of it). With nothing painted since the tool was chosen (HC J-2.3 and 2.4) the lasso closes in on all of the picture,
+	 * however many separate shapes it has (HyperPiece++'s clock clears its hands with type "SX" with commandKey after choose
+	 * brush tool, then goes on with the brush). The tool is the lasso while the selection lasts. With nothing to close in on,
+	 * only the select tool is chosen.
 	 */
 	static void lassoWholePicture(){
 		owner = PCARD.pc;
-		BufferedImage mask = tightMask(null);
+		Rectangle last = owner.paintHistory.pendingChange(owner);
+		BufferedImage region = null;
+		if(last!=null){
+			BufferedImage s = owner.getSurface();
+			region = newArgb(s.getWidth(), s.getHeight());
+			java.awt.Graphics2D g = region.createGraphics();
+			g.setColor(java.awt.Color.BLACK);
+			g.fillRect(last.x, last.y, last.width, last.height);
+			g.dispose();
+		}
+		BufferedImage mask = tightMask(region);
+		if(region!=null && isAllTransparent(mask)) mask = tightMask(null);
 		if(isAllTransparent(mask)){
 			TBButtonListener.ChangeTool("Select", null);
 			return;
@@ -1480,6 +1494,12 @@ public class PaintTool {
 	static boolean endPointIsEnough(){
 		return owner!=null && owner.floating==null && owner.tool instanceof ShapeToolBase && ((ShapeToolBase)owner.tool).endPointIsEnough();
 	}
+	//a script's drag at once with one of HyperCard's brushes is one stroke from start to end, the shape put at every pixel of
+	//the line between them (HyperCard J-2.3, HyperPiece 2's clock hands): stopping the pointer every few pixels on the way
+	//rounded each piece on its own and moved the stair steps of slanted strokes by a pixel
+	static boolean dragIsOneStroke(){
+		return owner!=null && owner.floating==null && owner.tool instanceof BrushTool && classicBrush>0;
+	}
 	public static void mouseWithin(int x, int y){
 		if(owner==null) return;
 		if(GUI.key[' ']>0) { //space
@@ -1820,6 +1840,7 @@ public class PaintTool {
 	//入力中の文字をカードピクチャへ確定する)。直前にアイコンエディタを使っていると
 	//ownerがそちらを指したままなので、確定先がアイコンにならないようカードへ戻す。
 	static public void endCardTool(){
+		GMenuPaint.cardLeft();
 		if(PCARD.pc==null || PCARD.pc.tool==null) return;
 		PaintTool.owner = PCARD.pc;
 		PCARD.pc.tool.end();
@@ -1843,6 +1864,7 @@ public class PaintTool {
 		if(PCARDFrame.pc==null || PCARDFrame.pc.stack==null || PCARDFrame.pc.stack.curCard==null) return;
 		if(PCARDFrame.pc.stack.file==null) return;
 		OCard card = PCARDFrame.pc.stack.curCard;
+		GMenuPaint.holdArrivalPictures(); //Revert goes back to what was on disk when the card was opened
 
 		//ファイル保存 (card)
 		savePicture(card);
@@ -1984,6 +2006,17 @@ class PaintUndo {
 
 	//保留中の操作があるか
 	boolean pending(){ return baseline!=null; }
+
+	/** What the pending operation (the last thing painted) changed on the surface being painted, or null: nothing pending,
+	 *  another layer, a selection up, the surface's size changed (the Paint menu's Select closes in on it) */
+	Rectangle pendingChange(PCARDFrame owner){
+		if(baseline==null || owner==null || owner.floating!=null) return null;
+		BufferedImage current = layerImage(owner, baselineBackground, baselineLayer);
+		if(current==null || current!=owner.getSurface()) return null;
+		Entry e = new Entry(baselineBackground, baselineLayer);
+		diffInto(e, baseline, current);
+		return e.rect==null || e.beforeSize!=null || e.rect.isEmpty() ? null : e.rect;
+	}
 
 	//保留中の操作の前のサーフェースのコピー(surfaceがその操作のレイヤーでなければnull)
 	BufferedImage pendingBaseline(BufferedImage surface){
@@ -2664,10 +2697,18 @@ class BrushTool implements toolTabletInterface{
 		int ax = Math.round(x0), ay = Math.round(y0), bx = Math.round(x1), by = Math.round(y1);
 		int steps = Math.max(Math.abs(bx-ax), Math.abs(by-ay));
 		for(int i=(carry<0f ? 0 : 1); i<=steps; i++){
-			int cx = steps==0 ? ax : ax+Math.round((bx-ax)*i/(float)steps);
-			int cy = steps==0 ? ay : ay+Math.round((by-ay)*i/(float)steps);
+			int cx = steps==0 ? ax : ax+lineStep(bx-ax, i, steps);
+			int cy = steps==0 ? ay : ay+lineStep(by-ay, i, steps);
 			stampShape(buf, cx, cy, shape, argb, pattern, eraser);
 		}
+	}
+
+	//the i-th of steps pixels along d, as HyperCard J-2.3's brush line has it: a 16.16 fixed-point slope cut towards zero,
+	//half a pixel added and the whole part taken (60 minute hands of HyperPiece 2's clock from the centre: Math.round
+	//missed 13 pixels where the slope's cut fraction falls below a half)
+	static int lineStep(int d, int i, int steps){
+		long slope = ((long)d<<16)/steps;
+		return (int)((0x8000L+i*slope)>>16);
 	}
 
 	//形(CLASSIC_BRUSHES)を1つ置く。(cx,cy)が形の(8,8)
@@ -4044,7 +4085,8 @@ abstract class ShapeToolBase implements toolInterface{
 	protected static Rectangle dragRectangle(Point anchor, int x, int y, boolean square){
 		int dx=x-anchor.x, dy=y-anchor.y;
 		if(square){
-			int size=Math.max(Math.abs(dx),Math.abs(dy));
+			//the drag's smaller side (HC 2.4 measured: shift-drag from 100,100 to 220,200 makes a 100 x 100 square)
+			int size=Math.min(Math.abs(dx),Math.abs(dy));
 			dx=(dx<0) ? -size : size;
 			dy=(dy<0) ? -size : size;
 		}
@@ -5489,15 +5531,25 @@ class TypeTool implements toolInterface{
 			//HyperCard J-2.3's paint text is opaque: every line stands on a white box as wide as the line, from the line's
 			//top (baseline - ascent) to the next line, 1 pixel either side (typed over a black rectangle; Logo 2.1's "text"
 			//covered the end of the line it had just drawn). Not in the icon editor, whose text keeps the icon's transparency
+			//the textAlign places each line by the clicked point (HyperCard J-2.3): left starts there, center is centred on
+			//it, right ends there. The area draws every line from the left; each line's strip is moved when it is stamped
+			String align = TUtil.compatibilityProperty("textAlign").toLowerCase(java.util.Locale.ROOT);
+			int alignBy = align.equals("center") ? 1 : align.equals("right") ? 2 : 0;
+			int[] lineWidths = null;
+			int firstTop = 0, stripH = 0;
 			if(!(PaintTool.owner instanceof IconEditor)){
 				Font f = OObject.stackFont(PCARD.pc.textFont, PCARD.pc.textStyle&0x03, PCARD.pc.textSize);
 				java.awt.FontMetrics fm = PaintTool.owner.getFontMetrics(f);
 				boolean smear = MyTextArea.needsSmear(f, PCARD.pc.textStyle);
 				int lineH = Math.max(PCARD.pc.textSize, area.fldData.textHeight);
 				int pen = OField.textMargin(1, false), baseline = OField.textTopMargin(1, false)+fm.getAscent();
+				firstTop = baseline-fm.getAscent(); stripH = lineH;
+				String[] lines = area.getText().split("\\r?\\n|\\r", -1);
+				lineWidths = new int[lines.length];
 				redog.setColor(Color.WHITE);
-				for(String line : area.getText().split("\\r?\\n|\\r", -1)){
-					int w = MyTextArea.runWidth(fm, line, smear);
+				for(int li=0; li<lines.length; li++){
+					int w = MyTextArea.runWidth(fm, lines[li], smear);
+					lineWidths[li] = w;
 					if(w>0) redog.fillRect(pen-1, baseline-fm.getAscent(), w+2, lineH);
 					baseline += lineH;
 				}
@@ -5509,7 +5561,16 @@ class TypeTool implements toolInterface{
 			//透明度
 			g.setComposite( AlphaComposite.getInstance(AlphaComposite.SRC_OVER,PaintTool.alpha/100.0F) );
 			//サーフェースに反映
-			g.drawImage(buf, typeRect.x, typeRect.y, null);
+			if(alignBy==0 || lineWidths==null || stripH<=0) g.drawImage(buf, typeRect.x, typeRect.y, null);
+			else{
+				int bw = buf.getWidth(), bh = buf.getHeight();
+				for(int li=0; li<lineWidths.length; li++){
+					int top = li==0 ? 0 : firstTop+li*stripH, bottom = li==lineWidths.length-1 ? bh : Math.min(bh, firstTop+(li+1)*stripH);
+					if(bottom<=top) continue;
+					int dx = typeRect.x-(alignBy==1 ? lineWidths[li]/2 : lineWidths[li]);
+					g.drawImage(buf, dx, typeRect.y+top, dx+bw, typeRect.y+bottom, 0, top, bw, bottom, null);
+				}
+			}
 			g.dispose();
 			PaintTool.endPreview();
 		}

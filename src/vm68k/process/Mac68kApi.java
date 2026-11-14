@@ -83,8 +83,8 @@ final class Mac68kApi implements M68kTrapHandler {
 
 	Mac68kApi(M68kMemory memory,OStack stack) {
 		this.memory=memory;this.stack=stack;toolUtils=new ToolUtils68k(memory);
-		scrapManager=new ScrapManager68k(memory,this);
-		soundManager=new SoundManager68k(memory,this);
+		scrapManager=Toolbox68k.PARTS.scrap(memory,this);
+		soundManager=Toolbox68k.PARTS.sound(memory,this);
 		cursorManager=new CursorManager68k(memory,this);
 		sane=new Sane68k(memory);
 		quickDraw=new QuickDraw68k(memory,this);
@@ -292,17 +292,17 @@ final class Mac68kApi implements M68kTrapHandler {
 	private boolean handleTrap(M68kCpu cpu,int opcode,int instructionPc) throws M68kException {
 		if(opcode==0xaafe){ // _MixedModeMagic: 68K code called a routine descriptor (PowerPC code of a PowerPC program)
 			MacApp68k owner=app==null?null:app.app;
-			if(owner!=null&&owner.ppc!=null)return owner.ppc.mixedModeTrap(cpu,instructionPc);
+			if(owner!=null&&owner.ppc!=null)return Ppc68k.mixedModeTrap(owner.ppc,cpu,instructionPc);
 			// an external with PowerPC code (fat, or its 68K routine only answers that it needs a Power Macintosh): the PowerPC
 			// code runs, unless the fragment of a fat one cannot be prepared - then its 68K routine below
 			PpcRuntime external=owner==null&&app!=null?app.powerPcExternalAt(cpu,instructionPc):null;
-			if(external!=null&&(!app.externalHas68kRoutine(instructionPc)||external.preparesExternal(instructionPc)))return external.mixedModeTrap(cpu,instructionPc);
+			if(external!=null&&(!app.externalHas68kRoutine(instructionPc)||Ppc68k.preparesExternal(external,instructionPc)))return Ppc68k.mixedModeTrap(external,cpu,instructionPc);
 			// a 68K process (or an external): a 'fat' code resource or a descriptor built for 68K code - its 68K routine runs
 			// in place of the descriptor, as Mixed Mode on a 68K Mac with the Mixed Mode stub did
 			int target=routineDescriptor68k(cpu,instructionPc);
 			if(target!=0){cpu.pc=target;return true;}
 			// PowerPC code only (68K programs see a Power Macintosh, Toolbox68k.seesPowerPC): the program gets a PowerPC runtime
-			if(owner!=null&&PpcRuntime.isPowerPcDescriptor(memory,instructionPc)){owner.ppc=PpcRuntime.forCallsFrom68k(owner);return owner.ppc.mixedModeTrap(cpu,instructionPc);}
+			if(owner!=null&&Ppc68k.isPowerPcDescriptor(memory,instructionPc)){owner.ppc=Ppc68k.forCallsFrom68k(owner);return Ppc68k.mixedModeTrap(owner.ppc,cpu,instructionPc);}
 		}
 		if(!BACKTRACE_TRAPS.isEmpty()&&BACKTRACE_TRAPS.contains(opcode)&&(!BACKTRACE_D0.containsKey(opcode)||(cpu.d[0]&0xffff)==BACKTRACE_D0.get(opcode))
 			&&(BACKTRACE_DIRID==0||memory.readLong(cpu.a[0]+48)==BACKTRACE_DIRID)){StringBuilder sb=new StringBuilder();int a6=cpu.a[6];
@@ -388,15 +388,15 @@ final class Mac68kApi implements M68kTrapHandler {
 	private boolean handleToolbox(M68kCpu cpu,int opcode) throws M68kException {
 		if((opcode&0x0fff)==0x85d&&app!=null)app.timerPolled(cpu,memory.readLong(cpu.a[7]+4)); // BitTst(qType, 0): a program waiting for a Time Manager task to expire
 		if(toolUtils.handle(cpu,opcode&0x0fff))return true;
-		if(scrapManager.handle(cpu,opcode&0x0fff))return true;
-		if(soundManager.handle(cpu,opcode&0x0fff))return true;
+		if(scrapManager!=null&&scrapManager.handle(cpu,opcode&0x0fff))return true;
+		if(soundManager!=null&&soundManager.handle(cpu,opcode&0x0fff))return true;
 		if(cursorManager.handle(cpu,opcode&0x0fff))return true;
 		if((opcode&0x0fff)==0x9e0)return munger(cpu);
 		if((opcode&0x0fff)==0x9e1)return handToHand(cpu);
 		if((opcode&0x0fff)==0x9eb)return sane.handle(cpu);
 		if(quickDraw.handleWithCallbacks(cpu,opcode&0x0fff))return true;
 		if(quickDraw.handle(cpu,opcode&0x0fff))return true;
-		if((opcode&0x0fff)==0x9c8){soundManager.sysBeep();cpu.a[7]+=2;return true;}
+		if((opcode&0x0fff)==0x9c8){if(soundManager!=null)soundManager.sysBeep();else UiHost.get().beep();cpu.a[7]+=2;return true;}
 		return false;
 	}
 

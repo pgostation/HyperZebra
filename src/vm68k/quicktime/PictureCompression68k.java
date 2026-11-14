@@ -21,7 +21,7 @@ import javax.imageio.stream.ImageOutputStream;
  * the preview maker component ('pmak': PreviewMakePreview gives a thumbnail of the picture, image or movie poster in a file).
  * Rinaldi's CompressPictFile, CreateThumbnail and the "c=" option of PictToClip/ClipToPict/PictTransform call these.
  */
-final class PictureCompression68k implements Components68k.Native {
+class PictureCompression68k implements Components68k.Native {
 	static final int PMAK=0x706d616b,APPL=0x6170706c,PICT=0x50494354,PNOT=0x706e6f74;
 	static final int JPEG=0x6a706567,PNG=0x706e6720,RAW=0x72617720;
 	static final int PARAM_ERR=-50,CODEC_ERR=-8960,NO_CODEC_ERR=-8961,NO_MOVIE_FOUND=-2048,FNF_ERR=-43,BAD_SELECTOR=0x80008002;
@@ -58,7 +58,7 @@ final class PictureCompression68k implements Components68k.Native {
 		BufferedImage image=GraphicsImporter68k.imageOfFile(tb,file);
 		if(image!=null)return image;
 		if(!QuickTimeFile.isMovie(file))return null;
-		try{TQTMovie.MovieAsset asset=TQTMovie.assetFor(file);return asset!=null&&asset.hasVideo()?asset.frameAtMillis(0):null;}catch(RuntimeException e){return null;}
+		try{MovieData asset=Toolbox68k.PARTS.movieData(file);return asset!=null&&asset.hasVideo()?asset.frameAtMillis(0):null;}catch(RuntimeException e){return null;}
 	}
 
 	// ------------------------------------------------------------------ thumbnails and file previews

@@ -12,11 +12,11 @@ import java.nio.file.StandardOpenOption;
  * so a program that deleted the wrong file costs nothing. Files the program made itself this session (temporary files, the
  * half of a safe save) and anything inside HyperZebra HD (the virtual Mac's own disk) are deleted as before.
  */
-final class DeletedFiles {
+class DeletedFiles {
 	private DeletedFiles(){}
 
 	/** The folder that keeps deleted files (made on first use). */
-	static File folder(){ return new File(AppPaths.stateDirectory(), "Deleted Files"); }
+	static File folder(){ return new File(UiHost.get().appPathsStateDirectory(), "Deleted Files"); }
 
 	/**
 	 * Deletes a file (with its resource fork sidecar) or an empty folder on behalf of {@code requester}; true when it is
@@ -37,8 +37,8 @@ final class DeletedFiles {
 
 	/** Whether a delete of {@code path} keeps the file (a file the user had before, outside HyperZebra HD). */
 	static boolean keeps(File path, String requester){
-		if(Sandbox.isBuiltIn(path)) return false;
-		if(Sandbox.isCreatedBy(requester, path)) return false;
+		if(Sandbox68k.isBuiltIn(path)) return false;
+		if(Sandbox68k.isCreatedBy(requester, path)) return false;
 		if(path.isDirectory()){ String[] children = path.list(); if(children!=null && children.length>0) return false; } // only empty folders are deleted anyway
 		return true;
 	}
@@ -50,10 +50,10 @@ final class DeletedFiles {
 		File dest = unique(day, path.getName());
 		boolean file = path.isFile();
 		try{
-			Files.move(path.toPath(), dest.toPath());
+			Files68k.move(path,dest,false);
 		}catch(IOException moveFailure){ // another disk: copy, then delete
 			if(!file) throw moveFailure;
-			Files.copy(path.toPath(), dest.toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+			Files68k.copyWithAttributes(path,dest);
 			byte[] fork = null; byte[] info = null;
 			try{ fork = ResourceFile68k.readForkBytes(path, new ResourceFile68k(path)); }catch(Exception ignored){}
 			try{ info = FinderInfo68k.read(path); }catch(Exception ignored){}
@@ -61,12 +61,12 @@ final class DeletedFiles {
 				if(fork!=null && fork.length>0) ResourceFile68k.writeForkBytes(dest, fork, ResourceFile68k.Storage.NONE);
 				if(info!=null) FinderInfo68k.write(dest, info);
 			}catch(Exception ignored){}
-			Files.delete(path.toPath());
+			Files68k.delete(path);
 		}
 		if(file) ResourceFile68k.AppleDouble.moveWith(path, dest);
 		String line = dest.getName()+"\t"+path.getAbsolutePath()+"\t"+(requester==null ? "" : requester)+"\t"+new java.util.Date()+System.lineSeparator();
 		try{
-			Files.write(new File(day, "index.txt").toPath(), line.getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+			Files68k.append(new File(day, "index.txt"),line.getBytes(StandardCharsets.UTF_8));
 		}catch(IOException ignored){}
 		return dest;
 	}

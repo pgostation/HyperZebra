@@ -27,7 +27,7 @@ final class StackTranslation {
 
 	/** The settings of a stack (its folder or _stack.xml): off unless turned on for it; the target and engine of the Mac application settings. */
 	static VMTranslation.Config configFor(File stack){
-		String id=stack==null?null:LauncherStore.identity(stack);
+		String id=stack==null?null:UiHost.get().launcherStoreIdentity(stack);
 		LauncherStore.AppSettings s=id==null||!LauncherStore.enabled?null:LauncherStore.get().settingsFor(stack);
 		Boolean sw;synchronized(switched){sw=id==null?null:switched.get(id);}
 		boolean on=sw!=null?sw:s!=null&&Boolean.TRUE.equals(s.translate);
@@ -41,7 +41,7 @@ final class StackTranslation {
 
 	/** Turns the stack's translation on or off (kept in its launcher settings) and redraws it when it is open. */
 	static void setOn(File stack,boolean on){
-		String id=LauncherStore.identity(stack);
+		String id=UiHost.get().launcherStoreIdentity(stack);
 		if(id==null)return;
 		synchronized(switched){switched.put(id,on);}
 		if(LauncherStore.enabled){
@@ -64,7 +64,7 @@ final class StackTranslation {
 	/** A HyperZebra stack on disk (a folder with _stack.xml or toc.xml, or one of those files): what can be translated ahead. */
 	static boolean isStackFile(File f){
 		if(f==null)return false;
-		if(StackBundle.isPacked(f))return true;
+		if(UiHost.get().stackBundleIsPacked(f))return true;
 		if(f.isDirectory())return new File(f,"_stack.xml").isFile()||new File(f,"toc.xml").isFile();
 		return f.isFile()&&(f.getName().equals("_stack.xml")||f.getName().equals("toc.xml"));
 	}
@@ -91,10 +91,10 @@ final class StackTranslation {
 		}
 		State(OStack stack){
 			this.stack=stack;file=fileOf(stack);
-			pictures=file!=null&&PictureTranslation.enabledFor(file);
+			pictures=file!=null&&UiHost.get().pictureTranslationEnabledFor(file);
 			VMTranslation.Config c=file==null?null:configFor(file);
 			if(c==null||!c.on){translator=null;return;}
-			String id=LauncherStore.identity(file),from;
+			String id=UiHost.get().launcherStoreIdentity(file),from;
 			synchronized(detected){from=detected.get(id);}
 			translator=new VMTranslation.Translator(c,from,this::arrived);
 			translator.offline=VMTranslation.unavailableReason()!=null; // the cache only
@@ -105,7 +105,7 @@ final class StackTranslation {
 					translator.setFrom(lang);
 					arrived();
 				},"Stack translation");
-				t.setDaemon(true);t.start();
+				t.setDaemon(true);Platform.get().start(t);
 			}
 		}
 		/** Translations came (or the language was found): the stack is drawn again. */
@@ -113,7 +113,7 @@ final class StackTranslation {
 			generation++;
 			javax.swing.SwingUtilities.invokeLater(()->{
 				if(translator!=null&&translator.closed)return;
-				javax.swing.JComponent pane=PCARD.pc!=null&&PCARD.pc.stack==stack?PCARD.pc.mainPane:stack.pcard!=null?stack.pcard.mainPane:null;
+				javax.swing.JComponent pane=PCARD.pc!=null&&HZ.stack()==stack?PCARD.pc.mainPane:stack.pcard!=null?stack.pcard.mainPane:null;
 				if(pane!=null)pane.repaint();
 			});
 		}
@@ -138,7 +138,7 @@ final class StackTranslation {
 			if(s.translator!=null)s.translator.closed=true;
 			OStack st=s.stack;
 			javax.swing.SwingUtilities.invokeLater(()->{
-				javax.swing.JComponent pane=PCARD.pc!=null&&PCARD.pc.stack==st?PCARD.pc.mainPane:st.pcard!=null?st.pcard.mainPane:null;
+				javax.swing.JComponent pane=PCARD.pc!=null&&HZ.stack()==st?PCARD.pc.mainPane:st.pcard!=null?st.pcard.mainPane:null;
 				if(pane!=null)pane.repaint();
 			});
 		}
@@ -146,8 +146,8 @@ final class StackTranslation {
 
 	/** The stack's own translations into HyperZebra's language for a part of a stack (StackLanguages), or null: none, or an authoring tool chosen (the originals are edited). */
 	private static Map<String,String> ownFor(OCardBase base){
-		if(AuthTool.tool!=null)return null;
-		OStack st=base!=null&&base.stack!=null?base.stack:PCARD.pc!=null?PCARD.pc.stack:null;
+		if(Host.get().authToolActive())return null;
+		OStack st=base!=null&&base.stack!=null?base.stack:Host.get().hasCardWindow()?HZ.stack():null;
 		Map<String,String> e=StackLanguages.entries(st);
 		return e.isEmpty()?null:e;
 	}
@@ -162,15 +162,15 @@ final class StackTranslation {
 	static String languageGuess(OStack st){
 		File f=fileOf(st);
 		String lang=null;
-		if(f!=null)synchronized(detected){lang=detected.get(LauncherStore.identity(f));}
+		if(f!=null)synchronized(detected){lang=detected.get(UiHost.get().launcherStoreIdentity(f));}
 		if(lang!=null)return lang;
 		return st!=null&&st.legacyTextEncoding==StackTextEncoding.JAPANESE?"ja":"en";
 	}
 
 	/** The translator for a part of a stack, or null: translation off, the language still being found, or an authoring tool chosen (the originals are edited). */
 	private static VMTranslation.Translator translatorFor(OCardBase base){
-		if(AuthTool.tool!=null)return null;
-		OStack st=base!=null&&base.stack!=null?base.stack:PCARD.pc!=null?PCARD.pc.stack:null;
+		if(Host.get().authToolActive())return null;
+		OStack st=base!=null&&base.stack!=null?base.stack:Host.get().hasCardWindow()?HZ.stack():null;
 		State s=state(st);
 		if(s==null||s.translator==null||!s.translator.active())return null;
 		return s.translator;
@@ -214,23 +214,10 @@ final class StackTranslation {
 		return f.card!=null?f.card:f.parent instanceof OCardBase?(OCardBase)f.parent:null;
 	}
 
-	/** A field's text as shown: each line translated; the styles of a translated line are the ones at its start. */
-	static final class Shown {
-		final String text;
-		/** The style runs for the shown text (null when the field has none). */
-		final ArrayList<styleClass> styles;
-		private final int[] oStart,oLen,tStart,tLen;
-		Shown(String text,ArrayList<styleClass> styles,int[] oStart,int[] oLen,int[] tStart,int[] tLen){
-			this.text=text;this.styles=styles;this.oStart=oStart;this.oLen=oLen;this.tStart=tStart;this.tLen=tLen;
-		}
-		/** The place in the field's own text of a character shown: the same line, as far along it (the clickLine and clickChunk). */
-		int original(int i){
-			int lo=0,hi=tStart.length-1;
-			while(lo<hi){int mid=(lo+hi+1)>>>1;if(tStart[mid]<=i)lo=mid;else hi=mid-1;}
-			int k=i-tStart[lo];
-			if(k>=tLen[lo])return oStart[lo]+oLen[lo]+(k-tLen[lo]); // the line's end or its return
-			return oStart[lo]+(tLen[lo]==0?0:(int)((long)k*oLen[lo]/tLen[lo]));
-		}
+	/** A field's text as shown (TranslatedLines: the browser player shows the stack's own translations with it too) */
+	static final class Shown extends TranslatedLines {
+		private Shown(TranslatedLines t){super(t);}
+		static Shown of(java.util.function.UnaryOperator<String> lookup,String text,ArrayList<styleClass> styles){TranslatedLines t=TranslatedLines.of(lookup,text,styles);return t==null?null:new Shown(t);}
 	}
 
 	private static final Object NOTHING=new Object();
@@ -244,11 +231,11 @@ final class StackTranslation {
 		Map<String,String> own=ownFor(base);
 		VMTranslation.Translator t=translatorFor(base);
 		if(t==null&&own==null)return null;
-		State s=state(base!=null&&base.stack!=null?base.stack:PCARD.pc.stack);
+		State s=state(base!=null&&base.stack!=null?base.stack:HZ.stack());
 		int generation=s.generation;
 		Object[] m=memo.get(f);
 		if(m!=null&&m[0].equals(text)&&m[1]==f.styleList&&(Integer)m[2]==generation&&m[4]==own&&m[5]==t)return m[3]==NOTHING?null:(Shown)m[3];
-		Shown shown=translate(lookup(own,t,VMTranslation.Kind.TEXT),text,f.styleList);
+		Shown shown=Shown.of(lookup(own,t,VMTranslation.Kind.TEXT),text,f.styleList);
 		memo.put(f,new Object[]{text,f.styleList,generation,shown==null?NOTHING:shown,own,t});
 		return shown;
 	}
@@ -262,54 +249,7 @@ final class StackTranslation {
 	}
 
 	/** Translates a field's text line by line (returns kept as they are); null when no line has a translation. */
-	static Shown translate(VMTranslation.Translator t,String text,ArrayList<styleClass> styles){return translate(lookup(null,t,VMTranslation.Kind.TEXT),text,styles);}
-	private static Shown translate(java.util.function.UnaryOperator<String> lookup,String text,ArrayList<styleClass> styles){
-		List<int[]> lines=new ArrayList<int[]>(); // {start, length, separator length}
-		for(int a=0;;){
-			int b=a;
-			while(b<text.length()&&text.charAt(b)!='\r'&&text.charAt(b)!='\n')b++;
-			int sep=b>=text.length()?0:text.charAt(b)=='\r'&&b+1<text.length()&&text.charAt(b+1)=='\n'?2:1;
-			lines.add(new int[]{a,b-a,sep});
-			if(sep==0)break;
-			a=b+sep;
-		}
-		int n=lines.size();
-		int[] oStart=new int[n],oLen=new int[n],tStart=new int[n],tLen=new int[n];
-		boolean[] translated=new boolean[n];
-		StringBuilder out=new StringBuilder(text.length()+16);
-		boolean any=false;
-		for(int i=0;i<n;i++){
-			int[] l=lines.get(i);
-			String line=text.substring(l[0],l[0]+l[1]);
-			String tr=line.trim().isEmpty()?null:lookup.apply(line);
-			if(tr!=null)tr=tr.replace("\r\n"," ").replace('\r',' ').replace('\n',' ');
-			if(tr!=null&&!tr.equals(line)){translated[i]=true;any=true;}else tr=line;
-			oStart[i]=l[0];oLen[i]=l[1];tStart[i]=out.length();tLen[i]=tr.length();
-			out.append(tr).append(text,l[0]+l[1],l[0]+l[1]+l[2]);
-		}
-		if(!any)return null;
-		return new Shown(out.toString(),stylesFor(styles,lines,translated,tStart),oStart,oLen,tStart,tLen);
-	}
-
-	/** Style runs for the shown text: a translated line takes the style at its start, a line left as it is keeps its runs. */
-	private static ArrayList<styleClass> stylesFor(ArrayList<styleClass> styles,List<int[]> lines,boolean[] translated,int[] tStart){
-		if(styles==null||styles.isEmpty())return styles;
-		ArrayList<styleClass> out=new ArrayList<styleClass>();
-		for(int i=0;i<lines.size();i++){
-			int os=lines.get(i)[0],next=i+1<lines.size()?lines.get(i+1)[0]:Integer.MAX_VALUE;
-			int at=-1; // the style in effect at the line's start: -1 is the field's own (no such style id)
-			for(styleClass sc:styles)if(sc.textPosition<=os)at=sc.styleId;
-			add(out,tStart[i],at);
-			if(!translated[i])for(styleClass sc:styles)if(sc.textPosition>os&&sc.textPosition<next)add(out,tStart[i]+sc.textPosition-os,sc.styleId);
-		}
-		return out;
-	}
-	private static void add(ArrayList<styleClass> out,int position,int id){
-		styleClass last=out.isEmpty()?null:out.get(out.size()-1);
-		if(last!=null&&last.styleId==id)return;
-		if(last!=null&&last.textPosition==position){last.styleId=id;return;}
-		out.add(new styleClass(position,id));
-	}
+	static Shown translate(VMTranslation.Translator t,String text,ArrayList<styleClass> styles){return Shown.of(lookup(null,t,VMTranslation.Kind.TEXT),text,styles);}
 
 	// ---------------------------------------------------------------------------------------------------------------
 	// Dialogs a stack's scripts open (answer, ask, UxAnswer)
@@ -327,7 +267,7 @@ final class StackTranslation {
 		private int seen;
 		/** @param st the stack whose script opens the dialog (null: the open stack) */
 		Dialog(OStack st){
-			OStack s=st!=null?st:PCARD.pc!=null?PCARD.pc.stack:null;
+			OStack s=st!=null?st:Host.get().hasCardWindow()?HZ.stack():null;
 			state=state(s);
 			Map<String,String> e=StackLanguages.entries(s);
 			own=e.isEmpty()?null:e;
@@ -340,7 +280,7 @@ final class StackTranslation {
 		String prompt(String text){
 			VMTranslation.Translator t=translator();
 			if(t==null&&own==null||text==null||text.isEmpty())return text;
-			Shown shown=translate(lookup(own,t,VMTranslation.Kind.UI),text,null);
+			Shown shown=Shown.of(lookup(own,t,VMTranslation.Kind.UI),text,null);
 			return shown==null?text:shown.text;
 		}
 		/** A button's name as shown now. */
@@ -374,22 +314,26 @@ final class StackTranslation {
 	 * and pop-up choices (dialog words), then the lines of its fields - shared and card fields, and each card's text of
 	 * its background fields. Each text once.
 	 */
-	static List<VMTranslation.ProgramText> stackTexts(OStack st){
+	static List<VMTranslation.ProgramText> stackTexts(OStack st){return stackTexts(st,null);}
+	/** @param templates gets the dialog lines put together at run time, as templates ("{1}位です！", addDialogTexts); they
+	 *  are among the dialog texts too (translated ahead as templates) */
+	private static List<VMTranslation.ProgramText> stackTexts(OStack st,Set<String> templates){
+		if(templates==null)templates=new LinkedHashSet<String>();
 		LinkedHashSet<String> names=new LinkedHashSet<String>(),choices=new LinkedHashSet<String>(),lines=new LinkedHashSet<String>(),
 			dialogs=new LinkedHashSet<String>();
 		List<OCardBase> bases=new ArrayList<OCardBase>();
 		try{bases.addAll(new ArrayList<OBackground>(st.bgCacheList));bases.addAll(new ArrayList<OCard>(st.cdCacheList));}catch(RuntimeException ignored){}
-		addDialogTexts(dialogs,st.scriptList);
+		addDialogTexts(dialogs,templates,st.scriptList);
 		for(OCardBase base:bases){
 			try{
-				addDialogTexts(dialogs,base.scriptList);
+				addDialogTexts(dialogs,templates,base.scriptList);
 				for(OButton b:new ArrayList<OButton>(base.btnList)){
 					if(b.style==8){if(b.getText()!=null)for(String c:b.getText().split("\r\n|\r|\n"))add(choices,c);}
 					if(b.showName)add(names,b.name);
-					addDialogTexts(dialogs,b.scriptList);
+					addDialogTexts(dialogs,templates,b.scriptList);
 				}
 				for(OField f:new ArrayList<OField>(base.fldList)){
-					addDialogTexts(dialogs,f.scriptList);
+					addDialogTexts(dialogs,templates,f.scriptList);
 					if(f.tableStyle||f.outlineStyle)continue;
 					if(base instanceof OCard||f.sharedText)addLines(lines,f.getText());
 				}
@@ -403,12 +347,65 @@ final class StackTranslation {
 				}
 			}catch(RuntimeException ignored){} // a script changing the stack meanwhile: what was read is enough
 		}
+		dialogs.addAll(templates);
 		List<VMTranslation.ProgramText> out=new ArrayList<VMTranslation.ProgramText>();
 		if(!names.isEmpty())out.add(new VMTranslation.ProgramText(VMTranslation.Kind.UI,new ArrayList<String>(names)));
 		if(!choices.isEmpty())out.add(new VMTranslation.ProgramText(VMTranslation.Kind.MENU,new ArrayList<String>(choices)));
 		if(!lines.isEmpty())out.add(new VMTranslation.ProgramText(VMTranslation.Kind.TEXT,new ArrayList<String>(lines),false));
 		if(!dialogs.isEmpty())out.add(new VMTranslation.ProgramText(VMTranslation.Kind.UI,new ArrayList<String>(dialogs),false));
 		return out;
+	}
+
+	/**
+	 * The translations of a stack's texts the cache has (what Resource Translation… and AI Chat… made), by the language they
+	 * are in: text → translation, in the stack's order. For Export for Web, which puts them in the copy as Languages/<tag>.po
+	 * (StackLanguages): the browser has no cache and no translator. Empty when the stack's translation is off.
+	 */
+	static Map<String,Map<String,String>> cachedTranslations(OStack st){
+		Map<String,Map<String,String>> out=new LinkedHashMap<String,Map<String,String>>();
+		File file=fileOf(st);
+		if(file==null)return out;
+		VMTranslation.Config c=configFor(file);
+		if(!c.on)return out;
+		String from=VMTranslation.AUTO.equals(c.from)?languageGuess(st):c.from;
+		List<VMTranslation.ProgramText> texts=null;
+		Set<String> templates=new LinkedHashSet<String>();
+		for(String to:VMTranslation.TARGETS){
+			if(VMTranslation.sameLanguage(from,to)||!VMTranslation.hasCache(from,to))continue;
+			if(texts==null)texts=stackTexts(st,templates);
+			VMTranslation.Translator t=new VMTranslation.Translator(new VMTranslation.Config(true,from,to,c.engine),from,null);
+			Map<String,String> m=new LinkedHashMap<String,String>();
+			for(VMTranslation.ProgramText g:texts)for(String line:g.lines){
+				if(line==null||line.trim().isEmpty()||m.containsKey(line))continue;
+				String s=t.cached(g.kind,line);
+				if(s!=null&&!s.equals(line)&&(!templates.contains(line)||StackLanguages.Template.keepsValues(line,s)))m.put(line,s);
+			}
+			addShownLines(m,templates,from,to);
+			if(!m.isEmpty())out.put(to,m);
+		}
+		return out;
+	}
+
+	/**
+	 * The dialog lines put together at run time ("あ" & x & "い") that were shown translated on this computer: the cache
+	 * has them as they were shown, with the values of the time. Each cached dialog text that one of the patterns matches.
+	 */
+	private static void addShownLines(Map<String,String> m,Set<String> templates,String from,String to){
+		if(templates.isEmpty())return;
+		List<StackLanguages.Template> patterns=new ArrayList<StackLanguages.Template>();
+		for(String t:templates){StackLanguages.Template p=StackLanguages.Template.of(t,t);if(p!=null)patterns.add(p);}
+		for(String engine:VMTranslation.ENGINES)for(Map.Entry<String,String> e:VMTranslation.cache(from,to,engine).entrySet()){
+			String key=e.getKey();
+			if(!key.startsWith("U\t"))continue; // dialog words
+			String text=key.substring(2);
+			if(m.containsKey(text)||templates.contains(text))continue; // (a template's own translation went through keepsValues)
+			for(StackLanguages.Template p:patterns){
+				if(p.values(text)==null)continue;
+				String s=VMTranslation.cleanup(text,e.getValue());
+				if(s!=null&&!s.equals(text))m.put(text,s);
+				break;
+			}
+		}
 	}
 
 	/** answer or ask as a command of a line (also after then/else) and what follows it. */
@@ -419,7 +416,9 @@ final class StackTranslation {
 	 * joined with &, && and return): the lines its dialogs will show. A prompt put together at run time is translated
 	 * when it is shown. Not the default text of ask (typed over) nor answer program.
 	 */
-	static void addDialogTexts(Set<String> out,List<String> script){
+	static void addDialogTexts(Set<String> out,List<String> script){addDialogTexts(out,null,script);}
+	/** @param templates gets a template ("{1}位です！") for each line of a prompt with a value in it (a variable, a function), or null */
+	static void addDialogTexts(Set<String> out,Set<String> templates,List<String> script){
 		if(script==null)return;
 		List<String> lines;
 		try{lines=new ArrayList<String>(script);}catch(RuntimeException e){return;}
@@ -430,10 +429,10 @@ final class StackTranslation {
 			String t=line.stripTrailing();
 			if(t.endsWith("\u00AC")){joined.append(t,0,t.length()-1).append(' ');continue;} // ¬ continues the line
 			joined.append(line);
-			addDialogLine(out,joined.toString());
+			addDialogLine(out,templates,joined.toString());
 			joined.setLength(0);
 		}
-		if(joined.length()>0)addDialogLine(out,joined.toString());
+		if(joined.length()>0)addDialogLine(out,templates,joined.toString());
 	}
 	private static String withoutComment(String line){
 		boolean quoted=false;
@@ -444,7 +443,7 @@ final class StackTranslation {
 		}
 		return line;
 	}
-	private static void addDialogLine(Set<String> out,String line){
+	private static void addDialogLine(Set<String> out,Set<String> templates,String line){
 		if(line.indexOf('"')<0)return;
 		java.util.regex.Matcher m=DIALOG_COMMAND.matcher(line);
 		if(!m.find())return;
@@ -461,7 +460,7 @@ final class StackTranslation {
 			String w=tokens.get(k);
 			if(w.equalsIgnoreCase("with")||file&&w.equalsIgnoreCase("of")&&k+1<tokens.size()&&tokens.get(k+1).equalsIgnoreCase("type")){with=k;break;}
 		}
-		addLines(out,literal(tokens.subList(i,with)));
+		addPrompt(out,templates,tokens.subList(i,with));
 		if(!answer||file||with>=tokens.size()||!tokens.get(with).equalsIgnoreCase("with"))return; // ask's default text is typed over
 		int from=with+1;
 		for(int k=from;k<=tokens.size();k++){
@@ -470,6 +469,49 @@ final class StackTranslation {
 				if(name!=null)add(out,name);
 				from=k+1;
 			}
+		}
+	}
+	/**
+	 * The lines of a prompt: written out whole, or line by line where only some of its lines are (the others have a value
+	 * in them: "　　-操作方法-" & return & LRKEY & "で左右に動き、"). A line with values becomes a template, its written
+	 * parts with {1}, {2}... for the values (the same expression the same number: "{1}でジャンプ…{1}を長く…"), when its
+	 * written parts have something to translate.
+	 */
+	private static void addPrompt(Set<String> out,Set<String> templates,List<String> tokens){
+		String whole=literal(tokens);
+		if(whole!=null){addLines(out,whole);return;}
+		int from=0;
+		for(int k=0;k<=tokens.size();k++){
+			String w=k<tokens.size()?tokens.get(k).toLowerCase():null;
+			if(w!=null&&!w.equals("return")&&!w.equals("cr")&&!w.equals("linefeed")&&!w.equals("lf"))continue;
+			List<String> part=tokens.subList(from,k);
+			from=k+1;
+			String text=literal(part);
+			if(text!=null){addLines(out,text);continue;}
+			if(templates==null)continue;
+			StringBuilder tpl=new StringBuilder(),written=new StringBuilder(),value=new StringBuilder();
+			List<String> values=new ArrayList<String>();
+			boolean ok=true;
+			for(int j=0;j<=part.size();j++){
+				String t=j<part.size()?part.get(j):null,v=t==null?null:t.toLowerCase();
+				boolean quoted=t!=null&&t.length()>=2&&t.startsWith("\"")&&t.endsWith("\"");
+				boolean joiner=t!=null&&(v.equals("&")||v.equals("&&")||v.equals("space")||v.equals("empty"));
+				if(t!=null&&!quoted&&!joiner){value.append(v).append(' ');continue;}
+				if(value.length()>0){
+					String key=value.toString().trim();value.setLength(0);
+					int n=values.indexOf(key);
+					if(n<0){values.add(key);n=values.size()-1;}
+					tpl.append('{').append(n+1).append('}');
+				}
+				if(t==null)break;
+				if(quoted){
+					String q=t.substring(1,t.length()-1);
+					if(q.indexOf('{')>=0||q.indexOf('}')>=0)ok=false; // (braces would read as values)
+					tpl.append(q);written.append(q);
+				}
+				else if(v.equals("&&")||v.equals("space"))tpl.append(' ');
+			}
+			if(ok&&written.toString().trim().length()>=2&&VMTranslation.Piece.of(written.toString())!=null)templates.add(tpl.toString().trim());
 		}
 	}
 	/** Quoted strings (with their quotes), words, && and single characters. */
@@ -541,7 +583,7 @@ final class StackTranslation {
 		List<VMTranslation.ProgramText> texts=stackTexts(st);
 		String from=VMTranslation.AUTO.equals(c.from)?language(st,texts):c.from;
 		texts.addAll(PictureTranslation.aheadTexts(st,file,from,pictures)); // the text in its pictures (when tesseract is here)
-		String id=LauncherStore.identity(file);
+		String id=UiHost.get().launcherStoreIdentity(file);
 		synchronized(detected){detected.put(id,from);}
 		VMTranslation.Translator t=new VMTranslation.Translator(new VMTranslation.Config(true,from,c.to,c.engine),from,null);
 		t.maxInFlight=Integer.getInteger("hz.translate.ahead.batches",VMTranslation.Ahead.AHEAD_BATCHES);
@@ -555,14 +597,14 @@ final class StackTranslation {
 
 	/** The open stack when it is the one in {@code file}, else null. */
 	static OStack openStack(File file){
-		OStack cur=PCARD.pc!=null?PCARD.pc.stack:null;
+		OStack cur=Host.get().hasCardWindow()?HZ.stack():null;
 		File f=fileOf(cur);
-		return f!=null&&LauncherStore.identity(f).equals(LauncherStore.identity(file))?cur:null;
+		return f!=null&&UiHost.get().launcherStoreIdentity(f).equals(UiHost.get().launcherStoreIdentity(file))?cur:null;
 	}
 
 	/** A folder stack read on the side (nothing is shown, run or written); null when it cannot be read. */
 	static OStack read(File file){
-		if(StackBundle.isPacked(file))try{file=StackBundle.open(file);}catch(java.io.IOException e){return null;} // a stack file: its working folder
+		if(UiHost.get().stackBundleIsPacked(file))try{file=StackBundle.open(file);}catch(java.io.IOException e){return null;} // a stack file: its working folder
 		File xml=file;
 		if(file.isDirectory()){xml=new File(file,"_stack.xml");if(!xml.isFile())xml=new File(file,"toc.xml");}
 		if(!isStackFile(xml))return null;

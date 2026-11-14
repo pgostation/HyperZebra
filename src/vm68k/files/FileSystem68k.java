@@ -12,7 +12,7 @@ import java.util.Map;
  * Device Manager entry points used by drivers such as MacTCP, and the extra
  * HFSDispatch selectors the sandboxed XCMD File Manager does not offer.
  */
-final class FileSystem68k {
+class FileSystem68k {
 	private final Toolbox68k tb;
 	private final M68kMemory memory;
 	final FileManager68k fileManager;
@@ -26,9 +26,9 @@ final class FileSystem68k {
 
 	/** The invisible desktop database files at the root of a startup disk (see the constructor; FileManager68k keeps them out of folder walks). */
 	static final String[] DESKTOP_DATABASE_FILES={"Desktop DB","Desktop DF"};
-	/** The startup disk "HyperZebra HD": the folder holding the virtual System Folder. */
+	/** The startup disk "HyperZebra HD": the folder holding the virtual System Folder (AppPaths: the platform's HyperZebra folder). */
 	static File bootVolumeDirectory(){
-		return new File(new File(System.getProperty("user.home")),"Library"+File.separator+"Application Support"+File.separator+"HyperZebra");
+		return UiHost.get().appPathsBootVolumeDirectory();
 	}
 
 	/**
@@ -43,7 +43,8 @@ final class FileSystem68k {
 		if(name.equalsIgnoreCase("Macintosh HD")&&File.separatorChar=='/')return new File("/");
 		//a mounted disk image ("Cosmic Osmo CD:Cosmic Osmo Files:CO.Resource" once the CD's .iso is mounted), then a disk the host mounted
 		for(DiskImages.Mounted m:DiskImages.mounted())if(m.name.equalsIgnoreCase(name)&&m.folder.isDirectory())return m.folder;
-		if(GMenu.isMacOSX()&&!name.isEmpty()&&name.indexOf('/')<0){File v=new File("/Volumes",name);if(v.isDirectory())return v;}
+		for(java.util.Map.Entry<String,File> v:UiHost.get().pageVolumes().entrySet())if(v.getKey().equalsIgnoreCase(name)&&v.getValue().isDirectory())return v.getValue();
+		if(HostXattr68k.macOS()&&!name.isEmpty()&&name.indexOf('/')<0){File v=new File("/Volumes",name);if(v.isDirectory())return v;}
 		//the first volume of an open stack's externals: its folder, under the folder's own name (FileManager68k(memory, stack)). A path an
 		//external built by walking up the catalog names it ("田中求之:work:" from G-XCollection's MtSelectFldr), and the stack then
 		//opens that path with "open file"
@@ -63,7 +64,7 @@ final class FileSystem68k {
 		return folder==null?null:FileManager68k.convertedFrom(folder);
 	}
 	private static boolean sameVolumeName(String a,String b){
-		return java.text.Normalizer.normalize(a,java.text.Normalizer.Form.NFC).equalsIgnoreCase(java.text.Normalizer.normalize(b,java.text.Normalizer.Form.NFC));
+		return Platform.get().normalize(a,UnicodeNorm.Form.NFC).equalsIgnoreCase(Platform.get().normalize(b,UnicodeNorm.Form.NFC));
 	}
 
 	/**
@@ -76,6 +77,9 @@ final class FileSystem68k {
 		if(boot.isDirectory()){volumes.add(boot);names.add(BOOT_VOLUME_NAME);}
 		if(!Boolean.getBoolean("hz68k.bootonly"))hostVolumes(volumes,names);
 		for(DiskImages.Mounted image:DiskImages.mounted())if(image.folder.isDirectory()){volumes.add(image.folder);names.add(image.name);}
+		// the web player's page volume: the exported stack's folder under the CD's name its scripts give (macPathOf's longest
+		// match names its files "Cosmic Osmo CD:Cosmic Osmo Files:CO.1", as on the CD)
+		for(java.util.Map.Entry<String,File> v:UiHost.get().pageVolumes().entrySet())if(v.getValue().isDirectory()){volumes.add(v.getValue());names.add(v.getKey());}
 	}
 
 	/**
@@ -99,7 +103,7 @@ final class FileSystem68k {
 		String rest=p.equals(bestRoot)?"":p.substring(bestRoot.endsWith(File.separator)?bestRoot.length():bestRoot.length()+1);
 		for(String part:rest.split(java.util.regex.Pattern.quote(File.separator)))if(!part.isEmpty())out.append(':').append(part.replace(':','/'));
 		if(rest.isEmpty())out.append(':'); // a volume itself ends with its colon
-		return java.text.Normalizer.normalize(out.toString(),java.text.Normalizer.Form.NFC);
+		return Platform.get().normalize(out.toString(),UnicodeNorm.Form.NFC);
 	}
 
 	/** The host's disks as programs see them: Windows drive letters ("C", as in HyperTalk's "C:folder:file"), or the root as
@@ -107,8 +111,11 @@ final class FileSystem68k {
 	private static void hostVolumes(List<File> volumes,List<String> names){
 		File home=new File(System.getProperty("user.home"));
 		File[] roots=File.listRoots();
-		if(GMenu.isMacOSX()||roots==null||roots.length==0){volumes.add(new File("/"));names.add("Macintosh HD");}
-		else{for(File root:roots){String n=root.getPath().replace("\\","").replace(":","");if(n.isEmpty())n="Macintosh HD";volumes.add(root);names.add(n);}}
+		if(HostXattr68k.macOS()||roots==null||roots.length==0){volumes.add(new File("/"));names.add("Macintosh HD");}
+		// a "/" root (Linux, the browser player's file system) is "Macintosh HD" too, as hostVolumeNamed and the player's long
+		// names (PlayerUiHost.fileSystem68kMacPathOf) call it: it was "/", so DiskLibrary's GetVInfo("Macintosh HD") and GetDir
+		// found no such volume
+		else{for(File root:roots){String n=root.getPath().replace("\\","").replace(":","").replace("/","");if(n.isEmpty())n="Macintosh HD";volumes.add(root);names.add(n);}}
 		if(home.isDirectory()){volumes.add(home);names.add("Home");}
 	}
 
@@ -150,7 +157,7 @@ final class FileSystem68k {
 				try{fileManager.setDefaultDirectory(stackFolder);}catch(IOException ignored){}
 			}
 			fileManager.setBlessedFolder(systemFolder);
-			fileManager.setRequester(Sandbox.scriptRequester());
+			fileManager.setRequester(Sandbox68k.scriptRequester());
 			fileManager.shareReferences(tb::allocateFileReference,tb.resources::fileOf);fileManager.shareResourceFileReferences(tb.resources::openReferences);fileManager.shareResourceFileWritable(tb.resources::writableReference);
 			fileManager.shareSystemFile(tb.resources::systemRefNum,systemFile());
 			fileManager.setMoveListener(this::rebaseFSRefs);
@@ -175,9 +182,9 @@ final class FileSystem68k {
 		// External and network disks are volumes of their own, as on a Mac (the walk of Macintosh HD leaves /Volumes out:
 		// its "Macintosh HD" link back to / could send a disk search round in circles)
 		File[] mounted=new File("/Volumes").listFiles();
-		if(GMenu.isMacOSX()&&mounted!=null&&!bootOnly){java.util.Arrays.sort(mounted);
+		if(HostXattr68k.macOS()&&mounted!=null&&!bootOnly){java.util.Arrays.sort(mounted);
 			for(File v:mounted){String n=v.getName();
-				if(n.startsWith(".")||n.startsWith("com.apple.")||!v.isDirectory()||java.nio.file.Files.isSymbolicLink(v.toPath())||!v.canRead()||names.contains(n))continue;
+				if(n.startsWith(".")||n.startsWith("com.apple.")||!v.isDirectory()||Files68k.isSymbolicLink(v)||!v.canRead()||names.contains(n))continue;
 				volumes.add(v);names.add(n);}}
 		// disk images the user mounted (DiskImages): locked volumes after the host's
 		List<File> images=new ArrayList<File>();
@@ -210,12 +217,12 @@ final class FileSystem68k {
 			if(tb.devices.handle(cpu,opcode,pb,trap,async))return true; // drivers the program installed (DrvrInstall)
 			if(trap==0x00&&(opcode&0x0200)==0){int name=memory.readLong(pb+18);if(name!=0&&memory.readByte(name)>0&&memory.readByte(name+1)=='.'){return openDriver(cpu,pb,tb.readPascal(name),async);}}
 			int ref=(short)memory.readWord(pb+24);
-			if(trap>=0x02&&ref==SoundDriver68k.REF_NUM)return tb.soundDriver.handle(cpu,pb,trap,async); // .Sound: the ROM glue uses its refNum without opening it
-			if(trap>=0x01&&(ref==AppleTalk68k.MPP_REF||ref==AppleTalk68k.ATP_REF||ref==AppleTalk68k.XPP_REF||ref==AppleTalk68k.DSP_REF))return tb.appleTalk.handle(cpu,pb,trap,async); // .MPP/.ATP/.XPP: the AppleTalk glue uses the fixed refNums too
+			if(trap>=0x02&&ref==SoundDriver68k.REF_NUM&&tb.soundDriver!=null)return tb.soundDriver.handle(cpu,pb,trap,async); // .Sound: the ROM glue uses its refNum without opening it
+			if(trap>=0x01&&(ref==AppleTalk68k.MPP_REF||ref==AppleTalk68k.ATP_REF||ref==AppleTalk68k.XPP_REF||ref==AppleTalk68k.DSP_REF)&&tb.appleTalk!=null)return tb.appleTalk.handle(cpu,pb,trap,async); // .MPP/.ATP/.XPP: the AppleTalk glue uses the fixed refNums too
 			if(drivers.containsKey(ref)){
 				String driver=drivers.get(ref);int result;
 				if(trap==0x01){drivers.remove(ref);if(isSerialDriver(driver))tb.devices.setRomUnitOpened(ref,false);result=0;finish(cpu,pb,result,async);return true;}
-				if(driver.equalsIgnoreCase(".IPP")){return tb.macTcp.control(cpu,pb,trap,async);}
+				if(driver.equalsIgnoreCase(".IPP")&&tb.macTcp!=null){return tb.macTcp.control(cpu,pb,trap,async);}
 				if(driver.startsWith(".Display")&&(trap==0x04||trap==0x05)){result=tb.quickDraw.videoDriver(pb,trap==0x05);if(Mac68kApi.TRACE)System.err.println("[68K] video driver "+(trap==0x05?"Status":"Control")+" csCode "+(short)memory.readWord(pb+26)+" -> "+result);finish(cpu,pb,result,async);return true;}
 				if(isSerialDriver(driver))return serial(cpu,pb,trap,async);
 				if(driver.equals(DISK_DRIVER)||driver.equals(".AppleCD"))return diskDriver(cpu,pb,trap,async,driver.equals(".AppleCD"));
@@ -278,8 +285,8 @@ final class FileSystem68k {
 
 	private boolean openDriver(M68kCpu cpu,int pb,String name,boolean async) throws M68kException {
 		int ref;
-		if(name.equalsIgnoreCase(".MPP")||name.equalsIgnoreCase(".ATP")||name.equalsIgnoreCase(".XPP")||name.equalsIgnoreCase(".DSP"))return tb.appleTalk.open(cpu,pb,name,async);
-		if(name.equalsIgnoreCase(".IPP"))ref=tb.macTcp.driverRefNum();
+		if((name.equalsIgnoreCase(".MPP")||name.equalsIgnoreCase(".ATP")||name.equalsIgnoreCase(".XPP")||name.equalsIgnoreCase(".DSP"))&&tb.appleTalk!=null)return tb.appleTalk.open(cpu,pb,name,async);
+		if(name.equalsIgnoreCase(".IPP")&&tb.macTcp!=null)ref=tb.macTcp.driverRefNum();
 		else if(standardDriverRef(name)!=0)ref=standardDriverRef(name);
 		else if(name.equalsIgnoreCase(WacomTablet68k.NAME)&&WacomTablet68k.available())ref=nextDriverRef--; // the host's pen tablet (WacomTablet68k)
 		else if(!isAppleDriver(name)&&!hasDriverResource(name)){
@@ -528,7 +535,7 @@ final class FileSystem68k {
 	static File hyperZebraProgram(){
 		String launcher=System.getProperty("jpackage.app-path");
 		if(launcher!=null){File f=new File(launcher).getAbsoluteFile();for(File p=f;p!=null;p=p.getParentFile())if(p.getName().endsWith(".app"))return p;return f;}
-		try{return new File(FileSystem68k.class.getProtectionDomain().getCodeSource().getLocation().toURI());}catch(Exception|Error e){return null;}
+		return Toolbox68k.PARTS.codeLocation();
 	}
 	/** ioDTRefNum handed out by PBDTGetPath: the desktop database of volume i (the volumes' order) is DESKTOP_REF-i. */
 	private static final int DESKTOP_REF=-32700;
@@ -572,7 +579,7 @@ final class FileSystem68k {
 					if(selector==0x2a){byte[] c=tb.encoding.encodeReplacing(HostFileAttributes68k.comment(f));if(c.length==0){finish(cpu,pb,-5012,async);return true;}
 						int buffer=memory.readLong(pb+32),n=Math.min(c.length,200);if(buffer!=0&&n>0)memory.load(buffer,java.util.Arrays.copyOf(c,n)); // ioDTReqCount is no input of GetComment (IM Files): Core Collection's GetComment leaves it unset and got nothing
 						memory.writeLong(pb+40,n);finish(cpu,pb,0,async);return true;}
-					Sandbox.checkFile(f,Sandbox.Access.WRITE,fileManager.requester());
+					Sandbox68k.checkFile(f,Sandbox68k.Access.WRITE,fileManager.requester());
 					String comment="";
 					if(selector==0x28){int buffer=memory.readLong(pb+32),n=Math.min(200,Math.max(0,memory.readLong(pb+36)));comment=buffer==0||n==0?"":tb.decode(memory.readBytes(buffer,n));} // comments hold 200 characters
 					finish(cpu,pb,HostFileAttributes68k.setComment(f,comment)?0:-5000,async);}
@@ -990,10 +997,10 @@ final class FileSystem68k {
 			int vRef=fileManager.volumeRefNumFor(root),index=fileManager.volumeIndexOf(root);
 			if(actualPtr!=0)memory.writeWord(actualPtr,vRef);
 			if(info!=0&&whichInfo!=0){
-				java.nio.file.attribute.BasicFileAttributes attributes=java.nio.file.Files.readAttributes(root.toPath(),java.nio.file.attribute.BasicFileAttributes.class);
+				long[] attributes=Files68k.times(root);
 				long total=fileManager.volumeTotalSpace(root),free=fileManager.volumeLocked(index)?0:fileManager.volumeFreeSpace(root);
 				if((whichInfo&0x0001)!=0)writeUtc(info,fileManager.volumeCreationDateFor(root));
-				if((whichInfo&0x0002)!=0)writeUtc(info+8,FileManager68k.macDate(attributes.lastModifiedTime().toMillis()));
+				if((whichInfo&0x0002)!=0)writeUtc(info+8,FileManager68k.macDate(attributes[1]));
 				if((whichInfo&0x0004)!=0)writeUtc(info+16,0);
 				if((whichInfo&0x0008)!=0)writeUtc(info+24,0);
 				if((whichInfo&0x0030)!=0){File[] entries=root.listFiles();int files=0,folders=0;if(entries!=null)for(File e:entries){if(e.isFile())files++;else if(e.isDirectory())folders++;} // as PBHGetVInfo counts them
@@ -1205,7 +1212,7 @@ final class FileSystem68k {
 		// Mac OS 9 OpenGL games check the installed version from the 'vers' of Extensions:OpenGLEngine (Last Contact: FSpOpenResFile,
 		// "Need OpenGL version 1.2.1 or newer" when it is missing); the native OpenGL answers as 1.2.1, so a stub says so.
 		// It has no 'cfrg', so the Code Fragment Manager never takes it for a library.
-		if(PpcOpenGL.NATIVE)ensureStub(new File(new File(systemFolder,"Extensions"),"OpenGLEngine"),"shlbcfmg",OPENGL_VERS);
+		if(Ppc68k.openGlNative())ensureStub(new File(new File(systemFolder,"Extensions"),"OpenGLEngine"),"shlbcfmg",OPENGL_VERS);
 		// Internet Config's application (1.x, with Anarchie 1.6) looks for Extensions:Internet Config Extension by name and offers
 		// to install it when it is missing, although the component (InternetConfig68k) answers; Mac OS 9 has the file. No INIT code.
 		if(!"false".equals(System.getProperty("hz68k.internetconfig")))ensureStub(new File(new File(systemFolder,"Extensions"),"Internet Config Extension"),"INITICAp",INTERNET_CONFIG_VERS);
@@ -1388,6 +1395,19 @@ final class FileSystem68k {
 			File dir=fileManager.directoryForId(parentId,0);if(dir!=null&&dir.isDirectory()&&!name.isEmpty())return new File(dir,name);}catch(Exception ignored){}
 		return null;
 	}
+	/**
+	 * The full path of an alias (record 2) on the startup disk when its volume is not mounted at all: a System Folder and
+	 * programs copied from a Mac onto HyperZebra HD keep aliases to that Mac's disk by its name ("Power Macintosh:Applications
+	 * (Mac OS 9):Adobe Photoshop 3.0:Plug-ins" in Photoshop 3.0's preferences, which then said "Could not initialize Photoshop
+	 * because File not found"). The disk itself is the startup disk under another name, as a renamed disk is on a Mac, where the
+	 * Alias Manager still finds it. Null when the alias's volume is mounted (then its own path is the answer) or nothing matches.
+	 */
+	private File onStartupDisk(String path){
+		int colon=path.indexOf(':');if(colon<=0)return null;
+		String volume=path.substring(0,colon);
+		for(String n:fileManager.volumeNames)if(n.equalsIgnoreCase(volume)||fileManager.programName(n).equalsIgnoreCase(volume))return null;
+		try{return fileForClassicPath(BOOT_VOLUME_NAME+path.substring(colon));}catch(IOException|SecurityException e){return null;}
+	}
 	/** The host path an alias made here records (its private 'HZ' record), or null for an alias from elsewhere. */
 	String aliasHostPath(byte[] alias){
 		if(alias==null||alias.length<0x96)return null;
@@ -1448,6 +1468,11 @@ final class FileSystem68k {
 			at+=length+(length&1);}
 		if(host!=null){File f=new File(host);if(f.exists())return f;}
 		if(path!=null)try{File f=fileForClassicPath(path);if(f!=null&&f.exists())return f;}catch(IOException ignored){}
+		if(path!=null){File f=onStartupDisk(path);if(f!=null&&f.exists())return f;}
+		// a volume itself (parent ID 1, no path record: Photoshop 3.0's scratch disk "hard drive") by its name, the startup disk when
+		// no volume has that name
+		if(path==null&&MacApp68k.u4(alias,0x2e)==1&&(alias[0x32]&0xff)>0)try{String volume=tb.encoding.decode(java.util.Arrays.copyOfRange(alias,0x33,0x33+Math.min(27,alias[0x32]&0xff)));
+			File f=onStartupDisk(volume+":");if(f==null)f=fileForClassicPath(volume+":");if(f!=null&&f.exists())return f;}catch(Exception ignored){}
 		// no usable record: the fixed part still names the file and its parent directory id
 		try{int parentId=MacApp68k.u4(alias,0x2e);String name=tb.encoding.decode(java.util.Arrays.copyOfRange(alias,0x33,0x33+(alias[0x32]&0xff)));
 			File dir=fileManager.directoryForId(parentId,0);if(dir!=null){File f=new File(dir,name);if(f.exists())return f;}}catch(Exception ignored){}
@@ -1669,7 +1694,7 @@ final class FileSystem68k {
 			}
 		}finally{memory.free(buffer);memory.free(request);}
 		File backing=addedDriveFiles.get(drive);
-		if(backing!=null&&backing.length()==blocks*512&&Sandbox.allowFile(backing,Sandbox.Access.WRITE,tb.name)){ // the image file gets the same sectors
+		if(backing!=null&&backing.length()==blocks*512&&Sandbox68k.allowFile(backing,Sandbox68k.Access.WRITE,tb.name)){ // the image file gets the same sectors
 			try(java.io.RandomAccessFile out=new java.io.RandomAccessFile(backing,"rw")){for(Object[] s:format.sectors){out.seek((Long)s[0]*HfsFormat.SECTOR);out.write((byte[])s[1]);}}
 			catch(IOException e){if(Mac68kApi.TRACE)System.err.println("[68K] DIZero drive "+drive+": "+backing+": "+e.getMessage());}
 		}

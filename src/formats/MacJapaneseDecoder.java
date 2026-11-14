@@ -12,7 +12,7 @@ import java.util.Map;
  * Source: https://www.unicode.org/Public/MAPPINGS/VENDORS/APPLE/JAPANESE.TXT
  */
 final class MacJapaneseDecoder {
-	private static final Charset SHIFT_JIS = Charset.forName("Shift_JIS");
+	private static final Charset SHIFT_JIS = Platform.get().charset("Shift_JIS");
 
 	//MacJapaneseEncoder(エクスポート時の逆変換)からも同じ表を使えるように
 	//package-privateにしてある。

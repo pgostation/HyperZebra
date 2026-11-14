@@ -36,7 +36,7 @@ final class GHelpWindow extends JFrame {
 	static final String TOPIC_PAINT_USAGE="paint-usage",TOPIC_PAINT_FEATURES="paint-features";
 	static final String TOPIC_APPLEDOUBLE="appledouble",TOPIC_FORKS="forks",TOPIC_TRANSFER="transfer";
 	/** What HyperZebra adds to HyperCard and HyperTalk: the overview, then one topic for each addition. */
-	static final String TOPIC_EXTENSIONS="extensions", TOPIC_PANELS="panels", TOPIC_SHAPES="shapes", TOPIC_FIELD_VIEWS="field-views", TOPIC_COLLECTIONS="collections-json", TOPIC_REGEX="regex";
+	static final String TOPIC_EXTENSIONS="extensions", TOPIC_PANELS="panels", TOPIC_SHAPES="shapes", TOPIC_FIELD_VIEWS="field-views", TOPIC_COLLECTIONS="collections-json", TOPIC_REGEX="regex", TOPIC_BINARY="binary-images", TOPIC_IMAGE_EFFECTS="image-effects";
 
 	private static GHelpWindow instance;
 	private final JList<Topic> list;
@@ -455,6 +455,122 @@ final class GHelpWindow extends JFrame {
 			"    ^ $  start and end of the text     a|b  a or b\n"+
 			"    (?i)  at the start: ignore case    (?<year>\\d+)  a named group\n"+
 			"  Japanese text works as it is. A pattern with a mistake stops the script with an error that says where. Command-period stops a match that takes too long."));
+		topics.add(new Topic(TOPIC_BINARY,
+			"Binary data and images",
+			"Scripts can read and write any file byte by byte, and turn a picture into an array of pixels and back. The names and the syntax are LiveCode's, so examples written for LiveCode work as they are.\n"+
+			"\n"+
+			"Binary data\n"+
+			"  Binary data is text with one character for each byte. byte n of data is char n of data, and byteToNum and numToByte give the number of a byte (0 to 255) and the byte of a number. Use them for binary data rather than charToNum and numToChar, which follow the stack's text encoding.\n"+
+			"    put URL \"binfile:photo.png\" into data\n"+
+			"    put the number of bytes in data into size\n"+
+			"    put byteToNum(byte 1 of data) into first\n"+
+			"    put data into URL \"binfile:copy.png\"\n"+
+			"  A file name without a folder is in the stack's folder. URL \"file:notes.txt\" reads and writes text instead; put … after URL adds to the end of a file. HyperZebra asks before a stack reads or writes a file outside its own places (Settings: access confirmation).\n"+
+			"\n"+
+			"Files\n"+
+			"    open file \"data.bin\" for binary read\n"+
+			"    read from file \"data.bin\" for 4 bytes\n"+
+			"    put it into header\n"+
+			"    read from file \"data.bin\" until eof\n"+
+			"    close file \"data.bin\"\n"+
+			"  The modes are read (the file is only read), write (the file is emptied first), update (read and written, nothing is cut) and append (written at the end). Without binary the file is text, as before. open file without a mode works as in HyperCard.\n"+
+			"\n"+
+			"Numbers in binary data\n"+
+			"    put binaryEncode(\"NnC\", 100000, 2, 255) into data\n"+
+			"    get binaryDecode(\"NnC\", data, a, b, c)\n"+
+			"  Each letter is a value: c C a byte (with or without a sign), s S i I 2 and 4 bytes with the low byte first (Intel order), n m N M 2 and 4 bytes with the high byte first (n N with a sign), f d floating-point numbers, a A text, H h hexadecimal, B b bits, x a zero byte that is skipped. A count after a letter takes that many values, * all the rest. binaryDecode puts the values into the variables and gives how many it converted.\n"+
+			"    get binaryDecode(\"H*\", sha1Digest(data), hex)\n"+
+			"  Also for binary data: base64Encode and base64Decode, compress and decompress (gzip), md5Digest, sha1Digest, messageDigest(data, \"SHA-256\"), and textEncode(text, \"UTF-8\") and textDecode(data, \"UTF-8\"), which turn text into the bytes of an encoding and back.\n"+
+			"\n"+
+			"Images as arrays of pixels\n"+
+			"  imageToArray turns PNG, JPEG, GIF, BMP or PICT data into an array of rows. Each pixel is \"r,g,b,a\" (red, green, blue, opacity, from 0 to 255), so px[y][x] is the pixel x from the left in row y from the top, counting from 1. arrayToImage makes PNG data from such an array, or \"jpeg\", \"gif\" or \"bmp\". A pixel may also be \"r,g,b\" (opaque) or [r, g, b, a].\n"+
+			"    put imageToArray(URL \"binfile:photo.png\") into px\n"+
+			"    put the number of items of px into h\n"+
+			"    put the number of items of px[1] into w\n"+
+			"    repeat with y = 1 to h\n"+
+			"      repeat with x = 1 to w\n"+
+			"        put px[y][x] into c\n"+
+			"        put 255 - item 1 of c & \",\" & 255 - item 2 of c & \",\" & 255 - item 3 of c & \",\" & item 4 of c into px[y][x]\n"+
+			"      end repeat\n"+
+			"    end repeat\n"+
+			"    put arrayToImage(px) into URL \"binfile:negative.png\"\n"+
+			"  Changing an array one element at a time is quick: a loop over every pixel of a 640 x 480 picture takes a fraction of a second."));
+
+		topics.add(new Topic(TOPIC_IMAGE_EFFECTS,
+			"Image effects",
+			"Whole images can be changed at once, far faster than pixel by pixel in a repeat loop: to touch up a picture, or for effects in a game. An image is image data as URL \"binfile:…\" gives it (PNG, JPEG, GIF, BMP or PICT); the functions give PNG data.\n"+
+			"\n"+
+			"imageFilter(data, script)\n"+
+			"  Runs a short script for every pixel. It is HyperTalk on numbers: r, g, b and a hold the pixel's red, green, blue and opacity (0 to 255), x and y where it is (from 0 at the top left), w and h the size of the image. What r, g, b and a hold at the end is the new pixel.\n"+
+			"    put \"put 255 - r into r; put 255 - g into g; put 255 - b into b\" into invert\n"+
+			"    put imageFilter(URL \"binfile:photo.jpg\", invert) into URL \"binfile:negative.png\"\n"+
+			"  Lines are separated by return or by ;. The script may use put, add, subtract, multiply, divide, if … then … else, repeat (with, times, while, until, exit repeat, next repeat), + - * / div mod ^, comparisons, and, or, not, and abs, min, max, sqrt, sin, cos, tan, atan, exp, ln, round, trunc, random and pi. Its own variables start at 0 for every pixel. red(x, y), green(x, y), blue(x, y), alpha(x, y) and lum(x, y) (brightness) read any pixel of the image, and get pixel x, y takes all of one; numbers between two pixels blend them. A script that runs too long stops with an error, and Command-period stops it too.\n"+
+			"\n"+
+			"Filters to copy\n"+
+			"  These are pixel scripts: keep the ones you use in a field or a variable, as in imageFilter(img, field \"Sepia\"). Values can be put in with &: \"multiply a by\" && opacity.\n"+
+			"  Grayscale:\n"+
+			"    put r * 0.3 + g * 0.59 + b * 0.11 into v; put v into r; put v into g; put v into b\n"+
+			"  Sepia:\n"+
+			"    put r * 0.39 + g * 0.77 + b * 0.19 into nr; put r * 0.35 + g * 0.69 + b * 0.17 into ng\n"+
+			"    put r * 0.27 + g * 0.53 + b * 0.13 into b; put nr into r; put ng into g\n"+
+			"  Brightness and contrast (20 lighter, 1.4 times the contrast):\n"+
+			"    put (r - 128) * 1.4 + 148 into r; put (g - 128) * 1.4 + 148 into g; put (b - 128) * 1.4 + 148 into b\n"+
+			"  Black and white:\n"+
+			"    if lum(x, y) > 128 then put 255 into v else put 0 into v\n"+
+			"    put v into r; put v into g; put v into b\n"+
+			"  A red flash, half way to red:\n"+
+			"    put r + (255 - r) / 2 into r; multiply g by 0.5; multiply b by 0.5\n"+
+			"  Green screen (that green becomes clear):\n"+
+			"    if g > 150 and r < 120 and b < 120 then put 0 into a\n"+
+			"  Blur (the average of 5 by 5 pixels):\n"+
+			"    repeat with dy = -2 to 2\n"+
+			"      repeat with dx = -2 to 2\n"+
+			"        add red(x + dx, y + dy) to sr; add green(x + dx, y + dy) to sg; add blue(x + dx, y + dy) to sb\n"+
+			"      end repeat\n"+
+			"    end repeat\n"+
+			"    put sr / 25 into r; put sg / 25 into g; put sb / 25 into b\n"+
+			"  Outlines of what is drawn:\n"+
+			"    put abs(lum(x + 1, y) - lum(x - 1, y)) + abs(lum(x, y + 1) - lum(x, y - 1)) into v\n"+
+			"    put v into r; put v into g; put v into b\n"+
+			"  Mosaic, mirror and wave:\n"+
+			"    get pixel x - x mod 8, y - y mod 8\n"+
+			"    get pixel w - 1 - x, y\n"+
+			"    get pixel x + 6 * sin(y / 12), y\n"+
+			"  Darker corners, scan lines and noise:\n"+
+			"    put ((x - w / 2) ^ 2 + (y - h / 2) ^ 2) / ((w / 2) ^ 2 + (h / 2) ^ 2) * 0.8 into d\n"+
+			"    multiply r by 1 - d; multiply g by 1 - d; multiply b by 1 - d\n"+
+			"    put 1 - y mod 2 * 0.4 into k; multiply r by k; multiply g by k; multiply b by k\n"+
+			"    put random(41) - 21 into n; add n to r; add n to g; add n to b\n"+
+			"\n"+
+			"Other sizes\n"+
+			"  imageFilter(data, script, width, height) makes an image of that size: the script runs for each of its pixels (width and height hold its size) and takes the original's with get pixel.\n"+
+			"    put imageFilter(img, \"get pixel x * w / width, y * h / height\", 320, 240) into small\n"+
+			"    put imageFilter(img, \"get pixel y, h - 1 - x\", item 2 of imageSize(img), item 1 of imageSize(img)) into turned\n"+
+			"\n"+
+			"Combining and making images\n"+
+			"    put imageCreate(200, 40, \"#00000080\") into bar\n"+
+			"    put imageCombine(img, bar, 10, 300) into img\n"+
+			"    put imageCombine(img, sprite, x, y, \"screen\", 70) into img\n"+
+			"  imageCombine draws the second image on the first with its top left at x,y. The mode is normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation or luminosity, and the opacity is from 0 to 100. imageSize gives width,height.\n"+
+			"\n"+
+			"Pictures of the stack\n"+
+			"    export card to snap\n"+
+			"    import paint from imageFilter(snap, field \"Sepia\")\n"+
+			"  export paint, export card and export screen to a variable give the paint picture, the card with its buttons and fields, or the card window as it looks now. import paint from image data draws it on the card picture (on the background's while you edit the background).\n"+
+			"\n"+
+			"Screen effects\n"+
+			"    set the screenFilter to field \"Grayscale\"\n"+
+			"    set the screenFilter to empty\n"+
+			"  The screenFilter shows the card window through a pixel script while the stack stays as it is: for a flashback, a pause screen or a dream. There x and y are pixels of the screen, and scale is how much it is magnified (2 when the card is shown at 200%). The screenOverlay is an image shown over the card from its top left, for a flash of colour or a status panel. Both end when the stack closes, and lock screen and visual effects show them as well.\n"+
+			"    repeat with i = 1 to 10\n"+
+			"      put 1 - i / 10 into k\n"+
+			"      set the screenFilter to \"multiply r by\" && k & \"; multiply g by\" && k & \"; multiply b by\" && k\n"+
+			"      wait 2 ticks\n"+
+			"    end repeat\n"+
+			"    set the screenOverlay to imageCreate(the width of this card, the height of this card, \"#FF000060\")\n"+
+			"    wait 5 ticks\n"+
+			"    set the screenOverlay to empty\n"+
+			"  A colour script costs well under a millisecond each time the card is drawn; one that reads 25 pixels for each, like the blur, about 15."));
 		topics.add(new Topic(TOPIC_PAINT_USAGE,
 			"Using the paint tools",
 			"Starting and finishing\n"+

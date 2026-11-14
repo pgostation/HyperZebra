@@ -13,9 +13,6 @@ import java.util.ArrayList;
 
 import javax.imageio.ImageIO;
 import javax.swing.JLabel;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 
 public class OCard extends OCardBase {
@@ -106,16 +103,16 @@ public class OCard extends OCardBase {
 	
 
 	@SuppressWarnings("unchecked")
-	public XMLStreamReader readXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readXML(XmlIn reader) throws Exception {
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamReader.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName().intern();
 	            	if(elm.equals("id")){ id = Integer.valueOf(reader.getElementText()); }
 	            	else if(elm.equals("filler1")){ filler1 = reader.getElementText(); } //markedかな？
 	            	else if(elm.equals("bitmap")){ bitmapName = reader.getElementText(); }
-	            	else if(elm.equals("paintLayer")){ layers.add(PaintLayer.readXML(reader)); }
+	            	else if(elm.equals("paintLayer")){ { PaintLayer layer = UiHost.get().readPaintLayer(reader); if(layer!=null) layers.add(layer); } }
 				else if(elm.equals("shape")){ shapeList.add(OShape.readXML(reader,this)); }
 				else if(elm.equals("panel")){ readPanel(reader); }
 	            	else if(elm.equals("cantDelete")){ cantDelete = XMLRead.bool(reader);reader.next(); }
@@ -130,7 +127,7 @@ public class OCard extends OCardBase {
 	            	else if(elm.equals("name")){ 
 	            		name = reader.getElementText();
 	            	}
-	            	else if(elm.equals("osaScript")) osaScript = OsaScript.readXML(reader);
+	            	else if(elm.equals("osaScript")) osaScript = UiHost.get().readOsaScript(reader);
 	            	else if(elm.equals("script"))
 	            	{
 	            		String scrStr = reader.getElementText();
@@ -146,7 +143,7 @@ public class OCard extends OCardBase {
 	            		int partid=0;
 	    	            while(reader.hasNext()){
 	    	            	int eventType2 = reader.next();
-	    	            	if (eventType2 == XMLStreamReader.START_ELEMENT) {
+	    	            	if (eventType2 == XmlIn.START_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("id")){ partid = Integer.valueOf(reader.getElementText()); }
 	    		            	else if(elm2.equals("type")){ 
@@ -172,7 +169,7 @@ public class OCard extends OCardBase {
 	    		            		System.out.println("Element Text: " + reader.getElementText());
 	    		            	}
 	    	            	}
-	    	            	else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+	    	            	else if (eventType2 == XmlIn.END_ELEMENT) {
 	    		            	String elm2 = reader.getLocalName();
 	    		            	if(elm2.equals("part")){
 	    		            		break;
@@ -187,7 +184,7 @@ public class OCard extends OCardBase {
 			ArrayList<styleClass> contentStyles = new ArrayList<styleClass>();
 		            while(reader.hasNext()){
 			int eventType2 = reader.next();
-			if (eventType2 == XMLStreamReader.START_ELEMENT) {
+			if (eventType2 == XmlIn.START_ELEMENT) {
 				String elm2 = reader.getLocalName();
 				if(elm2.equals("layer")){ layer = reader.getElementText(); }
 				else if(elm2.equals("id")){ partid = Integer.valueOf(reader.getElementText()); }
@@ -217,7 +214,7 @@ public class OCard extends OCardBase {
 					int offset = 0;
 				            while(reader.hasNext()){
 					int eventType3 = reader.next();
-					if (eventType3 == XMLStreamReader.START_ELEMENT) {
+					if (eventType3 == XmlIn.START_ELEMENT) {
 						String elm3 = reader.getLocalName();
 						if(elm3.equals("offset")){ offset = Integer.valueOf(reader.getElementText()); }
 						else if(elm3.equals("id")){
@@ -229,7 +226,7 @@ public class OCard extends OCardBase {
 							System.out.println("Element Text: " + reader.getElementText());
 						}
 					}
-					else if (eventType3 == XMLStreamReader.END_ELEMENT) {
+					else if (eventType3 == XmlIn.END_ELEMENT) {
 						String elm3 = reader.getLocalName();
 						if(elm3.equals("stylerun")){
 							contentStyles.add(new styleClass(offset, styleid));
@@ -244,7 +241,7 @@ public class OCard extends OCardBase {
 					System.out.println("Element Text: " + reader.getElementText());
 				}
 			}
-			else if (eventType2 == XMLStreamReader.END_ELEMENT) {
+			else if (eventType2 == XmlIn.END_ELEMENT) {
 				String elm2 = reader.getLocalName();
 			if(elm2.equals("content")){
 				if(contentField!=null && !contentStyles.isEmpty())
@@ -263,7 +260,7 @@ public class OCard extends OCardBase {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamReader.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("card")){
 	            		break;
@@ -278,7 +275,7 @@ public class OCard extends OCardBase {
 	}
 	
 	
-	public void writeXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeXML(XmlOut writer) throws XmlException {
         writer.writeStartElement("card");
         writer.writeCharacters("\n\t\t");
 
@@ -288,7 +285,7 @@ public class OCard extends OCardBase {
         writer.writeCharacters("\n\t\t");
 
         writer.writeStartElement("bitmap");
-        writer.writeCharacters(bitmapName);
+        writer.writeCharacters(bitmapName==null ? "" : bitmapName); //(a card the player made: New Card leaves it null)
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
         //追加のペイントレイヤー(pictの上、下から順)
@@ -485,7 +482,7 @@ public class OCard extends OCardBase {
         writer.writeEndElement();
         writer.writeCharacters("\n\t");
         
-        if(osaScript!=null) osaScript.writeXML(writer, "\n\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
+        if(osaScript!=null) UiHost.get().writeOsaScript(osaScript, writer, "\n\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
 
         writer.writeEndElement();
         writer.writeCharacters("\n\t");
@@ -610,6 +607,7 @@ public class OCard extends OCardBase {
 				}
 			}
 			if(content.cardPart && cardPart!=null){
+				if(cardPart instanceof OField) HCData.decodeOneByteFonts(content, ((OField)cardPart).textFont, stack);
 				cardPart.setText(content.text);
 				if(cardPart.objectType.equals("field") && !content.styles.isEmpty()){
 					OField fld = (OField)cardPart;
@@ -630,6 +628,7 @@ public class OCard extends OCardBase {
 						content.text.equalsIgnoreCase("true");
 					bgbtnList.add(bgbtn);
 				}else{
+					if(backgroundPart instanceof OField) HCData.decodeOneByteFonts(content, ((OField)backgroundPart).textFont, stack);
 					OBgFieldData bgfld = new OBgFieldData(this, encodedPartId);
 					bgfld.text = content.text;
 					if(!content.styles.isEmpty()) bgfld.styleList = content.styles;
@@ -697,94 +696,7 @@ public class OCard extends OCardBase {
 	
 	
 	private static OCard buildOCard(OCard cd)
-	{
-		cd.picture = new OPicture(cd);
-		//追加のペイントレイヤーの画像
-		cd.loadLayerImages();
-		//カードピクチャが無くてもレイヤーがあれば表示用のラベルが要る
-		if(cd.hasLayers() && cd.bitmapName==null){
-			cd.label = MyLabel.getMyCdLabel(cd);
-			cd.label.setBounds(0,0,cd.stack.width,cd.stack.height);
-			PCARD.pc.mainPane.add(cd.label);
-		}
-		
-		//ピクチャ読み込み(pbm)
-		if(cd.bitmapName!=null){
-			String path = (cd.stack.file.getParent()+File.separatorChar+cd.bitmapName);
-			cd.pict = PictureFile.loadPbmCached(path);
-			if(cd.pict==null){
-				//読み込まれるまで待つ
-				for(int i=0; HCData.threadList!=null&&i<HCData.threadList.size(); i++){
-					Thread p = HCData.threadList.get(i);
-					if(p!=null && p.getName().equals(cd.bitmapName)){
-						HCData.startIfNew(p);
-						long lastLength = -1;
-						File file = new File(path);
-						for(int j=0; !file.exists() && j<50 || p.isAlive() || lastLength!=file.length(); j++){
-							lastLength = file.length();
-							try {
-								Thread.sleep(50);
-							} catch (InterruptedException e) {
-								e.printStackTrace();
-							}
-						}
-					}
-				}
-				if(new File(path).exists() && !new File(path).isDirectory()){
-					try {
-						cd.pict = PictureCache.readShared(new File(path), "imageio", StackProtection::readImage);
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-			}
-			if(cd.pict!=null){
-				cd.label = MyLabel.getMyCdLabel(cd);
-				cd.label.setBounds(0,0,cd.stack.width,cd.stack.height);
-				PCARD.pc.mainPane.add(cd.label);
-				return cd;
-			}
-		}
-
-		//ピクチャ読み込み
-		File file=new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".png");
-		try {
-			if(file.exists()) {
-				//System.out.println(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".png");
-				cd.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
-				cd.label = MyLabel.getMyCdLabel(cd/*new ImageIcon(stack.file.getParent()+"/resource/cdp"+this.id+".png")*/);
-				cd.label.setBounds(0,0,cd.stack.width,cd.stack.height);
-				PCARD.pc.mainPane.add(cd.label);
-			} else {
-				file=new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".jpeg");
-				if(file.exists()) {
-					//System.out.println(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".jpeg");
-					cd.pict = PictureCache.readShared(file, "imageio", StackProtection::readImage);
-					cd.pict = makeAlphaImage2(cd.pict);
-					cd.label = MyLabel.getMyCdLabel(cd/*new ImageIcon(stack.file.getParent()+"/resource/cdp"+this.id+".jpeg")*/);
-					cd.label.setBounds(0,0,cd.stack.width,cd.stack.height);
-					PCARD.pc.mainPane.add(cd.label);
-				}
-			}
-		} catch (Exception err1) {
-			//アルファを使用したピクチャが無い場合はマスク画像を使用して作成
-			try {
-				cd.pict = StackProtection.readImage(new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+"_img.png"));
-				file=new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+"_mask.png");
-				if(file.exists()) {
-					BufferedImage mask = StackProtection.readImage(file);
-					cd.pict = makeAlphaImage(cd.pict, mask);
-					File ofile=new File(cd.stack.file.getParent()+"/resource/cdp"+cd.id+".png");
-					StackProtection.writeImage(cd.stack, cd.pict, ofile);
-					PictureCache.invalidate(ofile);
-				}
-			}catch (Exception err) {
-				//err.printStackTrace();
-			}
-		}
-		
-		return cd;
-	}
+	{ return UiHost.get().buildOCard(cd); }
 
 	
 	public static BufferedImage makeAlphaImage(BufferedImage src, BufferedImage mask) {
@@ -839,72 +751,28 @@ public class OCard extends OCardBase {
 	}
 
 	static void reloadCurrentCard(){
-		if(PCARD.pc.stack.curCard==null) return;
+		if(HZ.stack().curCard==null) return;
 		
 		//画面作り直し
-		int id = PCARD.pc.stack.curCard.id;
+		int id = HZ.stack().curCard.id;
 		//a tool chosen in openStack runs later on the event thread; when the stack was replaced meanwhile (an imported stack
 		//reopened from its .hzb, cards still loading: AOL HyperDark modules) its card is not there yet - keep the screen as it is
 		boolean cached = false;
-		for(OCard cd : PCARD.pc.stack.cdCacheList) if(cd.stack==PCARD.pc.stack && cd.id==id){ cached = true; break; }
+		for(OCard cd : HZ.stack().cdCacheList) if(cd.stack==HZ.stack() && cd.id==id){ cached = true; break; }
 		if(!cached) return;
-		PCARD.pc.stack.curCard.removeData();
-		if(PCARD.pc.stack.curCard.bg!=null) PCARD.pc.stack.curCard.bg.removeData();
-		PCARD.pc.stack.curCard.bg = null;
+		HZ.stack().curCard.removeData();
+		if(HZ.stack().curCard.bg!=null) HZ.stack().curCard.bg.removeData();
+		HZ.stack().curCard.bg = null;
 		try {
-			PCARD.pc.stack.curCard = OCard.getOCard(PCARD.pc.stack, id, false);
-			PCARD.pc.stack.curCard.bg = OBackground.getOBackground(PCARD.pc.stack, PCARD.pc.stack.curCard, PCARD.pc.stack.curCard.bgid, false);
-			PCARD.pc.stack.curCard.parent = PCARD.pc.stack.curCard.bg;
+			HZ.stack().curCard = OCard.getOCard(HZ.stack(), id, false);
+			HZ.stack().curCard.bg = OBackground.getOBackground(HZ.stack(), HZ.stack().curCard, HZ.stack().curCard.bgid, false);
+			HZ.stack().curCard.parent = HZ.stack().curCard.bg;
 		} catch (xTalkException e1) {
 			e1.printStackTrace();
 		}
 		
 		//バックグラウンド編集の場合、カードのコンポーネントを外す
-		if(PaintTool.editBackground){
-			for(OShape shape:PCARD.pc.stack.curCard.shapeList)if(shape.view!=null)PCARD.pc.mainPane.remove(shape.view);
-			for(int i=0; i<PCARD.pc.stack.curCard.btnList.size(); i++){
-				OButton removedButton = PCARD.pc.stack.curCard.btnList.get(i);
-				PCARD.pc.mainPane.remove(removedButton.getComponent());
-				//popup(style==8)の名前ラベルはgetComponent()とは別の部品なので、
-				//あわせて外さないとポップアップ本体だけ消えて名前だけ残ってしまう。
-				if(removedButton.popupNameLabel!=null) PCARD.pc.mainPane.remove(removedButton.popupNameLabel);
-			}
-			for(int i=0; i<PCARD.pc.stack.curCard.fldList.size(); i++){
-				PCARD.pc.mainPane.remove(PCARD.pc.stack.curCard.fldList.get(i).getComponent());
-			}
-		}
-		
-		PCARD.pc.mainPane.repaint();
-		
-		//リスナーも付け直し
-		if(AuthTool.tool!=null){
-			//オーサリングモード
-			if(AuthTool.tool.getClass()==ButtonTool.class){
-				GUI.removeAllListener();
-				ButtonGUI.gui.addListenerToParts();
-			}
-			else if(AuthTool.tool.getClass()==FieldTool.class){
-				GUI.removeAllListener();
-				FieldGUI.gui.addListenerToParts();
-				FieldGUI.gui.target = null;
-			}
-			else if(AuthTool.tool instanceof ShapeTool){GUI.removeAllListener();ShapeTool.refresh();}
-		}else if(PCARD.pc.tool!=null){
-			//ペイントモード
-			//部品ごと作り直しているので、新しい部品にはpaintGUIが付いていない。
-			//付け直さないと背景では描けるのにボタン/フィールドの上だけ
-			//マウスが効かなくなる。
-			GUI.removeAllListener();
-			paintGUI.gui.removeListenerFromParts();
-			paintGUI.gui.addListenerToParts();
-		}else{
-			//ブラウズモード
-			GUI.removeAllListener();
-			GUI.addAllListener();
-			if(PCARD.pc.stack.addColor != null){
-				TXcmd.AddColor.addToMainPane();
-			}
-		}
+		UiHost.get().reattachCardViews();
 	}
 }
 
@@ -921,14 +789,14 @@ class MyLabel extends JLabel {
 	static MyLabel getMyCdLabel(OCardBase in_cd){
 		if(cdlabel==null) cdlabel = new MyLabel();
 		cdlabel.cd = in_cd;
-		cdlabel.setDoubleBuffered(PCARD.useDoubleBuffer);
+		cdlabel.setDoubleBuffered(HZ.useDoubleBuffer);
 		return cdlabel;
 	}
 	
 	static MyLabel getMyBgLabel(OCardBase in_cd){
 		if(bglabel==null) bglabel = new MyLabel();
 		bglabel.cd = in_cd;
-		bglabel.setDoubleBuffered(PCARD.useDoubleBuffer);
+		bglabel.setDoubleBuffered(HZ.useDoubleBuffer);
 		return bglabel;
 	}
 
@@ -936,7 +804,7 @@ class MyLabel extends JLabel {
 	//実際のSwing上のサイズ・位置だけをここで拡大率倍する。
 	@Override
 	public void setBounds(int x, int y, int width, int height){
-		Rectangle physical = PCARD.toPhysical(x, y, width, height);
+		Rectangle physical = Host.get().toPhysical(x, y, width, height);
 		super.setBounds(physical.x, physical.y, physical.width, physical.height);
 	}
 
@@ -944,8 +812,8 @@ class MyLabel extends JLabel {
     //@SuppressWarnings("restriction")
 	@Override
     protected void paintComponent(Graphics g) {
-    	if(PCARD.pc.tool!=null)return;
-    	if(cd.objectType.equals("card")&&PaintTool.editBackground)return;
+    	if(Host.get().paintToolActive())return;
+    	if(cd.objectType.equals("card")&&HZ.editBackground)return;
 		//Graphics mainpaneg = PCARD.pc.mainPane.getGraphics();
 		//Graphics paneg = PCARD.pc.getContentPane().getGraphics();
 		//Field f = null;
@@ -958,7 +826,7 @@ class MyLabel extends JLabel {
 		//	e.printStackTrace();
 		}
 		try {
-		//	if(PCARD.lockedScreen&&(f.get(paneg)==f.get(g)||f.get(mainpaneg)==f.get(g))) return;//g.drawImage(VEffect.oldoff,0,0,PCARD.pc.mainPane);
+		//	if(HZ.lockedScreen&&(f.get(paneg)==f.get(g)||f.get(mainpaneg)==f.get(g))) return;//g.drawImage(VEffect.oldoff,0,0,PCARD.pc.mainPane);
 		} catch (IllegalArgumentException e) {
 			e.printStackTrace();
 		//} catch (IllegalAccessException e) {
@@ -966,7 +834,7 @@ class MyLabel extends JLabel {
 		}
     	
 		//追加のペイントレイヤーがあれば平らにした絵(無ければpictそのもの)。絵の中の文字を訳したスタックでは訳した写し(PictureTranslation)
-		BufferedImage pict = PictureTranslation.shown(cd, cd.composite());
+		BufferedImage pict = UiHost.get().pictureTranslationShown(cd, cd.composite());
 		if(!cd.showPict||pict==null){
 			if(cd.objectType.equals("background")){
 				g.setColor(Color.WHITE);
@@ -975,11 +843,11 @@ class MyLabel extends JLabel {
 			}
 			return;
 		}
-		if(cd.objectType.equals("card")&& cd!=PCARD.pc.stack.curCard) return;
+		if(cd.objectType.equals("card")&& cd!=HZ.stack().curCard) return;
 		//a background picture narrower or shorter than the card (truePrint: 128 wide on a 160-wide card) leaves the rest
 		//white in HyperCard; here the window's black showed through
 		if(cd.objectType.equals("background")){
-			int pw = PCARD.toPhysical(pict.getWidth()), ph = PCARD.toPhysical(pict.getHeight());
+			int pw = Host.get().toPhysical(pict.getWidth()), ph = Host.get().toPhysical(pict.getHeight());
 			if(pw<getWidth() || ph<getHeight()){
 				g.setColor(Color.WHITE);
 				g.fillRect(pw, 0, Math.max(0, getWidth()-pw), getHeight());
@@ -991,10 +859,10 @@ class MyLabel extends JLabel {
 		PCARD.drawScaled(g, pict, 0, 0, PCARD.pc.mainPane);
 
 		//addColor用
-		/*if(PCARD.pc.stack.addColor != null){
+		/*if(HZ.stack().addColor != null){
 			Graphics2D g2 = (Graphics2D) g;
 			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
-			g2.drawImage(PCARD.pc.stack.addColor,0,0,null);
+			g2.drawImage(HZ.stack().addColor,0,0,null);
 		}*/
     }
 }

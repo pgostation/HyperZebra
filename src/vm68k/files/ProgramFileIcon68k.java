@@ -67,7 +67,7 @@ final class ProgramFileIcon68k {
 		// a colour member without its mask would be a filled square
 		for(String[] m:MEMBERS)if(m[2]!=null&&!family.containsKey(ResourceFile68k.fourcc(m[2])))family.remove(ResourceFile68k.fourcc(m[0]));
 		if(family.isEmpty())return null;
-		byte[] icns=StackFileIcon.familyOfClassic(family);
+		byte[] icns=UiHost.get().stackFileIconFamilyOfClassic(family);
 		if(icns==null)return null;
 		List<Object[]> add=new ArrayList<Object[]>();
 		for(Map.Entry<Integer,byte[]> e:family.entrySet())add.add(new Object[]{e.getKey(),e.getValue()});

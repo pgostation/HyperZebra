@@ -15,10 +15,23 @@ final class TalkJson {
 	 */
 	static String value(String json, String key) throws xTalkException {
 		if(TalkCollection.isCollection(json)) return collectionValue(json, key);
-		Object root=parse(json);
+		Object root=parsedRoot(json);
 		if(!(root instanceof Map<?,?>) && !(root instanceof ArrayList<?>))
 			throw new xTalkException("The first argument to JSONValue must be an object or array");
 		return result(select(root, key));
+	}
+
+	/** The last JSON text JSONValue parsed and its tree, which nothing changes (select and result only read it) */
+	private record Parsed(String json, Object root) {}
+	private static volatile Parsed lastParsed;
+
+	/** parse, the same text as last time not again: a loop asks JSONValue for one path after another of one source text */
+	private static Object parsedRoot(String json) throws xTalkException {
+		Parsed last=lastParsed;
+		if(last!=null && json!=null && (last.json==json || last.json.length()==json.length() && last.json.equals(json))) return last.root;
+		Object root=parse(json);
+		lastParsed=new Parsed(json, root);
+		return root;
 	}
 
 	/** The JSON text parsed: Map (objects, in order), ArrayList, String, NumberText, Boolean or null. */

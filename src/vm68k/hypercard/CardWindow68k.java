@@ -1,12 +1,7 @@
-import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
-
-import javax.swing.JComponent;
-import javax.swing.RepaintManager;
 
 /**
  * HyperCard's windows as a 68K external sees them: the card window and, while it is shown, the message box.
@@ -24,8 +19,11 @@ import javax.swing.RepaintManager;
  * The window records exist from the start (UxFlashMsg walks WindowList before its first trap), but the ports are
  * filled with the snapshots only at the external's first QuickDraw or Window Manager trap: a string XFCN never pays
  * for them.
+ *
+ * The windows' views, their pixels and the showing of the overlays are the host's ({@link CardViews68k}, P4).
  */
 final class CardWindow68k {
+	private static final CardViews68k V=CardViews68k.IMPL;
 	/** What the current external has drawn over the card, in card (logical) pixels; null when nothing. Read by MyPanel.paint. */
 	static volatile BufferedImage overlay;
 	/** The same for the message box (its glass pane paints it). */
@@ -48,10 +46,10 @@ final class CardWindow68k {
 	 * through the port and writes straight into screen memory (HyperTint) both land there.
 	 */
 	private final class Surface {
-		final int record,width,height;final JComponent component;final int scale;final boolean message; // scale: percent (100 = 1x)
+		final int record,width,height;final Object view;final int scale;final boolean message; // scale: percent (100 = 1x); view: the host's
 		/** A window of the picture command (null for the card and the message box); like the message box it has a buffer of its
 		 *  own ({@link #own}) and shows what externals draw there through a glass pane ({@link #glass}). */
-		final GPictWindow picture;final boolean own;PictureGlass glass;
+		final Object picture;final boolean own;Object glass;
 		/** The rows of the component above the window's port: the message box's title bar is the windoid's frame, not its
 		 *  content (UxFlashMsg inverts the portRect of the window titled "message": the bar and its close box flashed too). */
 		final int top;
@@ -80,19 +78,20 @@ final class CardWindow68k {
 		/** {@link #covered} when the bare card last went into the screen ({@link #snapshot}). */
 		QdRegion coveredAtWrite;
 		long shownSerial;final BufferedImage[] shown=new BufferedImage[2];int shownIndex;
-		Surface(String title,JComponent component,int scale,boolean message) throws M68kCpuException {this(title,component,scale,message,null);}
-		Surface(String title,JComponent component,int scale,boolean message,GPictWindow picture) throws M68kCpuException {
-			this.component=component;this.scale=scale;this.message=message;this.picture=picture;own=message||picture!=null;top=message?GMsg.BAR_HEIGHT:0;
+		Surface(String title,Object view,int scale,boolean message) throws M68kCpuException {this(title,view,scale,message,null);}
+		Surface(String title,Object view,int scale,boolean message,Object picture) throws M68kCpuException {
+			this.view=view;this.scale=scale;this.message=message;this.picture=picture;own=message||picture!=null;top=message?GMsg.BAR_HEIGHT:0;
+			int[] viewSize=V.viewSize(view);
 			if(message){width=GMsg.WIDTH;height=GMsg.HEIGHT-top;} // the box's size also while it is hidden (never laid out yet)
-			else if(picture!=null){java.awt.image.BufferedImage bi=picture.label.bi;width=Math.max(1,bi==null?DisplayZoom.unscale(component.getWidth(),scale):bi.getWidth());height=Math.max(1,bi==null?DisplayZoom.unscale(component.getHeight(),scale):bi.getHeight());}
-			else{width=Math.max(1,DisplayZoom.unscale(component.getWidth(),scale));height=Math.max(1,DisplayZoom.unscale(component.getHeight(),scale)-top);}
+			else if(picture!=null){int[] bi=V.pictureSize(picture);width=Math.max(1,bi==null?ZoomMath.unscale(viewSize[0],scale):bi[0]);height=Math.max(1,bi==null?ZoomMath.unscale(viewSize[1],scale):bi[1]);}
+			else{width=Math.max(1,ZoomMath.unscale(viewSize[0],scale));height=Math.max(1,ZoomMath.unscale(viewSize[1],scale)-top);}
 			record=tb.hyperCardWindowRecords&&picture==null?(message?Xcmd68k.MESSAGE_WINDOW_RECORD:Xcmd68k.CARD_WINDOW_RECORD):memory.allocate(WindowManager68k.WINDOW_SIZE,4);memory.fill(record,WindowManager68k.WINDOW_SIZE,0);
 			qd.newWindowPort(record,width,height,true,true);
 			// windowKind: HyperCard's own kinds - $1E a stack window, 8 a palette such as the message box (UDI's UxGetWindows finds
 			// the stacks by $1E; the card window was a palette to it), and visible
 			// (HC J-2.3 measured: the picture command's windoid, rect and shadow windows 8 as the palettes, its dialog, plain and zoom
 			// ones 20; HyperZebra's picture windows with a title bar are windoids - their windowStyle - and only dialog/plain have a frame)
-			memory.writeWord(record+108,picture==null?(message?8:0x1e):picture.isUndecorated()&&picture.getContentPane() instanceof JComponent&&((JComponent)picture.getContentPane()).getBorder()!=null?20:8);
+			memory.writeWord(record+108,picture==null?(message?8:0x1e):V.pictureFramed(picture)?20:8);
 			memory.writeByte(record+110,shown()?1:0);
 			// goAwayFlag (HC J-2.3 measured): 1 for the message box and every picture window, 0 for the stack window. CompileIt!
 			// externals read +112 as "visible": UxDraw's `Port message` drew on the card instead of the message box
@@ -101,7 +100,7 @@ final class CardWindow68k {
 			int[] px=qd.windowPortPixels(record);base=px[0];rowBytes=px[1];
 		}
 		/** Whether the window is shown (its record's visible). */
-		boolean shown(){return picture!=null?picture.isVisible():component.isShowing();}
+		boolean shown(){return picture!=null?V.pictureVisible(picture):V.viewShowing(view);}
 		/** The card port describes the screen at the card window's current place (the screen's depth or the window may have changed). */
 		void placeOnScreen() throws M68kCpuException {
 			if(own)return;
@@ -122,7 +121,7 @@ final class CardWindow68k {
 		 *  card went back into screen memory under it, and xWindowFrame's full-screen frame let a PaintRect through the card port
 		 *  blacken the card for good (the Window Manager clips it away with the card's visRgn). */
 		private QdRegion frontWindows(){
-			QdRegion r=QdRegion.empty();MacAppHost host=tb.hosted()?tb.host():null;
+			QdRegion r=QdRegion.empty();VmHost host=tb.hosted()?tb.host():null;
 			for(WindowManager68k.Window w:new ArrayList<WindowManager68k.Window>(tb.windows.order)){
 				if(!w.visible||w.service||w.width<=0||w.height<=0||tb.isDesktopWindow(w.record)||host!=null&&host.behindHyperCard(w.record))continue;
 				int t=w.top-screenTop,l=w.left-screenLeft;
@@ -132,7 +131,7 @@ final class CardWindow68k {
 		}
 		/** What {@link #frontWindows} depends on, as one number: the external's windows, shown or not, where, behind the card or not. */
 		long frontKey(){
-			long k=1;MacAppHost host=tb.hosted()?tb.host():null;
+			long k=1;VmHost host=tb.hosted()?tb.host():null;
 			for(WindowManager68k.Window w:tb.windows.order){
 				k=k*31+w.record;k=k*31+(w.visible?1:0);k=k*31+w.top;k=k*31+w.left;k=k*31+w.width;k=k*31+w.height;
 				if(host!=null&&host.behindHyperCard(w.record))k=k*31+7;
@@ -162,7 +161,7 @@ final class CardWindow68k {
 			// card, so it is drawing to the next flush.
 			int[] g=gone.bounds();
 			if(drawingHooked())invalidate(g[0],g[1],g[2],g[3]);
-			else if(drawnAtStart!=null&&Xcmd68k.cardDrawingHooked(stack))writeCard(screenTop,screenLeft,width,height,drawnAtStart,keep.isEmpty()?null:keep);
+			else if(drawnAtStart!=null&&UiHost.get().xcmd68kCardDrawingHooked(stack))writeCard(screenTop,screenLeft,width,height,drawnAtStart,keep.isEmpty()?null:keep);
 			coveredAtWrite=covered;
 		}
 		/** The card with the externals' drawing ({@link #overlay}) as it went into the screen at the last {@link #snapshot} that put it
@@ -176,7 +175,7 @@ final class CardWindow68k {
 		 * back clears them.
 		 */
 		boolean snapshot() throws M68kCpuException {
-			int[] size=new int[2];int[] pixels=picture!=null?picturePixels(picture,width,height):capture(component,scale,size,!message);
+			int[] size=new int[2];int[] pixels=picture!=null?V.picturePixels(picture,width,height):V.capture(view,scale,size,!message);
 			if(picture!=null){size[0]=width;size[1]=height;}
 			if(pixels==null||size[0]!=width||size[1]-top!=height)return false;
 			if(top>0)pixels=java.util.Arrays.copyOfRange(pixels,top*width,(top+height)*width);
@@ -184,11 +183,11 @@ final class CardWindow68k {
 			if(own){
 				qd.writePortRgb(record,width,height,pixels);
 				memory.trackBuffer(base,rowBytes*height);
-				if(message)installGlassPane();else glass=PictureGlass.install(picture);
+				if(message)V.installMessageGlass();else glass=V.installPictureGlass(picture);
 			}else{
 				placeOnScreen();
 				// what the window shows: the card, or while the screen is locked the picture of it taken then
-				int[] locked=lockedPicture(component,scale,width,height);if(locked!=null)pixels=locked;
+				int[] locked=V.lockedPicture(view,scale,width,height);if(locked!=null)pixels=locked;
 				shownPixels=pixels;
 				// The screen under the card already holds this card with the externals' drawing (the last run left it so, and
 				// HyperZebra drew nothing new meanwhile): it stays. Putting the bare card there again at every call and event
@@ -240,17 +239,19 @@ final class CardWindow68k {
 			// elsewhere white or black drawn over the card is drawing (PgColorX's white rectangle let the card's anti-aliased
 			// text show through it)
 			boolean[] copied=hcCopied,black=hcBlack;if(black==null||black.length!=argb.length)copied=null;
-			for(int i=0;i<argb.length;i++){int p=rgb[i]&0xffffff;if(p!=reference[i]&&(bare==null||copied==null||!copied[i]||p!=(black[i]?0:0xffffff))&&(front==null||!front.contains(i%width,i/width))){argb[i]=0xff000000|p;any=true;}else argb[i]=0;}
+			boolean[] same=null; // left clear only because the external put the card's own colour there
+			for(int i=0;i<argb.length;i++){int p=rgb[i]&0xffffff;if(p!=reference[i]&&(bare==null||copied==null||!copied[i]||p!=(black[i]?0:0xffffff))&&(front==null||!front.contains(i%width,i/width))){argb[i]=0xff000000|p;any=true;}else{argb[i]=0;if(p==reference[i]&&(bare==null||copied==null||!copied[i])&&(front==null||!front.contains(i%width,i/width))){if(same==null)same=new boolean[argb.length];same[i]=true;}}}
+			if(any&&same!=null)fillSameColour(argb,rgb,same,width,height);
 			shownSerial=now;
 			if(DEBUG)System.err.println("[cardwin] flush "+(message?"message":"card")+" any="+any+" t="+System.currentTimeMillis()%100000);
 			// the stack whose card is on show; while a stack closes that is an empty one already (the last flush of its externals
 			// as their VMs end): the drawing stays the closing stack's
-			PCARD pc=PCARD.pc;OStack shown=pc==null||pc.stack==null||pc.stack.curCard==null?null:pc.stack;
-			if(message){messageOverlay=any?image:null;if(shown!=null)messageOverlayStack=shown;GMsg m=GMsg.msg;if(m!=null)m.getGlassPane().repaint();}
-			else if(picture!=null){if(glass!=null)glass.show(any?image:null);}
+			OStack onShow=HZ.stack(),shown=onShow==null||onShow.curCard==null?null:onShow;
+			if(message){messageOverlay=any?image:null;if(shown!=null)messageOverlayStack=shown;V.repaintMessage();}
+			else if(picture!=null){V.showPictureOverlay(glass,any?image:null);}
 			// shown at once while the screen is locked too: lock screen stops only HyperCard's own redraw of the card, an external
 			// draws straight into the window (ANIMATE's intro, run from openCard under the closeCard's lock screen, never showed)
-			else{overlay=any?image:null;if(shown!=null)overlayStack=shown;if(pc!=null&&pc.mainPane!=null)CardRepaintManager.repaintThroughLock(pc.mainPane);}
+			else{overlay=any?image:null;if(shown!=null)overlayStack=shown;V.repaintCardThroughLock();}
 		}
 		/** Stops watching the pixels (the snapshot is dropped). */
 		void untrack(){
@@ -275,7 +276,7 @@ final class CardWindow68k {
 	 *  (hide card window) is there too, invisible, as in HyperCard: 天気部予報's UxRgnCard runs between hide and show card window
 	 *  and reshapes the window's regions through thePort (with no record it read a port at 0 and failed at $FFFFFF). */
 	static CardWindow68k open(Toolbox68k tb,OStack stack) throws M68kCpuException {
-		PCARD pc=PCARD.pc;if(pc==null||pc.stack!=stack||pc.mainPane==null||pc.mainPane.getWidth()<=0||pc.mainPane.getHeight()<=0)return null;
+		if(!V.cardOnShow(stack))return null;
 		return new CardWindow68k(tb,stack);
 	}
 
@@ -285,15 +286,15 @@ final class CardWindow68k {
 		this.tb=tb;this.memory=tb.memory;this.qd=tb.api.quickDraw();this.stack=stack;
 		copyBitsAtOpen=tb.cpu==null?0:tb.cpu.patchedTrap(0xa8ec);
 		gammaSeen=qd.gammaVersion();seedGamma();
-		Surface card=new Surface(stack.getWindowTitle(),PCARD.pc.mainPane,PCARD.scalePercent(),false);surfaces.add(card);record=card.record;
+		Surface card=new Surface(stack.getWindowTitle(),V.cardView(),V.cardScale(),false);surfaces.add(card);record=card.record;
 		card.placeOnScreen();
 		qd.hyperCardWindowsInFront=this::picturesInFront; // reads of the screen see the picture windows over the card (CSEE IDColor)
 		// HyperCard's message box is in the WindowList also while it is hidden (UxMsgBar finds it by its title "message"; made only
 		// when it showed as this VM started, it answered "Not exist msg window" for good when the box came up later). Its title is
 		// "Message" (HyperCard J-2.3 measured, Oct 24 2026): Palette XFCN walks the list to the window titled exactly "Message"
 		// without looking for the list's end, and ran off it into an endless loop on "message"
-		GMsg msg=GMsg.msg;
-		if(msg!=null)surfaces.add(new Surface("Message",(JComponent)msg.getContentPane(),100,true));
+		Object msg=V.messageView();
+		if(msg!=null)surfaces.add(new Surface("Message",msg,100,true));
 		addPictures();
 		qd.setPortTo(tb.cpu,record);
 	}
@@ -321,115 +322,26 @@ final class CardWindow68k {
 	 *  UxDraw's `Port "<picture window>"` draws into one, UxCardImage2Res captures one ("Not found window" before). A picture
 	 *  window opened since the VM was made joins at the next call; one closed meanwhile leaves the chain. */
 	private void addPictures() throws M68kCpuException {
-		java.util.Set<GPictWindow> have=new java.util.HashSet<GPictWindow>();
+		java.util.Set<Object> have=new java.util.HashSet<Object>();
 		for(Surface s:surfaces)if(s.picture!=null)have.add(s.picture);
-		List<OWindow> list;synchronized(OWindow.list){list=new ArrayList<OWindow>(OWindow.list);}
-		for(OWindow w:list){GPictWindow g=w.gpw;
-			if(g==null||w.movieHandle!=null||g.label==null||!g.isDisplayable()||have.contains(g))continue;
+		for(Object g:V.pictureWindows()){
+			if(have.contains(g))continue;
 			// a windoid in front of the message box, the other styles behind it, all in front of the card (HC J-2.3: the WindowList
 			// starts with the picture windoid; records() lists the surfaces in reverse)
-			Surface s=new Surface(g.name==null?"":g.name,g.label,PCARD.scalePercent(),false,g);
-			int at=surfaces.size();if(g.isUndecorated())while(at>1&&(surfaces.get(at-1).message||surfaces.get(at-1).picture!=null&&!surfaces.get(at-1).picture.isUndecorated()))at--;
+			Surface s=new Surface(V.pictureName(g),V.pictureView(g),V.cardScale(),false,g);
+			int at=surfaces.size();if(V.pictureUndecorated(g))while(at>1&&(surfaces.get(at-1).message||surfaces.get(at-1).picture!=null&&!V.pictureUndecorated(surfaces.get(at-1).picture)))at--;
 			surfaces.add(at,s);}
 	}
 	/** Picture windows closed since the last call leave the WindowList; new ones join it. True when the list changed. */
 	private boolean syncPictures() throws M68kCpuException {
 		boolean changed=false;
 		for(java.util.Iterator<Surface> i=surfaces.iterator();i.hasNext();){Surface s=i.next();
-			if(s.picture!=null&&!s.picture.isDisplayable()){s.close();i.remove();changed=true;}}
+			if(s.picture!=null&&!V.pictureDisplayable(s.picture)){s.close();i.remove();changed=true;}}
 		int before=surfaces.size();addPictures();
 		return changed||surfaces.size()!=before;
 	}
-	/** The picture's own pixels (what the window shows of it at 1x, before it is scrolled), {@code width} x {@code height}. */
-	private static int[] picturePixels(GPictWindow picture,int width,int height){
-		java.awt.image.BufferedImage bi=picture.label==null?null:picture.label.bi;if(bi==null)return null;
-		int[] pixels=new int[width*height];
-		for(int y=0;y<height&&y<bi.getHeight();y++)for(int x=0;x<width&&x<bi.getWidth();x++){int p=bi.getRGB(x,y);pixels[y*width+x]=(p>>>24)<0x80?0xffffff:p&0xffffff;}
-		return pixels;
-	}
-
 	/** The records of the windows, front to back, for the WindowList chain. */
 	List<Integer> records(){List<Integer> r=new ArrayList<Integer>();for(int i=surfaces.size()-1;i>=0;i--)r.add(surfaces.get(i).record);return r;} // the message box floats above the card
-
-	/** The component's pixels in logical coordinates (it is drawn at {@code scale} percent of that), {width,height} in {@code size};
-	 *  {@code bare}: the card without the externals' {@link #overlay}. */
-	private static int[] capture(JComponent component,int scale,int[] size,boolean bare){
-		final BufferedImage[] holder=new BufferedImage[1];
-		PCARD.runOnEDT(() -> {
-			int w=component.getWidth(),h=component.getHeight();if(w<=0||h<=0||!component.isShowing())return;
-			BufferedImage image=new BufferedImage(w,h,BufferedImage.TYPE_INT_RGB);
-			Graphics2D g=image.createGraphics();
-			BufferedImage drawn=overlay;
-			try{
-				if(bare)overlay=null; // on the event thread: no paint of the card sees it missing
-				if(component==(PCARD.pc==null?null:PCARD.pc.mainPane))VEffect.paintCurrentPanel(g);
-				else{RepaintManager manager=RepaintManager.currentManager(component);boolean buffered=manager.isDoubleBufferingEnabled();manager.setDoubleBufferingEnabled(false);
-					try{component.printAll(g);}finally{manager.setDoubleBufferingEnabled(buffered);}}
-			}finally{g.dispose();if(bare&&overlay==null)overlay=drawn;}
-			holder[0]=image;
-		});
-		return logicalPixels(holder[0],scale,size);
-	}
-	/** While the screen is locked with a picture of it (VEffect.oldoff), that picture in logical pixels: the card window still
-	 *  shows the card as it was when the lock began, and an external drawing there (ANIMATE under openCard's lock) draws over
-	 *  that, not over the card HyperCard keeps offscreen. Null when the screen is not locked so. */
-	private static int[] lockedPicture(JComponent component,int scale,int width,int height){
-		final BufferedImage[] holder=new BufferedImage[1];
-		PCARD.runOnEDT(() -> {
-			BufferedImage frozen=VEffect.oldoff;int w=component.getWidth(),h=component.getHeight();
-			if(!PCARD.lockedScreen||frozen==null||w<=0||h<=0)return;
-			BufferedImage image=new BufferedImage(w,h,BufferedImage.TYPE_INT_RGB);
-			Graphics2D g=image.createGraphics();
-			try{g.drawImage(frozen,0,0,w,h,null);}finally{g.dispose();}
-			holder[0]=image;
-		});
-		int[] size=new int[2];int[] pixels=logicalPixels(holder[0],scale,size);
-		return pixels!=null&&size[0]==width&&size[1]==height?pixels:null;
-	}
-	private static int[] logicalPixels(BufferedImage image,int scale,int[] size){
-		if(image==null)return null;
-		int w=DisplayZoom.unscale(image.getWidth(),scale),h=DisplayZoom.unscale(image.getHeight(),scale);if(w<=0||h<=0)return null;
-		int[] pixels=new int[w*h];
-		for(int y=0;y<h;y++)for(int x=0;x<w;x++)pixels[y*w+x]=image.getRGB(Math.min(image.getWidth()-1,DisplayZoom.scale(x,scale)),Math.min(image.getHeight()-1,DisplayZoom.scale(y,scale)))&0xffffff;
-		size[0]=w;size[1]=h;return pixels;
-	}
-
-	/** The message box shows {@link #messageOverlay} through a glass pane that lets mouse events through to the field. */
-	private static void installGlassPane(){
-		PCARD.runOnEDT(() -> {
-			GMsg msg=GMsg.msg;if(msg==null||msg.getGlassPane() instanceof MessageGlass)return;
-			JComponent glass=new MessageGlass();glass.setOpaque(false);msg.setGlassPane(glass);glass.setVisible(true);
-		});
-	}
-	private static final class MessageGlass extends JComponent {
-		@Override public boolean contains(int x,int y){return false;} // never the target of a mouse event
-		@Override protected void paintComponent(Graphics g){BufferedImage image=messageOverlay;if(image!=null)g.drawImage(image,0,GMsg.BAR_HEIGHT,null);}
-	}
-
-	/** A picture window's glass pane: what externals drew into its port, over the picture (at the picture's place and zoom). */
-	static final class PictureGlass extends JComponent {
-		private static final long serialVersionUID=1L;
-		private final GPictWindow window;volatile BufferedImage image;
-		private PictureGlass(GPictWindow window){this.window=window;}
-		static PictureGlass install(GPictWindow window){
-			final PictureGlass[] made=new PictureGlass[1];
-			PCARD.runOnEDT(() -> {
-				if(window.getGlassPane() instanceof PictureGlass){made[0]=(PictureGlass)window.getGlassPane();return;}
-				PictureGlass glass=new PictureGlass(window);glass.setOpaque(false);window.setGlassPane(glass);glass.setVisible(true);made[0]=glass;
-			});
-			return made[0];
-		}
-		void show(BufferedImage drawn){image=drawn;repaint();}
-		@Override public boolean contains(int x,int y){return false;} // clicks go to the picture
-		@Override protected void paintComponent(Graphics g){
-			BufferedImage drawn=image;MyLabel3 label=window.label;if(drawn==null||label==null)return;
-			java.awt.Point at=javax.swing.SwingUtilities.convertPoint(label,0,0,this);double z=PCARD.scale();
-			Graphics2D g2=(Graphics2D)g.create();
-			try{g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-				g2.drawImage(drawn,at.x-(int)Math.round(label.scrollX*z),at.y-(int)Math.round(label.scrollY*z),(int)Math.round(drawn.getWidth()*z),(int)Math.round(drawn.getHeight()*z),null);}
-			finally{g2.dispose();}
-		}
-	}
 
 	/**
 	 * HyperZebra's card goes into screen memory at the card window's place: as HyperCard's own update would put it there, not as an
@@ -514,9 +426,10 @@ final class CardWindow68k {
 		if(closed||!tb.hosted())return null;
 		int[] r=new int[0];
 		for(int i=surfaces.size()-1;i>=0;i--){Surface s=surfaces.get(i);
-			if(s.picture==null||!s.shown()||s.picture.label==null||!s.picture.label.isShowing())continue;
-			try{java.awt.Point at=s.picture.label.getLocationOnScreen();java.awt.Point o=tb.host().toGuest(at);
-				java.awt.Point end=tb.host().toGuest(new java.awt.Point(at.x+s.picture.label.getWidth(),at.y+s.picture.label.getHeight()));
+			if(s.picture==null||!s.shown())continue;
+			try{int[] on=V.pictureOnScreen(s.picture);if(on==null)continue;
+				java.awt.Point o=tb.host().toGuest(new java.awt.Point(on[0],on[1]));
+				java.awt.Point end=tb.host().toGuest(new java.awt.Point(on[0]+on[2],on[1]+on[3]));
 				r=java.util.Arrays.copyOf(r,r.length+7);int k=r.length-7;
 				r[k]=s.record;r[k+1]=o.x;r[k+2]=o.y;r[k+3]=o.y;r[k+4]=o.x;r[k+5]=end.y;r[k+6]=end.x;}
 			catch(RuntimeException e){} // the window went away meanwhile
@@ -531,7 +444,7 @@ final class CardWindow68k {
 		int version=qd.gammaVersion();if(version==gammaSeen)return;
 		gammaSeen=version;gamma=qd.gammaLookup();gammaStack=stack;
 		if(DEBUG)System.err.println("[cardwin] gamma "+(gamma==null?"linear":"128 -> "+gamma[128]));
-		PCARD pc=PCARD.pc;if(pc!=null&&pc.mainPane!=null)CardRepaintManager.repaintThroughLock(pc.mainPane);
+		V.repaintCardThroughLock();
 	}
 	/** The stack whose external set {@link #gamma}. */
 	private static volatile OStack gammaStack;
@@ -548,11 +461,35 @@ final class CardWindow68k {
 		gammaSeen=qd.gammaVersion();
 	}
 
+	/** Reach of {@link #fillSameColour}: a pixel with drawing this near on both sides is part of it */
+	static final int SAME_REACH=3;
+	/**
+	 * The pixels of the card's own colour inside what an external drew are drawing too: next to a drawn pixel, or with drawn
+	 * ones within {@link #SAME_REACH} on both sides (left and right, or above and below). Left clear, the card showed through
+	 * them as the host draws it - its text and lines at the screen's resolution, anti-aliased - so the card's parts showed
+	 * as faint outlines in the drawing (3DCar: PgColorX's black screen over the black BEGIN button's frame and name). A
+	 * large clear area (the card the external left alone) stays clear.
+	 */
+	static void fillSameColour(int[] argb,int[] rgb,boolean[] same,int width,int height){
+		boolean[] drawn=new boolean[argb.length];
+		for(int i=0;i<argb.length;i++)drawn[i]=argb[i]!=0;
+		for(int y=0;y<height;y++)for(int x=0;x<width;x++){
+			int i=y*width+x;if(!same[i])continue;
+			boolean fill=false;
+			for(int dy=-1;dy<=1&&!fill;dy++)for(int dx=-1;dx<=1;dx++){int X=x+dx,Y=y+dy;if(X>=0&&Y>=0&&X<width&&Y<height&&drawn[Y*width+X]){fill=true;break;}}
+			if(!fill)fill=drawnWithin(drawn,width,height,x,y,-1,0)&&drawnWithin(drawn,width,height,x,y,1,0)||drawnWithin(drawn,width,height,x,y,0,-1)&&drawnWithin(drawn,width,height,x,y,0,1);
+			if(fill)argb[i]=0xff000000|rgb[i]&0xffffff;
+		}
+	}
+	private static boolean drawnWithin(boolean[] drawn,int width,int height,int x,int y,int dx,int dy){
+		for(int k=1;k<=SAME_REACH;k++){int X=x+dx*k,Y=y+dy*k;if(X<0||Y<0||X>=width||Y>=height)return false;if(drawn[Y*width+X])return true;}
+		return false;
+	}
 	/** The card was redrawn from scratch (another card, a resize): nothing an external drew is on it any more - unless an
 	 *  external draws the card window itself whenever HyperCard copies the card there (HyperTint), which then has its say. */
 	static void cardRedrawn(){
-		PCARD pc=PCARD.pc;
-		if(pc!=null&&pc.stack!=null&&Xcmd68k.redrawHookedCards(pc.stack))return;
+		OStack onShow=HZ.stack();
+		if(onShow!=null&&UiHost.get().xcmd68kRedrawHookedCards(onShow))return;
 		overlay=null;cardCopies++;
 	}
 
@@ -562,33 +499,33 @@ final class CardWindow68k {
 	 * every such copy (HyperTint, ColorizeHC: the caller has it redraw). The caller repaints.
 	 */
 	static void cardCopied(){
-		PCARD pc=PCARD.pc;
-		if(overlay==null||pc!=null&&pc.stack!=null&&Xcmd68k.cardDrawingHooked(pc.stack))return;
+		OStack onShow=HZ.stack();
+		if(overlay==null||onShow!=null&&UiHost.get().xcmd68kCardDrawingHooked(onShow))return;
 		overlay=null;overlayStack=null;cardCopies++;
-		if(pc!=null&&pc.mainPane!=null)pc.mainPane.repaint();
+		V.repaintCard();
 	}
 
 	/** HyperCard copied a part's rectangle of its card into the window (card coordinates; a part shown or hidden): what an
 	 *  external drew there is gone, the rest stays. */
 	static void partCopied(int top,int left,int bottom,int right){
-		BufferedImage drawn=overlay;PCARD pc=PCARD.pc;
-		if(drawn==null||pc!=null&&pc.stack!=null&&Xcmd68k.cardDrawingHooked(pc.stack))return;
+		BufferedImage drawn=overlay;OStack onShow=HZ.stack();
+		if(drawn==null||onShow!=null&&UiHost.get().xcmd68kCardDrawingHooked(onShow))return;
 		int t=Math.max(0,top),l=Math.max(0,left),b=Math.min(drawn.getHeight(),bottom),r=Math.min(drawn.getWidth(),right);
 		if(b<=t||r<=l)return;
 		BufferedImage kept=new BufferedImage(drawn.getWidth(),drawn.getHeight(),BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g=kept.createGraphics();
 		try{g.drawImage(drawn,0,0,null);g.setComposite(java.awt.AlphaComposite.Clear);g.fillRect(l,t,r-l,b-t);}finally{g.dispose();}
 		overlay=kept;cardCopies++;
-		if(pc!=null&&pc.mainPane!=null)pc.mainPane.repaint();
+		V.repaintCard();
 	}
 
 	/** A part of the card on show moved or changed size (set the loc/rect/topLeft... of a visible button or field) while the screen
 	 *  is not locked: HyperCard copies its old and new rectangles of the card into the window, and what an external drew there is
 	 *  gone (PgColorX's card "部品の移動": a button dragged over the colour picture erases that part of it). */
 	static void partMoved(OObject part,int oldTop,int oldLeft,int oldBottom,int oldRight){
-		PCARD pc=PCARD.pc;
-		if(overlay==null||PCARD.lockedScreen||pc==null||pc.stack==null||pc.stack.curCard==null||!part.getVisible())return;
-		if(part.parent!=pc.stack.curCard&&part.parent!=pc.stack.curCard.bg)return;
+		OStack onShow=HZ.stack();
+		if(overlay==null||HZ.lockedScreen||onShow==null||onShow.curCard==null||!part.getVisible())return;
+		if(part.parent!=onShow.curCard&&part.parent!=onShow.curCard.bg)return;
 		partCopied(oldTop,oldLeft,oldBottom,oldRight);
 		partCopied(part.top,part.left,part.top+part.height,part.left+part.width);
 	}
@@ -598,17 +535,17 @@ final class CardWindow68k {
 	static void messageBoxHidden(){
 		if(messageOverlay==null)return;
 		messageOverlay=null;messageOverlayStack=null;
-		GMsg m=GMsg.msg;if(m!=null)m.getGlassPane().repaint();
+		V.repaintMessage();
 	}
 
 	/** {@code stack} closed: what its externals drew over the card and the message box goes with it. The overlay outlived the
 	 *  stack (closing G'S LAIR on its first card, where ColorizeHC draws the title, left the title over the next stack opened:
 	 *  only a go to another card cleared it). A stack that has the card already (go to another stack) keeps its own drawing. */
 	static void stackClosing(OStack stack){
-		if(overlay!=null&&Xcmd68k.sameStack(overlayStack,stack)){overlay=null;overlayStack=null;PCARD pc=PCARD.pc;if(pc!=null&&pc.mainPane!=null)pc.mainPane.repaint();}
-		if(messageOverlay!=null&&Xcmd68k.sameStack(messageOverlayStack,stack)){messageOverlay=null;messageOverlayStack=null;GMsg m=GMsg.msg;if(m!=null)m.getGlassPane().repaint();}
+		if(overlay!=null&&Xcmd68k.sameStack(overlayStack,stack)){overlay=null;overlayStack=null;V.repaintCard();}
+		if(messageOverlay!=null&&Xcmd68k.sameStack(messageOverlayStack,stack)){messageOverlay=null;messageOverlayStack=null;V.repaintMessage();}
 		// a stack that faded the screen out and closed does not leave the next one dark
-		if(gamma!=null&&Xcmd68k.sameStack(gammaStack,stack)){gamma=null;gammaStack=null;PCARD pc=PCARD.pc;if(pc!=null&&pc.mainPane!=null)pc.mainPane.repaint();}
+		if(gamma!=null&&Xcmd68k.sameStack(gammaStack,stack)){gamma=null;gammaStack=null;V.repaintCard();}
 	}
 
 	/** The card window as it was shown before a change that an external redraws ({@link #holdScreen}); MyPanel paints it
@@ -617,22 +554,8 @@ final class CardWindow68k {
 
 	/** The screen keeps showing what it shows now until {@link #releaseScreen}: HyperCard draws a part shown or hidden into
 	 *  its copy of the card first and the window gets it only through CopyBits, which the external hooked. */
-	static void holdScreen(){
-		PCARD.runOnEDT(() -> {
-			PCARD pc=PCARD.pc;if(pc==null||pc.mainPane==null)return;
-			int w=pc.mainPane.getWidth(),h=pc.mainPane.getHeight();if(w<=0||h<=0)return;
-			BufferedImage image=new BufferedImage(w,h,BufferedImage.TYPE_INT_RGB);
-			Graphics2D g=image.createGraphics();
-			try{VEffect.paintCurrentPanel(g);}finally{g.dispose();}
-			held=image;
-		});
-	}
-	static void releaseScreen(){
-		PCARD.runOnEDT(() -> {
-			held=null;
-			PCARD pc=PCARD.pc;if(pc!=null&&pc.mainPane!=null)pc.mainPane.repaint();
-		});
-	}
+	static void holdScreen(){V.holdScreen();}
+	static void releaseScreen(){V.releaseScreen();}
 
 	// ------------------------------------------------------------------ HyperCard's own drawing of the card
 
@@ -656,10 +579,7 @@ final class CardWindow68k {
 		int old=memory.readLong(w+134);if(old!=0)tb.api.disposeHandleAndFree(old);
 		memory.writeLong(w+134,tb.api.createHandle(tb.readPascalBytesOf(title)));
 		stack.cardWindowTitle=title; // the script's next line already names the window so
-		javax.swing.SwingUtilities.invokeLater(()->{
-			PCARD pc=PCARD.pc;if(pc==null||pc.stack!=stack)return;
-			pc.setTitle(PaintTool.editBackground?"/// "+title+" ///":title);
-		});
+		V.setCardTitle(stack,title);
 		return true;
 	}
 	/** GetWTitle of one of these windows: the title in its record. */
@@ -687,9 +607,9 @@ final class CardWindow68k {
 	 * (a width or height of 0 or less is ignored, as by the Window Manager). The port keeps its size for the rest of this call.
 	 */
 	void sizeWindow(int width,int height){
-		if(closed||width<=0||height<=0||PCARD.pc==null||PCARD.pc.mainPane==null)return;
+		if(closed||width<=0||height<=0||V.cardView()==null)return;
 		java.awt.Rectangle r=TUtil.cardWindowRect();
-		TUtil.setCardWindowRect(new java.awt.Rectangle(r.x,r.y,PCARD.toPhysical(width),PCARD.toPhysical(height)));
+		TUtil.setCardWindowRect(new java.awt.Rectangle(r.x,r.y,V.toPhysical(width),V.toPhysical(height)));
 		placed=false;
 	}
 	/** The card window's content on the screen the external sees (global {top, left, bottom, right}), null while it is hidden:
@@ -704,15 +624,11 @@ final class CardWindow68k {
 	void showWindow(boolean visible) throws M68kCpuException {
 		if(closed)return;
 		memory.writeByte(record+110,visible?1:0);
-		javax.swing.SwingUtilities.invokeLater(()->{
-			PCARD pc=PCARD.pc;if(pc==null||pc.stack!=stack||pc.isVisible()==visible)return;
-			if(!visible)GUI.mouseDown=false; // the hidden window never gets the mouse-up (as TUtil's hide window of the card window)
-			pc.setVisible(visible);
-		});
+		V.showCardWindow(stack,visible);
 	}
 	/** MoveWindow of the card window: its content's top left goes to the global point (h, v) the external sees. */
 	void moveWindow(int h,int v){
-		if(closed||PCARD.pc==null||PCARD.pc.mainPane==null)return;
+		if(closed||V.cardView()==null)return;
 		java.awt.Rectangle r=TUtil.cardWindowRect();java.awt.Point at=tb.host().toHost(h,v);
 		TUtil.setCardWindowRect(new java.awt.Rectangle(at.x,at.y,r.width,r.height));
 		placed=false;
@@ -724,7 +640,7 @@ final class CardWindow68k {
 	 *  own regions from a shape an external gave them. */
 	private int[] regionRect;
 	/** The strucRgn HyperZebra's window was last shaped by ({@link #applyShape}, global), null while it has no shape. */
-	private static volatile QdRegion shapeShown;
+	static volatile QdRegion shapeShown;
 	/** show titleBar took the shape away (a frame with decorations has none). */
 	static void shapeDropped(){shapeShown=null;}
 	/** The card record's strucRgn and contRgn: the window's rectangle on the screen (global, as the Window Manager keeps them), kept
@@ -759,21 +675,12 @@ final class CardWindow68k {
 		if(!whole){
 			area=new java.awt.geom.Area();
 			for(int[] r:struc.rects()){
-				int t=DisplayZoom.scale(r[0]-card.screenTop,card.scale),l=DisplayZoom.scale(r[1]-card.screenLeft,card.scale);
-				int b=DisplayZoom.scale(r[2]-card.screenTop,card.scale),rt=DisplayZoom.scale(r[3]-card.screenLeft,card.scale);
+				int t=ZoomMath.scale(r[0]-card.screenTop,card.scale),l=ZoomMath.scale(r[1]-card.screenLeft,card.scale);
+				int b=ZoomMath.scale(r[2]-card.screenTop,card.scale),rt=ZoomMath.scale(r[3]-card.screenLeft,card.scale);
 				if(b>t&&rt>l)area.add(new java.awt.geom.Area(new java.awt.Rectangle(l,t,rt-l,b-t)));
 			}
 		}
-		final java.awt.geom.Area shape=area;
-		PCARD.runOnEDT(() -> {
-			PCARD pc=PCARD.pc;if(pc==null||pc.mainPane==null||!pc.isUndecorated())return;
-			try{
-				if(shape==null){pc.setShape(null);shapeShown=null;return;}
-				java.awt.Point origin=javax.swing.SwingUtilities.convertPoint(pc.mainPane,0,0,pc);
-				shape.transform(java.awt.geom.AffineTransform.getTranslateInstance(origin.x,origin.y));
-				pc.setShape(shape);shapeShown=struc;
-			}catch(UnsupportedOperationException|java.awt.IllegalComponentStateException e){} // no shaped windows on this system
-		});
+		V.shapeCardWindow(area,struc);
 	}
 
 	/**
@@ -785,7 +692,47 @@ final class CardWindow68k {
 	 * pixels on both sides of the stroke in its row or column. Flat light areas and the edges of wider ones, and coloured pixels
 	 * (a colour stack's light colours, a picture's) stay white.
 	 */
-	static boolean[] hcInk(int[] rgb,int width,int height){
+	static boolean[] hcInk(int[] rgb,int width,int height){return hcInk(rgb,width,height,-1,null);}
+	/**
+	 * {@link #hcInk(int[],int,int)}, and inside the fields ({@code fields}: top,left,bottom,right each) a selection HyperZebra
+	 * draws in the host's text highlight ({@code highlight}, RGB) black with its text: HyperCard inverts a list field's selected
+	 * lines and the open field's selection in its 1-bit card, so ColorizeHC's coloured copy keeps them black, and where the
+	 * external's drawing is that black HyperZebra's own card shows (the selection as HyperZebra draws it). Read as light colour
+	 * the selection went white, and ColorizeHC's colour covered it: the drawing mode chosen in ColorizeHC Technical Scripts'
+	 * list of modes did not show.
+	 */
+	static boolean[] hcInk(int[] rgb,int width,int height,int highlight,java.util.List<int[]> fields){
+		boolean[] black=inkOnly(rgb,width,height);
+		if(highlight>=0&&fields!=null)for(int[] f:fields)selectionBlack(rgb,width,height,highlight,f,black);
+		return black;
+	}
+	/** Within the field rectangle f: the highlight's pixels, and the text between two of them on a row (a gap no wider than
+	 *  SELECTION_GAP), are black. */
+	private static void selectionBlack(int[] rgb,int width,int height,int highlight,int[] f,boolean[] black){
+		int top=Math.max(0,f[0]),left=Math.max(0,f[1]),bottom=Math.min(height,f[2]),right=Math.min(width,f[3]);
+		int hr=highlight>>16&255,hg=highlight>>8&255,hb=highlight&255;
+		for(int y=top;y<bottom;y++){
+			int last=-1;
+			for(int x=left;x<right;x++){
+				int p=rgb[y*width+x];
+				if(Math.abs((p>>16&255)-hr)>SELECTION_TOLERANCE||Math.abs((p>>8&255)-hg)>SELECTION_TOLERANCE||Math.abs((p&255)-hb)>SELECTION_TOLERANCE)continue;
+				if(last>=0&&x-last-1<=SELECTION_GAP)for(int k=last+1;k<x;k++)black[y*width+k]=true;
+				black[y*width+x]=true;last=x;
+			}
+		}
+	}
+	/** How far a channel of a selection pixel may be from the highlight; the widest text between two of its pixels on a row. */
+	private static final int SELECTION_TOLERANCE=4,SELECTION_GAP=24;
+	/** The shown fields of the card on show (background ones first), top,left,bottom,right each in card coordinates. */
+	private java.util.List<int[]> shownFieldRects(){
+		java.util.List<int[]> out=new java.util.ArrayList<int[]>();
+		OStack onShow=HZ.stack();OCard cd=onShow==stack&&onShow!=null?onShow.curCard:null;if(cd==null)return out;
+		for(OCardBase base:new OCardBase[]{cd.bg,cd}){if(base==null||base.partsList==null)continue;
+			for(OObject o:new java.util.ArrayList<OObject>(base.partsList))if(o instanceof OField&&o.isShown())
+				out.add(new int[]{o.getTop(),o.getLeft(),o.getTop()+o.getHeight(),o.getLeft()+o.getWidth()});}
+		return out;
+	}
+	private static boolean[] inkOnly(int[] rgb,int width,int height){
 		int n=width*height;
 		int[] lum=new int[n];boolean[] grey=new boolean[n];
 		for(int i=0;i<n;i++){
@@ -886,7 +833,7 @@ final class CardWindow68k {
 		}
 		// the card in black and white, as HyperCard keeps it
 		boolean[] black=card.hcBlack;
-		if(black==null||card.hcBlackOf!=bare){black=hcInk(bare,w,h);card.hcBlack=black;card.hcBlackOf=bare;}
+		if(black==null||card.hcBlackOf!=bare){black=hcInk(bare,w,h,V.textHighlight(),shownFieldRects());card.hcBlack=black;card.hcBlackOf=bare;}
 		byte[] bits=new byte[hcRowBytes*h];
 		for(int y=0;y<h;y++)for(int x=0;x<w;x++)if(black[y*w+x])bits[y*hcRowBytes+(x>>3)]|=(byte)(0x80>>>(x&7));
 		memory.load(hcPixels,bits);

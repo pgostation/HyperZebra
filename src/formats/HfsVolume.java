@@ -286,7 +286,7 @@ final class HfsVolume {
 			if(key.length<6||data.length<2)continue;
 			int parent=u4(key,0),length=Math.min(255,u2(key,4));
 			if(6+2*length>key.length)length=(key.length-6)/2;
-			String name=java.text.Normalizer.normalize(new String(key,6,2*length,java.nio.charset.StandardCharsets.UTF_16BE),java.text.Normalizer.Form.NFC);
+			String name=Platform.get().normalize(new String(key,6,2*length,java.nio.charset.StandardCharsets.UTF_16BE),UnicodeNorm.Form.NFC);
 			int type=u2(data,0);
 			if(type==1&&data.length>=88){
 				int id=u4(data,8);

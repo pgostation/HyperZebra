@@ -361,8 +361,8 @@ final class HostQuickDraw68k {
 		return new double[]{memory.readLong(port+SP_EXTRA)/65536.0,chExtra?(short)memory.readWord(port+CH_EXTRA)/4096.0:0};
 	}
 	/** Characters of the text as byte ranges (a Japanese double-byte character is one). */
-	private java.util.List<int[]> characters(byte[] text){
-		java.util.List<int[]> list=new java.util.ArrayList<int[]>();boolean jp=tb.encoding==StackTextEncoding.JAPANESE;
+	private java.util.List<int[]> characters(byte[] text) throws M68kCpuException {
+		java.util.List<int[]> list=new java.util.ArrayList<int[]>();boolean jp=tb.readsPairs(currentFont());
 		for(int i=0;i<text.length;){int n=jp&&Toolbox68k.isJapaneseLead(text[i]&255)&&i+1<text.length?2:1;list.add(new int[]{i,n});i+=n;}
 		return list;
 	}
@@ -723,6 +723,14 @@ final class HostQuickDraw68k {
 	 * marked written here; the host converts only those rows on its next refresh.
 	 */
 	Graphics2D surface(int port,int[] area) throws M68kCpuException {return surface(port,area,true);}
+	/** Java2D over a port for drawing an image that has no QuickDraw path (QuickTime's movie frames): the port's own surface, or,
+	 *  where the host cannot lay Java2D over a 32-bit buffer (the browser player), a staged copy written back after the trap */
+	Graphics2D imageSurface(int port,int[] area) throws M68kCpuException {
+		Graphics2D g=surface(port,area,true);
+		if(g!=null)return g;
+		int[] px=qd.directPortPixels(port);
+		return px!=null&&tb.host().imageOver(px[0],px[2],px[3],px[1],false)==null?stagedSurface(port,area,null,true):null;
+	}
 	/** Set by {@link #alphaSurface}: the 32-bit surface keeps alpha in the pad byte (see MacAppHost.imageOver). */
 	private boolean alphaSurface;
 	/** A surface whose drawing stores alpha in a 32-bit buffer's pad byte (srcCopy of an image with alpha into a GWorld). */
@@ -739,6 +747,8 @@ final class HostQuickDraw68k {
 		int[] px=qd.directPortPixels(port);
 		if(px==null)return staged?stagedSurface(port,area,touchArea):null;
 		BufferedImage image=tb.host().imageOver(px[0],px[2],px[3],px[1],alphaSurface);
+		// a host that cannot lay Java2D over the VM's memory (the browser player's: its java.awt has no such raster): null, and the
+		// caller draws with QuickDraw; one with no other way (a movie frame) asks for imageSurface
 		if(image==null)return null;
 		Graphics2D g=image.createGraphics();
 		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
@@ -793,8 +803,10 @@ final class HostQuickDraw68k {
 		StagedSurface(int port,int base,int rowBytes,int width,int depth,int top,int bottom,int bufferRow,int bufferColumn,BufferedImage image){this.port=port;this.base=base;this.rowBytes=rowBytes;this.width=width;this.depth=depth;this.top=top;this.bottom=bottom;this.bufferRow=bufferRow;this.bufferColumn=bufferColumn;this.image=image;}}
 	private final java.util.List<StagedSurface> staged=new java.util.ArrayList<StagedSurface>();
 	/** Stages the clip's rows and columns only (see {@link #surface(int,int[],int[],boolean)}); {@code touchArea} narrows the staged extent without clipping. */
-	private Graphics2D stagedSurface(int port,int[] area,int[] touchArea) throws M68kCpuException {
-		int[] px=qd.colorPortPixels(port);if(px==null||px[6]==32)return null;
+	private Graphics2D stagedSurface(int port,int[] area,int[] touchArea) throws M68kCpuException {return stagedSurface(port,area,touchArea,false);}
+	/** {@code direct}: a 32-bit port too (one the host could not lay Java2D over) */
+	private Graphics2D stagedSurface(int port,int[] area,int[] touchArea,boolean direct) throws M68kCpuException {
+		int[] px=qd.colorPortPixels(port);if(px==null||px[6]==32&&!direct)return null;
 		int base=px[0],rowBytes=px[1],w=px[2],h=px[3],boundsTop=px[4],boundsLeft=px[5],depth=px[6];
 		int top=boundsTop,bottom=boundsTop+h,left=boundsLeft,right=boundsLeft+w;int[] clip=null;
 		if(port==tb.api.currentQuickDrawPort()&&!frameSurface){clip=qd.currentDrawableRect();top=Math.max(top,clip[0]);bottom=Math.min(bottom,clip[2]);left=Math.max(left,clip[1]);right=Math.min(right,clip[3]);}
@@ -807,7 +819,7 @@ final class HostQuickDraw68k {
 		if(rowStart<0||rowStart+(long)rows*rowBytes>raw.length)return null;
 		BufferedImage image=new BufferedImage(columns,rows,BufferedImage.TYPE_INT_RGB);int[] pixels=((java.awt.image.DataBufferInt)image.getRaster().getDataBuffer()).getData();
 		int[] clut=depth<=8?portPalette(port,depth):null;
-		for(int y=0;y<rows;y++)MacAppHost.readPixels(raw,rowStart+y*rowBytes+(column*depth>>>3),depth,clut,columns,pixels,y*columns);
+		for(int y=0;y<rows;y++)Pixels68k.readPixels(raw,rowStart+y*rowBytes+(column*depth>>>3),depth,clut,columns,pixels,y*columns);
 		Graphics2D g=image.createGraphics();
 		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,RenderingHints.VALUE_STROKE_PURE);
@@ -841,7 +853,8 @@ final class HostQuickDraw68k {
 			int[] clut=s.clut;java.util.HashMap<Integer,Integer> nearest=new java.util.HashMap<Integer,Integer>();
 			boolean[] animated=s.depth==8&&clut!=null&&clut.length==256?qd.animatedEntries():null;
 			for(int y=0;y<rows;y++){int o=rowStart+y*s.rowBytes,p=y*s.width;
-				if(s.depth==16){for(int x=0;x<s.width;x++,o+=2){int rgb=pixels[p+x];int v=(rgb>>>19&31)<<10|(rgb>>>11&31)<<5|(rgb>>>3&31);raw[o]=(byte)(v>>>8);raw[o+1]=(byte)v;}}
+				if(s.depth==32){for(int x=0;x<s.width;x++,o+=4){int rgb=pixels[p+x];raw[o+1]=(byte)(rgb>>>16);raw[o+2]=(byte)(rgb>>>8);raw[o+3]=(byte)rgb;}} // (the pad byte stays)
+				else if(s.depth==16){for(int x=0;x<s.width;x++,o+=2){int rgb=pixels[p+x];int v=(rgb>>>19&31)<<10|(rgb>>>11&31)<<5|(rgb>>>3&31);raw[o]=(byte)(v>>>8);raw[o+1]=(byte)v;}}
 				else{for(int x=0;x<s.width;x++){int rgb=pixels[p+x]&0xffffff;int bit=x*s.depth,b=o+(bit>>>3),shift=8-s.depth-(bit&7),mask=((1<<s.depth)-1)<<shift;
 					// a pixel still showing its entry's colour keeps that entry (an animated one goes on animating)
 					if(clut!=null){int old=(raw[b]&mask)>>>shift;if(old<clut.length&&(clut[old]&0xffffff)==rgb)continue;}
@@ -868,7 +881,16 @@ final class HostQuickDraw68k {
 	private boolean frameSurface;
 	/** Java2D over a window's whole buffer (content and the frame a custom-framed window's buffer covers) within {@code area}
 	 *  (local), whether or not the window is the current port: a Window Manager definition drawing the frame outside the content. */
-	Graphics2D frameSurface(int window,int[] area) throws M68kCpuException {frameSurface=true;try{return surface(window,area);}finally{frameSurface=false;}}
+	Graphics2D frameSurface(int window,int[] area) throws M68kCpuException {
+		frameSurface=true;
+		try{
+			Graphics2D g=surface(window,area);if(g!=null)return g;
+			// a host that cannot lay Java2D over a 32-bit buffer (the browser player): a staged copy, written back after the trap.
+			// Without it a dialog's frame (Favorite Story's UxAnswer, DLOG 135) was never drawn in the player
+			int[] px=qd.directPortPixels(window);
+			return px!=null&&tb.host().imageOver(px[0],px[2],px[3],px[1],false)==null?stagedSurface(window,area,null,true):null;
+		}finally{frameSurface=false;}
+	}
 	/** Anti-aliasing for Java2D drawing into {@code port}: off when its pixels are 1 bit deep, where the grey edge pixels of a
 	 *  1-pixel line round to white (MacPaint's OK button lost its frame on the compact-Mac screen). */
 	Object antialiasHint(int port) throws M68kCpuException {
@@ -899,14 +921,15 @@ final class HostQuickDraw68k {
 	 *  PixelToChar quadratic, and iCab lays a page out with thousands of PixelToChar calls over its text runs. */
 	private int[] prefixWidths(Font font,byte[] bytes){
 		int[] w=new int[bytes.length+1];int i=0,total=0;
-		while(i<bytes.length){int n=tb.encoding==StackTextEncoding.JAPANESE&&Toolbox68k.isJapaneseLead(bytes[i]&0xff)&&i+1<bytes.length?2:1;
+		boolean jp=tb.readsPairs(font);
+		while(i<bytes.length){int n=jp&&Toolbox68k.isJapaneseLead(bytes[i]&0xff)&&i+1<bytes.length?2:1;
 			total+=width(font,java.util.Arrays.copyOfRange(bytes,i,i+n));
 			if(n==2)w[i+1]=w[i];w[i+n]=total;i+=n;}
 		return w;
 	}
 	/** Byte prefix length that does not split a two-byte character. */
-	private int prefixLength(byte[] bytes,int n){
-		if(tb.encoding!=StackTextEncoding.JAPANESE)return n;
+	private int prefixLength(Font font,byte[] bytes,int n){
+		if(!tb.readsPairs(font))return n;
 		int i=0;while(i<n){int c=bytes[i]&0xff;if(Toolbox68k.isJapaneseLead(c)){if(i+1>=n)return i;i+=2;}else i++;}return n;
 	}
 	/**
@@ -920,16 +943,16 @@ final class HostQuickDraw68k {
 		byte[] bytes=length>0?memory.readBytes(text,length):new byte[0];
 		if(bytes.length==0)return new int[]{0,1,Math.max(0,pixel)};
 		if(pixel<=0)return new int[]{0,1,-1};
-		int[] widths=prefixWidths(currentFont(),bytes);int previous=0;
+		Font font=currentFont();int[] widths=prefixWidths(font,bytes);int previous=0;
 		for(int i=1;i<=bytes.length;i++){
-			int p=prefixLength(bytes,i);if(p!=i)continue;
+			int p=prefixLength(font,bytes,i);if(p!=i)continue;
 			int w=widths[i];
-			if(pixel<w){int mid=(previous+w)/2;return pixel<mid?new int[]{prefixStart(bytes,i),1,-1}:new int[]{i,0,-1};}
+			if(pixel<w){int mid=(previous+w)/2;return pixel<mid?new int[]{prefixStart(font,bytes,i),1,-1}:new int[]{i,0,-1};}
 			previous=w;
 		}
 		return new int[]{bytes.length,1,pixel-previous};
 	}
-	private int prefixStart(byte[] bytes,int end){int i=0,start=0;while(i<end){start=i;int c=bytes[i]&0xff;if(tb.encoding==StackTextEncoding.JAPANESE&&Toolbox68k.isJapaneseLead(c))i+=2;else i++;}return start;}
+	private int prefixStart(Font font,byte[] bytes,int end){boolean jp=tb.readsPairs(font);int i=0,start=0;while(i<end){start=i;int c=bytes[i]&0xff;if(jp&&Toolbox68k.isJapaneseLead(c))i+=2;else i++;}return start;}
 	int charToPixel(int text,int length,int offset) throws M68kCpuException {
 		if(offset<=0||length<=0)return 0;byte[] bytes=memory.readBytes(text,Math.min(length,offset));return width(currentFont(),bytes);
 	}
@@ -1073,7 +1096,7 @@ final class HostQuickDraw68k {
 		if(count<0||text==0){memory.writeWord(cpu.a[7],-50);return true;}
 		// An element per character (Gif•gIf•giF advances its style runs by the first charCount elements). An installed strike
 		// advances by its own widths, which is how StdText draws it (Java's stand-in font measured Osaka text differently).
-		byte[] bytes=memory.readBytes(text,count);Font font=currentFont();boolean jp=tb.encoding==StackTextEncoding.JAPANESE;
+		byte[] bytes=memory.readBytes(text,count);Font font=currentFont();boolean jp=tb.readsPairs(font);
 		java.awt.font.FontRenderContext frc=new java.awt.font.FontRenderContext(null,true,true);
 		double yMax=0,yMin=0;int element=0;
 		for(int i=0;i<count;){
@@ -1168,8 +1191,12 @@ final class HostQuickDraw68k {
 		qd.imageDraws++;qd.recordPictureImage(image,top,left,bottom,right); // an open picture records the icon as well
 		Graphics2D g=surface(tb.api.currentQuickDrawPort(),new int[]{top,left,bottom,right});
 		if(g!=null){try{g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);g.drawImage(image,left,top,right-left,bottom-top,null);}finally{g.dispose();}return;}
-		int w=Math.max(1,right-left),h=Math.max(1,bottom-top);
-		for(int y=0;y<h;y++)for(int x=0;x<w;x++){int argb=image.getRGB(x*image.getWidth()/w,y*image.getHeight()/h),alpha=argb>>>24;if(alpha==0||!qd.visibleAt(left+x,top+y))continue;
+		// each pixel takes the image's pixel under its centre, the lower one when the centre is on a border between two, as the
+		// Graphics2D above (nearest neighbour) does: the corner's put a cicn stretched to a rectangle a pixel off in places in
+		// the browser (3DCar's trees, PgColorX "LoadCicn"). An empty rectangle draws nothing (3DCar's farthest posts)
+		if(right<=left||bottom<=top)return;
+		int w=right-left,h=bottom-top,iw=image.getWidth(),ih=image.getHeight();
+		for(int y=0;y<h;y++)for(int x=0;x<w;x++){int argb=image.getRGB(Math.min(iw-1,(int)(((2L*x+1)*iw-1)/(2L*w))),Math.min(ih-1,(int)(((2L*y+1)*ih-1)/(2L*h)))),alpha=argb>>>24;if(alpha==0||!qd.visibleAt(left+x,top+y))continue;
 			if(alpha>=255)qd.fillRgb(top+y,left+x,top+y+1,left+x+1,argb&0xffffff);else qd.blendRgb(left+x,top+y,argb&0xffffff,alpha);}
 	}
 
@@ -1620,7 +1647,7 @@ final class HostQuickDraw68k {
 		// crsr: type(2) map(4) data(4) xData(4) xValid(2) id(4) 1-bit data 32 mask 32 hotspot 4
 		byte[] curs=new byte[68];for(int i=0;i<64;i++)curs[i]=(byte)memory.readByte(p+20+i);for(int i=0;i<4;i++)curs[64+i]=(byte)memory.readByte(p+84+i);
 		int[] colors=colorCursorPixels(handle,p);
-		tb.host().setCursor(colors!=null?MacAppHost.colorCursor(colors,curs):MacAppHost.cursorFromData(curs));
+		tb.host().setCursor(colors!=null?UiHost.get().macAppHostColorCursor(colors,curs):UiHost.get().macAppHostCursorFromData(curs));
 	}
 	/** The 16x16 colours of a 'crsr' (its PixMap and pixel data: Handles, or offsets into the record as the resource has them),
 	 *  or null for a 1-bit one - the colour cursors of Civilization and Super Studio Session used to show their black-and-white part. */
@@ -1671,7 +1698,8 @@ final class HostQuickDraw68k {
 			case 9:{ // GetColor(where, prompt, inColor, VAR outColor) : Boolean
 				int out=memory.readLong(cpu.a[7]),in=memory.readLong(cpu.a[7]+4),prompt=memory.readLong(cpu.a[7]+8);cpu.a[7]+=16;
 				final String title=tb.readPascal(prompt);final Color initial=new Color(readRgb(in));
-				Color chosen=tb.host().ask(new java.util.concurrent.Callable<Color>(){@Override public Color call(){return OklabColorChooserPanel.showDialog(tb.host().anyWindow(),title,initial);}});
+				Integer picked=tb.host().pickColor(title,initial.getRGB()&0xffffff);
+				Color chosen=picked!=null?(picked<0?null:new Color(picked)):tb.host().ask(new java.util.concurrent.Callable<Color>(){@Override public Color call(){return OklabColorChooserPanel.showDialog(tb.host().anyWindow(),title,initial);}});
 				// a colour kept as it was comes back with its 16-bit components (XTernal Collection's PickColor turned 12555,30665,55512
 				// into 12593,30583,55512 when OK was clicked): the host's chooser has 8 bits a component
 				if(chosen!=null){if((chosen.getRGB()&0xffffff)==(initial.getRGB()&0xffffff)){if(out!=in)memory.copy(in,out,6);}else writeRgb(out,chosen.getRGB()&0xffffff);}

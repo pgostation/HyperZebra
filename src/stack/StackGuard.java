@@ -26,7 +26,6 @@ final class StackGuard {
 	/** {@code the result} after a refusal. */
 	static final String REFUSED = "Not allowed";
 	/** The stack that queued the message box command the script thread is running (nothing runs a handler then). */
-	static volatile OStack queuedBy;
 	/** The stack of the handler running on each thread (the debugger's frames are for showing: a reset empties them). */
 	private static final ThreadLocal<OStack> running = new ThreadLocal<OStack>();
 	/** The same of the script thread, for the threads that work for its handlers: an external's VM. */
@@ -54,7 +53,7 @@ final class StackGuard {
 	static OStack runningStack(){
 		OStack stack = running.get();
 		if(stack==null && !(Thread.currentThread() instanceof TTalk)) stack = scriptThreadRunning;
-		return stack!=null ? stack : queuedBy;
+		return stack!=null ? stack : HZ.queuedBy;
 	}
 
 	/** Whether {@code set the property of obj to value} may go on. */

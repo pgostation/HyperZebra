@@ -59,10 +59,10 @@ class CardRepaintManager extends RepaintManager {
 			return;
 		}
 		//スタック個別設定の速度制限: スクリプトによる再描画は当時のHyperCardの描画時間を払う(ロック中は画面への転送なし)
-		if(StackSpeed.limited()) StackSpeed.redraw(cardRegion(card, c, x, y, w, h), PCARD.scale(), PCARD.lockedScreen && !PCARD.capturingEffect);
+		if(StackSpeed.limited()) StackSpeed.redraw(cardRegion(card, c, x, y, w, h), PCARD.scale(), HZ.lockedScreen && !HZ.capturingEffect);
 		//lock screen 中はロック開始時の画面(VEffect.oldoff)が描かれるだけで、ロック後の変更は解除まで見せない。
 		//効果なしのカード移動(VEffect.freezeScreen、絵なし)では描かないことで直前の画面を残す
-		if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect) return;
 		boolean pass;
 		synchronized(this){
 			long now = System.nanoTime();
@@ -99,7 +99,7 @@ class CardRepaintManager extends RepaintManager {
 	 */
 	static void repaintThroughLock(JComponent card) {
 		if(card==null) return;
-		if(!PCARD.lockedScreen || PCARD.capturingEffect){ card.repaint(); return; }
+		if(!HZ.lockedScreen || HZ.capturingEffect){ card.repaint(); return; }
 		if(VEffect.oldoff==null && !VEffect.lazyLock) return;
 		RepaintManager m = RepaintManager.currentManager(card);
 		if(m instanceof CardRepaintManager) ((CardRepaintManager)m).passLocked(card);
@@ -126,7 +126,7 @@ class CardRepaintManager extends RepaintManager {
 		//ロック前に出た要求: lock screen なら画面の絵(oldoff)はその変更の後に取ってあり、絵なしのロック(lazyLock)なら
 		//部品はロック開始時のままなので描いてよい(これがロック前の最後のコマになる)。
 		//カード移動の凍結(絵なし)では組み替え途中の部品を描いてしまうので捨てる(解除で全体を描き直す)
-		if(PCARD.lockedScreen && !PCARD.capturingEffect && VEffect.oldoff==null && !VEffect.lazyLock) return;
+		if(HZ.lockedScreen && !HZ.capturingEffect && VEffect.oldoff==null && !VEffect.lazyLock) return;
 		for(Map.Entry<JComponent, Rectangle> e : regions.entrySet()){
 			Rectangle r = e.getValue();
 			super.addDirtyRegion(e.getKey(), r.x, r.y, r.width, r.height);

@@ -936,11 +936,11 @@ public class AuthDialog extends JDialog
 			else if(cmd.equals("family")){
 				if(object.objectType.equals("button")){
 					if(((OButton)object).group >= 1 && ((OButton)object).radio!=null){
-						OButton.btnGroup[((OButton)object).group-1].remove(((OButton)object).radio);
+						PartViews.btnGroup[((OButton)object).group-1].remove(((OButton)object).radio);
 					}
 					((OButton)object).group = ((JComboBox)e.getSource()).getSelectedIndex();
 					if(((OButton)object).group >= 1 && ((OButton)object).radio!=null){
-						OButton.btnGroup[((OButton)object).group-1].add(((OButton)object).radio);
+						PartViews.btnGroup[((OButton)object).group-1].add(((OButton)object).radio);
 					}
 				}
 			}

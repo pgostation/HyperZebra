@@ -10,7 +10,7 @@ import java.util.Map;
  * (GetGraphicsImporterForFile) are answered by the native importers of {@link GraphicsImporter68k}, and the
  * Standard File preview calls go to the plain Standard File dialogs.
  */
-final class ImageCompression68k {
+class ImageCompression68k {
 	static final int CODEC_UNIMP_ERR=-8961;
 	/** Argument bytes of each selector (Pascal stack), from ImageCompression.h; a negative size is a procedure (no OSErr result). */
 	private static final Map<Integer,Integer> ARGS=new HashMap<Integer,Integer>();
@@ -275,7 +275,7 @@ final class ImageCompression68k {
 		java.io.File file;try{file=spec==0?null:tb.files.fileForSpec(spec);}catch(java.io.IOException e){file=null;}
 		if(file==null||!file.isFile())return -43;
 		byte[] head=new byte[528];int n=0; // enough for a PICT file's header, picSize, frame and version opcode
-		try(java.io.InputStream in=new java.io.FileInputStream(file)){n=in.readNBytes(head,0,head.length);}catch(java.io.IOException e){return -36;}
+		try(java.io.InputStream in=new java.io.FileInputStream(file)){n=Platform.readNBytes(in, head, 0, head.length);}catch(java.io.IOException e){return -36;}
 		int subType=GraphicsImporter68k.subTypeOf(n<head.length?java.util.Arrays.copyOf(head,n):head,file.getName());
 		Components68k.Component importer=subType==0?null:tb.components.find(GraphicsImporter68k.GRIP,subType);
 		if(importer==null||importer.handler==null)return -2014;

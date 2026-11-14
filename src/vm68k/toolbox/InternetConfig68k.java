@@ -35,6 +35,12 @@ final class InternetConfig68k implements Components68k.Native {
 		if(!"false".equals(System.getProperty("hz68k.internetconfig")))components.registerNative(PREF,ICAP,JPQE,0,new InternetConfig68k(tb));
 	}
 	@Override public void closed(int ci){perms.remove(ci);}
+	/**
+	 * GetComponentVersion: 2.0.7, the Internet Config Extension of Mac OS 9.1 (its 'vers' 1), as the stub file's 'vers' says 2.0.
+	 * The Components default 1.0.1 made Internet Config 1.3's application (still on a PowerMac 6500's Mac OS 9.1 disk) refuse the
+	 * component: "Could not start the application because an unexpected error occured. (-4)".
+	 */
+	@Override public int version(){return 0x00020007;}
 
 	/** {@code p} points at the arguments: the last declared one first (Pascal order), the instance above them. */
 	@Override public int call(int ci,int what,int p) throws M68kException {
@@ -128,7 +134,7 @@ final class InternetConfig68k implements Components68k.Native {
 	}
 	private int set(String key,int attr,byte[] value){
 		File f=file();if(f==null)return PARAM_ERR;
-		if(!Sandbox.allowFile(f,Sandbox.Access.WRITE,requester()))return -54; // permErr
+		if(!Sandbox68k.allowFile(f,Sandbox68k.Access.WRITE,requester()))return -54; // permErr
 		try{
 			ResourceFile68k rf=open();boolean created=rf==null;
 			if(created){if(!f.exists()&&!f.createNewFile())return -36;rf=new ResourceFile68k(f);}
@@ -147,7 +153,7 @@ final class InternetConfig68k implements Components68k.Native {
 	}
 	private int delete(String key){
 		ResourceFile68k rf=open();ResourceFile68k.Resource r=find(rf,key);if(r==null)return PREF_NOT_FOUND;
-		if(!Sandbox.allowFile(file(),Sandbox.Access.WRITE,requester()))return -54;
+		if(!Sandbox68k.allowFile(file(),Sandbox68k.Access.WRITE,requester()))return -54;
 		try{rf.remove(r);rf.write();seed++;return NO_ERR;}catch(IOException|RuntimeException e){return -36;}
 	}
 	private List<String> keys(){List<String> keys=new ArrayList<String>();ResourceFile68k rf=open();if(rf!=null)for(ResourceFile68k.Resource r:rf.ofType(ICRP))if(r.name!=null)keys.add(r.name);return keys;}
@@ -186,10 +192,10 @@ final class InternetConfig68k implements Components68k.Native {
 	private int launch(String url){
 		if(Mac68kApi.TRACE)System.err.println("[68K] ICLaunchURL "+url);
 		try{java.net.URI uri=new java.net.URI(url);
-			if(uri.getScheme()==null||!Sandbox.allowOther(requester(),Sandbox.OPEN_URL,url)||!java.awt.Desktop.isDesktopSupported())return PREF_NOT_FOUND;
+			if(uri.getScheme()==null||!Sandbox68k.allowOther(requester(),Sandbox68k.OPEN_URL,url)||!java.awt.Desktop.isDesktopSupported())return PREF_NOT_FOUND;
 			java.awt.Desktop.getDesktop().browse(uri);return NO_ERR;}
 		catch(Exception e){return PREF_NOT_FOUND;}
 	}
 	/** Who asks: the program, or for an external the stack it belongs to. */
-	private String requester(){return tb.app!=null?tb.app.name:Sandbox.scriptRequester();}
+	private String requester(){return tb.app!=null?tb.app.name:Sandbox68k.scriptRequester();}
 }

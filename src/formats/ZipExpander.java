@@ -164,7 +164,7 @@ final class ZipExpander {
 		if(depth<0)return null;
 		File[] children=directory.listFiles();if(children==null)return null;
 		java.util.Arrays.sort(children,(a,b)->a.getName().compareToIgnoreCase(b.getName()));
-		for(File child:children)if(child.isFile()&&MacApp68k.isApplication(child))return child;
+		for(File child:children)if(child.isFile()&&UiHost.get().macApp68kIsApplication(child))return child;
 		if(depth==0)return null;
 		for(File child:children)if(child.isDirectory()&&!child.getName().equals("__MACOSX")){File found=findApplication(child,depth-1);if(found!=null)return found;}
 		return null;
@@ -221,7 +221,7 @@ final class ZipExpander {
 	}
 	private static List<Charset> candidateCharsets(){
 		List<Charset> list=new ArrayList<Charset>();list.add(StandardCharsets.UTF_8);
-		for(String name:new String[]{"windows-31j","IBM437"})if(Charset.isSupported(name))list.add(Charset.forName(name));
+		for(String name:new String[]{"windows-31j","IBM437"})if(Platform.get().charsetSupported(name))list.add(Platform.get().charset(name));
 		return list;
 	}
 

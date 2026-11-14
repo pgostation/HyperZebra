@@ -141,50 +141,11 @@ final class StackStrikeFont {
 			return s;
 		}
 
-		/** The strike's location table, an entry per code, the missing glyph's and the closing one (the image's width when not imported). */
-		static int[] locs(Rsrc.FontInfo info, int imageWidth){
-			int n = info.lastChar-info.firstChar+3;
-			int[] locs = new int[n];
-			for(int i=0; i<n; i++) locs[i] = info.locs!=null && i<info.locs.length ? info.locs[i] : imageWidth;
-			return locs;
-		}
+		static int[] locs(Rsrc.FontInfo info, int imageWidth){ return StrikeWidths.locs(info, imageWidth); }
 
-		/**
-		 * The strike's offset/width table as words ($FFFF = no glyph), an entry per code, the missing glyph's and the closing
-		 * one. Imports before Oct 23 2026 never read it ({@link #legacyWidths}): then each image is its own advance at the
-		 * pen, a code without image has no glyph, except the space, a third of the widest glyph.
-		 */
-		static int[] owWords(Rsrc.FontInfo info, int imageWidth){
-			int n = info.lastChar-info.firstChar+3;
-			int[] ow = new int[n];
-			boolean legacy = legacyWidths(info);
-			int[] locs = legacy ? locs(info, imageWidth) : null;
-			for(int i=0; i<n; i++){
-				if(i==n-1){ ow[i] = 0xFFFF; continue; }
-				if(legacy){
-					int w = Math.max(0, locs[i+1]-locs[i]), code = info.firstChar+i;
-					if(w==0 && i<n-2 && (code==' ' || code==0xCA)) w = Math.max(1, info.widMax/3);
-					ow[i] = w==0 ? 0xFFFF : ((-(short)info.kernMax)&0xFF)<<8 | Math.min(255, w);
-				}
-				else{
-					int off = info.offsets!=null && i<info.offsets.length ? info.offsets[i]&0xFF : 0xFF;
-					int wid = info.widthes!=null && i<info.widthes.length ? info.widthes[i]&0xFF : 0xFF;
-					ow[i] = off<<8 | wid;
-				}
-			}
-			return ow;
-		}
+		static int[] owWords(Rsrc.FontInfo info, int imageWidth){ return StrikeWidths.owWords(info, imageWidth); }
 
-		/** Whether the FontInfo's offsets/widths are the location table's high/low bytes (HCResource before Oct 23 2026). */
-		static boolean legacyWidths(Rsrc.FontInfo info){
-			int n = info.lastChar-info.firstChar+2;
-			if(info.offsets==null || info.widthes==null) return true;
-			if(info.locs==null || info.locs.length!=n) return false;
-			for(int i=0; i<n && i<info.offsets.length && i<info.widthes.length; i++){
-				if((byte)info.offsets[i]!=(byte)(info.locs[i]>>8) || (byte)info.widthes[i]!=(byte)info.locs[i]) return false;
-			}
-			return true;
-		}
+		static boolean legacyWidths(Rsrc.FontInfo info){ return StrikeWidths.legacyWidths(info); }
 
 		/** The outline of glyph {@code i} in pixels (x from the pen, y down from the strike's top row), null when it has no pixels. */
 		Area outline(int i){
@@ -337,8 +298,10 @@ final class StackStrikeFont {
 		if(code<0x80) return new int[]{code};
 		if(code>0xFF) return new int[0];
 		int roman = macRoman==null ? code : new String(new byte[]{(byte)code}, macRoman).charAt(0);
-		if(code>=0xA1 && code<=0xDF) return new int[]{roman, 0xFF61+code-0xA1};
-		return new int[]{roman};
+		//and the raw byte a Japanese stack's text keeps for a byte Shift-JIS has no character for (MacJapaneseDecoder.RAW_BYTES)
+		int raw = MacJapaneseDecoder.RAW_BYTES+code;
+		if(code>=0xA1 && code<=0xDF) return new int[]{roman, 0xFF61+code-0xA1, raw};
+		return new int[]{roman, raw};
 	}
 
 	private static Charset macRoman(){

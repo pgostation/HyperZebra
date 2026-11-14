@@ -20,17 +20,14 @@ import java.io.*;
 import javax.swing.JDialog;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
-//import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
+//import XmlException;
 
 
 public class OStack extends OObject {
-	final AuthoringUndo authoringUndo = new AuthoringUndo();
+	final AuthoringUndo authoringUndo = UiHost.get().newAuthoringUndo();
 	PCARDFrame pcard;
 	
-	Charset charset= Charset.forName("UTF-8");//文字コード
+	Charset charset= Platform.get().charset("UTF-8");//文字コード
 	StackTextEncoding legacyTextEncoding = HCData.currentEncoding;
 	String path="";//スタックファイルのパス
 	File file;
@@ -73,7 +70,7 @@ public class OStack extends OObject {
 
 	/** Records an edit made by the user (see userEdited). */
 	static void userEdit(){
-		if(PCARD.pc!=null && PCARD.pc.stack!=null) PCARD.pc.stack.userEdited = true;
+		if(Host.get().hasCardWindow() && HZ.stack()!=null) HZ.stack().userEdited = true;
 	}
 	boolean cantPeek=false;
 	int firstCard;//toc.xml
@@ -286,20 +283,11 @@ public class OStack extends OObject {
 		navigatingBack = false;
 	}
 
-	private static final int RECENT_THUMBNAIL_WIDTH = 64;
-	private static final int RECENT_THUMBNAIL_HEIGHT = 48;
+	static final int RECENT_THUMBNAIL_WIDTH = 64;
+	static final int RECENT_THUMBNAIL_HEIGHT = 48;
 
 	//カード移動のたびに呼ばれるので、カード全体の大きさの画像を作ってから縮めず、サムネイルの大きさに直接描く
-	private static BufferedImage makeRecentThumbnail(OCard card){
-		if(card==null || card.stack==null || card.stack.width<=0 || card.stack.height<=0) return null;
-		BufferedImage thumb = new BufferedImage(RECENT_THUMBNAIL_WIDTH, RECENT_THUMBNAIL_HEIGHT, BufferedImage.TYPE_INT_ARGB);
-		Graphics2D g = thumb.createGraphics();
-		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-		g.scale(RECENT_THUMBNAIL_WIDTH/(double)card.stack.width, RECENT_THUMBNAIL_HEIGHT/(double)card.stack.height);
-		CardImageExport.paint(g, card);
-		g.dispose();
-		return thumb;
-	}
+	private static BufferedImage makeRecentThumbnail(OCard card){ return UiHost.get().makeRecentThumbnail(card); }
 
 	//get
 	public String getName() {return name;}
@@ -331,9 +319,7 @@ public class OStack extends OObject {
 		//files opened with open file stay open when the stack is left (HC J-2.3: open file, write, go stack X, write: both
 		//writes are in the file; ACM's export goes to Radar chart meker between its writes). They close with the session
 		//(PCARD.emptyWindow) or at quit
-		Xcmd68k.stackClosing(this); //外部ウインドウを開いたままの68K externalも閉じる(xCloseEvt)
-		CardWindow68k.stackClosing(this); //externalがカードに描いたもの(ColorizeHCの絵)を次のスタックに残さない
-		TXcmd.stackClosing(this); //Terazzaのスプライトも
+		UiHost.get().externalsAtStackClose(this);
 		if(curCard!=null){
 			if(curCard.bg!=null){
 				//curCard.bg.removeData();
@@ -344,7 +330,7 @@ public class OStack extends OObject {
 		}
 		pcard = null;
 		curCard = null;
-		ScriptEditor.stackClosed(this); //the editor's tabs show this stack's objects: it goes with them
+		UiHost.get().editorsAtStackClose(this);
 		scriptEditor = null;
 		mainPane = null;
 		Pattern = null;
@@ -356,7 +342,7 @@ public class OStack extends OObject {
 		fontList = null;
 		styleList = null;
 		saveXML = null;
-		if(PCARD.pc.stack.usingStacks!=null && PCARD.pc.stack.usingStacks.contains(this)){
+		if(HZ.stack().usingStacks!=null && HZ.stack().usingStacks.contains(this)){
 			return;
 		}
 		usingStacks = null;
@@ -381,7 +367,7 @@ public class OStack extends OObject {
 			else if(c>=0x3000) return hostName; //real Japanese text: leave it
 		}
 		if(!halfWidthKana) return hostName;
-		for(String reading : FileManager68k.otherReadings(hostName)){
+		for(String reading : UiHost.get().fileManager68kOtherReadings(hostName)){
 			boolean kana = false;
 			for(int i=0; i<reading.length(); i++){ char c = reading.charAt(i); if(c>=0xFF61 && c<=0xFF9F || c>=0x3000 && c<0xFF00) kana = true; }
 			if(!kana) return reading;
@@ -392,13 +378,13 @@ public class OStack extends OObject {
 	public void setName(String in) {
 		name=in;
 		//表示しているスタックだけがウィンドウの名前になる(start using で変換したライブラリが "DD lib" と題を書き換えていた)
-		if(pcard!=null && pcard.stack==this) pcard.setTitle(name);
+		UiHost.get().cardWindowTitled(this, in);
 	}
 	
 	public void setTopLeft(int h, int v) {
 		left=h;
 		top=v;
-		pcard.setBounds(left, top, PCARD.toPhysical(width)+pcard.chromeWidth(), PCARD.toPhysical(height)+pcard.chromeTop()+pcard.chromeBottom());
+		UiHost.get().cardWindowToTopLeft(this, h, v);
 	}
 	/** set the rect of this cd to 0,0,384,340 (Year Calendar's Large card): the card size of the whole stack. The card
 	 *  window becomes the whole new card, centred where it was and kept on the screen; the card and background pictures are
@@ -414,32 +400,7 @@ public class OStack extends OObject {
 		width=Math.max(32, (v3-v1+31)/32*32);
 		height=Math.max(1, v4-v2);
 		if(pcard==null) return;
-		PCARD.runOnEDT(() -> {
-			java.awt.Rectangle r = pcard.getBounds();
-			int extraW = 0, extraH = 0;
-			if(PCARD.pc!=null && PCARD.pc.toolbar!=null && PCARD.pc.toolbar.tb!=null){ extraW = PCARD.pc.toolbar.getTWidth(); extraH = PCARD.pc.toolbar.getTHeight(); }
-			int w = PCARD.toPhysical(windowWidth())+extraW+pcard.chromeWidth();
-			int h = PCARD.toPhysical(windowHeight())+extraH+pcard.chromeTop()+pcard.chromeBottom();
-			int x = r.x+r.width/2-w/2, y = r.y+r.height/2-h/2;
-			if(pcard.isShowing()){
-				java.awt.GraphicsConfiguration gc = pcard.getGraphicsConfiguration();
-				if(gc!=null){
-					java.awt.Rectangle sb = gc.getBounds();
-					java.awt.Insets in = Toolkit.getDefaultToolkit().getScreenInsets(gc);
-					int sl = sb.x+in.left, st = sb.y+in.top, sr = sb.x+sb.width-in.right, sbm = sb.y+sb.height-in.bottom;
-					int margin = PCARD.toPhysical(16);
-					x = Math.max(sl+margin, Math.min(x, sr-margin-w));
-					x = Math.max(sl, x);
-					y = Math.max(st, Math.min(y, sbm-h));
-					y = Math.max(st, y);
-				}
-			}
-			pcard.setBounds(x, y, w, h);
-			pcard.validate(); //laid out at once: the script reads the card window's rect right after
-			if(MyLabel.cdlabel!=null) MyLabel.cdlabel.setBounds(0, 0, width, height);
-			if(MyLabel.bglabel!=null) MyLabel.bglabel.setBounds(0, 0, width, height);
-			if(pcard.mainPane!=null) pcard.mainPane.repaint();
-		});
+		UiHost.get().cardWindowToCardSize(this, v1, v2, v3, v4);
 	}
 	public void setCantAbort(Boolean in) {cantAbort=in;}
 	public void setCantDelete(Boolean in) {cantDelete=in;}
@@ -447,19 +408,13 @@ public class OStack extends OObject {
 	public void setCantPeek(Boolean in) {cantPeek=in;}
 	public void setResizeable(Boolean in) {
 		resizable=in;
-		pcard.setResizable(resizable); 
+		UiHost.get().cardWindowResizable(this, in);
 	}
 	/** The card window's scroll (h,v in card coordinates): which part of the card a window smaller than the card shows. */
 	public void setScroll(int x, int y){
 		scroll = new Point(x,y);
-		if(pcard==null || pcard.mainPane==null) return;
-		PCARD.runOnEDT(() -> {
-			java.awt.Container view = pcard.mainPane.getParent();
-			if(view==null) return;
-			view.invalidate();
-			view.validate();
-			pcard.mainPane.repaint();
-		});
+		if(!UiHost.get().stackHasPane(this)) return;
+		UiHost.get().cardWindowScrolled(this, x, y);
 	}
 	
 	//メイン
@@ -467,18 +422,8 @@ public class OStack extends OObject {
     	objectType="stack";
     	
     	pcard = pc;
-    	//PCARD.pc.stack = this;
-		GUI_btn = new GButton();
-		GUI_radio = new GRadio();
-		GUI_check = new GCheckBox();
-		GUI_popup = new GPopup();
-		GUI_fld = new GField();
-		mainPane = pc==null ? null : pc.mainPane;
-
-    	if(mainPane!=null){
-    		mainPane.setLayout(null);
-    		mainPane.setBackground(Color.WHITE);
-    	}
+    	//HZ.setStack(this);
+		UiHost.get().stackViews(this, pc);
 		
 		try{
 			//UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
@@ -515,101 +460,10 @@ public class OStack extends OObject {
 			return;
 		}
 		
-		if(PCARD.home!=null){
-			usingStacks.add(PCARD.home);
-		}
-		
-		
-		if(PCARD.pc.toolbar==null){
-			PCARD.pc.toolbar = new GToolBar(PCARD.pc);
-		}
-		
-		String sepStr = ""+File.separatorChar;
-		if(File.separatorChar=='\\'){
-			sepStr = "\\\\";
-		}
-    	String[] strArray = path.split(sepStr);
-		//name=strArray[strArray.length-1];
-    	if(strArray.length-2>=0){
-    		//HyperCard のスタック名はファイル名。展開形式のフォルダ "X.hzb" のスタックは "X"(the short name of this stack、
-    		//ウインドウ名。以前は "HyperPiece 2.hzb" になり、HyperPiece 2 のパス表示やスタック名の比較が合わなかった)
-    		name=strArray[strArray.length-2].replaceFirst("(?i)\\.hzb$", "");
-    	}else{
-    		name=path;
-    	}
-		//the host may keep the name decomposed (an unpacked "はいぱあれもん" has ぱ as は + U+309A): a script compares it with
-		//what it typed, which is composed (the short name of this stack is "はいぱあれもん vol.4" was false)
-		name = java.text.Normalizer.normalize(macNameOfHostName(name, legacyTextEncoding), java.text.Normalizer.Form.NFC);
-		pcard.setTitle(getTitleName());
-
-		//2倍表示モードでこのスタックのウインドウが画面に収まるかどうかを判定しておく
-		//(以降のPCARD.scale()の結果に反映される)
-		PCARD.updateZoomFitsScreen(width, height);
-
-		int scaledW = PCARD.toPhysical(width);
-		int scaledH = PCARD.toPhysical(height);
-		mainPane.setBounds(left, top, scaledW, scaledH+pcard.getInsets().top);
-		mainPane.setVisible(true);
-		Dimension d = Toolkit.getDefaultToolkit().getScreenSize();
-		if(d!=null){
-			pcard.setBounds(d.width/2-scaledW/2, d.height/2-scaledH/2-20, scaledW, scaledH+20);
-		}else{
-			pcard.setBounds(left, top-scaledH-20, scaledW, scaledH+20);
-		}
-		pcard.setVisible(true);
-		//pcard.setLocationRelativeTo(null);
-		pcard.setResizable(resizable); 
-		//HyperCard J-2.3 and 2.4 open a stack with the card window as big as the card (on the screen) and not scrolled, whatever
-		//window rect and scroll the header saved (measured with script-less stacks; RDS experiments sets its 192x160 window and
-		//scroll in its own openCard). Shattered Stone saved a scroll of 64,0 and opened cut off at the left.
-		windowNominal = null;
-		if(scroll!=null) scroll = new Point(0, 0);
-		setNewBounds();
-		
-		PCARD.pc.msg.setBounds(PCARD.pc.getX()+PCARD.pc.getWidth()/2-240,PCARD.pc.getY()+PCARD.pc.getHeight(),480,28+PCARD.pc.getInsets().top);
-
-		
-		//1番目のカードを開く
-		if(cardIdList.size()>=1){
-			mainPane.removeAll();
-			try {
-				curCard = OCard.getOCard(this, cardIdList.get(0), false);
-				curCard.bg = OBackground.getOBackground(this, curCard, curCard.bgid, false);
-				curCard.parent = curCard.bg;
-			} catch (xTalkException e) {
-				e.printStackTrace();
-				curCard = cdCacheList.get(0);
-				try {
-					curCard.bg = OBackground.getOBackground(this, curCard, curCard.bgid, false);
-					curCard.parent = curCard.bg;
-				} catch (xTalkException e2) {
-					e2.printStackTrace();
-				}
-			}
-
-	    	PCARD.lockedScreen = false;
-			mainPane.repaint();
-			//「リーセント」メニュー用に、開いた直後のカードも履歴に記録しておく
-			recordRecentCard(curCard);
-			//TTalk.talk = new TTalk();
-			//TTalk.talk.start();
-			TTalk.CallMessage("startUp",curCard);
-			TTalk.CallMessage("openStack",curCard);
-			TTalk.CallMessage("openBackground",curCard);
-			TTalk.CallMessage("openCard",curCard);
-		}
-		
-		//変更監視&XML保存のスレッドを立ち上げておく
-		if(!System.getProperty("java.version").startsWith("1.5")){ //JRE1.5.xは非対応
-			saveXML = new XMLwrite(this);
-		}
+		UiHost.get().openStackWindow(this, isUsingOnly);
     }
 
-    public void setNewBounds(){
-    	Rectangle r = PCARD.pc.stack.pcard.getBounds();
-		//Windows/Linuxではメニューバーがウインドウ内(カードの上)にあるので、その高さも足す(足りないとカードの下端が欠ける)
-		PCARD.pc.stack.pcard.setBounds(r.x, r.y, PCARD.toPhysical(windowWidth())+PCARD.pc.toolbar.getTWidth()+pcard.chromeWidth(), PCARD.toPhysical(windowHeight())+PCARD.pc.toolbar.getTHeight()+pcard.chromeTop()+pcard.chromeBottom());
-    }
+    public void setNewBounds(){ UiHost.get().setNewBounds(this); }
 
     /** The part of the card the card window shows (logical): its own size limited to the card. */
     int windowWidth(){ return windowNominal==null ? width : Math.max(1, Math.min(width, windowNominal.width)); }
@@ -623,13 +477,13 @@ public class OStack extends OObject {
 		Sandbox.stackOpened(new File(inpath)); //開いたスタック: 自分のフォルダ(.hzb)は自由に、周りのフォルダは読むだけ(他のファイルの変更は確認)
 		/*this.scriptList = new ArrayList<String>();
 		
-		if(PCARD.pc.stack.curCard!=null){
-			if(PCARD.pc.stack.curCard.bg!=null) {
-				PCARD.pc.stack.curCard.bg.removeData();
-				PCARD.pc.stack.curCard.bg = null;
+		if(HZ.stack().curCard!=null){
+			if(HZ.stack().curCard.bg!=null) {
+				HZ.stack().curCard.bg.removeData();
+				HZ.stack().curCard.bg = null;
 			}
-			PCARD.pc.stack.curCard.removeData();
-			PCARD.pc.stack.curCard = null;
+			HZ.stack().curCard.removeData();
+			HZ.stack().curCard = null;
 		}
 		*/
 
@@ -652,7 +506,7 @@ public class OStack extends OObject {
 		BufferedImage bi = null;
 		//a stack's own _stack.xml / toc.xml is no picture (decoding the XML as a PICT took minutes)
 		boolean xml = inpath.toLowerCase(java.util.Locale.ROOT).endsWith(".xml");
-		boolean tryAsMedia = isUsingOnly==false && !xml && !looksLikeHyperCardStack(inpath) && !stackFileType(inpath) && !StackBundle.isPacked(new File(inpath));
+		boolean tryAsMedia = isUsingOnly==false && !xml && !looksLikeHyperCardStack(inpath) && !stackFileType(inpath) && !UiHost.get().stackBundleIsPacked(new File(inpath));
 		if(tryAsMedia){
 			//画像ファイルかどうか
 			try{
@@ -713,7 +567,7 @@ public class OStack extends OObject {
 		try {
 			result = ZipExpander.expand(zip);
 		} catch (IOException e) {
-			new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("Could't expand the archive.")+"\n"+e.getMessage(),
+			new GDialog(PCARD.pc, HZ.intl().getDialogText("Could't expand the archive.")+"\n"+e.getMessage(),
 					null,"OK",null,null);
 			return null;
 		}
@@ -729,13 +583,13 @@ public class OStack extends OObject {
 		//68Kアプリケーションは展開しただけでは起動しない。展開先をFinder/エクスプローラーで見せる。
 		if(revealInFileManager(opened)) return null;
 		//見せられない環境では展開結果をダイアログで伝え、「アプリケーションを起動」を選んだときだけ起動する。
-		boolean application = opened.isFile() && MacApp68k.isApplication(opened);
-		String message = PCARD.pc.intl.getDialogText("The archive was expanded to:")+"\n"+opened.getPath();
+		boolean application = opened.isFile() && UiHost.get().macApp68kIsApplication(opened);
+		String message = HZ.intl().getDialogText("The archive was expanded to:")+"\n"+opened.getPath();
 		if(!application){
 			new GDialog(PCARD.pc, message, null,"OK",null,null);
 			return null;
 		}
-		String launch = PCARD.pc.intl.getDialogText("Launch the application");
+		String launch = HZ.intl().getDialogText("Launch the application");
 		new GDialog(PCARD.pc, message, null, launch, null, "OK");
 		return launch.equals(GDialog.clicked) ? opened : null;
 	}
@@ -762,26 +616,7 @@ public class OStack extends OObject {
 	 * selection is not available, its folder opened; a folder is opened itself. Returns false when no file
 	 * manager could be reached, so the caller can fall back to telling the user the path.
 	 */
-	static boolean revealInFileManager(File item) {
-		File folder = item.isDirectory() ? item : item.getParentFile();
-		java.awt.Desktop desktop = null;
-		try {
-			if(java.awt.Desktop.isDesktopSupported()) desktop = java.awt.Desktop.getDesktop();
-		} catch(Exception ignored) {
-		}
-		if(desktop!=null && item.isFile() && desktop.isSupported(java.awt.Desktop.Action.BROWSE_FILE_DIR)){
-			try { desktop.browseFileDirectory(item); return true; } catch(Exception ignored) {}
-		}
-		String os = System.getProperty("os.name","").toLowerCase(java.util.Locale.ROOT);
-		if(os.startsWith("windows") && item.isFile()){ //JavaのBROWSE_FILE_DIRはWindowsでは未対応なのでExplorerに直接頼む
-			try { new ProcessBuilder("explorer.exe","/select,"+item.getAbsolutePath()).start(); return true; } catch(Exception ignored) {}
-		}
-		if(folder==null || !folder.isDirectory()) return false;
-		if(desktop!=null && desktop.isSupported(java.awt.Desktop.Action.OPEN)){
-			try { desktop.open(folder); return true; } catch(Exception ignored) {}
-		}
-		return false;
-	}
+	static boolean revealInFileManager(File item) { return UiHost.get().revealInFileManager(item); }
 
 	/**
 	 * Shows where an item is kept: selected in its parent folder even when it is itself a folder (a .hzb stack,
@@ -806,42 +641,7 @@ public class OStack extends OObject {
 	}
 
 	//68K Macアプリなら起動してtrueを返す。
-	static boolean launch68kApplication(String path) {
-		File file = MacApp68k.programOf(new File(path)); // a Mac OS 9 package ("X.app" folder) runs the program inside
-		if(!file.isFile()) return false;
-		if(MacApp68k.isControlPanel(file)) return false; // a 'cdev' file with CODE of its own opens as a control panel, as from the Finder
-		boolean accessory = false;
-		File openDoc = MacApp68k.isOpenDocDocument(file) ? MacApp68k.openDocProgram() : null;
-		if(openDoc!=null){ // an OpenDoc document opens in OpenDoc™ as the Finder does it (that runs the document's own process)
-			java.util.List<File> docs = StationeryPads.documentsFor(PCARD.pc, openDoc, java.util.Collections.singletonList(file)); // a stationery pad: a new document from it
-			if(docs.isEmpty()) return true;
-			try {
-				MacApp68k.launch(openDoc, new java.util.ArrayList<File>(docs)); // the launcher lists it as OpenDoc™'s document
-			} catch (IOException e) {
-				new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("Can't launch the Mac application.")+"\n"+e.getMessage(), null,"OK",null,null);
-			}
-			return true;
-		}
-		if(!MacApp68k.isApplication(file)){ // a Finder alias to an application launches the application
-			accessory = MacApp68k.isDeskAccessory(file); //デスクアクセサリ('dfil')はそれだけのプロセスで開く(System 7のDA Handler)
-			if(!accessory){
-				File target=MacApp68k.resolveAliasFile(file);
-				if(target==null) return false;
-				file=target;
-			}
-		}
-		try {
-			if(accessory) MacApp68k.openDeskAccessory(file, null);
-			else MacApp68k.launch(file, null);
-			if(LauncherStore.enabled) LauncherStore.get().recordOpened(file, LauncherStore.KIND_APP); //ランチャーの履歴(起動できたものだけ)
-			return true;
-		} catch (IOException e) {
-			if(GLauncher.enabled() && !PCARD.pc.isVisible()) GLauncher.showFailure(file.getPath(), e.getMessage()); //ランチャーだけのとき: そこに理由を出す
-			else new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("Can't launch the Mac application.")+"\n"+e.getMessage(),
-					null,"OK",null,null);
-			return true;
-		}
-	}
+	static boolean launch68kApplication(String path) { return UiHost.get().launch68kApplication(path); }
 
 	/** The Finder type says stack ('STAK'): a damaged data fork is reported as a stack that cannot be read, not tried as a
 	 *  picture (11:22:63 EXTRA!, Info-Mac II: its data fork starts in the middle of a script). */
@@ -870,7 +670,7 @@ public class OStack extends OObject {
     
 	//読み込み完了後の処理。"start using stack"(isUsingOnly)ではカレントスタックを切り替えず、
 	//スクリプト表だけ用意する(successOpenFileはカレントスタックのUIとXML保存スレッドを立ち上げる)。
-	private void finishOpen(boolean isUsingOnly)
+	void finishOpen(boolean isUsingOnly)
 	{
 		if(!isUsingOnly && standaloneApplication) TXcmd.applicationOpened(this);
 		if(isUsingOnly){
@@ -879,166 +679,22 @@ public class OStack extends OObject {
 			//gets its _stack.xml now, so the next reference uses the conversion instead of converting the file again
 			//into "前編 2.hzb", "前編 3.hzb", …
 			if(file!=null && file.getName().equals("_stack.xml") && !file.exists() && file.getParentFile()!=null && file.getParentFile().isDirectory())
-				XMLwrite.writeOnce(this);
+				UiHost.get().xMLwriteWriteOnce(this);
 		}
 		else PCARD.pc.successOpenFile();
 	}
 
     boolean openStackFileInThread(String inpath, boolean isUsingOnly)
-    {
-    	
-    	path = inpath;
-		file = new File(path);
-		if(!file.exists()){
-			//start using a stack that is not there (Colorize and Pictoid Template: start using stack "Pictoid XCMD"): the
-			//current stack stays as it is. failureOpenFile took the open card's parts away (a blank card) and said so.
-			if(!isUsingOnly) PCARD.pc.failureOpenFile(inpath);
-			return false;
-		}
-		//スクリプトからの go/open/start using: ユーザが開いた場所とHyperZebra HDの外なら許可を求める(Sandbox)
-		if(!Sandbox.allowFile(file, Sandbox.Access.READ, Sandbox.scriptRequester())){
-			name="";
-			return false;
-		}
-		//1ファイル形式のスタック(.hzb の ZIP): 作業フォルダに展開して、従来の .hzb フォルダと同じように開く(StackBundle)
-		if(StackBundle.isPacked(file)){
-			try{
-				file = StackBundle.open(file);
-			}catch(IOException e){
-				System.err.println("Could not open the stack file "+inpath+": "+e.getMessage());
-				name="";
-				if(!isUsingOnly) PCARD.pc.failureOpenFile(inpath);
-				return false;
-			}
-			inpath = file.getPath();
-			path = inpath;
-		}
-		if(!isUsingOnly && ZipExpander.isZip(file)){
-			//zip書庫(Finderの「圧縮」やHyperZebraのポータブルパッケージ)はまず展開する。
-			//__MACOSX以下のAppleDoubleは各ファイルの「._名前」サイドカー(macOSでは実フォーク)になる。
-			File expanded = expandZipArchive(file);
-			if(expanded==null){
-				name="";
-				return false; //展開だけ済ませたか、失敗をダイアログで伝えた
-			}
-			inpath = expanded.getPath();
-			path = inpath;
-			file = expanded;
-		}
-		if(!isUsingOnly && DiskImages.openFromUser(file)){
-			name="";
-			return false; //ディスクイメージはマウントした
-		}
-		if(!isUsingOnly && launch68kApplication(inpath)){
-			name="";
-			return false; //呼び出し側で元のスタックに戻す
-		}
-
-		this.scriptList = new ArrayList<String>();
-		
-		{
-			String STAKstr = null;
-			//先頭8バイトだけ見て閉じる(以前はストリームを閉じずに放置していた)
-			try (FileInputStream fstream = new FileInputStream(path)) {
-				//HCスタックとして読んでみる
-				STAKstr = "";
-				for(int i=0; i<4; i++){
-					fstream.read();
-				}
-				for(int i=0; i<4; i++){
-					STAKstr += (char)fstream.read();
-				}
-			} catch (FileNotFoundException e) {
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			//a data fork that starts like a stack but did not convert: openHCStack has already pointed path at the conversion
-			//(an .hzb folder that is not there), so the check below must not go by path (UbiQUE™ XFCN from a damaged archive got
-			//"error reading the XML data… opened write-protected")
-			boolean damagedStack = false;
-			if(STAKstr != null){
-				if(STAKstr.equals("STAK") || STAKstr.equals("pwpc")){ //"HCSApwpcpeff": PowerPC 版 HyperCard がスタックの前に付けるコードフラグメント(HCData.stackOffset)
-					//これはきっとHyperCardスタックファイル
-					final File rawStack = new File(path); //openHCStack points path at the conversion
-					if(true == HCConvert.openHCStack(path, this)){
-						if(this.cdCacheList.size()>0){
-							standaloneApplication = MacApp68k.isStandaloneStack(rawStack);
-							finishOpen(isUsingOnly);
-							return true;
-						}
-						damagedStack = true;
-					}
-					else if(HCConvert.cancelled){
-						//文字コードの選択をキャンセル: 黙って戻る(以前はXMLとして読みに行って「読み込みに失敗」を出していた)
-						name="";
-						return false;
-					}
-					else damagedStack = true;
-				}
-				else if(true/*path.substring(path.length()-4).equals(".bin")*/){
-					//MacBinary形式では？
-					if(true == HCConvert.openMacBinaryStack(path, this)){
-						if(this.cdCacheList.size()>0){
-							finishOpen(isUsingOnly);
-							return true;
-						}
-					}
-					else if(HCConvert.cancelled){
-						name="";
-						return false;
-					}
-				}
-			}
-			//Finder の種類が STAK なのにスタックとして読めなかったファイルは壊れたスタック: XML として読みに行くと
-			//「XMLデータの読み込み中にエラー…書き込み禁止で開きます」になるので、開けなかったことだけを伝える
-			if(damagedStack || (new File(path).isFile() && stackFileType(path))){
-				System.err.println("damaged HyperCard stack (the data fork is not a stack): "+inpath);
-			}
-			//XML形式として読む
-			else if(System.getProperty("java.version").startsWith("1.5")){
-				new GDialog(PCARD.pc, PCARDFrame.pc.intl.getDialogText("This version of Java Runtime is not supported streaming API for XML."),
-						null,"OK",null,null);
-			}
-			else{
-				if(new File(path).isDirectory()){
-					path += File.separatorChar+"_stack.xml";
-					if(!new File(path).exists()){
-						path = inpath + File.separatorChar+"toc.xml";
-					}
-				}
-				
-				if(XMLRead.readToc(path, this)){
-					//Private Access: パスワードを聞く(封印されたXMLなら読み込み時に聞き済み)
-					if(!StackProtection.unlockOnOpen(this)){
-						name="";
-						return false;
-					}
-					if(this.cdCacheList.size()>0){
-						file = new File(path);
-						finishOpen(isUsingOnly);
-						return true;
-					}
-				}
-				else if(XMLRead.lockedOut){
-					name="";
-					return false;
-				}
-			}
-		}
-
-		name="";
-		if(!isUsingOnly) PCARD.pc.failureOpenFile(inpath);
-		return false;
-    }
+    { return UiHost.get().openStackFileInThread(this, inpath, isUsingOnly); }
 
     
-	public XMLStreamReader readXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readXML(XmlIn reader) throws Exception {
 		int pattern_id = 0;
 		resourceMapOrder = false; //until the file says its resources are in the map's order
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamReader.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName().intern();
 	            	if(elm.equals("cardCount")){  }
 	            	else if(elm.equals("backgroundCount")){  }
@@ -1092,7 +748,7 @@ public class OStack extends OObject {
 		            		pattern_id++;
 	            		}
 	            	}
-	            	else if(elm.equals("osaScript")) osaScript = OsaScript.readXML(reader);
+	            	else if(elm.equals("osaScript")) osaScript = UiHost.get().readOsaScript(reader);
 	            	else if(elm.equals("script"))
 	            	{
 	            		String scrStr = reader.getElementText();
@@ -1110,7 +766,7 @@ public class OStack extends OObject {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamReader.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("stack")){
 	            		break;
@@ -1125,12 +781,12 @@ public class OStack extends OObject {
 	}
 	
 	
-	public XMLStreamReader readFontXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readFontXML(XmlIn reader) throws Exception {
         String idStr = "0", nameStr = "";
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamReader.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("id")){ idStr = reader.getElementText(); }
 	            	else if(elm.equals("name")){ nameStr = reader.getElementText(); }
@@ -1139,7 +795,7 @@ public class OStack extends OObject {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamReader.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("font")){
 	            		fontList.add(new fontClass(Integer.valueOf(idStr), nameStr));
@@ -1176,13 +832,13 @@ public class OStack extends OObject {
 	}
 	
 	
-	public XMLStreamReader readStyleXML(XMLStreamReader reader) throws Exception {
+	public XmlIn readStyleXML(XmlIn reader) throws Exception {
 		String idStr = "-1", sizeStr = "-1", fontStr = "-1", textStyle = "";
 		int color = -1;
         while (reader.hasNext()) {
     	    try {
 	            int eventType = reader.next();
-	            if (eventType == XMLStreamReader.START_ELEMENT) {
+	            if (eventType == XmlIn.START_ELEMENT) {
 	            	String elm = reader.getLocalName().intern();
 	            	if(elm.equals("nextStyleID")){ nextStyleID = Integer.valueOf(reader.getElementText()); }
 	            	else if(elm.equals("textStyle")){ textStyle += reader.getElementText()+" "; }
@@ -1198,7 +854,7 @@ public class OStack extends OObject {
 	            		System.out.println("Element Text: " + reader.getElementText());
 	            	}
 	            }
-	            if (eventType == XMLStreamReader.END_ELEMENT) {
+	            if (eventType == XmlIn.END_ELEMENT) {
 	            	String elm = reader.getLocalName();
 	            	if(elm.equals("nextStyleID")){
 	            		break;
@@ -1294,7 +950,7 @@ public class OStack extends OObject {
 	}
 
 	
-	public void writeXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeXML(XmlOut writer) throws XmlException {
         writer.writeStartElement("stack");
         writer.writeCharacters("\n\t\t");
 
@@ -1345,7 +1001,7 @@ public class OStack extends OObject {
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
         //絵を封印する鍵。_stack.xml自体が封印されるとき(パスワードあり)だけ書く
-        if(contentKey!=null && StackProtection.sealsXml(this)){
+        if(contentKey!=null && UiHost.get().writesContentKey(this)){
             writer.writeStartElement("contentKey");
             writer.writeCharacters(java.util.Base64.getEncoder().encodeToString(contentKey));
             writer.writeEndElement();
@@ -1403,7 +1059,7 @@ public class OStack extends OObject {
         writer.writeCharacters("\n\t\t");
         
         writer.writeStartElement("modifyVersion");
-        writer.writeCharacters(PCARD.longVersion);
+        writer.writeCharacters(HZ.longVersion);
         writer.writeEndElement();
         writer.writeCharacters("\n\t\t");
         
@@ -1481,14 +1137,14 @@ public class OStack extends OObject {
         writer.writeEndElement();
         writer.writeCharacters("\n\t");
 
-        if(osaScript!=null) osaScript.writeXML(writer, "\n\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
+        if(osaScript!=null) UiHost.get().writeOsaScript(osaScript, writer, "\n\t"); //HyperCard 2.2+ compiled AppleScript, kept as is (OsaScript)
 
         writer.writeEndElement();
         writer.writeCharacters("\n\t");
 	}
 
 	
-	public void writeFontXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeFontXML(XmlOut writer) throws XmlException {
         for(int i=0; i<fontList.size(); i++){
         	writer.writeStartElement("font");
 	        writer.writeCharacters("\n\t\t");
@@ -1509,7 +1165,7 @@ public class OStack extends OObject {
 	}
 
 	
-	public void writeStyleXML(XMLStreamWriter writer) throws XMLStreamException {
+	public void writeStyleXML(XmlOut writer) throws XmlException {
 		//TODO: dummy
         writer.writeStartElement("nextStyleID");
         writer.writeCharacters(Integer.toString(nextStyleID));
@@ -2330,14 +1986,14 @@ public class OStack extends OObject {
 	}
 	
 	public void mouseWithinCheck(){
-		if(PCARD.pc.stack.curCard==null) return;
+		if(HZ.stack().curCard==null) return;
 		if(PCARD.pc.mainPane==null || !PCARD.pc.isShowing()) return; //テスト(カードウインドウなし)
         PointerInfo pointerInfo = MouseInfo.getPointerInfo();
 		if(pointerInfo==null || !PCARD.pc.mainPane.isShowing()) return;
 		//the card pane's own place on the screen: its x/y are within the content pane, below the title and menu bars
 		java.awt.Point origin = PCARD.pc.mainPane.getLocationOnScreen();
-		int x = PCARD.toLogical(pointerInfo.getLocation().x-origin.x);
-		int y = PCARD.toLogical(pointerInfo.getLocation().y-origin.y);
+		int x = Host.get().toLogical(pointerInfo.getLocation().x-origin.x);
+		int y = Host.get().toLogical(pointerInfo.getLocation().y-origin.y);
 		if((x<0)||(y<0)||
 				(x>this.width)||
 				(y>this.height)){

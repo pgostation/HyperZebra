@@ -8,7 +8,7 @@ import java.util.List;
  * so the shared {@link ResourceManager68k} serves XCMDs (stack resources) and
  * applications (real resource forks) through one implementation.
  */
-final class Mac68kResourceManager {
+class Mac68kResourceManager {
 	private Mac68kResourceManager(){}
 
 	/** A read-only resource file over the stack's resources (byte-exact imported data, 68K externals, PICT data). */
@@ -102,13 +102,13 @@ final class Mac68kResourceManager {
 			file.stackOrigin.put(r,origin(r));r.changed=false;any=true;
 		}
 		file.dirty=false;
-		if(any){stack.changed=true;StackStrikeFont.forget(stack.rsrc);}
+		if(any){stack.changed=true;UiHost.get().stackStrikeFontForget(stack.rsrc);}
 		return any;
 	}
 	/** A bitmap font of the stack as the 'FONT' bytes it was imported from; a family-name record (no strike) is empty. */
 	private static byte[] fontBytes(OStack stack,Rsrc.rsrcClass font){
 		if(!(font.optionInfo instanceof Rsrc.FontInfo))return new byte[0];
-		try{java.awt.image.BufferedImage image=javax.imageio.ImageIO.read(resourceFile(stack,font.filename));
+		try{java.awt.image.BufferedImage image=Toolbox68k.PARTS.readImage(resourceFile(stack,font.filename));
 			return image==null?new byte[0]:HCResourceExport.font((Rsrc.FontInfo)font.optionInfo,image);}
 		catch(java.io.IOException|RuntimeException e){System.err.println("[68K] cannot make font "+font.id+": "+e.getMessage());return new byte[0];}
 	}
@@ -117,7 +117,7 @@ final class Mac68kResourceManager {
 		java.util.Set<Integer> ids=new java.util.HashSet<Integer>();
 		for(Rsrc.rsrcClass fond:stack.rsrc.rsrcIdMap.values()){
 			if(!fond.type.equals("FOND")||fond.filename==null)continue;
-			try{byte[] b=java.nio.file.Files.readAllBytes(resourceFile(stack,fond.filename).toPath());
+			try{byte[] b=Files68k.read(resourceFile(stack,fond.filename));
 				if(b.length<54)continue;
 				int count=((b[52]&255)<<8|(b[53]&255))+1;
 				for(int i=0,at=54;i<count&&at+6<=b.length;i++,at+=6)ids.add((int)(short)((b[at+4]&255)<<8|(b[at+5]&255)));}
@@ -146,17 +146,17 @@ final class Mac68kResourceManager {
 	}
 	/** The stack file {@code own} (_stack.xml, its .hzb folder or a packed .hzb) as a HyperCard file: "<folder>/<name>" without ".hzb". */
 	static File hyperCardSeen(File own){
-		File host=own==null?null:StackBundle.host(own);if(host==null)return own;
+		File host=own==null?null:UiHost.get().stackBundleHost(own);if(host==null)return own;
 		if((host.getName().equals("_stack.xml")||host.getName().equals("toc.xml"))&&host.getParentFile()!=null)host=host.getParentFile();
-		if(!StackBundle.hasHzbExtension(host)||host.getParentFile()==null)return own;
+		if(!UiHost.get().stackBundleHasHzbExtension(host)||host.getParentFile()==null)return own;
 		return new File(host.getParentFile(),host.getName().substring(0,host.getName().length()-4));
 	}
 	/** Whether {@code file} is where "the long name" of {@code stack} points: its stack file or folder without ".hzb". */
 	static boolean isStackPath(OStack stack,File file){
-		File host=StackBundle.host(stack.file);if(host==null||file==null)return false;
+		File host=UiHost.get().stackBundleHost(stack.file);if(host==null||file==null)return false;
 		if((host.getName().equals("_stack.xml")||host.getName().equals("toc.xml"))&&host.getParentFile()!=null)host=host.getParentFile();
 		String path=host.getAbsolutePath().replaceFirst("(?i)\\.hzb$","");
-		return java.text.Normalizer.normalize(path,java.text.Normalizer.Form.NFC).equals(java.text.Normalizer.normalize(file.getAbsolutePath(),java.text.Normalizer.Form.NFC));
+		return Platform.get().normalize(path,UnicodeNorm.Form.NFC).equals(Platform.get().normalize(file.getAbsolutePath(),UnicodeNorm.Form.NFC));
 	}
 	/** The stack's own name for a classic resource type ('snd ' is "SND", 'FONT' and 'NFNT' "font", as the import stores them). */
 	private static String hzType(String type){return HCResource.storedType(type);}

@@ -2,10 +2,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 /**
  * A panel: an object of a card or background, like a button, that groups buttons, fields and shapes of the same card or
@@ -51,7 +47,7 @@ public class OPanel extends OObject {
 		if(getVisible()==visible) return;
 		super.setVisible(visible);
 		ArrayList<OObject> parts = members();
-		PCARD.batchOnEDT(() -> { for(OObject part : parts) part.applyShown(); });
+		Host.get().batchOnEDT(() -> { for(OObject part : parts) part.applyShown(); });
 	}
 
 	private String key(String key){
@@ -144,7 +140,7 @@ public class OPanel extends OObject {
 		return p;
 	}
 
-	void writeXML(XMLStreamWriter w) throws XMLStreamException {
+	void writeXML(XmlOut w) throws XmlException {
 		w.writeStartElement("panel");
 		w.writeAttribute("id", Integer.toString(id));
 		w.writeAttribute("name", name);
@@ -170,14 +166,14 @@ public class OPanel extends OObject {
 	}
 
 	/** Reads a panel element (the reader is on its start tag) up to its end tag; the stack reader decodes control characters. */
-	static OPanel readXML(XMLStreamReader r, OCardBase owner) throws XMLStreamException {
+	static OPanel readXML(XmlIn r, OCardBase owner) throws XmlException {
 		int id = 0;
 		try{ id = Integer.parseInt(r.getAttributeValue(null, "id")); }catch(NumberFormatException | NullPointerException e){ /* given one below */ }
 		OPanel p = new OPanel(owner, id, r.getAttributeValue(null, "name"));
 		p.setVisibleInternal(!"false".equals(r.getAttributeValue(null, "visible")));
 		while(r.hasNext()){
 			int event = r.next();
-			if(event==XMLStreamConstants.START_ELEMENT){
+			if(event==XmlIn.START_ELEMENT){
 				if(r.getLocalName().equals("text")) p.setTextInternal(r.getElementText());
 				else if(r.getLocalName().equals("script")){
 					String script = r.getElementText();
@@ -189,7 +185,7 @@ public class OPanel extends OObject {
 					if(key!=null && value!=null && !value.isEmpty()) p.values.put(key, value);
 				}
 			}
-			else if(event==XMLStreamConstants.END_ELEMENT && r.getLocalName().equals("panel")) break;
+			else if(event==XmlIn.END_ELEMENT && r.getLocalName().equals("panel")) break;
 		}
 		return p;
 	}

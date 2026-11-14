@@ -1,4 +1,3 @@
-import java.lang.Character.UnicodeScript;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -508,7 +507,7 @@ final class StackEncodingDetector {
 		return before+after>=2;
 	}
 
-	private static final Charset GBK = Charset.forName("GBK"), BIG5 = Charset.forName("Big5"), EUC_KR = Charset.forName("EUC-KR");
+	private static final Charset GBK = Platform.get().optionalCharset("GBK"), BIG5 = Platform.get().optionalCharset("Big5"), EUC_KR = Platform.get().optionalCharset("EUC-KR"); //(null in the headless core)
 
 	/** Mac OS Simplified Chinese is EUC-CN: GB 2312 rows only. */
 	private static void gb2312(byte[] b, Score s) {
@@ -590,20 +589,20 @@ final class StackEncodingDetector {
 	/** A one-byte Mac OS script: words are runs of its letters, and its most frequent letters show up often. */
 	private static final class OneByte {
 		final char[] table;
-		final UnicodeScript script;
+		final UScript script;
 		final String frequent;
-		OneByte(String charset, UnicodeScript script, String frequent) {
+		OneByte(String charset, UScript script, String frequent) {
 			this.table = highHalf(charset);
 			this.script = script;
 			this.frequent = frequent;
 		}
 	}
 
-	private static final OneByte CYRILLIC = new OneByte("x-MacCyrillic", UnicodeScript.CYRILLIC, "оеаинтсрвлОЕАИНТСРВЛ");
-	private static final OneByte GREEK = new OneByte("x-MacGreek", UnicodeScript.GREEK, "αοιετσνηΑΟΙΕΤΣΝΗάέίόή");
-	private static final OneByte HEBREW = new OneByte("x-MacHebrew", UnicodeScript.HEBREW, "יוהאלרמתבנ");
-	private static final OneByte ARABIC = new OneByte("x-MacArabic", UnicodeScript.ARABIC, "اليمونهرتب");
-	private static final OneByte THAI = new OneByte("x-MacThai", UnicodeScript.THAI, "านรอกเงมยลวด่้ี");
+	private static final OneByte CYRILLIC = new OneByte("x-MacCyrillic", UScript.CYRILLIC, "оеаинтсрвлОЕАИНТСРВЛ");
+	private static final OneByte GREEK = new OneByte("x-MacGreek", UScript.GREEK, "αοιετσνηΑΟΙΕΤΣΝΗάέίόή");
+	private static final OneByte HEBREW = new OneByte("x-MacHebrew", UScript.HEBREW, "יוהאלרמתבנ");
+	private static final OneByte ARABIC = new OneByte("x-MacArabic", UScript.ARABIC, "اليمونهرتب");
+	private static final OneByte THAI = new OneByte("x-MacThai", UScript.THAI, "านรอกเงมยลวด่้ี");
 
 	private static void oneByteScript(byte[] b, Score s, OneByte o) {
 		StringBuilder word = new StringBuilder();
@@ -612,7 +611,7 @@ final class StackEncodingDetector {
 			char ch = c>=0x80 ? o.table[c-0x80] : 0;
 			//Shift-JIS kana ("ÇÕÇÒÇø" = はんち, "ÉVÉXÉe" = システ) have the same lead byte every other byte: no letters of a word
 			boolean shiftJisPairs = c>=0x80 && (alternating(b, i) || i>0 && b[i-1]<0 && alternating(b, i-1));
-			if(c>=0x80 && UnicodeScript.of(ch)==o.script && Character.isLetter(ch) && !shiftJisPairs){
+			if(c>=0x80 && UScript.of(ch)==o.script && Character.isLetter(ch) && !shiftJisPairs){
 				word.append(ch);
 			}
 			else if(word.length()>0){
@@ -625,7 +624,7 @@ final class StackEncodingDetector {
 			}
 			if(c<0x80) continue;
 			if(shiftJisPairs) s.add(c, -0.5);
-			else if(UnicodeScript.of(ch)==o.script){
+			else if(UScript.of(ch)==o.script){
 				boolean run = inScript(b, i-1, o) || inScript(b, i+1, o);
 				if(run) s.add(c, 2+(o.frequent.indexOf(ch)>=0 ? 1.5 : 0));
 				else if(asciiLetter(at(b, i-1)) || asciiLetter(at(b, i+1))) s.add(c, -1);
@@ -647,13 +646,13 @@ final class StackEncodingDetector {
 
 	private static boolean inScript(byte[] b, int i, OneByte o) {
 		if(i<0 || i>=b.length || b[i]>=0) return false;
-		return UnicodeScript.of(o.table[(b[i]&0xFF)-0x80])==o.script;
+		return UScript.of(o.table[(b[i]&0xFF)-0x80])==o.script;
 	}
 
 	private static char[] highHalf(String charset) {
 		byte[] bytes = new byte[128];
 		for(int i=0; i<128; i++) bytes[i] = (byte)(0x80+i);
-		String text = new String(bytes, Charset.forName(charset));
+		String text = new String(bytes, Platform.get().charset(charset));
 		char[] table = new char[128];
 		for(int i=0; i<128; i++) table[i] = i<text.length() ? text.charAt(i) : '�';
 		return table;
@@ -822,7 +821,7 @@ final class StackEncodingDetector {
 			int cp = fileName.codePointAt(i);
 			i += Character.charCount(cp);
 			if(cp<0x80) continue;
-			switch(UnicodeScript.of(cp)){
+			switch(UScript.of(cp)){
 			case HIRAGANA: case KATAKANA: return StackTextEncoding.JAPANESE;
 			case HANGUL: return StackTextEncoding.KOREAN;
 			case CYRILLIC: return StackTextEncoding.CYRILLIC;

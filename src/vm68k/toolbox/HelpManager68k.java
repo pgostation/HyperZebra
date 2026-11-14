@@ -10,13 +10,13 @@ import java.util.List;
  * and styled text ('TEXT' with its 'styl', or a styled TERec: Rinaldi's FullBalloons "ShowTEXT"/"ShowField") drawn in its fonts,
  * sizes, faces and colours; a message whose resource is missing is resNotFound (FullBalloons: "Error : Resource not found").
  */
-final class HelpManager68k {
+class HelpManager68k {
 	private static final int NO_ERR=0,PARAM_ERR=-50,RES_NOT_FOUND=-192,HM_HELP_DISABLED=-850,HM_SKIPPED_BALLOON=-857,HM_WRONG_VERSION=-858,HM_UNKNOWN_HELP_TYPE=-859,HM_NO_BALLOON_UP=-862;
 	private static final int STRING=1,PICT=2,STRING_RES=3,TE_HANDLE=4,PICT_HANDLE=5,TE_RES=6,STR_RES=7,SKIP_ITEM=256,COMPARE_ITEM=512,NAMED_RESOURCE=1024;
-	private final Toolbox68k tb;private final M68kMemory memory;
+	final Toolbox68k tb;final M68kMemory memory;
 	/** A program's own Show Balloons (its VM is its own Mac); HyperCard's externals share {@link #hyperCardBalloons}. */
 	private boolean balloons;private int font=0,fontSize=0,dialogResId=-1;private final java.util.Map<Integer,Integer> menuResIds=new java.util.HashMap<Integer,Integer>();
-	private volatile boolean balloonUp;
+	volatile boolean balloonUp;
 
 	HelpManager68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;}
 
@@ -110,24 +110,9 @@ final class HelpManager68k {
 	private void show(String text,int h,int v){tb.host().showBalloon(text,h,v);balloonUp=true;} // the tip is in global coordinates
 	private void showImage(java.awt.image.BufferedImage image,int h,int v){tb.host().showBalloonImage(image,h,v);balloonUp=true;}
 	private void hide(){if(balloonUp)tb.host().hideBalloon();balloonUp=false;stopTracking();}
-	/**
-	 * HMShowBalloon's alternateRect is the balloon's hot rectangle (global): the Help Manager takes the balloon down once the
-	 * pointer leaves it. XTernal Collection's BalloonHelp (from mouseEnter handlers) left every balloon up for good.
-	 */
-	private void removeWhenLeft(int[] hotRect){
-		stopTracking();if(java.awt.GraphicsEnvironment.isHeadless())return;
-		final MacAppHost host=tb.host();
-		javax.swing.Timer timer=new javax.swing.Timer(150,null);
-		timer.addActionListener(e->{
-			if(!balloonUp){timer.stop();return;}
-			java.awt.PointerInfo info=java.awt.MouseInfo.getPointerInfo();if(info==null)return;
-			java.awt.Point p=host.toGuest(info.getLocation());
-			if(p.y<hotRect[0]||p.x<hotRect[1]||p.y>=hotRect[2]||p.x>=hotRect[3]){timer.stop();if(balloonUp){balloonUp=false;host.hideBalloon();}}
-		});
-		tracking=timer;timer.start();
-	}
-	private void stopTracking(){javax.swing.Timer t=tracking;tracking=null;if(t!=null)t.stop();}
-	private volatile javax.swing.Timer tracking;
+	/** HMShowBalloon's alternateRect is the balloon's hot rectangle (global): the desktop takes the balloon down once the pointer leaves it (HelpManagerDesktop68k); here nothing follows the pointer. */
+	void removeWhenLeft(int[] hotRect){}
+	void stopTracking(){}
 	private static int[] balloonSize(String text){int lines=1,longest=0,current=0;for(char c:text.toCharArray()){if(c=='\r'||c=='\n'){lines++;current=0;}else{current++;longest=Math.max(longest,current);}}return new int[]{Math.min(220,longest*7+16),lines*14+12};}
 
 	// ------------------------------------------------------------------ messages
@@ -145,60 +130,17 @@ final class HelpManager68k {
 			case STR_RES:{ResourceFile68k.Resource r=tb.resources.find(0x53545220,id);if(r==null){b.error=RES_NOT_FOUND;break;}byte[] d=tb.resources.data(r);b.text=d.length==0?"":tb.decode(java.util.Arrays.copyOfRange(d,1,1+Math.min(d[0]&0xff,d.length-1)));break;}
 			case TE_RES:{ResourceFile68k.Resource r=tb.resources.find(0x54455854,id);if(r==null){b.error=RES_NOT_FOUND;break;}
 				ResourceFile68k.Resource s=tb.resources.find(0x7374796c,id);
-				byte[] text=tb.resources.data(r);if(s==null)b.text=tb.decode(text);else b.image=styledText(text,tb.resources.data(s));break;}
+				byte[] text=tb.resources.data(r);if(s==null)b.text=tb.decode(text);else{b.image=styledText(text,tb.resources.data(s));if(b.image==null)b.text=tb.decode(text);}break;}
 			case TE_HANDLE:{int te=memory.readLong(msg+2);if(te==0||!tb.textEdit.isRecord(te))break;
-				byte[] text=tb.textEdit.text(te),scrap=tb.textEdit.styleScrapOf(te);if(scrap==null)b.text=tb.decode(text);else b.image=styledText(text,scrap);break;}
+				byte[] text=tb.textEdit.text(te),scrap=tb.textEdit.styleScrapOf(te);if(scrap==null)b.text=tb.decode(text);else{b.image=styledText(text,scrap);if(b.image==null)b.text=tb.decode(text);}break;}
 			case PICT:{ResourceFile68k.Resource r=tb.resources.find(0x50494354,id);if(r==null){b.error=RES_NOT_FOUND;break;}b.image=tb.api.quickDraw().renderPicture(tb.resources.data(r));if(b.image==null)b.error=HM_SKIPPED_BALLOON;break;}
 			case PICT_HANDLE:{int h=memory.readLong(msg+2);byte[] d=h==0?null:tb.api.handleContents(h);b.image=d==null?null:tb.api.quickDraw().renderPicture(d);if(b.image==null)b.error=HM_SKIPPED_BALLOON;break;}
 			default:b.error=HM_UNKNOWN_HELP_TYPE;
 		}
 		return b;
 	}
-	/** The width a balloon's text is wrapped to. */
-	private static final int BALLOON_TEXT_WIDTH=200;
-	/**
-	 * Styled text as the balloon shows it: the bytes in the fonts, sizes, faces and colours of a StScrpRec (scrpNStyles, then
-	 * 20-byte ScrpSTElements: startChar, height, ascent, font, face, filler, size, RGB colour), wrapped at the balloon's width.
-	 */
-	java.awt.image.BufferedImage styledText(byte[] bytes,byte[] scrap){
-		int n=scrap.length<2?0:MacApp68k.u2(scrap,0);
-		java.util.List<String> parts=new ArrayList<String>();java.util.List<int[]> styles=new ArrayList<int[]>();
-		for(int i=0;i<Math.max(1,n);i++){
-			int o=2+i*20;boolean has=i<n&&o+20<=scrap.length;
-			int start=has?Math.min(bytes.length,MacApp68k.u4(scrap,o)):0,end=i+1<n&&o+40<=scrap.length?Math.min(bytes.length,MacApp68k.u4(scrap,o+20)):bytes.length;
-			if(end<=start)continue;
-			parts.add(tb.decode(java.util.Arrays.copyOfRange(bytes,start,end)));
-			styles.add(has?new int[]{(short)MacApp68k.u2(scrap,o+8),scrap[o+10]&0x7f,(short)MacApp68k.u2(scrap,o+12),MacApp68k.u2(scrap,o+14),MacApp68k.u2(scrap,o+16),MacApp68k.u2(scrap,o+18)}:new int[]{0,0,12,0,0,0});
-		}
-		StringBuilder all=new StringBuilder();for(String p:parts)all.append(p);
-		String text=all.toString().replace('\n','\r');
-		if(text.isEmpty())text=" ";
-		java.util.List<java.text.AttributedString> lines=new ArrayList<java.text.AttributedString>();
-		java.util.List<int[]> lineRanges=new ArrayList<int[]>();
-		for(int a=0;a<=text.length();){int b=text.indexOf('\r',a);if(b<0)b=text.length();lineRanges.add(new int[]{a,b});a=b+1;if(b==text.length())break;}
-		int[] runStart=new int[parts.size()+1];for(int i=0;i<parts.size();i++)runStart[i+1]=runStart[i]+parts.get(i).length();
-		java.awt.image.BufferedImage scratch=new java.awt.image.BufferedImage(1,1,java.awt.image.BufferedImage.TYPE_INT_RGB);
-		java.awt.Graphics2D sg=scratch.createGraphics();java.awt.font.FontRenderContext frc=sg.getFontRenderContext();sg.dispose();
-		java.util.List<java.awt.font.TextLayout> layouts=new ArrayList<java.awt.font.TextLayout>();java.util.List<Integer> blank=new ArrayList<Integer>();
-		int height=0,width=0;
-		for(int[] lr:lineRanges){
-			if(lr[1]==lr[0]){int[] st=styles.isEmpty()?new int[]{0,0,12}:styles.get(Math.max(0,runAt(runStart,lr[0])));int h=Fonts68k.font(st[0],st[2],st[1]).getSize()+4;layouts.add(null);blank.add(h);height+=h;continue;}
-			java.text.AttributedString as=new java.text.AttributedString(text.substring(lr[0],lr[1]));
-			for(int i=0;i<parts.size();i++){int a=Math.max(runStart[i],lr[0]),b=Math.min(runStart[i+1],lr[1]);if(b<=a)continue;int[] st=styles.get(i);
-				as.addAttribute(java.awt.font.TextAttribute.FONT,Fonts68k.font(st[0],st[2],st[1]),a-lr[0],b-lr[0]);
-				as.addAttribute(java.awt.font.TextAttribute.FOREGROUND,new java.awt.Color(st[3]>>8,st[4]>>8,st[5]>>8),a-lr[0],b-lr[0]);
-				if((st[1]&4)!=0)as.addAttribute(java.awt.font.TextAttribute.UNDERLINE,java.awt.font.TextAttribute.UNDERLINE_ON,a-lr[0],b-lr[0]);}
-			java.awt.font.LineBreakMeasurer m=new java.awt.font.LineBreakMeasurer(as.getIterator(),frc);
-			while(m.getPosition()<lr[1]-lr[0]){java.awt.font.TextLayout l=m.nextLayout(BALLOON_TEXT_WIDTH);layouts.add(l);blank.add(0);
-				height+=(int)Math.ceil(l.getAscent()+l.getDescent()+l.getLeading());width=Math.max(width,(int)Math.ceil(l.getAdvance()));}
-		}
-		java.awt.image.BufferedImage image=new java.awt.image.BufferedImage(Math.max(1,width),Math.max(1,height),java.awt.image.BufferedImage.TYPE_INT_ARGB);
-		java.awt.Graphics2D g=image.createGraphics();g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING,java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-		float y=0;for(int i=0;i<layouts.size();i++){java.awt.font.TextLayout l=layouts.get(i);if(l==null){y+=blank.get(i);continue;}y+=l.getAscent();l.draw(g,0,y);y+=l.getDescent()+l.getLeading();}
-		g.dispose();
-		return image;
-	}
-	private static int runAt(int[] runStart,int at){for(int i=0;i+1<runStart.length;i++)if(at<runStart[i+1])return i;return runStart.length-2;}
+	/** Styled text as a picture: the desktop draws it in the fonts of its StScrpRec (HelpManagerDesktop68k); null here, the plain text is shown. */
+	java.awt.image.BufferedImage styledText(byte[] bytes,byte[] scrap){return null;}
 	private String indexedString(int resId,int index) throws M68kCpuException {
 		ResourceFile68k.Resource r=tb.resources.find(0x53545223,resId);if(r==null)return "";byte[] d=tb.resources.data(r);if(d.length<2)return "";
 		int count=MacApp68k.u2(d,0),p=2;for(int i=1;i<=count&&p<d.length;i++){int n=d[p]&0xff;if(i==index)return tb.decode(java.util.Arrays.copyOfRange(d,p+1,Math.min(d.length,p+1+n)));p+=1+n;}

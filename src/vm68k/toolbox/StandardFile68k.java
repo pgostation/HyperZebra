@@ -24,7 +24,7 @@ import javax.swing.filechooser.FileFilter;
  * inside the emulated Dialog Manager instead, so the program's DLOG/DITL,
  * hook and filter procedures see exactly what they expect.
  */
-final class StandardFile68k {
+class StandardFile68k {
 	private static final int SF_SAVE_DISK=0x214,CUR_DIR_STORE=0x398;
 	private static final int GET_DLG_ID=-4000,PUT_DLG_ID=-3999,SF_GET_DLG_ID=-6042,SF_PUT_DLG_ID=-6043;
 	// old-style item numbers (getDlgID / putDlgID layouts)
@@ -194,7 +194,7 @@ final class StandardFile68k {
 	}
 
 	private void writeReply(int reply,boolean standard,File file,boolean saving) throws M68kCpuException {
-		if(file!=null)Sandbox.chosenByUser(tb.name,file,saving); // the user picked it: the program's to change, its folder to read
+		if(file!=null)Sandbox68k.chosenByUser(tb.name,file,saving); // the user picked it: the program's to change, its folder to read
 		if(file!=null&&!saving&&file.isFile()&&tb.app!=null)tb.app.recordDocument(file); // a document the user opened: the launcher lists it under the program
 		// the package leaves the answer's folder in SFSaveDisk/CurDirStore: 3DMF Viewer builds its FSSpec from the old reply's
 		// working directory and LMGetCurDirStore()
@@ -229,7 +229,7 @@ final class StandardFile68k {
 	/** The folder the next host panel opens in: where the last Standard File or Navigation dialog was left, else the program's. */
 	File panelDirectory(){return lastDirectory!=null&&lastDirectory.isDirectory()?lastDirectory:tb.programDirectory();}
 	/** Whether no host panel can be shown (a headless run, a service VM): file dialogs then answer "cancelled". */
-	boolean panelUnavailable(){return java.awt.GraphicsEnvironment.isHeadless()||!tb.hosted()||tb.host().headless;}
+	boolean panelUnavailable(){return java.awt.GraphicsEnvironment.isHeadless()||!tb.hosted()||tb.host().headless();}
 	/** Whether a Standard File type list admits {@code f}: folders, files of no known type, and files of a listed type. */
 	boolean typeListAccepts(File f,int[] types){
 		if(types==null||types.length==0||f.isDirectory())return true;
@@ -319,7 +319,7 @@ final class StandardFile68k {
 		File first=files.get(0).getAbsoluteFile();File folder=first.getParentFile();
 		if(folder!=null&&folder.isDirectory())lastDirectory=folder;
 		for(File f:files){
-			Sandbox.chosenByUser(tb.name,f,saving);
+			Sandbox68k.chosenByUser(tb.name,f,saving);
 			if(!saving&&f.isFile()&&tb.app!=null)tb.app.recordDocument(f);
 		}
 	}
@@ -643,8 +643,8 @@ final class StandardFile68k {
 		List<File> path=new ArrayList<File>();
 		for(File d=s.directory;d!=null;d=parent(d))path.add(d);
 		File desk=tb.files.specialFolder(0x6465736b,false);
-		MacAppHost.MenuModel model=new MacAppHost.MenuModel(0,"",true);List<File> targets=new ArrayList<File>();
-		for(File d:path){MacAppHost.ItemModel item=new MacAppHost.ItemModel();item.text=folderLabel(d);model.items.add(item);targets.add(d);}
+		MenuModel68k model=new MenuModel68k(0,"",true);List<File> targets=new ArrayList<File>();
+		for(File d:path){ItemModel68k item=new ItemModel68k();item.text=folderLabel(d);model.items.add(item);targets.add(d);}
 		if(desk!=null&&!path.contains(desk)){separator(model,targets);popupFolder(model,targets,desk,"Desktop");}
 		if(wide()){
 			List<File> seen=new ArrayList<File>();for(File d:targets)if(d!=null)seen.add(canonical(d));
@@ -662,7 +662,7 @@ final class StandardFile68k {
 			if(model.items.size()>before){model.items.add(before,separatorItem());targets.add(before,null);}
 		}
 		int chosen;
-		if(tb.host().headless){chosen=path.size()>1?2:0;}
+		if(tb.host().headless()){chosen=path.size()>1?2:0;}
 		else{
 			WindowManager68k.Window w=tb.windows.window(s.window);int[] r=s.popupRect;
 			int left=r==null?0:r[1],top=r==null?0:r[2];
@@ -673,11 +673,11 @@ final class StandardFile68k {
 		File target=targets.get(chosen-1);
 		if(target!=null&&target.isDirectory()&&!canonical(target).equals(canonical(s.directory)))enter(s,target);
 	}
-	private static MacAppHost.ItemModel separatorItem(){MacAppHost.ItemModel sep=new MacAppHost.ItemModel();sep.separator=true;return sep;}
-	private static void separator(MacAppHost.MenuModel model,List<File> targets){model.items.add(separatorItem());targets.add(null);}
-	private static void popupFolder(MacAppHost.MenuModel model,List<File> targets,File folder,String label){MacAppHost.ItemModel item=new MacAppHost.ItemModel();item.text=label;model.items.add(item);targets.add(folder);}
+	private static ItemModel68k separatorItem(){ItemModel68k sep=new ItemModel68k();sep.separator=true;return sep;}
+	private static void separator(MenuModel68k model,List<File> targets){model.items.add(separatorItem());targets.add(null);}
+	private static void popupFolder(MenuModel68k model,List<File> targets,File folder,String label){ItemModel68k item=new ItemModel68k();item.text=label;model.items.add(item);targets.add(folder);}
 	/** Adds a favourite or recent folder once, and only when the File Manager can reach it (it lies on a volume). */
-	private void popupFolder(MacAppHost.MenuModel model,List<File> targets,List<File> seen,File folder,String label){
+	private void popupFolder(MenuModel68k model,List<File> targets,List<File> seen,File folder,String label){
 		if(folder==null||!folder.isDirectory()||!tb.files.fileManager.onVolume(folder))return;
 		File c=canonical(folder);if(seen.contains(c))return;seen.add(c);
 		popupFolder(model,targets,folder,label);
@@ -1007,10 +1007,10 @@ final class StandardFile68k {
 	/** The pop-up under the second column's arrow: Date Modified / Size / Kind. Headless runs cycle to the next column. */
 	private void columnMenu(Session s,int left,int top) throws M68kException {
 		int chosen;
-		if(tb.host().headless)chosen=detailColumn%3+1;
+		if(tb.host().headless())chosen=detailColumn%3+1;
 		else{
-			MacAppHost.MenuModel model=new MacAppHost.MenuModel(0,"",true);
-			for(int c=1;c<=3;c++){MacAppHost.ItemModel item=new MacAppHost.ItemModel();item.text=COLUMN_NAMES[c];item.checked=c==detailColumn;model.items.add(item);}
+			MenuModel68k model=new MenuModel68k(0,"",true);
+			for(int c=1;c<=3;c++){ItemModel68k item=new ItemModel68k();item.text=COLUMN_NAMES[c];item.checked=c==detailColumn;model.items.add(item);}
 			WindowManager68k.Window w=tb.windows.window(s.window);
 			chosen=tb.host().popUpMenuSelect(model,left+(w==null?0:w.left),top+(w==null?0:w.top),detailColumn);
 		}

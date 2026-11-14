@@ -10,7 +10,7 @@ import java.util.Deque;
  * cycled at their Fixed rates for a duration in ticks). Requests play one after the other, as the driver queued them.
  * Some games play title music with free-form records and wait for each through SoundDone.
  */
-final class SoundDriver68k {
+class SoundDriver68k {
 	static final int REF_NUM=-4;
 	/** Sample rate of the Macintosh sound hardware the driver's counts refer to. */
 	static final double RATE=22254.54;
@@ -51,7 +51,7 @@ final class SoundDriver68k {
 		memory.writeWord(pb+16,1);cpu.d[0]=cpu.d[0]&0xffff0000; // ioResult 1: in progress
 		queue.add(pb);if(async)asyncRequests.add(pb);
 		if(playing==null)startNext(cpu);
-		if(!async){while(queue.contains(pb)&&playing!=null){try{Thread.sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}tb.runDeferred();}
+		if(!async){while(queue.contains(pb)&&playing!=null){try{Platform.get().sleep(5);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}tb.runDeferred();}
 			cpu.d[0]=(cpu.d[0]&0xffff0000)|(memory.readWord(pb+16)&0xffff);}
 		return true;
 	}
@@ -62,7 +62,7 @@ final class SoundDriver68k {
 			int pb=queue.peekFirst();
 			SoundMixer68k.Voice voice=null;
 			try{voice=voiceFor(memory.readLong(pb+32),memory.readLong(pb+36));}catch(M68kCpuException e){voice=null;}
-			if(voice==null||!TSound.use){queue.pollFirst();complete(cpu,pb,0);continue;}
+			if(voice==null||!UiHost.get().soundOn()){queue.pollFirst();complete(cpu,pb,0);continue;}
 			playing=voice;playingBlock=pb;
 			final int block=pb;final SoundMixer68k.Voice v=voice;
 			voice.onEnd(new Runnable(){@Override public void run(){tb.later(new Runnable(){@Override public void run(){try{ended(v,block);}catch(M68kException e){throw Toolbox68k.wrap(e);}}});}});

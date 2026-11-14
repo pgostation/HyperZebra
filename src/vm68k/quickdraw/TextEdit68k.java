@@ -327,7 +327,7 @@ final class TextEdit68k {
 		List<Integer> starts=new ArrayList<Integer>();starts.add(0);
 		int lineStart=0;int i=0;int lastBreak=-1;
 		while(i<text.length){
-			int c=text[i]&0xff;int charLen=(tb.encoding==StackTextEncoding.JAPANESE&&Toolbox68k.isJapaneseLead(c)&&i+1<text.length)?2:1;
+			int c=text[i]&0xff;int charLen=pairAt(r,text,i,font)?2:1;
 			if(c=='\r'){i+=1;lineStart=i;starts.add(lineStart);lastBreak=-1;continue;}
 			if(!crOnly){
 				int w=r!=0?measure(r,text,lineStart,i+charLen):Fonts68k.width(font,tb.decodeFor(font,java.util.Arrays.copyOfRange(text,lineStart,i+charLen)));
@@ -811,7 +811,7 @@ final class TextEdit68k {
 		int x0=xOf(r,text,font,line,start);
 		int best=start;int prev=0;
 		for(int i=1;i<=lineBytes.length;i++){
-			int c=lineBytes[i-1]&0xff;if(tb.encoding==StackTextEncoding.JAPANESE&&Toolbox68k.isJapaneseLead(c)&&i<lineBytes.length){i++;}
+			if(i<lineBytes.length&&pairAt(r,text,start+i-1,font)){i++;}
 			int w=styled?measure(r,text,start,start+i):Fonts68k.width(font,tb.decodeFor(font,java.util.Arrays.copyOf(lineBytes,i)));
 			if(h-x0<(prev+w)/2){return best;}
 			best=start+i;prev=w;
@@ -859,10 +859,10 @@ final class TextEdit68k {
 		int r=rec(handle);int selStart=memory.readWord(r+SEL_START),selEnd=memory.readWord(r+SEL_END);byte[] text=text(handle);
 		State s=records.get(handle);if(s!=null){s.caretVisible=true;s.lastBlink=System.currentTimeMillis();}
 		switch(ch){
-			case 8:if(selEnd>selStart)deleteSelection(handle);else if(selStart>0){int p=selStart-1;if(tb.encoding==StackTextEncoding.JAPANESE&&p>0&&isSecondByte(text,p))p--;replace(handle,p,selStart,new byte[0]);}return;
-			case 0x7f:if(selEnd>selStart)deleteSelection(handle);else if(selStart<text.length){int n=(tb.encoding==StackTextEncoding.JAPANESE&&Toolbox68k.isJapaneseLead(text[selStart]&0xff))?2:1;replace(handle,selStart,Math.min(text.length,selStart+n),new byte[0]);}return;
-			case 0x1c:{int p=selEnd>selStart?selStart:Math.max(0,selStart-1);if(tb.encoding==StackTextEncoding.JAPANESE&&p>0&&isSecondByte(text,p))p--;setSelection(handle,p,p,true);return;}
-			case 0x1d:{int p=selEnd>selStart?selEnd:Math.min(text.length,selEnd+1);if(tb.encoding==StackTextEncoding.JAPANESE&&p<text.length&&isSecondByte(text,p))p++;setSelection(handle,p,p,true);return;}
+			case 8:if(selEnd>selStart)deleteSelection(handle);else if(selStart>0){int p=selStart-1;if(p>0&&isSecondByte(r,text,p))p--;replace(handle,p,selStart,new byte[0]);}return;
+			case 0x7f:if(selEnd>selStart)deleteSelection(handle);else if(selStart<text.length){int n=pairAt(r,text,selStart,font(r))?2:1;replace(handle,selStart,Math.min(text.length,selStart+n),new byte[0]);}return;
+			case 0x1c:{int p=selEnd>selStart?selStart:Math.max(0,selStart-1);if(p>0&&isSecondByte(r,text,p))p--;setSelection(handle,p,p,true);return;}
+			case 0x1d:{int p=selEnd>selStart?selEnd:Math.min(text.length,selEnd+1);if(p<text.length&&isSecondByte(r,text,p))p++;setSelection(handle,p,p,true);return;}
 			case 0x1e:case 0x1f:{int line=lineOf(r,selStart);int target=ch==0x1e?line-1:line+1;if(target<0||target>=lineCount(r)){int p=ch==0x1e?0:text.length;setSelection(handle,p,p,true);return;}
 				Font font=font(r);int x=xOf(r,text,font,line,selStart);int[] tops=lineTops(r);int[] dest=rect(r+DEST);int p=offsetAt(handle,x,dest[0]+(tops[target]+tops[target+1])/2);setSelection(handle,p,p,true);return;}
 			default:break;
@@ -873,7 +873,20 @@ final class TextEdit68k {
 		if(ch==0x03)ch=0x0d;
 		insertAtSelection(handle,new byte[]{(byte)ch},true);
 	}
-	private boolean isSecondByte(byte[] text,int p){int i=0;while(i<p){int c=text[i]&0xff;if(Toolbox68k.isJapaneseLead(c))i+=2;else i++;}return i>p;}
+	/** Whether offset {@code p} is the trail byte of a two-byte character ({@link #pairAt}). */
+	private boolean isSecondByte(int r,byte[] text,int p) throws M68kCpuException {
+		if(tb.encoding!=StackTextEncoding.JAPANESE)return false;
+		Font base=font(r);int i=0;while(i<p)i+=pairAt(r,text,i,base)?2:1;return i>p;}
+	/**
+	 * Whether a two-byte character starts at offset {@code i}: a Shift-JIS lead byte with a byte after it under a Japanese system,
+	 * in a font that reads pairs - the style run's, or {@code base} for a plain record ({@code r} 0 or no style runs). A strike of
+	 * one-byte glyphs takes every byte as a character (Toolbox68k.readsPairs): ブレイヴパーソン's map tiles.
+	 */
+	private boolean pairAt(int r,byte[] text,int i,Font base) throws M68kCpuException {
+		if(tb.encoding!=StackTextEncoding.JAPANESE||i+1>=text.length||!Toolbox68k.isJapaneseLead(text[i]&0xff))return false;
+		Font f=base;if(r!=0&&styleHandle(r)!=0)f=segmentFont(r,segments(r,i,i+1).get(0)[2],base);
+		return tb.readsPairs(f);
+	}
 
 	void insertAtSelection(int handle,byte[] bytes,boolean advance) throws M68kCpuException {
 		int r=rec(handle);int selStart=memory.readWord(r+SEL_START),selEnd=memory.readWord(r+SEL_END);
@@ -935,7 +948,7 @@ final class TextEdit68k {
 		scrapStyles=styleHandle(r)!=0&&b>a?styleScrap(r,a,b):null;
 		int h=memory.readLong(TE_SCRP_HANDLE);if(h==0){h=tb.api.createHandle(scrap);memory.writeLong(TE_SCRP_HANDLE,h);}else tb.api.loadHandle(h,scrap);
 		memory.writeWord(TE_SCRP_LENGTH,scrap.length);knownScrap=scrap.clone();knownScrapHandle=h;
-		try{Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(tb.decode(scrap).replace('\r','\n')),null);}catch(Exception ignored){}
+		Toolbox68k.PARTS.setHostClipboardText(tb.decode(scrap).replace('\r','\n'));
 	}
 	private void paste(int handle) throws M68kCpuException {
 		markEditable(handle);
@@ -947,7 +960,7 @@ final class TextEdit68k {
 		// into a new scrap Handle and TEPaste, and a line it repeated (the same bytes) pasted the host clipboard (wumpus)
 		boolean filledByProgram=te!=null&&(knownScrap!=null&&!java.util.Arrays.equals(te,knownScrap)||knownScrapHandle!=0&&h!=knownScrapHandle||knownScrap==null&&knownScrapHandle==0);
 		knownScrap=te==null?null:te.clone();knownScrapHandle=h;
-		if(!filledByProgram)try{java.awt.datatransfer.Clipboard cb=Toolkit.getDefaultToolkit().getSystemClipboard();if(cb.isDataFlavorAvailable(DataFlavor.stringFlavor)){String s=(String)cb.getData(DataFlavor.stringFlavor);byte[] host=tb.encoding.encodeReplacing(s.replace("\r\n","\r").replace('\n','\r'));if(!java.util.Arrays.equals(host,data))data=host;}}catch(Exception ignored){}
+		if(!filledByProgram)try{String s=Toolbox68k.PARTS.hostClipboardText();if(s!=null){byte[] host=tb.encoding.encodeReplacing(s.replace("\r\n","\r").replace('\n','\r'));if(!java.util.Arrays.equals(host,data))data=host;}}catch(Exception ignored){}
 		int r=rec(handle),at=Math.min(memory.readWord(r+SEL_START),memory.readWord(r+SEL_END));
 		boolean styled=scrapStyles!=null&&styleHandle(r)!=0&&java.util.Arrays.equals(data,scrap)&&data.length>0; // the text copied here: its styles come with it
 		if(!styled){insertAtSelection(handle,data,true);return;}

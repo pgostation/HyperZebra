@@ -44,7 +44,7 @@ final class ShapeTool implements authtoolInterface {
     void install() {
         if (!ShapeEditor.active(ShapeEditor.selected)) ShapeEditor.selected = null;
         for (OShape shape : PCARD.pc.stack.curCard.shapeList)
-            if (shape.view != null) shape.view.setVisible(!PaintTool.editBackground && shape.isShown());
+            if (shape.view != null) shape.view.setVisible(!HZ.editBackground && shape.isShown());
         canvas.setBounds(0, 0, PCARD.toPhysical(PCARD.pc.stack.width), PCARD.toPhysical(PCARD.pc.stack.height));
         PCARD.pc.mainPane.add(canvas, 0);
         canvas.repaint();
@@ -71,7 +71,7 @@ final class ShapeTool implements authtoolInterface {
     }
     static OShape hit(Point p) {
         OCard card = PCARD.pc.stack.curCard;
-        OCardBase[] owners = PaintTool.editBackground ? new OCardBase[]{card.bg} : new OCardBase[]{card, card.bg};
+        OCardBase[] owners = HZ.editBackground ? new OCardBase[]{card.bg} : new OCardBase[]{card, card.bg};
         for (OCardBase owner : owners) {
             if (owner == null) continue;
             for (int i = owner.shapeList.size() - 1; i >= 0; i--) {
@@ -214,7 +214,7 @@ final class ShapeTool implements authtoolInterface {
                     PCARD.pc.requestFocusInWindow();
                     Point p = point(e);
                     GUI.syncModifiers(e);
-                    if (PCARD.editMode != 0) {
+                    if (HZ.editMode != 0) {
                         // Command-Option peek: the click opens the script of the shape under it.
                         boolean peek = GUI.isPeekClick(e);
                         OShape shape = peek ? hit(p) : null;

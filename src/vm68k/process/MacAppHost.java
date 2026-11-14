@@ -84,7 +84,12 @@ import javax.swing.event.PopupMenuListener;
  * are reported through synthetic menu-bar events, and dropped files are turned
  * into Open Documents Apple events.
  */
-final class MacAppHost {
+final class MacAppHost implements VmHost {
+	public boolean headless(){return headless;}
+	public boolean external(){return external;}
+	public void setQuickDraw(QuickDraw68k quickDraw){this.quickDraw=quickDraw;}
+	public void setOwner(MacApp68k owner){this.owner=owner;}
+	public void setMenusUpdateOnOpening(boolean on){menusUpdateOnOpening=on;}
 	static final int MENU_BAR_HEIGHT=20;
 	/** Global coordinates used for synthetic menu-bar mouse events (a host menu choice, a host close box): a point IN the menu
 	 *  bar, as a real click there has. Flash 4's Windows layer turns inMenuBar into WM_NCLBUTTONDOWN/HTMENU and only calls
@@ -92,44 +97,12 @@ final class MacAppHost {
 	 *  from real clicks by their menuId (EventManager68k.Event), not by this point. */
 	static final int MENU_EVENT_V=1,MENU_EVENT_H=1;
 
-	interface Listener {
-		void postMouse(boolean down,int globalH,int globalV,int modifiers,long when);
-		void postKey(int what,int keyCode,int charCode,int modifiers);
-		void postMenuSelection(int menuId,int item);
-		void postMenuKey(int menuId,int item,int charCode,int modifiers);
-		/** The user opened menu {@code menuId} of the host bar: the program may update it first (its MBarHook, see
-		 *  MenuManager68k.prepareOpening); true when it did so within {@code timeoutMillis}. */
-		default boolean menuOpening(int menuId,long timeoutMillis){return false;}
-		void postActivate(int window,boolean active);
-		void postUpdate(int window);
-		void postWindowMoved(int window,int globalLeft,int globalTop);
-		/** The host moved a window onto the display by itself ({@link MacAppHost#keepOnDisplay}), not the user. */
-		default void postWindowPlaced(int window,int globalLeft,int globalTop){postWindowMoved(window,globalLeft,globalTop);}
-		void postWindowResized(int window,int width,int height);
-		void postGoAway(int window);
-		/** The host item that stands for tearing a picture menu off (see {@link MenuModel#tearOff}) was chosen. */
-		void postTearOff(int menuId);
-		void postZoom(int window);
-		void postOpenDocuments(List<File> files);
-		/** Files dragged from the host's file manager over a window (DragManager68k.EXTERNAL_MOVE/EXIT/DROP, global coordinates;
-		 *  {@code files} null while the host does not tell them during the drag). A drop no receive handler takes opens the files. */
-		default void postExternalDrag(int phase,int globalH,int globalV,List<File> files,int modifiers){if(phase==DragManager68k.EXTERNAL_DROP&&files!=null&&!files.isEmpty())postOpenDocuments(files);}
-		void postQuit();
-		/** A dialog of the program now waits for the user (ModalDialog/Alert, a file dialog): HyperZebra's quit notes it (EventManager68k). */
-		default void dialogShown(){}
-		void postSuspendResume(boolean resume);
-		/** Mouse wheel over a window: {@code steps} lines (positive = down/right) toward the nearest scroll bar. */
-		void postWheel(int globalH,int globalV,int steps,boolean horizontal);
-		/** Global {x, y, height} of the active TextEdit insertion point, or null (input method windows go there). */
-		int[] textCaret();
-		/** Text from the host input method for the Text Services Manager's active document: {@code committed} is final,
-		 *  {@code composing} still being entered ({@code styles}: one TSM hilite style per character of it, {@code caret}
-		 *  the caret's character index within it). True when an inline-input document took it - the host then neither
-		 *  types the text as key events nor shows its own composition window. */
-		boolean postInputMethodText(String committed,String composing,int[] styles,int caret);
-	}
 
-	final class HostWindow {
+	final class HostWindow implements VmWindow {
+		public int record(){return record;}
+		public int procId(){return procId;}
+		public boolean decorated(){return decorated;}
+		public boolean customFrame(){return customFrame;}
 		final int record;JFrame frame;JDialog dialog;Window window;Canvas canvas;
 		int procId;boolean visible,decorated,resizable,closable;String title="";
 		/** Created visible by the program, shown by the host in a moment (see {@link #isFrontmostVisible}). */
@@ -202,6 +175,8 @@ final class MacAppHost {
 		/** Rows of the title bar at the top of a frame the host draws in the buffer (a Kaleidoscope scheme's document window),
 		 *  else 0: where the menu bar sits inside the window, it goes under them ({@link MacAppHost#setTitleBand}). */
 		volatile int titleBand;
+		/** Columns of that frame's left and right sides: beside the in-window menu bar they go on as they do under it. */
+		volatile int titleLeft,titleRight;
 		/** The title bar shown above the in-window menu bar (EDT only), else null; a press in it is followed with the shift. */
 		TitleStrip titleStrip;volatile boolean titleStripPressed;
 		/** Host-side copy of the window pixels as packed RGB (EDT only): rows are re-converted from VM memory only when
@@ -229,7 +204,7 @@ final class MacAppHost {
 
 	/** Direct screen writes: once a program has called SwapMMUMode, windows show the main device PixMap that covers them. */
 	private volatile QuickDraw68k screenSource;
-	void directScreenAccess(QuickDraw68k quickDraw){screenSource=quickDraw;}
+	public void directScreenAccess(QuickDraw68k quickDraw){screenSource=quickDraw;}
 	/**
 	 * A direct-screen "transaction": QuickTime's decompressors bracket their blit into screen memory with SwapMMUMode
 	 * (to 32-bit mode and back). While one is open the periodic adoption and the display's device composite hold off,
@@ -239,7 +214,7 @@ final class MacAppHost {
 	 */
 	private volatile boolean directTransaction;private volatile long directTransactionStart;
 	private static final long TRANSACTION_LIMIT_NANOS=250_000_000L;
-	void swapMMUMode(){if(directTransaction)endDirectTransaction();else{directTransaction=true;directTransactionStart=System.nanoTime();}}
+	public void swapMMUMode(){if(directTransaction)endDirectTransaction();else{directTransaction=true;directTransactionStart=System.nanoTime();}}
 	void endDirectTransaction(){if(!directTransaction)return;directTransaction=false;if(!headless&&memory.deviceWritten()&&!java.awt.EventQueue.isDispatchThread())adoptDeviceWrites();}
 	boolean directTransactionActive(){if(!directTransaction)return false;if(System.nanoTime()-directTransactionStart>TRANSACTION_LIMIT_NANOS){directTransaction=false;return false;}return true;}
 	/** The device PixMap to composite over windows: after SwapMMUMode, or once anything was written into it (a window's
@@ -248,9 +223,9 @@ final class MacAppHost {
 	/** The VM's QuickDraw, for the screen colour table indexed window buffers are shown through. */
 	volatile QuickDraw68k quickDraw;
 	/** The main screen's colour table as packed RGB (a grey ramp when there is none yet). */
-	int[] devicePalette(int depth){return devicePalette(depth,null);}
+	public int[] devicePalette(int depth){return devicePalette(depth,null);}
 	/** The main screen's colour table as packed RGB (a grey ramp when there is none yet); {@code reuse} is filled when it fits. */
-	int[] devicePalette(int depth,int[] reuse){
+	public int[] devicePalette(int depth,int[] reuse){
 		QuickDraw68k qd=quickDraw;int[] clut=null;try{if(qd!=null)clut=qd.mainDevicePalette(reuse);}catch(M68kCpuException e){clut=null;}
 		if(clut==null){clut=reuse!=null&&reuse.length==1<<depth?reuse:new int[1<<depth];for(int i=0;i<clut.length;i++){int v=255-i*255/(clut.length-1);clut[i]=v<<16|v<<8|v;}}return clut;
 	}
@@ -264,7 +239,9 @@ final class MacAppHost {
 		/** The title rows shown above the menu bar ({@link TitleStrip}) are repainted with the canvas rows they show. */
 		@Override public void repaint(long tm,int x,int y,int width,int height){
 			super.repaint(tm,x,y,width,height);TitleStrip strip=owner==null?null:owner.titleStrip;
-			if(strip!=null&&strip.isVisible()&&y<strip.getHeight())strip.repaint(tm,x,y,width,Math.min(height,strip.getHeight()-y));
+			if(strip!=null&&strip.isVisible()){int band=strip.band;
+				if(y<band)strip.repaint(tm,x,y,width,Math.min(height,band-y));
+				if(y<=band&&y+height>band&&strip.getHeight()>band)strip.repaint(tm,0,band,strip.getWidth(),strip.getHeight()-band);} // the side row repeated beside the bar
 		}
 		void paintWindow(Graphics g){
 			BufferedImage image=owner.image;int depth=owner.imageDepth;
@@ -294,11 +271,19 @@ final class MacAppHost {
 	 * The title bar of a frame drawn in the buffer, shown above the in-window menu bar (Windows, Linux): a window in a Kaleidoscope
 	 * scheme's frame had its menus over the title bar, a native frame has them under it. The strip shows the canvas's first rows
 	 * (the canvas keeps its place, those rows under the strip and the bar); the pointer over it is the program's one bar height
-	 * further down, where the rows it shows are ({@link #pastTitleBand}).
+	 * further down, where the rows it shows are ({@link #pastTitleBand}). Below the title rows it reaches down beside the bar (which
+	 * lies over its middle): the frame's sides go on there, the first row under the title repeated, so the bar sits inside the
+	 * frame as a native window's does instead of cutting its sides off.
 	 */
 	final class TitleStrip extends JComponent {
 		private static final long serialVersionUID=1L;
 		final HostWindow owner;
+		/** Title rows shown (host pixels); the strip's rows below them are the side columns beside the bar. */
+		volatile int band;
+		/** Side columns shown beside the bar (host pixels). */
+		volatile int sideLeft,sideRight;
+		/** Whether the strip shows at (x,y), not the bar lying over its middle. */
+		boolean shows(int x,int y){return y<band||x<sideLeft||x>=getWidth()-sideRight;}
 		TitleStrip(HostWindow owner){this.owner=owner;setOpaque(true);setFocusable(false);
 			MouseAdapter forward=new MouseAdapter(){
 				@Override public void mousePressed(MouseEvent e){owner.titleStripPressed=true;forward(e);}
@@ -308,10 +293,22 @@ final class MacAppHost {
 			};
 			addMouseListener(forward);addMouseMotionListener(forward);
 		}
-		/** The event as the canvas's, at the canvas row shown under the pointer (on the screen: one bar height further down). */
-		private void forward(MouseEvent e){Canvas canvas=owner.canvas;if(canvas==null)return;
-			canvas.dispatchEvent(new MouseEvent(canvas,e.getID(),e.getWhen(),e.getModifiersEx(),e.getX(),e.getY(),e.getXOnScreen(),e.getYOnScreen()+canvas.getY()-getY(),e.getClickCount(),e.isPopupTrigger(),e.getButton()));}
-		@Override protected void paintComponent(Graphics g){Canvas canvas=owner.canvas;if(canvas!=null)canvas.paintWindow(g);}
+		/** The canvas row shown at strip row y: the title rows as they are, the side rows beside the bar all show the first row under them. */
+		int canvasRow(int y){return Math.min(y,band);}
+		/** The event as the canvas's, at the canvas row shown under the pointer (on the screen: about one bar height further down). */
+		private void forward(MouseEvent e){Canvas canvas=owner.canvas;if(canvas==null)return;int row=canvasRow(e.getY());
+			canvas.dispatchEvent(new MouseEvent(canvas,e.getID(),e.getWhen(),e.getModifiersEx(),e.getX(),row,e.getXOnScreen(),e.getYOnScreen()-e.getY()+canvas.getY()-getY()+row,e.getClickCount(),e.isPopupTrigger(),e.getButton()));}
+		@Override protected void paintComponent(Graphics g){Canvas canvas=owner.canvas;if(canvas==null)return;
+			int b=band,w=getWidth(),h=getHeight();
+			Graphics title=g.create();try{title.clipRect(0,0,w,b);canvas.paintWindow(title);}finally{title.dispose();}
+			if(h<=b||w<=0)return;
+			BufferedImage row=new BufferedImage(w,1,BufferedImage.TYPE_INT_ARGB);Graphics2D rg=row.createGraphics();
+			try{rg.translate(0,-b);rg.setClip(0,b,w,1);canvas.paintWindow(rg);}finally{rg.dispose();}
+			int left=Math.min(w,sideLeft),right=Math.min(w-left,sideRight);
+			g.setColor(Color.WHITE);g.fillRect(left,b,w-left-right,h-b); // under the bar
+			if(left>0)g.drawImage(row,0,b,left,h,0,0,left,1,null);
+			if(right>0)g.drawImage(row,w-right,b,w,h,w-right,0,w,1,null);
+		}
 	}
 	/** The root pane's own layout, then the menu bar moved under the title rows of a frame drawn in the window ({@link TitleStrip}). */
 	private final class TitleBandLayout implements java.awt.LayoutManager2 {
@@ -334,9 +331,11 @@ final class MacAppHost {
 	 * The rows of the title bar at the top of a window whose frame the host draws in its buffer (a Kaleidoscope scheme's document
 	 * window; 0: none). On platforms without a screen menu bar they are shown above the in-window menu bar, as a native title bar is.
 	 */
-	void setTitleBand(final int record,final int rows){
-		final HostWindow hw=window(record);if(hw==null||headless||GMenu.isMacOSX()||hw.titleBand==rows)return;
-		hw.titleBand=rows;
+	public void setTitleBand(final int record,final int rows){setTitleBand(record,rows,0,0);}
+	/** The title rows and the frame's left and right side columns: the in-window menu bar goes between the sides. */
+	public void setTitleBand(final int record,final int rows,final int left,final int right){
+		final HostWindow hw=window(record);if(hw==null||headless||GMenu.isMacOSX()||hw.titleBand==rows&&(rows==0||hw.titleLeft==left&&hw.titleRight==right))return;
+		hw.titleLeft=Math.max(0,left);hw.titleRight=Math.max(0,right);hw.titleBand=rows;
 		runOnEdt(new Runnable(){@Override public void run(){if(!(hw.window instanceof javax.swing.RootPaneContainer))return;((javax.swing.RootPaneContainer)hw.window).getRootPane().invalidate();hw.window.validate();if(needsShape(hw))applyShape(hw);}},false);
 	}
 	/** Lays out the title strip and the bar under it after the root pane's layout (EDT). */
@@ -349,8 +348,10 @@ final class MacAppHost {
 		if(hw.titleStrip==null)hw.titleStrip=new TitleStrip(hw);
 		if(hw.titleStrip.getParent()!=layers)layers.add(hw.titleStrip,JLayeredPane.PALETTE_LAYER);
 		if(layers.getLayer(bar)!=JLayeredPane.PALETTE_LAYER)layers.setLayer(bar,JLayeredPane.PALETTE_LAYER); // over the canvas's title rows
-		Rectangle b=bar.getBounds();bar.setLocation(b.x,b.y+band);
-		hw.titleStrip.setBounds(b.x,b.y,canvas.getWidth(),band);
+		layers.moveToFront(bar); // over the strip's middle beside it
+		Rectangle b=bar.getBounds();int w=canvas.getWidth(),left=Math.min(hostLen(hw.titleLeft),w/4),right=Math.min(hostLen(hw.titleRight),w/4);
+		bar.setBounds(b.x+left,b.y+band,Math.max(1,Math.min(b.width,w)-left-right),b.height);
+		hw.titleStrip.band=band;hw.titleStrip.sideLeft=left;hw.titleStrip.sideRight=right;hw.titleStrip.setBounds(b.x,b.y,w,band+b.height);
 		if(!hw.titleStrip.isVisible())hw.titleStrip.setVisible(true);
 		anyTitleBand=true;
 	}
@@ -362,7 +363,7 @@ final class MacAppHost {
 		for(HostWindow hw:windowsFrontToBack()){TitleStrip s=hw.titleStrip;Canvas canvas=hw.canvas;java.awt.Window win=hw.window;
 			if(s==null||canvas==null||win==null||!s.isShowing())continue;
 			try{Point at=s.getLocationOnScreen();int shift=canvas.getY()-s.getY();
-				if(hw.titleStripPressed&&mouseDown||host.x>=at.x&&host.y>=at.y&&host.x<at.x+s.getWidth()&&host.y<at.y+s.getHeight())return new Point(host.x,host.y+shift);}catch(Exception ignored){}}
+				if(hw.titleStripPressed&&mouseDown||host.x>=at.x&&host.y>=at.y&&host.x<at.x+s.getWidth()&&host.y<at.y+s.getHeight()&&s.shows(host.x-at.x,host.y-at.y))return new Point(host.x,at.y+shift+s.canvasRow(host.y-at.y));}catch(Exception ignored){}}
 		return host;
 	}
 
@@ -417,7 +418,7 @@ final class MacAppHost {
 	// ------------------------------------------------------------------ smooth zoom (SmoothZoom)
 
 	/** This program's planes (null before its QuickDraw is known). */
-	SmoothZoom smoothZoom(){QuickDraw68k qd=quickDraw;return qd==null?null:qd.smooth;}
+	public SmoothZoom smoothZoom(){QuickDraw68k qd=quickDraw;return qd==null?null:qd.smooth;}
 	/**
 	 * Brings the window's smooth zoom image up to date after {@link #refreshDisplay0} (EDT): the plane of its buffer is synced with
 	 * the buffer (what changed is scaled up, hi-res drawing stays), and shown as it is - or, when screen writes are composited over
@@ -478,7 +479,7 @@ final class MacAppHost {
 	 * window is drawn again by the program (update events), so its text goes into the new planes hi-res; until then they show its
 	 * pixels scaled up.
 	 */
-	void configureSmooth(boolean redraw){
+	public void configureSmooth(boolean redraw){
 		QuickDraw68k qd=quickDraw;if(qd==null)return;
 		int algorithm=external?SmoothZoom.OFF:smoothAlgorithm(owner);
 		int s=algorithm==SmoothZoom.OFF?1:headless?SmoothZoom.SCALE_OVERRIDE:SmoothZoom.scaleFor(scPct,deviceScale());
@@ -495,18 +496,9 @@ final class MacAppHost {
 		if(redraw&&tb!=null)tb.laterAtEvent(new Runnable(){@Override public void run(){try{tb.windows.redrawAll();}catch(M68kCpuException e){}}});
 	}
 	/** The smooth zoom setting changed while the program runs (its own, or the preference it follows). */
-	void resmooth(){runOnEdt(new Runnable(){@Override public void run(){configureSmooth(true);}},false);}
+	public void resmooth(){runOnEdt(new Runnable(){@Override public void run(){configureSmooth(true);}},false);}
 
-	/** Expands one row of a window buffer (xRGB, 16-bit or indexed through {@code clut}) to packed RGB at {@code row[offset]}. */
-	static void readPixels(byte[] raw,int rowStart,int depth,int[] clut,int width,int[] row,int offset){
-		if(depth==32){for(int x=0,o=rowStart,p=offset;x<width;x++,o+=4,p++)row[p]=(raw[o+1]&0xff)<<16|(raw[o+2]&0xff)<<8|(raw[o+3]&0xff);return;}
-		if(depth==16){for(int x=0,o=rowStart,p=offset;x<width;x++,o+=2,p++){int v=(raw[o]&0xff)<<8|(raw[o+1]&0xff);row[p]=RGB555[v&0x7fff];}return;}
-		int[] table=clut==null?new int[1<<depth]:clut;int mask=(1<<depth)-1;
-		if(depth==8){for(int x=0,o=rowStart,p=offset;x<width;x++,o++,p++){int v=raw[o]&0xff;row[p]=v<table.length?table[v]:0;}return;}
-		if(depth==4){int x=0,p=offset,o=rowStart;for(;x+1<width;x+=2,o++){int b=raw[o]&0xff;int hi=b>>>4,lo=b&15;row[p++]=hi<table.length?table[hi]:0;row[p++]=lo<table.length?table[lo]:0;}
-			if(x<width){int v=(raw[o]&0xff)>>>4;row[p]=v<table.length?table[v]:0;}return;}
-		for(int x=0;x<width;x++){int bit=x*depth,value=(raw[rowStart+(bit>>>3)]&0xff)>>>(8-depth-(bit&7))&mask;row[offset+x]=value<table.length?table[value]:0;}
-	}
+	static void readPixels(byte[] raw,int rowStart,int depth,int[] clut,int width,int[] row,int offset){Pixels68k.readPixels(raw,rowStart,depth,clut,width,row,offset);}
 	static void readPixels(byte[] raw,int rowStart,int depth,int[] clut,int width,int[] row){readPixels(raw,rowStart,depth,clut,width,row,0);}
 	/** Ramps {@code width} packed-RGB pixels at {@code row[offset]} through the video driver's gamma table (see {@link QuickDraw68k#gammaLookup()}). */
 	static void applyGamma(int[] lut,int[] row,int offset,int width){for(int p=offset,end=offset+width;p<end;p++){int rgb=row[p];row[p]=lut[rgb>>>16&255]<<16|lut[256+(rgb>>>8&255)]<<8|lut[512+(rgb&255)];}}
@@ -575,8 +567,8 @@ final class MacAppHost {
 	 * the emulation thread before QuickDraw reads or draws a window's buffer and from the scheduler poll.
 	 * Returns true when anything was copied.
 	 */
-	boolean adoptDeviceWrites(int record){HostWindow hw=window(record);return hw!=null&&adoptDeviceWrites(hw);}
-	boolean adoptDeviceWrites(){
+	public boolean adoptDeviceWrites(int record){HostWindow hw=window(record);return hw!=null&&adoptDeviceWrites(hw);}
+	public boolean adoptDeviceWrites(){
 		if(headless||!memory.deviceWritten()||directTransactionActive())return false;boolean any=false;
 		for(HostWindow hw:windowsFrontToBack())if(adoptDeviceWrites(hw))any=true;return any;
 	}
@@ -609,17 +601,17 @@ final class MacAppHost {
 	/** Start of the blit onto a window or the screen under way (0: none); set on the emulation thread by QuickDraw's CopyBits. */
 	private volatile long blitStart;
 	private static final long BLIT_WAIT_NANOS=100_000_000L;
-	void blitBegin(){blitStart=System.nanoTime();}
-	void blitEnd(){blitStart=0;frameReady();}
+	public void blitBegin(){blitStart=System.nanoTime();}
+	public void blitEnd(){blitStart=0;frameReady();}
 	/** An event call (WaitNextEvent, GetNextEvent): no blit spans it, and a program's pass of drawing is over. */
-	void eventCall(){endDirectTransaction();frameReady();}
+	public void eventCall(){endDirectTransaction();frameReady();}
 	/**
 	 * A mouse poll (Button, GetMouse, StillDown): a game that draws straight into screen memory (Dark Forces) reads its input
 	 * once a pass of its loop, so what was written before the poll is a whole frame. It is shown now, and while the program keeps
 	 * polling the refresh ticks leave screen writes alone - a tick in the middle of the render would show half a new frame.
 	 */
 	private volatile long lastPollNanos;
-	void mousePoll(){lastPollNanos=System.nanoTime();frameReady();}
+	public void mousePoll(){lastPollNanos=System.nanoTime();frameReady();}
 	private static final long POLL_FRAME_NANOS=100_000_000L;
 	private static final java.util.concurrent.ScheduledExecutorService PRESENT_DELAY=java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"68K display pacing");t.setDaemon(true);return t;});
 	/**
@@ -695,9 +687,9 @@ final class MacAppHost {
 			javax.imageio.ImageIO.write(copy,"png",new java.io.File(FRAME_DUMP,String.format("%05d-%s.png",framesDumped++,frame?"frame":"tick")));}catch(Exception ignored){}
 	}
 	private static final boolean PERF=Boolean.getBoolean("hz68k.perf"); // -Dhz68k.perf=true: report slow adoption/refresh passes
-	boolean adoptDeviceWrites(HostWindow hw){
+	public boolean adoptDeviceWrites(HostWindow hw){
 		if(!PERF)return adoptDeviceWrites0(hw);long t=System.nanoTime();boolean r=adoptDeviceWrites0(hw);long ms=(System.nanoTime()-t)/1000000;if(ms>=5)System.err.println("[perf] adopt $"+Integer.toHexString(hw.record)+" "+ms+" ms copied="+r);return r;}
-	void setIgnoresDeviceWrites(int record,boolean ignore){HostWindow hw=window(record);if(hw!=null)hw.ignoresDeviceWrites=ignore;}
+	public void setIgnoresDeviceWrites(int record,boolean ignore){HostWindow hw=window(record);if(hw!=null)hw.ignoresDeviceWrites=ignore;}
 	boolean adoptDeviceWrites0(HostWindow hw){
 		if(headless||hw.ignoresDeviceWrites||!hw.visible||hw.imageBase<=0||java.awt.EventQueue.isDispatchThread())return false;
 		QuickDraw68k screen=screenSource();if(screen==null)return false;
@@ -797,7 +789,7 @@ final class MacAppHost {
 	 */
 	/** The write serial and window layout of the last complete publishing pass. */
 	private long publishCheckedSerial=-1;private int publishCheckedLayout;
-	void publishWindowDrawing(){
+	public void publishWindowDrawing(){
 		if(headless||!memory.deviceWritten()||directTransactionActive()||java.awt.EventQueue.isDispatchThread())return;
 		// Nothing tracked was written since the last pass: every window's newest chunk is already published. Without this
 		// each trap scanned the chunk serials of every visible window (a megabyte of 32-bit pixels is 5000 chunks) - most of
@@ -858,7 +850,7 @@ final class MacAppHost {
 	}
 
 	/** Debug (commands.txt `dirty`): per window, the write serials of its buffer and of the device bytes under it. */
-	String describeWindowSerials(){
+	public String describeWindowSerials(){
 		StringBuilder sb=new StringBuilder();QuickDraw68k screen=screenSource();int[] frame=null;try{if(screen!=null)frame=screen.mainDeviceFrame();}catch(M68kCpuException e){frame=null;}
 		for(HostWindow hw:windowsFrontToBack()){if(!hw.visible||hw.imageBase<=0)continue;
 			long buffer=memory.chunkSerial(hw.imageBase,hw.imageRowBytes*hw.imageHeight),device=0;
@@ -870,7 +862,7 @@ final class MacAppHost {
 	/** Debug (commands.txt `paintdump <dir>`): every paint writes the composed canvas image there. */
 	static volatile java.io.File paintDumpDir;
 	private static final boolean HOST_TRACE=Mac68kApi.TRACE||Boolean.getBoolean("hz68k.hosttrace"); // -Dhz68k.hosttrace=true: window geometry events only
-	private final Listener listener;
+	private final VmHostListener listener;
 	private final M68kMemory memory;
 	private volatile BufferedImage applicationIcon;
 	private final String applicationName;
@@ -879,7 +871,7 @@ final class MacAppHost {
 	private final java.util.concurrent.ScheduledFuture<?> refresh;
 	private final java.util.concurrent.atomic.AtomicBoolean tickQueued=new java.util.concurrent.atomic.AtomicBoolean();
 	private int menuVersion;
-	private List<MenuModel> menuBar=new ArrayList<MenuModel>();
+	private List<MenuModel68k> menuBar=new ArrayList<MenuModel68k>();
 	private Cursor cursor=Cursor.getDefaultCursor();
 	private boolean cursorHidden;
 	volatile boolean mouseDown;volatile int mouseGlobalH,mouseGlobalV;volatile int modifierState;
@@ -895,71 +887,13 @@ final class MacAppHost {
 	/** Headless hosts (VMs without an application or stack, e.g. tests) keep windows in memory only. */
 	final boolean headless;
 
-	/** One menu of the application's menu bar (built from MENU handles by the Menu Manager). */
-	static final class MenuModel {
-		final int id;final String title;final boolean enabled;final List<ItemModel> items=new ArrayList<ItemModel>();boolean apple;
-		/** An external's menu in HyperCard's bar: the HyperCard menu it stands after (null: before them all, or none in the bar). */
-		Object after;
-		/** How many items of the menu are left out before the first one here (the Help menu's system items): item 1 is number itemBase+1. */
-		int itemBase;
-		MenuModel(int id,String title,boolean enabled){this.id=id;this.title=title;this.enabled=enabled;}
-		/** A menu drawn by the program's own MDEF (HyperCard's Tools and Patterns menus): its rendering, and the items the MDEF
-		 *  reports in it as {item, top, left, bottom, right}; each becomes a host item showing its slice of the picture. */
-		java.awt.image.BufferedImage image;List<int[]> pictureItems;
-		/** The text size the program's MDEF set before handing the menu to the standard definition (Infini-D 2.0.1's view
-		 *  pop-up: 9), or 0 for the menu font. Only pop-ups use it; the menu bar keeps the host's menu font. */
-		int fontSize;
-		/** Text of a host item added under a picture menu that shows the menu as a palette (HyperCard's tear-off menus cannot be
-		 *  dragged off a host menu), or null. */
-		String tearOff;
-		/** Whether the host menu built from {@code other} would look and behave the same as one built from this model. */
-		/**
-		 * Whether a host menu built from {@code other} can be brought up to this model in place: the same menus, items, separators,
-		 * submenus, command keys, text styles and icons, so only titles, item texts, marks, enabled states and help texts differ.
-		 */
-		boolean sameLayout(MenuModel other){
-			if(other==null||id!=other.id||apple!=other.apple||fontSize!=other.fontSize||itemBase!=other.itemBase||image!=null||other.image!=null||!java.util.Objects.equals(tearOff,other.tearOff)||items.size()!=other.items.size())return false;
-			for(int i=0;i<items.size();i++){ItemModel a=items.get(i),b=other.items.get(i);
-				if(a.separator!=b.separator||a.command!=b.command||a.modifiers!=b.modifiers||a.iconKey!=b.iconKey||a.style!=b.style||a.submenuId!=b.submenuId||(a.submenu==null)!=(b.submenu==null))return false; // a new text style is a new font: built anew
-				if(a.submenu!=null&&!a.submenu.sameLayout(b.submenu))return false;}
-			return true;
-		}
-		boolean sameAs(MenuModel other){
-			if(other==null||id!=other.id||enabled!=other.enabled||apple!=other.apple||fontSize!=other.fontSize||!java.util.Objects.equals(title,other.title)||!java.util.Objects.equals(tearOff,other.tearOff)||items.size()!=other.items.size())return false;
-			for(int i=0;i<items.size();i++)if(!items.get(i).sameAs(other.items.get(i)))return false;
-			if((image==null)!=(other.image==null))return false;
-			if(image!=null){
-				if(image.getWidth()!=other.image.getWidth()||image.getHeight()!=other.image.getHeight())return false;
-				if((pictureItems==null)!=(other.pictureItems==null))return false;
-				if(pictureItems!=null){if(pictureItems.size()!=other.pictureItems.size())return false;for(int i=0;i<pictureItems.size();i++)if(!java.util.Arrays.equals(pictureItems.get(i),other.pictureItems.get(i)))return false;}
-				int w=image.getWidth(),h=image.getHeight();int[] a=image.getRGB(0,0,w,h,null,0,w),b=other.image.getRGB(0,0,w,h,null,0,w);if(!java.util.Arrays.equals(a,b))return false;
-			}
-			return true;
-		}
-	}
-	static final class ItemModel {
-		String text;boolean enabled=true,checked;char command;int mark;int submenuId;int style;boolean separator;
-		/** The mark character as the menu font shows it (a check mark, a diamond, √, #...), or null for none or a submenu's ID. */
-		String markText;
-		/** SetMenuItemModifiers bits: shift 1, option 2, control 4, no Command 8. */
-		int modifiers;
-		/** The item's icon (ICON/cicn/SICN 256+n), or null. */
-		java.awt.image.BufferedImage icon;int iconKey;
-		/** Balloon Help text of the item (null: none, or balloons off) shown as the host item's tooltip. */
-		String help;
-		MenuModel submenu;
-		boolean sameAs(ItemModel o){
-			return o!=null&&java.util.Objects.equals(text,o.text)&&enabled==o.enabled&&checked==o.checked&&command==o.command&&mark==o.mark&&java.util.Objects.equals(markText,o.markText)&&submenuId==o.submenuId&&style==o.style&&separator==o.separator&&iconKey==o.iconKey
-				&&java.util.Objects.equals(help,o.help)&&(submenu==null?o.submenu==null:submenu.sameAs(o.submenu));
-		}
-	}
 
-	MacAppHost(Listener listener,M68kMemory memory,String applicationName){this(listener,memory,applicationName,false);}
+	MacAppHost(VmHostListener listener,M68kMemory memory,String applicationName){this(listener,memory,applicationName,false);}
 
-	MacAppHost(Listener listener,M68kMemory memory,String applicationName,boolean headless){this(listener,memory,applicationName,headless,false);}
+	MacAppHost(VmHostListener listener,M68kMemory memory,String applicationName,boolean headless){this(listener,memory,applicationName,headless,false);}
 
 	/** {@code external}: the host of a HyperCard external, whose screen is HyperCard's (see {@link #screenBounds(boolean)}). */
-	MacAppHost(Listener listener,M68kMemory memory,String applicationName,boolean headless,boolean external){
+	MacAppHost(VmHostListener listener,M68kMemory memory,String applicationName,boolean headless,boolean external){
 		this.listener=listener;this.memory=memory;this.applicationName=applicationName;this.headless=headless;this.external=external;
 		if(headless){scPct=100;origin=new Point(0,0);screenRect=null;limitedExternal=false;}
 		else{
@@ -1001,7 +935,7 @@ final class MacAppHost {
 	}
 	/** The zoom setting changed while the program runs: the screen is magnified by the new choice at once. The program's idea of
 	 *  the screen stays as it is; only host pixels change, so every window is sized and placed again. */
-	void rezoom(final MacApp68k app){
+	public void rezoom(final MacApp68k app){
 		if(headless||external||SCREEN_OVERRIDE!=null||screenWidth<=0||screenHeight<=0)return;
 		runOnEdt(new Runnable(){@Override public void run(){
 			Rectangle screen=new Rectangle(0,0,screenWidth,screenHeight);
@@ -1012,7 +946,7 @@ final class MacAppHost {
 		}},true);
 	}
 	/** The game screen's place setting (centre or top left) changed while the program runs: the screen moves there at once. */
-	void reposition(final MacApp68k app){
+	public void reposition(final MacApp68k app){
 		if(headless||external||SCREEN_OVERRIDE!=null||screenWidth<=0||screenHeight<=0||!gameScreen())return;
 		runOnEdt(new Runnable(){@Override public void run(){
 			if(disposed)return;
@@ -1029,7 +963,7 @@ final class MacAppHost {
 	static int externalPercent(){PCARD pc=PCARD.pc;return pc!=null&&pc.isShowing()&&!java.awt.GraphicsEnvironment.isHeadless()?PCARD.scalePercent():100;}
 	/** An external's card window is opened (EDT or not): its windows follow the zoom of the stack it now serves (another stack
 	 *  of a shared external VM, a zoom changed in the settings). The screen the external sees keeps its size. */
-	void followStackZoom(){
+	public void followStackZoom(){
 		if(headless||!external||SCREEN_OVERRIDE!=null)return;
 		int pct=externalPercent();if(pct==scPct)return;
 		// at once: the card window about to be placed reads its place through toGuest; the native windows follow on the EDT
@@ -1043,7 +977,7 @@ final class MacAppHost {
 	 * {@code screen} is the new one. Magnification and position are worked out again for it - a game screen is centred and
 	 * magnified by the zoom setting, the full screen is back at the display's origin - and every window is placed again.
 	 */
-	void screenResized(final MacApp68k app,final Rectangle screen){
+	public void screenResized(final MacApp68k app,final Rectangle screen){
 		if(headless||external||SCREEN_OVERRIDE!=null)return;
 		runOnEdt(new Runnable(){@Override public void run(){
 			int pct=scaleFor(screen,app);
@@ -1110,13 +1044,13 @@ final class MacAppHost {
 		return false;
 	}
 	/** The frame's look: the Kaleidoscope scheme's document window when one is in use and has one, else Apple Platinum. */
-	private ScreenWindowFrame.Look screenLook(){
+	private FrameLook68k screenLook(){
 		MacApp68k app=owner;KaleidoscopeScheme68k scheme=app==null?null:KaleidoscopeScheme68k.active(app.toolbox);
-		ScreenWindowFrame.Look look=scheme==null?null:scheme.documentWindow();
+		FrameLook68k look=scheme==null?null:scheme.documentWindow();
 		return look!=null?look:ScreenWindowFrame.PLATINUM;
 	}
 	/** The frame's widths outside the screen in host pixels {top, left, bottom, right}. */
-	private int[] screenFrameOutsets(ScreenWindowFrame.Look look){int[] o=look.outsets();for(int i=0;i<4;i++)o[i]=hostLen(o[i]);return o;}
+	private int[] screenFrameOutsets(FrameLook68k look){int[] o=look.outsets();for(int i=0;i<4;i++)o[i]=hostLen(o[i]);return o;}
 	/** The screen's origin moved as little as needed for the screen in its frame to lie on {@code usable}; null when they do not fit there. */
 	private Point originWithFrame(Point o,Rectangle usable,int[] f){
 		int w=hostLen(screenWidth),h=hostLen(screenHeight);
@@ -1125,12 +1059,12 @@ final class MacAppHost {
 	}
 	private Point originWithFrame(Point o,Rectangle usable){return originWithFrame(o,usable,screenFrameOutsets(screenBar!=null?screenLookShown:screenLook()));}
 	/** The look the frame was last shown with (EDT only). */
-	private ScreenWindowFrame.Look screenLookShown=ScreenWindowFrame.PLATINUM;
+	private FrameLook68k screenLookShown=ScreenWindowFrame.PLATINUM;
 	/** Shows, places or hides the frame as the program's windows and screen now ask (EDT only). */
 	private void updateScreenBar(){
 		if(limitedExternal&&!headless){ExternalScreenArea.update();return;}
 		if(headless||external)return;
-		Point at=null;ScreenWindowFrame.Look look=null;
+		Point at=null;FrameLook68k look=null;
 		if(SCREEN_BAR&&!disposed&&!processHidden&&!saverMode&&screenRect!=null&&!(screenFrame!=null&&screenFrame.isVisible())&&gameScreen()&&fullScreenWindowShown()){
 			look=screenLook();at=originWithFrame(origin,usableAreaAround(screenRect),screenFrameOutsets(look));}
 		if(at==null){if(screenBar!=null)screenBar.hide();return;}
@@ -1161,7 +1095,7 @@ final class MacAppHost {
 		return null;
 	}
 	/** The native window of the program's front window that can take the focus (MacFocusRecovery), or null. EDT. */
-	Window frontFocusableWindow(){HostWindow hw=frontFocusable();return hw==null?null:hw.window;}
+	public Window frontFocusableWindow(){HostWindow hw=frontFocusable();return hw==null?null:hw.window;}
 	private void focusFrontWindow(){
 		HostWindow front=frontFocusable();
 		if(HOST_TRACE)System.err.println("[host] frame round the screen pressed: focus to "+(front==null?"-":"$"+Integer.toHexString(front.record))+" (active window "+java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow()+")");
@@ -1198,7 +1132,7 @@ final class MacAppHost {
 	 * native frame - not the program's DragWindow bounds, which on a game screen (640x480) kept such windows in the middle of the
 	 * display while native ones went anywhere. Null without a display.
 	 */
-	int[] userDragArea(){
+	public int[] userDragArea(){
 		if(headless||screenRect==null)return null;
 		Rectangle all=null;
 		try{for(java.awt.GraphicsDevice gd:java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()){
@@ -1208,26 +1142,26 @@ final class MacAppHost {
 		return new int[]{virtualY(all.y),virtualX(all.x),virtualY(all.y+all.height),virtualX(all.x+all.width)};
 	}
 	/** Test hook: the frame's title bar (its top edge, corners included) while the frame is shown, else null. */
-	Rectangle screenBarBounds(){ScreenWindowFrame b=screenBar;return b!=null?b.titleBarBounds():null;}
+	public Rectangle screenBarBounds(){ScreenWindowFrame b=screenBar;return b!=null?b.titleBarBounds():null;}
 	/** Test hook: the frame's widths in host pixels {top, left, bottom, right}. */
 	int[] screenBarOutsets(){return screenFrameOutsets(screenLookShown);}
 	/** Test hook: drags the frame by host pixels {@code dx},{@code dy} as the user would (EDT). */
-	void dragScreenBar(int dx,int dy){if(screenBar==null)return;Point o=originWithFrame(new Point(origin.x+dx,origin.y+dy),usableAreaAround(screenRect));if(o!=null)moveScreenTo(o);}
+	public void dragScreenBar(int dx,int dy){if(screenBar==null)return;Point o=originWithFrame(new Point(origin.x+dx,origin.y+dy),usableAreaAround(screenRect));if(o!=null)moveScreenTo(o);}
 
-	void setApplicationIcon(BufferedImage icon){applicationIcon=icon;}
+	public void setApplicationIcon(BufferedImage icon){applicationIcon=icon;}
 
 	String applicationName(){return applicationName;}
-	Listener listener(){return listener;}
+	public VmHostListener listener(){return listener;}
 	/** Mouse button state: the host's for real windows, HyperZebra's card for headless VMs. */
 	/** The button: an external also sees the presses on HyperCard's own windows (Button() is global on a Mac). */
-	boolean isMouseDown(){return headless?GUI.mouseDown:external?mouseDown||GUI.mouseDown:mouseDown;}
+	public boolean isMouseDown(){return headless?GUI.mouseDown:external?mouseDown||GUI.mouseDown:mouseDown;}
 	/** Whether the button was down as HyperTalk last entered an external (its outermost call or a window event): see popUpMenuSelect. */
 	private volatile boolean mouseDownAtExternalEntry=true;
-	void externalEntered(){mouseDownAtExternalEntry=isMouseDown();}
-	int modifiers(){return headless?0:modifierState;}
+	public void externalEntered(){mouseDownAtExternalEntry=isMouseDown();}
+	public int modifiers(){return headless?0:modifierState;}
 	/** Caps Lock as the host has it locked now (read at most every 250 ms): GetKeys key $39. Only key events set the other keys,
 	 *  so a Caps Lock locked before HyperZebra came forward was never seen (XTernal Collection's CapsLockDown). */
-	boolean capsLocked(){
+	public boolean capsLocked(){
 		if(headless)return false;long now=System.nanoTime();
 		if(now-capsLockReadAt>250_000_000L||capsLockReadAt==0){capsLockReadAt=now;
 			try{capsLock=java.awt.Toolkit.getDefaultToolkit().getLockingKeyState(java.awt.event.KeyEvent.VK_CAPS_LOCK);}catch(RuntimeException e){capsLock=false;}}
@@ -1236,9 +1170,9 @@ final class MacAppHost {
 	private volatile boolean capsLock;private volatile long capsLockReadAt;
 	/** Currently pressed keys by Mac virtual key code (GetKeys / KeyMap). */
 	private final boolean[] keysDown=new boolean[128];
-	boolean isKeyDown(int keyCode){if(keyCode<0||keyCode>=128)return false;synchronized(keysDown){return keysDown[keyCode];}}
+	public boolean isKeyDown(int keyCode){if(keyCode<0||keyCode>=128)return false;synchronized(keysDown){return keysDown[keyCode];}}
 	/** Fills a 16-byte KeyMap (bit n of byte n/8 = key code n). */
-	void keyMap(byte[] map){synchronized(keysDown){for(int i=0;i<128;i++)if(keysDown[i])map[i>>>3]|=(byte)(1<<(i&7));}}
+	public void keyMap(byte[] map){synchronized(keysDown){for(int i=0;i<128;i++)if(keysDown[i])map[i>>>3]|=(byte)(1<<(i&7));}}
 	void releaseAllKeys(){synchronized(keysDown){java.util.Arrays.fill(keysDown,false);}synchronized(hostKeysHeld){hostKeysHeld.clear();}suspendSystemHotKeys(false);}
 	/** Host keys held (ModifierKeys.held), for the program's own modifier keys. */
 	private final java.util.Set<Integer> hostKeysHeld=new java.util.HashSet<Integer>();
@@ -1246,7 +1180,7 @@ final class MacAppHost {
 	/** A key the program's own settings made Command, Option or Control: it types nothing itself. */
 	private boolean isOwnModifierKey(KeyEvent e){ModifierKeys own=ownModifierKeys();return own!=null&&own.isSource(e.getKeyCode(),e.getKeyLocation());}
 	/** The Mac modifiers (event-record bits) for an event's extended modifiers, through the program's own modifier keys if it has them. */
-	int hostModifiers(int ex){
+	public int hostModifiers(int ex){
 		ModifierKeys own=ownModifierKeys();if(own==null)return macModifiers(ex);
 		int m=(ex&InputEvent.BUTTON1_DOWN_MASK)==0?0x80:0;
 		synchronized(hostKeysHeld){m|=own.modifiers(hostKeysHeld,GMenu.isMacOSX());}
@@ -1268,7 +1202,7 @@ final class MacAppHost {
 		try{if((Boolean)hotKeySuspend.invoke(null,suspend))hotKeysSuspended=suspend;}catch(Throwable t){hotKeySuspend=null;}
 	}
 	/** Debug aid (commands.txt `keymap <code> down|up`): presses or releases a key in the GetKeys map. */
-	void setKeyState(int keyCode,boolean down){if(keyCode>=0&&keyCode<128)synchronized(keysDown){keysDown[keyCode]=down;}}
+	public void setKeyState(int keyCode,boolean down){if(keyCode>=0&&keyCode<128)synchronized(keysDown){keysDown[keyCode]=down;}}
 
 	static int macModifiers(int ex){
 		int m=0;
@@ -1408,7 +1342,7 @@ final class MacAppHost {
 	/** An external's host whose screen is the classic one round the card window ({@link ExternalScreenArea}), not the display. */
 	final boolean limitedExternal;
 	/** The size of the screen an external sees when it is not the display ({@link #limitedExternal}), else null. */
-	Rectangle externalScreen(){return limitedExternal?new Rectangle(0,0,screenWidth,screenHeight):null;}
+	public Rectangle externalScreen(){return limitedExternal?new Rectangle(0,0,screenWidth,screenHeight):null;}
 	/** The externals' shared screen moved ({@link ExternalScreenArea}): this host's windows go along (EDT). */
 	void moveExternalScreenTo(Point o){if(!disposed)moveScreenTo(o);}
 	/** Host position of the display-sized screen's origin: the usable area starts right under the classic menu-bar band. */
@@ -1440,7 +1374,7 @@ final class MacAppHost {
 	/** Some window is shown away from the program's position for it ({@link HostWindow#dispX}). */
 	private volatile boolean anyDisplaced;
 	/** A host screen point as the program's global point: over a displaced window, shifted back into that window. */
-	Point toGuest(Point host){
+	public Point toGuest(Point host){
 		if(anyTitleBand)host=pastTitleBand(host);
 		Point p=toVirtual(host);if(!anyDisplaced)return p;
 		for(HostWindow hw:windowsFrontToBack()){if(hw.canvas==null||!hw.canvas.isShowing())continue;
@@ -1448,16 +1382,16 @@ final class MacAppHost {
 		return p;
 	}
 	/** A display rectangle as the program's global rectangle: its top-left through {@link #toGuest(Point)}, its size unzoomed. */
-	Rectangle toGuestRect(Rectangle host){Point p=toGuest(new Point(host.x,host.y));return new Rectangle(p.x,p.y,virtualLen(host.width),virtualLen(host.height));}
+	public Rectangle toGuestRect(Rectangle host){Point p=toGuest(new Point(host.x,host.y));return new Rectangle(p.x,p.y,virtualLen(host.width),virtualLen(host.height));}
 	/** The host screen point showing a global point of the program (inside a displaced window: where that window is shown). */
-	Point toHost(int gx,int gy){
+	public Point toHost(int gx,int gy){
 		if(anyDisplaced)for(HostWindow hw:windowsFrontToBack())if(hw.visible&&gx>=hw.contentLeft&&gy>=hw.contentTop&&gx<hw.contentLeft+hw.width&&gy<hw.contentTop+hw.height)return new Point(hostX(gx+hw.dispX),hostY(gy+hw.dispY));
 		return new Point(hostX(gx),hostY(gy));
 	}
 	/** The window the last press came from when it was at this global point and windows are shown displaced, else 0: two
 	 *  windows apart on the display may overlap where the program sees them ({@link #placeForProgram}), and FindWindow must
 	 *  answer the one clicked. */
-	int pressedWindowAt(int h,int v){HostWindow hw=lastPressWindow;Point p=lastPressPoint;return anyDisplaced&&hw!=null&&p!=null&&p.x==h&&p.y==v?hw.record:0;}
+	public int pressedWindowAt(int h,int v){HostWindow hw=lastPressWindow;Point p=lastPressPoint;return anyDisplaced&&hw!=null&&p!=null&&p.x==h&&p.y==v?hw.record:0;}
 	/** The program's global position of a canvas's top-left corner. */
 	private Point canvasOrigin(HostWindow hw){Point p=toVirtual(hw.canvas.getLocationOnScreen());return new Point(p.x-hw.dispX,p.y-hw.dispY);}
 
@@ -1475,9 +1409,9 @@ final class MacAppHost {
 	 * or half a second later (a program that flushes the up).
 	 */
 	private volatile Point syntheticPointer;private volatile long syntheticPointerUntil;
-	void holdSyntheticPointer(Point p){syntheticPointerUntil=System.nanoTime()+500_000_000L;syntheticPointer=p;}
+	public void holdSyntheticPointer(Point p){syntheticPointerUntil=System.nanoTime()+500_000_000L;syntheticPointer=p;}
 	/** Current global mouse position, polled without events. */
-	Point mouseLocation(){
+	public Point mouseLocation(){
 		Point synthetic=syntheticPointer;if(synthetic!=null&&System.nanoTime()<syntheticPointerUntil)return new Point(synthetic);
 		if(headless)return new Point(GUI.mouseH,GUI.mouseV);
 		if(injectedMouse!=null)return new Point(injectedMouse);
@@ -1485,7 +1419,7 @@ final class MacAppHost {
 	}
 	/** The pointer in the program's global coordinates NOT pinned to its screen: for the windows the Window Manager drags for the
 	 *  user ({@link #userDragArea}), which may go beyond a game screen as native frames do. */
-	Point unpinnedMouseLocation(){
+	public Point unpinnedMouseLocation(){
 		if(headless||injectedMouse!=null||screenRect==null)return mouseLocation();
 		try{PointerInfo info=MouseInfo.getPointerInfo();if(info!=null)return toVirtual(anyTitleBand?pastTitleBand(info.getLocation()):info.getLocation());}catch(Exception ignored){}
 		return mouseLocation();
@@ -1523,7 +1457,7 @@ final class MacAppHost {
 	private volatile int warpH,warpV;
 	private java.awt.Robot robot;private boolean robotFailed;
 	private Point warped(Point p){return warpH==0&&warpV==0?p:new Point(p.x+warpH,p.y+warpV);}
-	void warpMouse(int h,int v){
+	public void warpMouse(int h,int v){
 		warpSerial++;
 		try{
 		if(headless){GUI.mouseH=h;GUI.mouseV=v;return;}
@@ -1534,10 +1468,10 @@ final class MacAppHost {
 	}
 	/** Counts the program's pointer warps (twice each: before and after the move), so a reader of pointer movement can skip the jump. */
 	private volatile int warpSerial;
-	int warpSerial(){return warpSerial;}
+	public int warpSerial(){return warpSerial;}
 	/** The pointer's position as the program's global point without the screen pin and the warp offset: its differences are the
 	 *  movement of the hand (InputSprocket's mouse deltas), also while the program re-centres the pointer or the pointer is off the screen. */
-	Point rawPointerLocation(){
+	public Point rawPointerLocation(){
 		if(headless)return new Point(GUI.mouseH,GUI.mouseV);
 		if(injectedMouse!=null)return new Point(injectedMouse);
 		try{PointerInfo info=MouseInfo.getPointerInfo();if(info!=null)return toGuest(info.getLocation());}catch(Exception ignored){}
@@ -1547,10 +1481,10 @@ final class MacAppHost {
 	// ------------------------------------------------------------ windows
 
 	/** Creates a BufferedImage that aliases a 32-bit PixMap stored in VM memory. */
-	BufferedImage imageOver(int base,int width,int height,int rowBytes){return imageOver(base,width,height,rowBytes,false);}
+	public BufferedImage imageOver(int base,int width,int height,int rowBytes){return imageOver(base,width,height,rowBytes,false);}
 	/** {@code alpha}: the pad byte is the image's alpha - for a drawing that stores alpha itself (a graphics importer's srcCopy
 	 *  of a PNG into a 32-bit GWorld keeps the PNG's alpha there, as QuickTime does); never for drawing that blends. */
-	BufferedImage imageOver(int base,int width,int height,int rowBytes,boolean alpha){
+	public BufferedImage imageOver(int base,int width,int height,int rowBytes,boolean alpha){
 		if(width<=0||height<=0||base<=0)return null;
 		// A PixMap the program built itself may hold fewer bytes a row than its own bounds need (rowBytes arithmetic that
 		// wrapped a word, see QuickDraw68k.SCREEN_WIDTH_HEADROOM). Java2D cannot alias such a buffer - asking it to threw
@@ -1572,12 +1506,12 @@ final class MacAppHost {
 
 	/** Windows the program creates visible, which the Window Manager shows right after creating them (see {@link HostWindow#showPending}). */
 	private final java.util.Set<Integer> showSoon=java.util.concurrent.ConcurrentHashMap.newKeySet();
-	void willShow(int record){showSoon.add(record);}
-	HostWindow createWindow(final int record,final int left,final int top,final int width,final int height,final String title,final int procId,final boolean visible,final boolean goAway,final int pixelBase,final int rowBytes,final int depth){
+	public void willShow(int record){showSoon.add(record);}
+	public HostWindow createWindow(final int record,final int left,final int top,final int width,final int height,final String title,final int procId,final boolean visible,final boolean goAway,final int pixelBase,final int rowBytes,final int depth){
 		return createWindow(record,left,top,width,height,title,procId,visible,goAway,pixelBase,rowBytes,depth,false);
 	}
 	/** {@code customFrame}: left/top/width/height are the structure region a custom WDEF draws into the buffer, shown as a bare window. */
-	HostWindow createWindow(final int record,final int left,final int top,final int width,final int height,final String title,final int procId,final boolean visible,final boolean goAway,final int pixelBase,final int rowBytes,final int depth,final boolean customFrame){
+	public HostWindow createWindow(final int record,final int left,final int top,final int width,final int height,final String title,final int procId,final boolean visible,final boolean goAway,final int pixelBase,final int rowBytes,final int depth,final boolean customFrame){
 		final HostWindow hw=new HostWindow(record);hw.showPending=visible||showSoon.remove(record);
 		if(headless){hw.procId=procId;hw.title=title;hw.contentLeft=left;hw.contentTop=top;hw.width=width;hw.height=height;hw.decorated=true;hw.image=depth==32?imageOver(pixelBase,width,height,rowBytes):null;hw.imageDepth=depth;hw.imageBase=pixelBase;hw.imageWidth=width;hw.imageHeight=height;hw.imageRowBytes=rowBytes;synchronized(windows){windows.put(record,hw);order.add(0,hw);}return hw;}
 		hw.procId=procId;hw.title=title;hw.contentLeft=left;hw.contentTop=top;hw.width=width;hw.height=height;hw.closable=goAway;
@@ -1656,7 +1590,7 @@ final class MacAppHost {
 		if(!(wdef==0&&(kind&8)!=0)){root.putClientProperty("Window.minimizable",Boolean.FALSE);root.putClientProperty("Window.zoomable",Boolean.FALSE);}
 	}
 	/** The program drew a grow icon (DrawGrowIcon): it handles inGrow, so its document window may be sized natively from now on. */
-	void setWindowResizable(final int record,final boolean resizable){
+	public void setWindowResizable(final int record,final boolean resizable){
 		final HostWindow hw;synchronized(windows){hw=windows.get(record);}
 		if(hw==null||!hw.growable||hw.resizable==resizable)return;
 		hw.resizable=resizable;if(headless)return;
@@ -1779,9 +1713,9 @@ final class MacAppHost {
 		return new int[]{onScreenAxis(shownX,hw.width,screenWidth),onScreenAxis(shownY,hw.height,screenHeight)};
 	}
 	/** {@link #programPlace(HostWindow,int,int)} for the Window Manager, which drags the frames drawn in windows itself. */
-	int[] programPlace(int record,int shownX,int shownY){HostWindow hw=window(record);return hw==null?new int[]{shownX,shownY}:programPlace(hw,shownX,shownY);}
+	public int[] programPlace(int record,int shownX,int shownY){HostWindow hw=window(record);return hw==null?new int[]{shownX,shownY}:programPlace(hw,shownX,shownY);}
 	/** How far from the program's position the window is shown, {h, v}. */
-	int[] displacement(int record){HostWindow hw=window(record);return hw==null?new int[2]:new int[]{hw.dispX,hw.dispY};}
+	public int[] displacement(int record){HostWindow hw=window(record);return hw==null?new int[2]:new int[]{hw.dispX,hw.dispY};}
 	/** A window's start on one axis moved the least to lie within 0..{@code screen} (one larger than the screen: to cover it). */
 	private static int onScreenAxis(int at,int length,int screen){return length>=screen?Math.max(screen-length,Math.min(0,at)):Math.max(0,Math.min(screen-length,at));}
 	/** A bare window off the display right of or below the screen, no farther than a big classic Mac screen reaches: a position the
@@ -1818,7 +1752,7 @@ final class MacAppHost {
 	};
 	/** Types committed input-method text: each character becomes the key-down events a Japanese System would post
 	 *  (one per byte of its two-byte code), with key-ups in between so none is mistaken for auto-repeat. */
-	void postText(String text){
+	public void postText(String text){
 		int mods=modifierState|0x80;
 		for(int i=0;i<text.length();i++){
 			char c=text.charAt(i);
@@ -1827,7 +1761,7 @@ final class MacAppHost {
 		}
 	}
 	/** Debug aid (commands.txt `ime <recordHex> <composing>|- [committed]`): dispatches an InputMethodEvent as the host input method would. */
-	void injectInputMethod(int record,final String composing,final String committed){
+	public void injectInputMethod(int record,final String composing,final String committed){
 		HostWindow hw=window(record);if(hw==null||hw.canvas==null)return;final Canvas canvas=hw.canvas;
 		runOnEdt(new Runnable(){@Override public void run(){
 			AttributedString text=new AttributedString(committed+composing);
@@ -2034,11 +1968,11 @@ final class MacAppHost {
 
 	StackTextEncoding encoding=StackTextEncoding.ROMAN;
 
-	HostWindow window(int record){synchronized(windows){return windows.get(record);}}
+	public HostWindow window(int record){synchronized(windows){return windows.get(record);}}
 	/** Whether the window holds the activation (its activate event was the last one posted for it). */
-	boolean isActiveWindow(int record){HostWindow hw=window(record);return hw!=null&&hw.activePosted;}
+	public boolean isActiveWindow(int record){HostWindow hw=window(record);return hw!=null&&hw.activePosted;}
 	/** Whether an external's window was sent behind HyperCard's card window (a backdrop), see {@link #placeBehind}. */
-	boolean behindHyperCard(int record){HostWindow hw=window(record);return hw!=null&&(hw.behindHyperCard||hw.underCard);}
+	public boolean behindHyperCard(int record){HostWindow hw=window(record);return hw!=null&&(hw.behindHyperCard||hw.underCard);}
 	/**
 	 * (EDT) HyperCard's card window became the active window - the user clicked it, or the OS gave it the keyboard back: the OS
 	 * put it in front of this external's document windows, and the host's frame order is what the screen shows. Those that
@@ -2065,17 +1999,17 @@ final class MacAppHost {
 	private volatile Point injectedMouse;
 	/** Debug aid: synthesizes a click at window-local coordinates (used with -Dhz68k.snapshot's command file). */
 	/** Debug aid (commands.txt `activate <recordHex>`): activates a window as a click on it would in the real Finder. */
-	void injectActivate(int record){HostWindow hw=window(record);if(hw!=null)activateHost(hw);}
+	public void injectActivate(int record){HostWindow hw=window(record);if(hw!=null)activateHost(hw);}
 	/** Debug aid (commands.txt `deactivate <recordHex>`): the deactivate event another application coming to the front posts. */
-	void injectDeactivate(int record){HostWindow hw=window(record);if(hw!=null){deactivateHost(hw);runOnEdt(new Runnable(){@Override public void run(){setProgramActive(false);}},true);}}
+	public void injectDeactivate(int record){HostWindow hw=window(record);if(hw!=null){deactivateHost(hw);runOnEdt(new Runnable(){@Override public void run(){setProgramActive(false);}},true);}}
 	/** Debug aid (commands.txt `movewin <recordHex> <dx> <dy>`): drags the native frame by that many host pixels, as the user moving it does. */
-	void injectWindowMove(int record,final int dx,final int dy){
+	public void injectWindowMove(int record,final int dx,final int dy){
 		final HostWindow hw=window(record);if(hw==null||hw.window==null)return;
 		runOnEdt(new Runnable(){@Override public void run(){hw.window.setLocation(hw.window.getX()+dx,hw.window.getY()+dy);}},true);
 	}
 	/** Debug aid (commands.txt `osclick <recordHex> <x> <y>`): a real click on a background window as macOS delivers it - the window is
 	 *  activated first, then the press and release reach its canvas (window-local coordinates). */
-	void injectOsClick(int record,int x,int y){
+	public void injectOsClick(int record,int x,int y){
 		final HostWindow hw=window(record);if(hw==null||hw.canvas==null||!hw.canvas.isShowing())return;
 		runOnEdt(new Runnable(){@Override public void run(){hw.window.toFront();setProgramActive(true);osActivated(hw);}},true);
 		Point p=canvasOrigin(hw);int sx=p.x+x,sy=p.y+y;
@@ -2152,14 +2086,14 @@ final class MacAppHost {
 	}
 	/** Makes an external's window a floating XWindoid (see {@link HostWindow#windoid}); it is in the floating layer too, so it
 	 *  never becomes the front document the activation follows. */
-	void setWindoid(int record){
+	public void setWindoid(int record){
 		final HostWindow hw=window(record);if(hw==null)return;hw.windoid=true;hw.floatingLayer=true;if(headless)return;
 		runOnEdt(new Runnable(){@Override public void run(){if(hw.window!=null)setFocusable(hw,false);}},false);
 	}
 	/** Puts a window in Carbon's floating layer (see {@link HostWindow#floatingLayer}). */
-	void setFloatingLayer(int record){HostWindow hw=window(record);if(hw!=null)hw.floatingLayer=true;}
+	public void setFloatingLayer(int record){HostWindow hw=window(record);if(hw!=null)hw.floatingLayer=true;}
 	/** Makes a window a system window (see {@link HostWindow#systemWindow}). */
-	void setSystemWindow(int record){
+	public void setSystemWindow(int record){
 		final HostWindow hw=window(record);if(hw==null)return;hw.systemWindow=true;hw.floatingLayer=true;if(headless)return;
 		runOnEdt(new Runnable(){@Override public void run(){applySystemWindow(hw);}},false);
 	}
@@ -2200,12 +2134,12 @@ final class MacAppHost {
 	 *  dispatched before the new frame shows, and was taken for the user's choice; Wingz then brought its old sheet back
 	 *  over the document it had just opened. */
 	private boolean isFrontmostVisible(HostWindow hw){synchronized(windows){for(HostWindow w:order){if(w==hw)return true;if((w.visible||w.showPending)&&!w.floatingLayer&&!outOfSight(w))return false;}}return false;} // a window out of sight covers nothing
-	void deactivateHost(HostWindow hw){if(hw.activePosted){hw.activePosted=false;listener.postActivate(hw.record,false);}}
+	public void deactivateHost(VmWindow vw){HostWindow hw=(HostWindow)vw;if(hw.activePosted){hw.activePosted=false;listener.postActivate(hw.record,false);}}
 
 	/** ModalDialog runs a guest-side modal loop, but dialog-kind windows with a Mac menu bar must be host JFrames.
 	 *  Track the guest modality explicitly so a title-bar click cannot leave another application window in front. */
 	private final List<Integer> modalWindows=new ArrayList<Integer>();
-	void beginModalWindow(final int record){
+	public void beginModalWindow(final int record){
 		synchronized(modalWindows){modalWindows.add(record);}
 		listener.dialogShown();
 		if(headless)return;
@@ -2216,12 +2150,12 @@ final class MacAppHost {
 			programmaticRaise=System.nanoTime();modal.window.toFront();if(modal.canvas!=null)modal.canvas.requestFocusInWindow();activateHost(modal);
 		}},true);
 	}
-	void endModalWindow(final int record){
+	public void endModalWindow(final int record){
 		synchronized(modalWindows){for(int i=modalWindows.size()-1;i>=0;i--)if(modalWindows.get(i)==record){modalWindows.remove(i);break;}}
 		if(!headless)runOnEdt(new Runnable(){@Override public void run(){refreshDialogMenuBars();applyModalWindowState();restack();}},false);
 	}
 	/** ModalDialog/Alert is running, or the program waits for a dialog the host shows for it ({@link #ask}): it waits for the user. */
-	boolean modalWindowUp(){if(asking.get()>0)return true;synchronized(modalWindows){return !modalWindows.isEmpty();}}
+	public boolean modalWindowUp(){if(asking.get()>0)return true;synchronized(modalWindows){return !modalWindows.isEmpty();}}
 	private HostWindow activeModalWindow(){
 		synchronized(modalWindows){for(int i=modalWindows.size()-1;i>=0;i--){HostWindow modal=window(modalWindows.get(i));if(modal!=null&&modal.visible)return modal;}}
 		return null;
@@ -2262,14 +2196,14 @@ final class MacAppHost {
 		activateHost(hw);
 	}
 	/** Test aid: moves the emulated pointer to a screen point and presses or releases the button there. */
-	void simulateMouse(int sx,int sy,boolean down){
+	public void simulateMouse(int sx,int sy,boolean down){
 		injectedMouse=new Point(sx,sy);mouseGlobalH=sx;mouseGlobalV=sy;
 		if(down==mouseDown)return;
 		mouseDown=down;listener.postMouse(down,sx,sy,down?modifierState&~0x80:modifierState|0x80,System.currentTimeMillis());
 	}
-	void injectClick(int record,int x,int y,int clicks){injectClick(record,x,y,clicks,0);}
+	public void injectClick(int record,int x,int y,int clicks){injectClick(record,x,y,clicks,0);}
 	/** As above with extra Mac modifier bits (commands.txt `click <record> <x> <y> [shift] [cmd] [option]`). */
-	void injectClick(int record,int x,int y,int clicks,int extraModifiers){
+	public void injectClick(int record,int x,int y,int clicks,int extraModifiers){
 		HostWindow hw=window(record);if(hw==null||hw.canvas==null||!hw.canvas.isShowing()){System.err.println("[68K debug] click: window $"+Integer.toHexString(record)+(hw==null?" unknown (known: "+knownRecords()+")":hw.canvas==null?" has no canvas":" not showing"));return;}
 		Point p=canvasOrigin(hw);int sx=p.x+x,sy=p.y+y;injectedMouse=new Point(sx,sy);
 		for(int i=0;i<clicks;i++){
@@ -2283,7 +2217,7 @@ final class MacAppHost {
 	 *  host window under the point, so Swing-level behaviour (popup menus) can be driven from the command file. */
 	private Canvas awtPressCanvas;private boolean injectingAwt;
 	private boolean isInjected(MouseEvent e){return injectingAwt;}
-	void injectAwtMouse(final int id,final int sx,final int sy){
+	public void injectAwtMouse(final int id,final int sx,final int sy){
 		Canvas target=awtPressCanvas;
 		Point hp=toHost(sx,sy);final int hx=hp.x,hy=hp.y; // the command speaks the program's screen coordinates
 		if(id==MouseEvent.MOUSE_PRESSED||target==null){target=null;for(HostWindow hw:windowsFrontToBack()){if(hw.canvas==null||!hw.canvas.isShowing())continue;Point p=hw.canvas.getLocationOnScreen();if(hx>=p.x&&hy>=p.y&&hx<p.x+hw.canvas.getWidth()&&hy<p.y+hw.canvas.getHeight()){target=hw.canvas;break;}}}
@@ -2298,9 +2232,9 @@ final class MacAppHost {
 	/** Debug aid (commands.txt `popup <item>`): chooses an item (1-based, 0 = dismiss) in the pop-up menu PopUpMenuSelect is showing. */
 	/** Debug/test aid: a pop-up menu of the program (PopUpMenuSelect) is open for {@link #injectPopupChoice}. */
 	boolean popupOpen(){return currentPopup!=null||currentPicturePopup!=null;}
-	void injectPopupChoice(final int item){injectPopupChoice(item,0);}
+	public void injectPopupChoice(final int item){injectPopupChoice(item,0);}
 	/** As above, {@code subitem} (1-based) of the hierarchical item {@code item} when not 0 (commands.txt `popup <item>.<subitem>`). */
-	void injectPopupChoice(final int item,final int subitem){
+	public void injectPopupChoice(final int item,final int subitem){
 		runOnEdt(new Runnable(){@Override public void run(){JPopupMenu popup=currentPopup;List<JMenuItem> items=currentPopupItems;
 			if(Mac68kApi.TRACE)System.err.println("[68K debug] popup choice "+item+(subitem!=0?"."+subitem:"")+(popup==null?currentPicturePopup!=null?" (picture pop-up)":" (no pop-up menu open)":" visible="+popup.isVisible()));
 			if(popup==null){java.util.function.IntConsumer picture=currentPicturePopup;if(picture!=null)picture.accept(item);return;}
@@ -2310,9 +2244,9 @@ final class MacAppHost {
 		try{Thread.sleep(80);}catch(InterruptedException ignored){}
 	}
 	/** Debug aid: synthesizes a key press (character) for the front window. */
-	void injectKey(int record,int ch){injectKey(record,ch,modifierState);}
+	public void injectKey(int record,int ch){injectKey(record,ch,modifierState);}
 	/** As above with explicit Mac modifier bits (commands.txt `key <record> <char|0xNN> [cmd] [shift] [option]`). */
-	void injectKey(int record,int ch,int modifiers){int code=keyCodeForChar(ch);listener.postKey(3,code,ch,modifiers);try{Thread.sleep(30);}catch(InterruptedException ignored){}listener.postKey(4,code,ch,modifiers);}
+	public void injectKey(int record,int ch,int modifiers){int code=keyCodeForChar(ch);listener.postKey(3,code,ch,modifiers);try{Thread.sleep(30);}catch(InterruptedException ignored){}listener.postKey(4,code,ch,modifiers);}
 
 	/** Virtual key code a US keyboard would send for the character (programs like HyperCard test the key code of Return/Enter/arrows, not the character). */
 	static int keyCodeForChar(int ch){
@@ -2330,7 +2264,7 @@ final class MacAppHost {
 	}
 
 	/** Debug aid (-Dhz68k.snapshot=dir): writes every visible window's pixels as PNG files named by window record. */
-	void snapshot(java.io.File dir){
+	public void snapshot(java.io.File dir){
 		java.util.List<HostWindow> all;synchronized(windows){all=new java.util.ArrayList<HostWindow>(windows.values());}
 		dir.mkdirs();
 		final JFrame si=standIn;
@@ -2358,10 +2292,10 @@ final class MacAppHost {
 		}
 	}
 	List<HostWindow> windowsFrontToBack(){synchronized(windows){return new ArrayList<HostWindow>(order);}}
-	HostWindow frontWindow(){return frontWindow;}
+	public HostWindow frontWindow(){return frontWindow;}
 	/** The Drag Manager's outline of the region being dragged: a translucent bare window following the mouse (screen coordinates). */
 	private javax.swing.JWindow dragOutline;
-	void showDragOutline(final int[] rect){
+	public void showDragOutline(final int[] rect){
 		if(headless||rect==null||rect[2]<=0||rect[3]<=0)return;
 		javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){
 			if(dragOutline!=null)dragOutline.dispose();
@@ -2370,13 +2304,13 @@ final class MacAppHost {
 			javax.swing.JPanel panel=new javax.swing.JPanel(){@Override protected void paintComponent(Graphics g){Graphics2D g2=(Graphics2D)g;g2.setColor(new Color(0x60,0x60,0x60,0x50));g2.fillRect(0,0,getWidth(),getHeight());g2.setColor(new Color(0x30,0x30,0x30,0xc0));g2.setStroke(new java.awt.BasicStroke(1,java.awt.BasicStroke.CAP_BUTT,java.awt.BasicStroke.JOIN_MITER,1,new float[]{3,3},0));g2.drawRect(0,0,getWidth()-1,getHeight()-1);}};
 			panel.setOpaque(false);w.getContentPane().add(panel);w.setSize(Math.min(hostLen(rect[2]),4000),Math.min(hostLen(rect[3]),4000));w.setLocation(hostX(rect[0]),hostY(rect[1]));w.setVisible(true);dragOutline=w;}});
 	}
-	void moveDragOutline(final int x,final int y){if(headless)return;javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(dragOutline!=null)dragOutline.setLocation(hostX(x),hostY(y));}});}
+	public void moveDragOutline(final int x,final int y){if(headless)return;javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(dragOutline!=null)dragOutline.setLocation(hostX(x),hostY(y));}});}
 	/** Moves and resizes the outline (GrowWindow tracking shows the frame the window would get); program screen coordinates
 	 *  like {@link #showDragOutline} (they were used as host pixels: with the program's screen centred on the display the
 	 *  outline jumped to the display's top-left corner, like a second window, at the first move of the mouse). */
-	void setDragOutline(final int x,final int y,final int width,final int height){if(headless)return;javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(dragOutline!=null){dragOutline.setBounds(hostX(x),hostY(y),Math.max(1,Math.min(hostLen(width),4000)),Math.max(1,Math.min(hostLen(height),4000)));dragOutline.repaint();}}});}
+	public void setDragOutline(final int x,final int y,final int width,final int height){if(headless)return;javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(dragOutline!=null){dragOutline.setBounds(hostX(x),hostY(y),Math.max(1,Math.min(hostLen(width),4000)),Math.max(1,Math.min(hostLen(height),4000)));dragOutline.repaint();}}});}
 	/** Gives a bare (custom-framed) window the outline of its structure region, relative to the frame's top-left; null makes it rectangular again. */
-	void setWindowShape(final int record,final java.awt.Shape shape){
+	public void setWindowShape(final int record,final java.awt.Shape shape){
 		final HostWindow hw=window(record);if(hw==null)return;hw.shape=shape;
 		if(headless)return;
 		runOnEdt(new Runnable(){@Override public void run(){applyShape(hw);}},false);
@@ -2416,12 +2350,16 @@ final class MacAppHost {
 			JMenuBar bar=hw.frame!=null?hw.frame.getJMenuBar():hw.dialog!=null?hw.dialog.getJMenuBar():null;
 			hw.window.validate();Point at=SwingUtilities.convertPoint(hw.canvas,0,0,hw.window);TitleStrip strip=shownTitleStrip(hw);
 			if(strip!=null){ // the title rows above the bar, the rest below it, the bar between them in the background too (it is the window's own, as a native frame's)
-				int band=strip.getHeight();Point st=SwingUtilities.convertPoint(strip,0,0,hw.window);
+				int band=strip.band,sides=strip.getHeight()-band;Point st=SwingUtilities.convertPoint(strip,0,0,hw.window);
 				java.awt.geom.Area top=new java.awt.geom.Area(shape),rest=new java.awt.geom.Area(shape);
 				top.intersect(new java.awt.geom.Area(new Rectangle(-1<<20,-1<<20,1<<21,(1<<20)+band)));rest.intersect(new java.awt.geom.Area(new Rectangle(-1<<20,band,1<<21,1<<20)));
 				java.awt.geom.Area area=new java.awt.geom.Area(java.awt.geom.AffineTransform.getTranslateInstance(st.x,st.y).createTransformedShape(top));
 				area.add(new java.awt.geom.Area(java.awt.geom.AffineTransform.getTranslateInstance(at.x,at.y).createTransformedShape(rest)));
 				area.add(new java.awt.geom.Area(SwingUtilities.convertRectangle(bar.getParent(),bar.getBounds(),hw.window)));
+				if(sides>0){ // the frame's sides beside the bar: the outline's first row under the title, drawn out over the bar's rows
+					java.awt.geom.Area slice=new java.awt.geom.Area(shape);slice.intersect(new java.awt.geom.Area(new Rectangle(-1<<20,band,1<<21,1)));
+					java.awt.geom.AffineTransform out=java.awt.geom.AffineTransform.getTranslateInstance(st.x,st.y+band);out.scale(1,sides);out.translate(0,-band);
+					area.add(slice.createTransformedArea(out));}
 				shape=area;
 			}
 			else if(at.x!=0||at.y!=0||bar!=null){
@@ -2435,14 +2373,14 @@ final class MacAppHost {
 		}
 		try{hw.window.setShape(shape);}catch(RuntimeException e){if(HOST_TRACE)System.err.println("[host] setShape failed: "+e);}
 	}
-	void hideDragOutline(){if(headless)return;javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(dragOutline!=null){dragOutline.dispose();dragOutline=null;}}});}
+	public void hideDragOutline(){if(headless)return;javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(dragOutline!=null){dragOutline.dispose();dragOutline=null;}}});}
 	/** Balloon Help: a small window with the message next to the tip (screen coordinates); one at a time. */
 	private javax.swing.JWindow balloon;
-	void showBalloon(final String text,final int tipX,final int tipY){
+	public void showBalloon(final String text,final int tipX,final int tipY){
 		showBalloon(()->new javax.swing.JLabel("<html><div style='width:180px'>"+text.replace("&","&amp;").replace("<","&lt;").replace("\r","<br>").replace("\n","<br>")+"</div></html>"),tipX,tipY);
 	}
 	/** A balloon showing a picture (a PICT message, or styled text drawn in its fonts and colours). */
-	void showBalloonImage(final java.awt.image.BufferedImage image,final int tipX,final int tipY){
+	public void showBalloonImage(final java.awt.image.BufferedImage image,final int tipX,final int tipY){
 		showBalloon(()->new javax.swing.JLabel(new javax.swing.ImageIcon(image)),tipX,tipY);
 	}
 	private void showBalloon(final java.util.function.Supplier<javax.swing.JLabel> content,final int tipX,final int tipY){
@@ -2457,20 +2395,20 @@ final class MacAppHost {
 			int left=x+8,top=y+8;if(left+w.getWidth()>screen.x+screen.width)left=x-8-w.getWidth();if(top+w.getHeight()>screen.y+screen.height)top=y-8-w.getHeight();
 			w.setLocation(Math.max(screen.x,left),Math.max(screen.y,top));w.setVisible(true);balloon=w;}});
 	}
-	void hideBalloon(){javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(balloon!=null){balloon.dispose();balloon=null;}}});}
+	public void hideBalloon(){javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){if(balloon!=null){balloon.dispose();balloon=null;}}});}
 	/** KeyScript: turns the host input method's composition on (Japanese) or off (Roman) for the program's windows. */
 	/** Asks the host input method to commit what it is composing (FixTSMDocument): the committed text follows as an input-method event. */
-	void endComposition(){
+	public void endComposition(){
 		runOnEdt(new Runnable(){@Override public void run(){for(HostWindow hw:windowsFrontToBack()){if(hw.canvas==null||!hw.canvas.isFocusOwner())continue;try{java.awt.im.InputContext ic=hw.canvas.getInputContext();if(ic!=null)ic.endComposition();}catch(RuntimeException ignored){}}}},false);
 	}
-	void setCompositionEnabled(final boolean on){
+	public void setCompositionEnabled(final boolean on){
 		compositionEnabled=on;
 		javax.swing.SwingUtilities.invokeLater(new Runnable(){@Override public void run(){
 			for(HostWindow hw:windowsFrontToBack()){if(hw.canvas==null)continue;try{java.awt.im.InputContext ic=hw.canvas.getInputContext();if(ic!=null)ic.setCompositionEnabled(on);}catch(UnsupportedOperationException|IllegalStateException ignored){}}}});
 	}
 	volatile boolean compositionEnabled=true;
 
-	void showWindow(final int record){
+	public void showWindow(final int record){
 		final HostWindow hw=window(record);if(hw==null)return;boolean was=hw.visible;hw.visible=true;hw.everShown=true;hw.showPending=false;hw.shownSerial=memory.writeSerial();
 		// what the screen held there before belongs to no one now (PaintOne paints the frame and erases the content): frames of the
 		// windows behind, drawn while this one was still hidden, came back as its own pixels once a later write in the same
@@ -2503,13 +2441,13 @@ final class MacAppHost {
 	private volatile long deviceBaseline;
 	/** Set once the extensions have run; until then the screen stand-in stays off (see {@link #extensionsLoaded}). */
 	private volatile boolean extensionsDone;
-	boolean extensionsDone(){return extensionsDone;}
+	public boolean extensionsDone(){return extensionsDone;}
 	/** The extensions have run: what their INITs put on the screen (their icons along the bottom, as at boot) does not count as
 	 *  the program drawing on a screen without windows - the stand-in showed a display-sized black frame for a moment at every
 	 *  launch while they drew them. */
 	/** The INITs have run: what they drew on the screen (their icons) is neither the program's direct drawing for the stand-in nor
 	 *  pixels a window may adopt later - a window shown over them starts white, as PaintOne leaves it on a real Mac. */
-	void extensionsLoaded(){deviceBaseline=memory.deviceSerial();memory.forgetAllDeviceWrites();memory.resetDeviceWritten();extensionsDone=true;}
+	public void extensionsLoaded(){deviceBaseline=memory.deviceSerial();memory.forgetAllDeviceWrites();memory.resetDeviceWritten();extensionsDone=true;}
 	/**
 	 * A window going away (HideWindow, DisposeWindow) takes the screen writes under it along: on a real Mac PaintBehind repaints
 	 * what it uncovers. Device bytes nobody adopted yet - a WDEF frame drawn into the Window Manager port just before
@@ -2528,14 +2466,14 @@ final class MacAppHost {
 				if(run>gx){int o0=row+((gx-left)*depth>>>3),o1=row+(((run-left)*depth+7)>>>3);memory.forgetDeviceWrites(o0,o1-o0);}
 				while(run<x1&&coveredBy(covers,run,gy))run++;gx=run;}}
 	}
-	void hideWindow(final int record){
+	public void hideWindow(final int record){
 		final HostWindow hw=window(record);if(hw==null)return;forgetDeviceWritesUnder(hw);hw.visible=false;hw.showPending=false;deviceBaseline=memory.deviceSerial();
 		runOnEdt(new Runnable(){@Override public void run(){if(hw.window!=null)hw.window.setVisible(false);refreshDialogMenuBars();updateStandIn();updateBackdropFocus(windowsFrontToBack());
 			// hiding the active window activates the next visible one (HideWindow semantics)
 			if(hw.activePosted){deactivateHost(hw);if(hw.floatingLayer)return;
 				HostWindow next=null;synchronized(windows){for(HostWindow other:order)if(other!=hw&&other.visible&&!other.floatingLayer){next=other;break;}}if(next!=null)activateIfFrontmost(next);}}},false);
 	}
-	void disposeWindow(final int record){
+	public void disposeWindow(final int record){
 		final HostWindow hw0=window(record);if(hw0!=null&&hw0.visible)forgetDeviceWritesUnder(hw0);
 		final HostWindow hw;synchronized(windows){hw=windows.remove(record);if(hw!=null)order.remove(hw);}
 		if(hw==null)return;overlays.remove(record);deviceBaseline=memory.deviceSerial();
@@ -2555,7 +2493,7 @@ final class MacAppHost {
 	 * (FastAction plays the movies dropped on its Finder icon and puts up no menus at all), and the stand-in is the only thing
 	 * it can be reached by - to drop movies on or to close. Cheap: called at every WaitNextEvent/GetNextEvent.
 	 */
-	void programWaiting(){
+	public void programWaiting(){
 		if(waitingWithoutUi||headless||disposed||!menuBar.isEmpty()||!extensionsDone)return;
 		for(HostWindow hw:windowsFrontToBack())if(hw.visible)return;
 		waitingWithoutUi=true;runOnEdt(new Runnable(){@Override public void run(){updateStandIn();}},false);
@@ -2566,8 +2504,8 @@ final class MacAppHost {
 	 * or made the front process.
 	 */
 	private volatile boolean processHidden;
-	boolean processHidden(){return processHidden;}
-	void setProcessHidden(final boolean hidden){
+	public boolean processHidden(){return processHidden;}
+	public void setProcessHidden(final boolean hidden){
 		if(processHidden==hidden)return;processHidden=hidden;if(headless)return;
 		runOnEdt(new Runnable(){@Override public void run(){
 			for(HostWindow hw:windowsFrontToBack())if(hw.window!=null&&hw.visible&&!hw.systemWindow)hw.window.setVisible(!hidden&&!outOfSight(hw));
@@ -2716,7 +2654,7 @@ final class MacAppHost {
 		}
 		return first<0?null:new int[]{first,last+1};
 	}
-	void setTitle(final int record,final String title){
+	public void setTitle(final int record,final String title){
 		final HostWindow hw=window(record);if(hw==null)return;hw.title=title;showTitle(hw);
 	}
 	private void showTitle(final HostWindow hw){
@@ -2726,7 +2664,7 @@ final class MacAppHost {
 	/** The window whose host title shows "/// title ///": HyperCard's background mode, which real HyperCard shows by hatching the menu bar (MenuManager68k.showMenuBarHatching). */
 	private volatile HostWindow markedTitle;
 	/** Marks the front titled document window's host title (or no window's); the program's own title (GetWTitle) is unchanged. */
-	void markFrontTitle(boolean marked){
+	public void markFrontTitle(boolean marked){
 		HostWindow target=null;
 		if(marked)for(HostWindow hw:windowsFrontToBack())if(hw.visible&&hw.decorated&&hw.frame!=null&&!hw.systemWindow&&!hw.floatingLayer){target=hw;break;}
 		HostWindow old=markedTitle;if(target==old)return;
@@ -2740,13 +2678,13 @@ final class MacAppHost {
 	 * position are forgotten - a later write elsewhere in the same 32x32 tile (the next drag's outline) would otherwise make
 	 * a stale byte look new, and a black dotted line stayed inside the window.
 	 */
-	void moveWindow(final int record,final int left,final int top){moveWindow(record,left,top,false);}
+	public void moveWindow(final int record,final int left,final int top){moveWindow(record,left,top,false);}
 	/** {@code byUser}: the user drags the window (DragWindow of a frame drawn in the window), see {@link HostWindow#userPlaced}. */
-	void moveWindow(final int record,final int left,final int top,boolean byUser){moveWindow(record,left,top,byUser,0,0);}
+	public void moveWindow(final int record,final int left,final int top,boolean byUser){moveWindow(record,left,top,byUser,0,0);}
 	/** The frame the Window Manager re-placed, not moved (it was rebuilt or resized): where the user dragged it, it stays. */
-	void moveFrame(int record,int left,int top){HostWindow hw=window(record);if(hw!=null&&hw.userPlaced)moveWindow(record,left,top,true,hw.dispX,hw.dispY);else moveWindow(record,left,top,false);}
+	public void moveFrame(int record,int left,int top){HostWindow hw=window(record);if(hw!=null&&hw.userPlaced)moveWindow(record,left,top,true,hw.dispX,hw.dispY);else moveWindow(record,left,top,false);}
 	/** {@code dispX},{@code dispY}: for a window the user drags, how far from {@code left},{@code top} its frame is shown ({@link #placeForProgram}). */
-	void moveWindow(final int record,final int left,final int top,boolean byUser,int dispX,int dispY){
+	public void moveWindow(final int record,final int left,final int top,boolean byUser,int dispX,int dispY){
 		final HostWindow hw=window(record);if(hw==null)return;hw.userPlaced=byUser;
 		// The frame the user drags goes exactly there: no displacement from before is added to it. A stale native move report had
 		// made JumpStart's 643x505 Kaleidoscope-framed window (wider than the 640x480 screen) displaced, and every further step
@@ -2774,7 +2712,7 @@ final class MacAppHost {
 		if(!headless)runOnEdt(new Runnable(){@Override public void run(){if(hw.window!=null)rebuildWindow(hw);}},false);
 	}
 	/** The user moved the window natively (its position is already the new one): as {@link #moveWindow}. */
-	void windowMovedByUser(int record){HostWindow hw=window(record);if(hw!=null&&hw.visible)movedOverScreen(hw);}
+	public void windowMovedByUser(int record){HostWindow hw=window(record);if(hw!=null&&hw.visible)movedOverScreen(hw);}
 	private void movedOverScreen(HostWindow hw){
 		hw.shownSerial=memory.writeSerial();
 		QuickDraw68k screen=screenSource();int[] frame;try{frame=screen==null?null:screen.mainDeviceFrame();}catch(M68kCpuException e){frame=null;}
@@ -2783,7 +2721,7 @@ final class MacAppHost {
 	/** Re-applies the Window Manager's stacking order to the native windows (back to front); EDT only. */
 	private void restackLater(){runOnEdt(new Runnable(){@Override public void run(){restack();}},false);}
 	/** Raises this program's windows over everything else (the launcher's dock): the screen frame or stand-in, then the Mac windows in their order. */
-	void bringToFront(){
+	public void bringToFront(){
 		runOnEdt(new Runnable(){@Override public void run(){
 			if(screenFrame!=null&&screenFrame.isVisible()){screenFrame.toFront();if(screenCanvas!=null)screenCanvas.requestFocusInWindow();}
 			if(standIn!=null&&standIn.isVisible())standIn.toFront();
@@ -2800,7 +2738,7 @@ final class MacAppHost {
 	}
 	/** An Appearance floating window (WDEF 66 or 67 procIDs, 1056-1087, or System 7.5's WDEF 124, 1984-1999). */
 	private static boolean floats(HostWindow hw){int wdef=hw.procId>>4;return wdef==66||wdef==67||wdef==124;}
-	void selectWindow(final int record){
+	public void selectWindow(final int record){
 		final HostWindow hw=window(record);if(hw==null)return;hw.behindHyperCard=false;hw.underCard=false;
 		synchronized(windows){order.remove(hw);int at=0;if(!hw.floatingLayer)while(at<order.size()&&order.get(at).floatingLayer)at++;order.add(at,hw);}
 		if(HOST_TRACE)System.err.println("[host] selectWindow $"+Integer.toHexString(record)+" -> "+describeOrder());
@@ -2817,12 +2755,12 @@ final class MacAppHost {
 	/** When the last BringToFront restacked the windows (System.nanoTime). */
 	private volatile long quietRaise;
 	/** BringToFront: {@link #placeBehind} without the activation the OS gives the window it raises (see {@link #activateHost}). */
-	void bringToFront(int record,int behind){HostWindow hw=window(record);quietRaisedHidden=hw!=null&&!hw.visible?record:0;quietRaise=System.nanoTime();placeBehind(record,behind);}
+	public void bringToFront(int record,int behind){HostWindow hw=window(record);quietRaisedHidden=hw!=null&&!hw.visible?record:0;quietRaise=System.nanoTime();placeBehind(record,behind);}
 	/** The window the last BringToFront raised while it was hidden (0 when it was visible): the ShowWindow that follows makes it
 	 *  the active window, as the ROM's ShowWindow of the front window does - Resorcerer opens each file window with GetNewDialog
 	 *  (invisible), BringToFront, ShowWindow, and its lists stayed inactive (no selection shown) when that activation was ignored. */
 	private volatile int quietRaisedHidden;
-	void placeBehind(final int record,final int behind){
+	public void placeBehind(final int record,final int behind){
 		final HostWindow hw=window(record);if(hw==null)return;
 		final boolean wasFront=hw==frontWindow;
 		synchronized(windows){
@@ -2856,7 +2794,7 @@ final class MacAppHost {
 	 * card from now on and takes no focus (xWindowFrame's black backdrop around Myst's card; when the 256-colour alert closed,
 	 * macOS activated the backdrop over the card and the stack sat black, deaf to clicks). False when {@code w} is not ours. EDT.
 	 */
-	boolean sendBehindHyperCard(java.awt.Window w){
+	public boolean sendBehindHyperCard(java.awt.Window w){
 		HostWindow found=null;synchronized(windows){for(HostWindow hw:windows.values())if(hw.window==w){found=hw;break;}}
 		if(found==null)return false;
 		found.behindHyperCard=true;
@@ -2869,7 +2807,7 @@ final class MacAppHost {
 	 * be up yet - ColorCover calls the item from inside the XCMD right after ShowWindow, and Daisuki♡Ver2 opened over another
 	 * stack (card window active) stayed black. False when none. EDT.
 	 */
-	boolean sendBackdropsBehindHyperCard(Rectangle card){
+	public boolean sendBackdropsBehindHyperCard(Rectangle card){
 		java.util.List<HostWindow> all;synchronized(windows){all=new ArrayList<HostWindow>(windows.values());}
 		boolean any=false;
 		for(HostWindow hw:all)if(hw.visible&&!hw.behindHyperCard&&hw.window!=null&&hw.window.getBounds().contains(card)){sendBehindHyperCard(hw.window);any=true;}
@@ -2891,7 +2829,7 @@ final class MacAppHost {
 	/** Changes the native window's focusability only when it differs: the peer restyles the NSWindow on every call. */
 	private static void setFocusable(HostWindow hw,boolean focusable){focusable&=!hw.windoid;if(hw.window.getFocusableWindowState()!=focusable)hw.window.setFocusableWindowState(focusable);}
 	/** Debug aid (commands.txt `focusinfo`): which host window has the focus and which may take it. */
-	String describeFocus(){
+	public String describeFocus(){
 		final StringBuilder sb=new StringBuilder();
 		runOnEdt(new Runnable(){@Override public void run(){
 			java.awt.KeyboardFocusManager k=java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager();
@@ -2903,7 +2841,7 @@ final class MacAppHost {
 	private String describeOrder(){StringBuilder sb=new StringBuilder();synchronized(windows){for(HostWindow w:order)sb.append(sb.length()==0?"$":" $").append(Integer.toHexString(w.record)).append(w.visible?"":"(hidden)");}return sb.toString();}
 	void sendBehind(final int record){placeBehind(record,0);}
 	/** Resizes the host window and remaps the image over the (new) pixel buffer. */
-	void resizeWindow(final int record,final int width,final int height,final int pixelBase,final int rowBytes,final int depth){
+	public void resizeWindow(final int record,final int width,final int height,final int pixelBase,final int rowBytes,final int depth){
 		final HostWindow hw=window(record);if(hw==null)return;
 		if(HOST_TRACE)System.err.println("[host] resizeWindow $"+Integer.toHexString(record)+" "+width+"x"+height+" base $"+Integer.toHexString(pixelBase)+" depth "+depth);
 		if(!headless)memory.untrackBuffer(hw.imageBase,hw.imageRowBytes*hw.imageHeight);
@@ -2918,7 +2856,7 @@ final class MacAppHost {
 		hw.image=imageOver(pixelBase,hw.width,hw.height,rowBytes);hw.imageBase=pixelBase;hw.imageRowBytes=rowBytes;
 		if(!headless)memory.trackBuffer(pixelBase,rowBytes*hw.height);
 	}
-	void setOverlay(int record,Image image){if(image==null)overlays.remove(record);else overlays.put(record,image);HostWindow hw=window(record);if(hw!=null&&hw.canvas!=null)hw.canvas.repaint();}
+	public void setOverlay(int record,Image image){if(image==null)overlays.remove(record);else overlays.put(record,image);HostWindow hw=window(record);if(hw!=null&&hw.canvas!=null)hw.canvas.repaint();}
 	Image overlayFor(HostWindow hw){return overlays.get(hw.record);}
 
 	/** Refresh tick (EDT): converts the rows that changed since the previous tick and repaints just those; true when anything changed. */
@@ -2994,7 +2932,7 @@ final class MacAppHost {
 	private volatile long saverQuietSerial;
 	/** The program painted the desktop behind its windows (PaintOne/PaintBehind): a screen saver waking up restores the screen so. */
 	private volatile boolean saverRestored;
-	void screenSaverRestored(){if(saverMode)saverRestored=true;}
+	public void screenSaverRestored(){if(saverMode)saverRestored=true;}
 	/** The saver is over once the program restored the desktop; the windows redraw from their update events. */
 	private void checkSaverEnd(int[] frame){
 		if(!saverRestored)return;
@@ -3006,8 +2944,8 @@ final class MacAppHost {
 	}
 
 	/** Debug aid: repaints every window from scratch on the next tick. */
-	void invalidateDisplays(){for(HostWindow hw:windowsFrontToBack())hw.display=null;}
-	void repaintNow(int record){final HostWindow hw=window(record);if(hw!=null&&hw.canvas!=null)runOnEdt(new Runnable(){@Override public void run(){try{refreshDisplay(hw);}catch(RuntimeException e){}hw.canvas.paintImmediately(0,0,hw.canvas.getWidth(),hw.canvas.getHeight());}},false);}
+	public void invalidateDisplays(){for(HostWindow hw:windowsFrontToBack())hw.display=null;}
+	public void repaintNow(int record){final HostWindow hw=window(record);if(hw!=null&&hw.canvas!=null)runOnEdt(new Runnable(){@Override public void run(){try{refreshDisplay(hw);}catch(RuntimeException e){}hw.canvas.paintImmediately(0,0,hw.canvas.getWidth(),hw.canvas.getHeight());}},false);}
 
 	// ------------------------------------------------------------ Fix Garbled Text
 
@@ -3026,11 +2964,11 @@ final class MacAppHost {
 	}
 	private void endFontPick(){fontPick=false;if(fontPickHint!=null){fontPickHint.dispose();fontPickHint=null;}applyCursor();}
 	/** The program's fonts are being tried: a busy pointer meanwhile. */
-	void fontSearching(boolean busy){fontSearching=busy;applyCursor();}
+	public void fontSearching(boolean busy){fontSearching=busy;applyCursor();}
 	/** Pixels of the program's image from host (canvas) pixels: the zoom undone. */
 	private int imageLen(int host){return (int)((long)host*100/scPct);}
 	/** The window buffer's pixels (xRGB) in a rectangle of its image, clipped to it; null when it has none. */
-	int[] windowPixels(int record,int x,int y,int w,int h){
+	public int[] windowPixels(int record,int x,int y,int w,int h){
 		HostWindow hw=window(record);if(hw==null||hw.imageBase<=0)return null;
 		int left=Math.max(0,x),top=Math.max(0,y),right=Math.min(hw.imageWidth,x+w),bottom=Math.min(hw.imageHeight,y+h);
 		byte[] raw=memory.raw();if(right<=left||bottom<=top||hw.imageBase+(long)hw.imageRowBytes*bottom>raw.length)return null;
@@ -3039,24 +2977,24 @@ final class MacAppHost {
 		return out;
 	}
 	/** "Fix Garbled Text…" found the font: what changed, and a way back. */
-	void garbledTextFixed(final String font,final String replacement,final Runnable undo){
+	public void garbledTextFixed(final String font,final String replacement,final Runnable undo){
 		runOnEdt(new Runnable(){@Override public void run(){
 			String ok=International.t("OK"),back=International.t("Undo the Change");
 			int choice=javax.swing.JOptionPane.showOptionDialog(ownerFrame(),International.t("Text in {0} is now shown in {1}.",font,replacement),International.t("Fix Garbled Text"),
 				javax.swing.JOptionPane.DEFAULT_OPTION,javax.swing.JOptionPane.INFORMATION_MESSAGE,null,new Object[]{ok,back},ok);
 			if(choice==1)undo.run();}},false);
 	}
-	void garbledTextNotFound(){
+	public void garbledTextNotFound(){
 		runOnEdt(new Runnable(){@Override public void run(){
 			javax.swing.JOptionPane.showMessageDialog(ownerFrame(),International.t("No text a font change fixes was found there. Click right on the garbled characters."),International.t("Fix Garbled Text"),javax.swing.JOptionPane.INFORMATION_MESSAGE);}},false);
 	}
 
 	// ------------------------------------------------------------ cursor
 
-	void setCursor(final Cursor c){cursor=c;cursorSetByProgram=true;applyCursor();}
+	public void setCursor(final Cursor c){cursor=c;cursorSetByProgram=true;applyCursor();}
 	/** Whether the program set a cursor (an external's ShowCursor alone gives HyperCard's back), and the card's before a HideCursor. */
 	private volatile boolean cursorSetByProgram;private Cursor cardCursorBeforeHide;
-	void setCursorHidden(boolean hidden){cursorHidden=hidden;applyCursor();}
+	public void setCursorHidden(boolean hidden){cursorHidden=hidden;applyCursor();}
 	/** One queued cursor update at a time: programs call SetCursor on every idle (HyperCard's script editor does), and each
 	 *  host setCursor of a new custom cursor registers its images with the window server on the AppKit thread; a backlog of
 	 *  those starved every other AppKit call (menu bar, screen insets) and froze the program. */
@@ -3120,13 +3058,13 @@ final class MacAppHost {
 
 	// ------------------------------------------------------------ menus
 
-	void setMenuBar(List<MenuModel> menus){
+	public void setMenuBar(List<MenuModel68k> menus){
 		// Programs adjust their menus (EnableItem/DisableItem/CheckItem) on every pass of their event loop, so most flushes carry
 		// the same menu bar. Rebuilding the host JMenuBar anyway tears down the native screen menus of macOS while the user is
 		// pulling one down (the menu could vanish or freeze open), so an unchanged bar is kept.
 		if(menuBar!=null&&menuBar.size()==menus.size()){boolean same=true;for(int i=0;i<menus.size()&&same;i++)same=menus.get(i).sameAs(menuBar.get(i));if(same)return;}
 		menuBar=menus;menuVersion++;
-		if(Mac68kApi.TRACE){StringBuilder b=new StringBuilder("[68K] menu bar:");for(MenuModel m:menus){b.append(' ').append(m.title).append('[');for(ItemModel i:m.items)b.append(i.separator?"-":i.text).append(i.enabled?"":"(off)").append(',');b.append(']');}System.err.println(b);}
+		if(Mac68kApi.TRACE){StringBuilder b=new StringBuilder("[68K] menu bar:");for(MenuModel68k m:menus){b.append(' ').append(m.title).append('[');for(ItemModel68k i:m.items)b.append(i.separator?"-":i.text).append(i.enabled?"":"(off)").append(',');b.append(']');}System.err.println(b);}
 		runOnEdt(new Runnable(){@Override public void run(){if(openMenus>0){rebuildWhenClosed=true;return;}rebuildMenuBars();}},false);
 	}
 	/** Host menus open right now (a JMenu of the bar is showing): a whole new bar would tear the open one down, so the rebuild
@@ -3145,7 +3083,7 @@ final class MacAppHost {
 	 * card window's WDEF with plainDBox, `show titleBar` with its own zoomNoGrow again): the native frame gains or loses its
 	 * title bar. The content stays where it is on the screen.
 	 */
-	void setWindowVariant(final int record,final int kind){
+	public void setWindowVariant(final int record,final int kind){
 		final HostWindow hw;synchronized(windows){hw=windows.get(record);}
 		if(hw==null||hw.customFrame||(hw.procId>>>4)!=0||(hw.procId&15)==kind)return;
 		hw.procId=(hw.procId&~15)|kind;
@@ -3157,7 +3095,7 @@ final class MacAppHost {
 	}
 	/** The program put a definition of its own in a standard window's windowDefProc (WindowManager68k.swappedDefinition): the
 	 *  native window becomes a bare one whose frame that definition draws into the buffer. */
-	void setCustomFrame(final int record){
+	public void setCustomFrame(final int record){
 		final HostWindow hw;synchronized(windows){hw=windows.get(record);}
 		if(hw==null||hw.customFrame)return;
 		if(HOST_TRACE)System.err.println("[host] setCustomFrame $"+Integer.toHexString(record));
@@ -3270,7 +3208,7 @@ final class MacAppHost {
 	}
 	private JMenuBar buildMenuBar(){
 		JMenuBar bar=new JMenuBar();
-		for(MenuModel model:menuBar){if(model.apple&&model.items.isEmpty()&&!hasHostAppleItems())continue;bar.add(buildMenu(model));}
+		for(MenuModel68k model:menuBar){if(model.apple&&model.items.isEmpty()&&!hasHostAppleItems())continue;bar.add(buildMenu(model));}
 		bar.putClientProperty(BUILT_FROM,menuBar);
 		return bar;
 	}
@@ -3285,12 +3223,12 @@ final class MacAppHost {
 	@SuppressWarnings("unchecked")
 	private boolean patchMenuBar(JMenuBar bar){
 		if(bar==null||!(bar.getClientProperty(BUILT_FROM) instanceof List))return false;
-		List<MenuModel> built=(List<MenuModel>)bar.getClientProperty(BUILT_FROM),current=menuBar;
+		List<MenuModel68k> built=(List<MenuModel68k>)bar.getClientProperty(BUILT_FROM),current=menuBar;
 		if(built==current)return true;
 		if(built.size()!=current.size())return false;
 		for(int i=0;i<current.size();i++)if(!current.get(i).sameLayout(built.get(i)))return false;
 		int k=0;
-		for(MenuModel model:current){
+		for(MenuModel68k model:current){
 			if(model.apple&&model.items.isEmpty()&&!hasHostAppleItems())continue;
 			if(k>=bar.getMenuCount())return false;JMenu menu=bar.getMenu(k++);
 			if(menu==null||!Integer.valueOf(model.id).equals(menu.getClientProperty("hz.menuId")))return false;
@@ -3303,11 +3241,11 @@ final class MacAppHost {
 		return true;
 	}
 	/** The items of a host menu built by {@link #fillMenu} brought up to {@code model} (same layout). */
-	private boolean patchItems(JMenu menu,MenuModel model){
+	private boolean patchItems(JMenu menu,MenuModel68k model){
 		Object host=menu.getClientProperty(HOST_ITEMS);
 		if(menu.getMenuComponentCount()!=model.items.size()+(host instanceof Integer?(Integer)host:0))return false;
 		for(int i=0;i<model.items.size();i++){
-			ItemModel item=model.items.get(i);java.awt.Component c=menu.getMenuComponent(i);
+			ItemModel68k item=model.items.get(i);java.awt.Component c=menu.getMenuComponent(i);
 			if(item.separator){if(!(c instanceof JSeparator))return false;continue;}
 			if(item.submenu!=null){
 				if(!(c instanceof JMenu))return false;JMenu sub=(JMenu)c;
@@ -3331,7 +3269,7 @@ final class MacAppHost {
 		if(!patchMenuBar(bar))return false;
 		hw.menuBarVersion=menuVersion;return true;
 	}
-	private JMenu buildMenu(final MenuModel model){
+	private JMenu buildMenu(final MenuModel68k model){
 		// the Apple menu's title: the Apple logo glyph (U+F8FF) only exists in Apple's fonts, so other platforms draw a small apple icon
 		final JMenu menu=new JMenu(model.apple&&!GMenu.isMacOSX()?"":model.apple?"":model.title);menu.setEnabled(model.enabled);
 		if(model.apple&&!GMenu.isMacOSX()){menu.setIcon(appleMenuIcon(menu.getForeground()));menu.setDisabledIcon(appleMenuIcon(UIManager.getColor("MenuItem.disabledForeground")));}
@@ -3342,7 +3280,14 @@ final class MacAppHost {
 				// a program that fills its menus when they are pulled down (Flash 4's Windows layer: WM_INITMENUPOPUP from its MBarHook)
 				// or when the menu bar is clicked gets that chance before the menu shows; its new items replace the open menu's. A menu
 				// whose items are all disabled may just be waiting for that click (Wingz disables them all at startup).
-				if((menusUpdateOnOpening||allItemsDisabled(model.id))&&listener.menuOpening(model.id,500))refillOpenMenu(menu,model.id);}
+				if(menusUpdateOnOpening||allItemsDisabled(model.id)){
+					menusAtProbe=null;
+					if(listener.menuOpening(model.id,500)){
+						// the bar as the program had it at MenuSelect (its probe): it may disable the items again once MenuSelect returns
+						// (AdjustMenus, then MenuSelect, then DisableItem), and the menu would show them off when the Swing thread
+						// got to it after that (App68kMenuClickSetupTest, under load)
+						List<MenuModel68k> atProbe=menusAtProbe;menusAtProbe=null;
+						refillOpenMenu(menu,model.id,atProbe!=null?atProbe:menuBar);}}}
 			@Override public void menuDeselected(javax.swing.event.MenuEvent e){menuClosed();}
 			@Override public void menuCanceled(javax.swing.event.MenuEvent e){}});
 		fillMenu(menu,model);
@@ -3350,7 +3295,7 @@ final class MacAppHost {
 	}
 	/** Debug aid (commands.txt `menuopen <menuID>`): opens and closes that menu of a window's host bar as the user would - its
 	 *  menu listeners run - and returns the items it then holds. */
-	String debugOpenMenu(final int id){
+	public String debugOpenMenu(final int id){
 		final StringBuilder out=new StringBuilder();
 		try{javax.swing.SwingUtilities.invokeAndWait(new Runnable(){@Override public void run(){
 			for(HostWindow hw:windowsFrontToBack()){
@@ -3385,19 +3330,22 @@ final class MacAppHost {
 	/** The open menu {@code id} gets the items of the bar the program just sent ({@link #setMenuBar}). */
 	/** Whether the menu of the current bar is enabled but has no enabled item. */
 	private boolean allItemsDisabled(int id){
-		for(MenuModel m:menuBar){if(m.id!=id)continue;if(!m.enabled)return false;
-			for(ItemModel i:m.items)if(!i.separator&&i.enabled)return false;return !m.items.isEmpty();}
+		for(MenuModel68k m:menuBar){if(m.id!=id)continue;if(!m.enabled)return false;
+			for(ItemModel68k i:m.items)if(!i.separator&&i.enabled)return false;return !m.items.isEmpty();}
 		return false;
 	}
-	private void refillOpenMenu(JMenu menu,int id){
-		MenuModel current=null;for(MenuModel m:menuBar)if(m.id==id){current=m;break;}
+	/** The menu bar when the last made-up menu-bar click ended (menuProbeEnded), null when none since the menu began to open */
+	private volatile List<MenuModel68k> menusAtProbe;
+	@Override public void menuProbeEnded(){menusAtProbe=menuBar;}
+	private void refillOpenMenu(JMenu menu,int id,List<MenuModel68k> bar){
+		MenuModel68k current=null;for(MenuModel68k m:bar)if(m.id==id){current=m;break;}
 		if(current==null||(current.image!=null&&current.pictureItems!=null))return;
 		menu.removeAll();menu.setEnabled(current.enabled);fillMenu(menu,current);
 		menu.revalidate();if(menu.isPopupMenuVisible())menu.getPopupMenu().pack();
 	}
-	private void fillMenu(JMenu menu,final MenuModel model){
+	private void fillMenu(JMenu menu,final MenuModel68k model){
 		int number=model.itemBase;
-		for(final ItemModel item:model.items){
+		for(final ItemModel68k item:model.items){
 			number++;final int itemNumber=number;
 			if(item.separator){menu.add(new JSeparator());continue;}
 			// a hierarchical item keeps its text style (LimitedHyperMenu's bold "Icons" and bold-italic "Style" came out plain)
@@ -3490,7 +3438,7 @@ final class MacAppHost {
 	}
 	/** A custom-MDEF menu on the host: one item per region the MDEF reports, showing that region of the MDEF's drawing (the
 	 *  screen menu bar of macOS renders icons but no custom components, so a picture menu becomes a column of picture items). */
-	private void addPictureItems(JMenu menu,final MenuModel model){
+	private void addPictureItems(JMenu menu,final MenuModel68k model){
 		final java.awt.image.BufferedImage image=model.image;
 		for(int[] r:model.pictureItems){
 			final int itemNumber=r[0];int top=Math.max(0,r[1]),left=Math.max(0,r[2]),bottom=Math.min(image.getHeight(),r[3]),right=Math.min(image.getWidth(),r[4]);
@@ -3523,20 +3471,20 @@ final class MacAppHost {
 	/** Finds the menu/item whose command key matches; used for Cmd-key presses before the app sees them. */
 	int[] menuKeyFor(int ch){
 		char lower=Character.toLowerCase((char)ch);
-		for(MenuModel model:menuBar){if(!model.enabled)continue;int n=0;for(ItemModel item:model.items){n++;if(item.enabled&&item.command!=0&&Character.toLowerCase(item.command)==lower)return new int[]{model.id,n};}}
+		for(MenuModel68k model:menuBar){if(!model.enabled)continue;int n=0;for(ItemModel68k item:model.items){n++;if(item.enabled&&item.command!=0&&Character.toLowerCase(item.command)==lower)return new int[]{model.id,n};}}
 		return null;
 	}
 	/** The Command-key equivalent of a menu item of the bar (0 none). */
-	char menuCommand(int menuId,int item){
-		List<MenuModel> bar=menuBar;
-		for(MenuModel model:bar)if(model.id==menuId&&item>=1&&item<=model.items.size()){ItemModel im=model.items.get(item-1);return im.command>=0x20?im.command:0;}
+	public char menuCommand(int menuId,int item){
+		List<MenuModel68k> bar=menuBar;
+		for(MenuModel68k model:bar)if(model.id==menuId&&item>=1&&item<=model.items.size()){ItemModel68k im=model.items.get(item-1);return im.command>=0x20?im.command:0;}
 		return 0;
 	}
 
 	/** Whether {@code w} (or a window it is owned by) is one of this program's: a Mac window, the stand-in or the screen frame. */
 	/** True when {@code w} is the native window of one of the program's Mac windows. */
 	private boolean isProgramWindow(Window w){if(w==null)return false;if(screenBar!=null&&screenBar.owns(w))return true; /* the frame round the screen hands the focus straight back */synchronized(windows){for(HostWindow hw:order)if(hw.window==w)return true;}return false;}
-	boolean ownsWindow(Window w){
+	public boolean ownsWindow(Window w){
 		for(;w!=null;w=w.getOwner()){
 			if(w==standIn||w==screenFrame||(screenBar!=null&&screenBar.owns(w)))return true;
 			synchronized(windows){for(HostWindow hw:order)if(hw.window==w)return true;}
@@ -3561,7 +3509,7 @@ final class MacAppHost {
 	/** Cmd-Q meant for the program: its Cmd-Q menu item, or the bare keystroke for programs that read keys themselves -
 	 *  and without a Cmd-Q item also what closing the stand-in does (a Quit item without the shortcut, else the 'quit'
 	 *  Apple event), so that Cmd-Q quits MacWrite 2.2 too. */
-	void postCommandQ(){
+	public void postCommandQ(){
 		noteCommandQDelivered();
 		boolean menuKey=menuKeyFor('q')!=null;
 		postCommandKey('q');
@@ -3576,21 +3524,21 @@ final class MacAppHost {
 			if(hp.x>=p.x&&hp.y>=p.y&&hp.x<p.x+hw.canvas.getWidth()&&hp.y<p.y+hw.canvas.getHeight())return hw;}
 		return null;
 	}
-	int popUpMenuSelect(final MenuModel model,final int globalLeft,final int globalTop,final int initialItem){
+	public int popUpMenuSelect(final MenuModel68k model,final int globalLeft,final int globalTop,final int initialItem){
 		if(headless)return 0;
 		// the Menu Manager shows a pop-up while the button is down: an external that calls it with the button up (UxPop from a
 		// mouseUp handler: "on mouseUp の中で使ってもメニューは出てきません") gets nothing at once, no menu waiting for a click. Only
 		// when the button was already up as the external was entered: one released during the call (a quick click on a mouseDown
 		// button) keeps the menu up for the next click, as before
 		if(external&&!isMouseDown()&&!mouseDownAtExternalEntry){if(Mac68kApi.TRACE)System.err.println("[68K] PopUpMenuSelect "+model.title+" with the button up: 0");return 0;}
-		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder();for(ItemModel item:model.items){sb.append(sb.length()==0?"":"|").append(item.separator?"-":(item.checked?"*":"")+(item.enabled?"":"(")+(item.style!=0?"<"+item.style:"")+item.text);
-				if(item.submenu!=null){sb.append(" {");for(ItemModel sub:item.submenu.items)sb.append(sub.separator?"-":(sub.checked?"*":"")+sub.text).append(';');sb.append('}');}}System.err.println("[68K] PopUpMenuSelect "+model.title+" at "+globalLeft+","+globalTop+" item "+initialItem+" ["+sb+"]"+(model.image!=null?" picture "+model.image.getWidth()+"x"+model.image.getHeight()+" "+(model.pictureItems==null?0:model.pictureItems.size())+" items":""));}
+		if(Mac68kApi.TRACE){StringBuilder sb=new StringBuilder();for(ItemModel68k item:model.items){sb.append(sb.length()==0?"":"|").append(item.separator?"-":(item.checked?"*":"")+(item.enabled?"":"(")+(item.style!=0?"<"+item.style:"")+item.text);
+				if(item.submenu!=null){sb.append(" {");for(ItemModel68k sub:item.submenu.items)sb.append(sub.separator?"-":(sub.checked?"*":"")+sub.text).append(';');sb.append('}');}}System.err.println("[68K] PopUpMenuSelect "+model.title+" at "+globalLeft+","+globalTop+" item "+initialItem+" ["+sb+"]"+(model.image!=null?" picture "+model.image.getWidth()+"x"+model.image.getHeight()+" "+(model.pictureItems==null?0:model.pictureItems.size())+" items":""));}
 		if(model.image!=null&&model.pictureItems!=null)return popUpPictureMenu(model,globalLeft,globalTop);
 		final AtomicReference<Integer> result=new AtomicReference<Integer>(0);
 		final Object lock=new Object();final boolean[] done={false};
 		runOnEdt(new Runnable(){@Override public void run(){
 			final JPopupMenu popup=new JPopupMenu();int number=0;final long[] shownAt={0};final int[] reshown={0};final Point[] shownWhere={null};final java.awt.Component[] shownInvoker={null};final List<JMenuItem> menuItems=new ArrayList<JMenuItem>();
-			for(final ItemModel item:model.items){number++;final int itemNumber=number;
+			for(final ItemModel68k item:model.items){number++;final int itemNumber=number;
 				if(item.separator){popup.addSeparator();if(scPct>100)magnify(popup.getComponent(popup.getComponentCount()-1));menuItems.add(null);continue;}
 				// a hierarchical item (cmd $1B, the submenu's ID as its mark): The Yennie eXternals' metaMenu "ICONS" -> its icon menu
 				if(item.submenu!=null){JMenu sub=popupSubmenu(item.text,item.submenu,result,scPct,0);sub.setEnabled(item.enabled);applyItemStyle(sub,item.style);popup.add(sub);menuItems.add(sub);continue;}
@@ -3658,9 +3606,9 @@ final class MacAppHost {
 	}
 
 	/** A submenu of a pop-up: choosing one of its items gives (its menu ID << 16) | item, as PopUpMenuSelect returns it. */
-	private JMenu popupSubmenu(String title,final MenuModel model,final AtomicReference<Integer> result,int scPct,int depth){
+	private JMenu popupSubmenu(String title,final MenuModel68k model,final AtomicReference<Integer> result,int scPct,int depth){
 		JMenu menu=new JMenu(title);if(scPct>100)magnify(menu);int number=0;
-		for(final ItemModel item:model.items){number++;final int itemNumber=number;
+		for(final ItemModel68k item:model.items){number++;final int itemNumber=number;
 			if(item.separator){menu.addSeparator();continue;}
 			if(item.submenu!=null&&depth<4){JMenu sub=popupSubmenu(item.text,item.submenu,result,scPct,depth+1);sub.setEnabled(item.enabled);applyItemStyle(sub,item.style);menu.add(sub);continue;}
 			JMenuItem mi=new JMenuItem(item.text);mi.setEnabled(item.enabled&&model.enabled);decoratePopupItem(mi,item);if(scPct>100)magnify(mi);
@@ -3671,7 +3619,7 @@ final class MacAppHost {
 	}
 
 	/** The item's mark before its text: the check mark, or another mark character (a diamond, √, ◊, a bullet...). */
-	static String markPrefix(ItemModel item){
+	static String markPrefix(ItemModel68k item){
 		if(item.checked)return "✓ ";
 		if(item.mark==0||item.submenuId!=0||item.command==0x1b)return "";
 		// the character the Menu Manager draws in the menu font, decoded by the Menu Manager (SimplePop's "!√I'm marked" and
@@ -3698,7 +3646,7 @@ final class MacAppHost {
 	}
 	/** A pop-up item as the Menu Manager draws it: its icon, its style (bold, italic, underline, outline, condensed...), its
 	 *  Command key (UxPop's icon menus, UxPopDir's bold title came out as plain text with a check mark). */
-	private void decoratePopupItem(JMenuItem mi,ItemModel item){
+	private void decoratePopupItem(JMenuItem mi,ItemModel68k item){
 		applyItemStyle(mi,item.style);
 		// the mark in its column before the icon, as the Menu Manager draws it (a check mark came after UxPop's icons), and outline
 		// and shadow text hollow (Swing has no such face: they were bold) - both drawn by the item's icon
@@ -3761,21 +3709,18 @@ final class MacAppHost {
 	 * over an item chooses it, releasing elsewhere (or pressing outside the menu, or Escape) chooses nothing. When the button is
 	 * already up when the menu appears (a click, not a press), the next press-and-release inside picks the item instead.
 	 */
-	private int popUpPictureMenu(final MenuModel model,final int globalLeft,final int globalTop){return popUpPictureMenu(model.image,model.pictureItems,null,globalLeft,globalTop);}
-	/** A custom MDEF asked on demand (emulation thread): the item at a point of its picture - its mChooseMsg, which also
-	 *  draws its own highlight - and the picture as it now looks. */
-	interface LiveMenu { int choose(int x,int y) throws M68kException; java.awt.image.BufferedImage image(); }
+	private int popUpPictureMenu(final MenuModel68k model,final int globalLeft,final int globalTop){return popUpPictureMenu(model.image,model.pictureItems,null,globalLeft,globalTop);}
 	/**
 	 * A custom-MDEF pop-up shown at once from the MDEF's picture: the item under the pointer is asked of the MDEF itself
 	 * (mChooseMsg at that point, answered here on the emulation thread, which waits for the pop-up anyway) and the picture
 	 * it redraws with its own highlight is shown. Learning the whole layout first took a thousand MDEF calls (ResEdit's
 	 * colour palettes opened a noticeable moment after the click).
 	 */
-	int popUpLiveMenu(java.awt.image.BufferedImage image,LiveMenu live,int globalLeft,int globalTop){
+	public int popUpLiveMenu(java.awt.image.BufferedImage image,LiveMenu68k live,int globalLeft,int globalTop){
 		if(headless)return 0;
 		return popUpPictureMenu(image,java.util.Collections.<int[]>emptyList(),live,globalLeft,globalTop);
 	}
-	private int popUpPictureMenu(final java.awt.image.BufferedImage firstImage,final List<int[]> items,final LiveMenu live,final int globalLeft,final int globalTop){
+	private int popUpPictureMenu(final java.awt.image.BufferedImage firstImage,final List<int[]> items,final LiveMenu68k live,final int globalLeft,final int globalTop){
 		final AtomicReference<Integer> result=new AtomicReference<Integer>(0);
 		final Object lock=new Object();final boolean[] done={false};
 		final boolean pressedAtOpen=mouseDown;
@@ -3840,31 +3785,9 @@ final class MacAppHost {
 
 	// ------------------------------------------------------------ keys
 
-	static int macKeyCode(int vk,int location){
-		switch(vk){
-			case KeyEvent.VK_A:return 0;case KeyEvent.VK_S:return 1;case KeyEvent.VK_D:return 2;case KeyEvent.VK_F:return 3;case KeyEvent.VK_H:return 4;case KeyEvent.VK_G:return 5;
-			case KeyEvent.VK_Z:return 6;case KeyEvent.VK_X:return 7;case KeyEvent.VK_C:return 8;case KeyEvent.VK_V:return 9;case KeyEvent.VK_B:return 11;case KeyEvent.VK_Q:return 12;
-			case KeyEvent.VK_W:return 13;case KeyEvent.VK_E:return 14;case KeyEvent.VK_R:return 15;case KeyEvent.VK_Y:return 16;case KeyEvent.VK_T:return 17;
-			case KeyEvent.VK_1:return 18;case KeyEvent.VK_2:return 19;case KeyEvent.VK_3:return 20;case KeyEvent.VK_4:return 21;case KeyEvent.VK_6:return 22;case KeyEvent.VK_5:return 23;
-			case KeyEvent.VK_EQUALS:return 24;case KeyEvent.VK_9:return 25;case KeyEvent.VK_7:return 26;case KeyEvent.VK_MINUS:return 27;case KeyEvent.VK_8:return 28;case KeyEvent.VK_0:return 29;
-			case KeyEvent.VK_CLOSE_BRACKET:return 30;case KeyEvent.VK_O:return 31;case KeyEvent.VK_U:return 32;case KeyEvent.VK_OPEN_BRACKET:return 33;case KeyEvent.VK_I:return 34;case KeyEvent.VK_P:return 35;
-			case KeyEvent.VK_ENTER:return location==KeyEvent.KEY_LOCATION_NUMPAD?76:36;case KeyEvent.VK_L:return 37;case KeyEvent.VK_J:return 38;case KeyEvent.VK_QUOTE:return 39;case KeyEvent.VK_K:return 40;
-			case KeyEvent.VK_SEMICOLON:return 41;case KeyEvent.VK_BACK_SLASH:return 42;case KeyEvent.VK_COMMA:return 43;case KeyEvent.VK_SLASH:return 44;case KeyEvent.VK_N:return 45;case KeyEvent.VK_M:return 46;
-			case KeyEvent.VK_PERIOD:return 47;case KeyEvent.VK_TAB:return 48;case KeyEvent.VK_SPACE:return 49;case KeyEvent.VK_BACK_QUOTE:return 50;case KeyEvent.VK_BACK_SPACE:return 51;
-			case KeyEvent.VK_ESCAPE:return 53;case KeyEvent.VK_META:return 55;case KeyEvent.VK_SHIFT:return 56;case KeyEvent.VK_CAPS_LOCK:return 57;case KeyEvent.VK_ALT:return 58;case KeyEvent.VK_CONTROL:return 59;
-			case KeyEvent.VK_DECIMAL:return 65;case KeyEvent.VK_MULTIPLY:return 67;case KeyEvent.VK_ADD:return 69;case KeyEvent.VK_CLEAR:return 71;case KeyEvent.VK_DIVIDE:return 75;case KeyEvent.VK_SUBTRACT:return 78;
-			case KeyEvent.VK_NUMPAD0:return 82;case KeyEvent.VK_NUMPAD1:return 83;case KeyEvent.VK_NUMPAD2:return 84;case KeyEvent.VK_NUMPAD3:return 85;case KeyEvent.VK_NUMPAD4:return 86;
-			case KeyEvent.VK_NUMPAD5:return 87;case KeyEvent.VK_NUMPAD6:return 88;case KeyEvent.VK_NUMPAD7:return 89;case KeyEvent.VK_NUMPAD8:return 91;case KeyEvent.VK_NUMPAD9:return 92;
-			case KeyEvent.VK_F5:return 96;case KeyEvent.VK_F6:return 97;case KeyEvent.VK_F7:return 98;case KeyEvent.VK_F3:return 99;case KeyEvent.VK_F8:return 100;case KeyEvent.VK_F9:return 101;
-			case KeyEvent.VK_F11:return 103;case KeyEvent.VK_F13:return 105;case KeyEvent.VK_F14:return 107;case KeyEvent.VK_F10:return 109;case KeyEvent.VK_F12:return 111;case KeyEvent.VK_F15:return 113;
-			case KeyEvent.VK_HELP:case KeyEvent.VK_INSERT:return 114;case KeyEvent.VK_HOME:return 115;case KeyEvent.VK_PAGE_UP:return 116;case KeyEvent.VK_DELETE:return 117;case KeyEvent.VK_F4:return 118;
-			case KeyEvent.VK_END:return 119;case KeyEvent.VK_F2:return 120;case KeyEvent.VK_PAGE_DOWN:return 121;case KeyEvent.VK_F1:return 122;
-			case KeyEvent.VK_LEFT:return 123;case KeyEvent.VK_RIGHT:return 124;case KeyEvent.VK_DOWN:return 125;case KeyEvent.VK_UP:return 126;
-			default:return -1;
-		}
-	}
+	static int macKeyCode(int vk,int location){return KeyCodes68k.macKeyCode(vk,location);}
 
-	int macChar(KeyEvent e){
+	public int macChar(KeyEvent e){
 		switch(e.getKeyCode()){
 			case KeyEvent.VK_ENTER:return e.getKeyLocation()==KeyEvent.KEY_LOCATION_NUMPAD?3:13;
 			case KeyEvent.VK_TAB:return 9;case KeyEvent.VK_BACK_SPACE:return 8;case KeyEvent.VK_DELETE:return 0x7f;case KeyEvent.VK_ESCAPE:return 0x1b;
@@ -3892,7 +3815,7 @@ final class MacAppHost {
 	}
 
 	/** Runs a blocking UI interaction (file dialogs, alerts) on the EDT and returns its result. */
-	<T> T ask(final java.util.concurrent.Callable<T> c){
+	public <T> T ask(final java.util.concurrent.Callable<T> c){
 		if(headless)return null;
 		final AtomicReference<T> result=new AtomicReference<T>();
 		asking.incrementAndGet();listener.dialogShown();
@@ -3903,9 +3826,9 @@ final class MacAppHost {
 	/** Dialogs {@link #ask} has up (the program's thread waits for them). */
 	private final java.util.concurrent.atomic.AtomicInteger asking=new java.util.concurrent.atomic.AtomicInteger();
 
-	Window anyWindow(){HostWindow hw=frontWindow;if(hw!=null&&hw.window!=null)return hw.window;for(HostWindow w:windowsFrontToBack())if(w.window!=null)return w.window;return null;}
+	public Window anyWindow(){HostWindow hw=frontWindow;if(hw!=null&&hw.window!=null)return hw.window;for(HostWindow w:windowsFrontToBack())if(w.window!=null)return w.window;return null;}
 
-	void dispose(){
+	public void dispose(){
 		disposed=true;if(refresh!=null)refresh.cancel(false);
 		if(limitedExternal)ExternalScreenArea.leave(this);
 		if(globalMouse!=null)Toolkit.getDefaultToolkit().removeAWTEventListener(globalMouse);

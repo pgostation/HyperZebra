@@ -88,8 +88,7 @@ final class InstalledFonts68k {
 
 	/** The Fonts folder of the virtual System Folder (the same one FileSystem68k hands to programs asking for kFontsFolderType). */
 	static File folder(){
-		File home=new File(System.getProperty("user.home"));
-		return new File(new File(new File(home,"Library"+File.separator+"Application Support"+File.separator+"HyperZebra"),"System Folder"),"Fonts");
+		return new File(new File(FileSystem68k.bootVolumeDirectory(),"System Folder"),"Fonts");
 	}
 	/** The folders scanned: the System Folder's Fonts folder, then any named by -Dhz68k.fonts. */
 	static List<File> folders(){

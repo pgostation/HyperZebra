@@ -60,7 +60,6 @@ class PCARDFrame extends JFrame {
 	static int gridSize = 1;
 	MyPanel mainPane;
 	OStack stack;
-	static OStack home;
 	//ペイントの表示倍率(FatBits/Zoom)。1が実寸。8がHyperCardのFatBits。整数でなくてもよい
 	//(Zoom In/Outは1.5倍や3倍も通る)ので、画面座標との換算はPaintTool.effectiveBit()/
 	//viewLeft()/toPhysical()を通す。IconEditorは自分のズーム(setZoom)で整数倍だけ使う。
@@ -153,7 +152,7 @@ class PCARDFrame extends JFrame {
 	}
 	
     boolean isEditingBackground(){
-		return PaintTool.editBackground;
+		return HZ.editBackground;
     }
 
     public BufferedImage getSurface(){
@@ -222,7 +221,6 @@ class CardViewLayout extends BorderLayout {
 public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	private static final long serialVersionUID = 1L;
 
-	static String AppName = "HyperZebra";
 
 	/** True once HyperZebra is quitting: the launcher must not come back as the programs finish. */
 	static volatile boolean exiting;
@@ -400,34 +398,18 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	
 	//アプリのバージョンはここだけに書く。release.sh / jpackage.sh / jpackage.ps1 はこの行を読んで
 	//パッケージのバージョンにするので、x.y.z(数字だけ)の形を保つこと。短い版(the short version)は x.y。
-	static final String longVersion="3.0.2";
-	static final String version=longVersion.substring(0, longVersion.lastIndexOf('.'));
 
 	/**
 	 * HyperCard's 8-digit version code, as "the long version" and the items of "the version of stack" report it:
 	 * major (2 digits), minor, bug fix, stage (20 development, 40 alpha, 60 beta, 80 final) and release (2 digits).
 	 * "2.2.1" → "02218000", "3.0a5" → "03004005", HyperZebra's "3.0.0" → "03008000". A code is returned as it is.
 	 */
-	static String hcVersionCode(String v) {
-		if(v==null) return "00000000";
-		v = v.trim();
-		if(v.matches("[0-9]{8}")) return v;
-		java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?\\s*([dabf])?\\s*(\\d+)?.*").matcher(v);
-		if(!m.matches()) return "00000000";
-		int major = Integer.parseInt(m.group(1));
-		int minor = m.group(2)==null ? 0 : Math.min(9, Integer.parseInt(m.group(2)));
-		int fix = m.group(3)==null ? 0 : Math.min(9, Integer.parseInt(m.group(3)));
-		String st = m.group(4);
-		int stage = st==null ? 0x80 : st.equals("d") ? 0x20 : st.equals("a") ? 0x40 : st.equals("b") ? 0x60 : 0x80;
-		int release = m.group(5)==null || st==null ? 0 : Math.min(99, Integer.parseInt(m.group(5)));
-		return String.format("%02d%d%d%02X%02d", Math.min(99, major), minor, fix, stage, release);
-	}
+	static String hcVersionCode(String v) { return HZ.hcVersionCode(v); }
 	GMenu menu;
 	GMenu paintMenu;
 	GMsg msg;
 	International intl;
 	String lang;
-	static boolean useDoubleBuffer = true;//バッファをオフにしてメモリ節約できる？
 
 	//拡大表示の設定(DisplayZoom: 等倍 / 最大125% / 最大150% / 最大200% / 等倍または2倍)。設定画面のポップアップで
 	//変更でき、開いているスタックと実行中のMacアプリにはすぐ反映される(applyZoomLive)。デフォルトは「等倍または2倍」
@@ -767,7 +749,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	 *  sets a thousand icons under lock screen waited for a hop each. The model (left, icon, visible …) is set by the
 	 *  caller first, so scripts read the new values at once. */
 	static void runOnEDTWhenShown(Runnable task){
-		if(!SwingUtilities.isEventDispatchThread() && lockedScreen && pc!=null && pc.mainPane!=null &&
+		if(!SwingUtilities.isEventDispatchThread() && HZ.lockedScreen && pc!=null && pc.mainPane!=null &&
 				!(edtBatch!=null && edtBatchThread==Thread.currentThread())){
 			synchronized(deferredEDT){ deferredEDT.add(task); }
 			return;
@@ -775,13 +757,13 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		runOnEDT(task);
 	}
 
-	static final int EDT_VISIBLE=1, EDT_BOUNDS=2;
+	static final int EDT_VISIBLE=Host.EDT_VISIBLE, EDT_BOUNDS=Host.EDT_BOUNDS;
 
 	/** runOnEDTWhenShown for one kind of update of one part. Under lock screen at most one is queued per part and kind,
 	 *  and it applies the part's values when it runs ({@code latest}), so hiding and showing a part again in the same
 	 *  frame, or moving it several times, costs the EDT one update or none. Unlocked, {@code now} runs as before. */
 	static void runOnEDTWhenShown(OObject part, int kind, Runnable now, Runnable latest){
-		if(!SwingUtilities.isEventDispatchThread() && lockedScreen && pc!=null && pc.mainPane!=null &&
+		if(!SwingUtilities.isEventDispatchThread() && HZ.lockedScreen && pc!=null && pc.mainPane!=null &&
 				!(edtBatch!=null && edtBatchThread==Thread.currentThread())){
 			synchronized(deferredEDT){
 				if((part.queuedEdt & kind)!=0) return;
@@ -877,30 +859,12 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	
 	
     //プロパティ
-	//HyperTalkは専用スレッド、描画はEDTで行うため、両スレッド間で必ず最新値を
-	//共有する必要がある。
-	static volatile boolean lockedScreen=false;
-	//visual effect用に、画面遷移前後の状態をオフスクリーンへキャプチャしている間だけtrueに
-	//する。lockedScreen中はボタン/フィールドの描画を止めて画面を凍結させるが、この
-	//キャプチャ自体はlockedScreen==trueのまま行われるため、キャプチャ中はlockedScreenの
-	//チェックを無視して普通に描画させる必要がある(そうしないと、視覚効果の後に一部の
-	//部品が真っ白のまま描画されないままになってしまう)。
-	static volatile boolean capturingEffect=false;
-	static boolean showGroups=false;
-    static int visual=0;
-    static int toVisual=0; /* to black1 white2 grey3 inverse4 */
-    static int visSpd=3; /* very fast1 fast2 normal3 slow4 veryslow5 */
-    static int editMode = 0; //0:ブラウジング  1:アウトライン強調
     static String scriptFont = "";
     static int scriptFontSize = 12;
-    static int userLevel = 5;
     String textFont = "";
     int textSize = 12;
     int textStyle = 0;
     //int textAlign = 0;
-    int foundIndex = 0;
-    String foundText;
-    String foundObject;
     
     public static void main(final String[] args) {
     	if(!"false".equals(System.getProperty("hz.launcher"))) LauncherStore.enabled = true;
@@ -922,13 +886,13 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		else if(screenScale68k!=zoomChoice) setScreen68k(screenSize68k, zoomChoice);
 
     	new OWindow(pc, true);
-    	pc.rootPane.setDoubleBuffered(useDoubleBuffer);
+    	pc.rootPane.setDoubleBuffered(HZ.useDoubleBuffer);
     	pc.getRootPane().setOpaque(false);
     	pc.setBackground(Color.WHITE);
     	
     	pc.setLayout(new CardViewLayout(pc));
 	pc.mainPane = new MyPanel(pc);
-	pc.mainPane.setDoubleBuffered(useDoubleBuffer);
+	pc.mainPane.setDoubleBuffered(HZ.useDoubleBuffer);
 	//スクリプトが部品を変えるたびにカード全体を描き直さず、1フレームにまとめて描く(lock screen 中は描かない)
 	CardRepaintManager.install();
 	//pc.setContentPane(pc.mainPane/*, BorderLayout.CENTER*/);//こうするとツールバーがおかしくなる
@@ -939,7 +903,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		pc.setCursor(cr);
 
 		try {
-			pc.intl = new International(pc.lang);
+			HZ.setIntl(new International(pc.lang));
 		} catch (Exception e) {
 			
 		}
@@ -960,7 +924,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		installQuitHandler();
     	
     	OStack ostack = new OStack(pc);
-    	pc.stack = ostack;
+    	HZ.setStack(ostack);
 
 		pc.msg = new GMsg(pc, "");
 		new VariableWatcher();
@@ -1050,7 +1014,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		//home は start using が読み込んだ Home スタック自身(TTalk の start using が設定する)。以前はここで空の
 		//プレースホルダのスタックを指していたため、開いたスタックから Home のアイコン(ICON 1011 等)や
 		//スクリプトが見えなかった(start using はスクリプトスレッドで後から走ることもある)
-		if(home==null) home = pc.stack;
+		if(HZ.home==null) HZ.home = pc.stack;
 	}
 
 	/**
@@ -1083,8 +1047,8 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		if(pc.stack!=null && pc.stack.curCard!=null && Thread.currentThread()!=TTalk.talk){
 			//スタックが File メニューから「Close Stack」を消していたら(Blah Blob の cleanMenus)メニュー名なしの doMenu にして、
 			//メニューに無い項目として組み込み動作へ渡す(ランチャーの「スタックを閉じる」はHyperZebra自身のメニュー)
-			javax.swing.JMenu file = TTalk.findMenu("File");
-			boolean inFileMenu = file!=null && TTalk.findMenuItemIndex(file, "Close Stack")>=0;
+			javax.swing.JMenu file = SwingMenus.unwrap(TTalk.findMenu("File"));
+			boolean inFileMenu = file!=null && TTalk.findMenuItemIndex(SwingMenus.wrap(file), "Close Stack")>=0;
 			TTalk.CallMessage("doMenu", inFileMenu ? new String[]{"Close Stack", "File"} : new String[]{"Close Stack"}, pc.stack.curCard);
 			return;
 		}
@@ -1138,7 +1102,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		try{
 			if(!prepareStackClose(StackSaving.Purpose.CLOSE, forced)) return; //保存できず、ユーザーが閉じるのをやめた
 			OStack old = pc.stack;
-			pc.stack = new OStack(pc);
+			HZ.setStack(new OStack(pc));
 			TTalk.dropMessagesFor(old);
 			//HyperCard を終了したときと同じく、スタックが鳴らしていた音(play の各チャンネル、Movie XCMD のムービー、読み上げ)を止める。
 			//以前はランチャーに戻ってもBGMが鳴り続けた。68K externalのサウンドは old.clean() の Xcmd68k.stackClosing で止まる
@@ -1263,7 +1227,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 			return;
 		}
 
-		PCARD.lockedScreen = true;
+		HZ.lockedScreen = true;
 		
     	PaintTool.owner = PCARDFrame.pc;
     	//変換後のスタック(.hzb)もそのスタック自身のもの(開く前に許可したのは元のファイルとそのフォルダ)
@@ -1507,7 +1471,7 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 		if(!others.isEmpty()){
 			//スタックは "open stack … in a new window" として開く: 表示中のスタックは閉じずに自分のウインドウ(GStackWindow)に残り、
 			//複数のスタックを同時に開いておける(HyperCard 2.x の「新規ウインドウで開く」)。goToStack が保存を済ませる
-			if(pc.stack==null) pc.stack = new OStack(pc);
+			if(pc.stack==null) HZ.setStack(new OStack(pc));
 			for(int i=0; i<others.size(); i++){
 				pc.stack.openStackFile(others.get(i).toString(), false, true);
 			}
@@ -1555,6 +1519,13 @@ public class PCARD extends PCARDFrame /*implements MRJOpenDocumentHandler*/  {
 	}
     
 	PCARD() {
+		//the core's stack and catalog (HZ.stack(), HZ.intl()) are the card window's fields
+		HZ.mirror = new HZ.Mirror(){
+			public OStack stack(){ return pc!=null ? pc.stack : null; }
+			public void setStack(OStack s){ if(pc!=null) pc.stack = s; }
+			public International intl(){ return pc!=null ? pc.intl : null; }
+			public void setIntl(International i){ if(pc!=null) pc.intl = i; }
+		};
         GUI.gui.addMouseListener(this);
         this.addKeyListener(GUI.gui);
         setFocusTraversalPolicy(new CardFocusPolicy());

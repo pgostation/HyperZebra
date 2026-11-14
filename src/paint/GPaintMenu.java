@@ -191,7 +191,7 @@ class GMenuPaint implements ActionListener {
 		PaintLayer layer = owner.activePaintLayer();
 		BufferedImage back;
 		if(keptImage!=null && keptCard==card && keptBg==bg && keptLayer==layer) back = keptImage;
-		else if(layer==null) back = savedPicture(owner.stack, card, bg);
+		else if(layer==null) back = card!=null && card==arrivalCard ? (bg ? arrivalBgPict : arrivalCardPict) : savedPicture(owner.stack, card, bg);
 		else return; //an extra layer kept nowhere
 		BufferedImage surface = owner.getSurface();
 		setUndo();
@@ -204,6 +204,34 @@ class GMenuPaint implements ActionListener {
 		if(card!=null){ card.invalidateComposite(); if(card.bg!=null) card.bg.invalidateComposite(); }
 		PaintTool.toCdPict();
 		PaintTool.repaintOwner();
+	}
+
+	//HyperCard's Revert goes back to the picture on disk, and HyperCard writes a changed picture when it leaves the card, not
+	//when the browse tool is chosen (HyperCard J-2.3, HyperPiece 2's clock: brush tool, Revert, draw the hands, browse tool,
+	//and a minute later brush tool and Revert again - the old hands are gone). HyperZebra writes it on leaving paint mode, so
+	//the first write on a card keeps the pictures as they were on disk for Revert until the card is left (or Keep).
+	private static OCard arrivalCard;
+	private static BufferedImage arrivalCardPict, arrivalBgPict;
+
+	//PaintTool.saveCdPicturesLater: before the pictures of the current card are written
+	static void holdArrivalPictures(){
+		PCARDFrame owner = PCARDFrame.pc;
+		if(owner==null || owner.stack==null || owner.stack.file==null) return;
+		OCard card = owner.stack.curCard;
+		if(card==null || card==arrivalCard) return;
+		arrivalCard = card;
+		arrivalCardPict = savedPicture(owner.stack, card, false);
+		arrivalBgPict = savedPicture(owner.stack, card, true);
+	}
+
+	//the card was left (go, another stack): its pictures are on disk now, Revert and Keep start over
+	static public void cardLeft(){
+		arrivalCard = null;
+		arrivalCardPict = null;
+		arrivalBgPict = null;
+		keptImage = null;
+		keptCard = null;
+		keptLayer = null;
 	}
 
 	//the card's (or background's) picture as saved in the stack folder; null when it has none
@@ -270,13 +298,13 @@ class GMenuPaint implements ActionListener {
 				PaintTool.owner.tool.clear();
 			}
 			
-			PaintTool.editBackground = !PaintTool.editBackground;
-			GMenu.changeSelected("Edit","Background",PaintTool.editBackground);
+			HZ.editBackground = !HZ.editBackground;
+			GMenu.changeSelected("Edit","Background",HZ.editBackground);
 
 			PCARDFrame.pc.mainPane.repaint();
 
 			String titleName = PCARDFrame.pc.stack.getWindowTitle();
-			if(PaintTool.editBackground){
+			if(HZ.editBackground){
 				PCARDFrame.pc.setTitle("/// "+titleName+" ///");
 			}else{
 				PCARDFrame.pc.setTitle(titleName);

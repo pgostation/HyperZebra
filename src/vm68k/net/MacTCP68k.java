@@ -18,7 +18,7 @@ import java.util.Map;
  * Domain Name Resolver code resource ('dnrp'), so classic networking programs
  * can use the host's TCP/IP stack.
  */
-final class MacTCP68k {
+class MacTCP68k {
 	static final int IN_PROGRESS=1,NO_ERR=0,IP_BAD_ADDR=-23004,CONNECTION_CLOSING=-23005,INVALID_LENGTH=-23006,CONNECTION_DOESNT_EXIST=-23008,INSUFFICIENT_RESOURCES=-23009,INVALID_STREAM=-23010,STREAM_ALREADY_OPEN=-23011,CONNECTION_TERMINATED=-23012,INVALID_BUF=-23013,OPEN_FAILED=-23015,COMMAND_TIMEOUT=-23016,DUPLICATE_SOCKET=-23017,NAME_SYNTAX_ERR=-23041,CACHE_FAULT=-23042,NO_NAME_SERVER=-23044,AUTH_NAME_ERR=-23045,NO_ANS_ERR=-23046,DNR_ERR=-23047;
 	private static final int DRIVER_REF=-32;
 	private static final int CS_CODE=26,STREAM=28,CS=32;
@@ -148,7 +148,7 @@ final class MacTCP68k {
 		final Stream s=stream(pb);if(s==null){finish(pb,INVALID_STREAM,async);return true;}
 		if(s.socket!=null){finish(pb,STREAM_ALREADY_OPEN,async);return true;}
 		final int host=memory.readLong(pb+CS+4);final int port=memory.readWord(pb+CS+8);int timeout=memory.readByte(pb+CS)&0xff;
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_CONNECT,dotted(host),port)){finish(pb,OPEN_FAILED,async);return true;}
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_CONNECT,dotted(host),port)){finish(pb,OPEN_FAILED,async);return true;}
 		final boolean[] done={false};final int[] result={NO_ERR};
 		s.state=6;s.opening=async;
 		Thread t=new Thread(new Runnable(){@Override public void run(){
@@ -194,7 +194,7 @@ final class MacTCP68k {
 	private boolean tcpPassiveOpen(final int pb,boolean async) throws M68kException {
 		final Stream s=stream(pb);if(s==null){finish(pb,INVALID_STREAM,async);return true;}
 		final int port=memory.readWord(pb+CS+14);
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_LISTEN,"",port)){finish(pb,OPEN_FAILED,async);return true;}
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_LISTEN,"",port)){finish(pb,OPEN_FAILED,async);return true;}
 		final boolean[] done={false};final int[] result={NO_ERR};
 		// the listener is bound before the call returns, and the port it got (and this host's address) are in the parameter block at
 		// once, as MacTCP fills localPort when it accepts the passive open: an FTP client puts them into its PORT command while the
@@ -344,7 +344,7 @@ final class MacTCP68k {
 	private boolean udpCreate(int pb,boolean async) throws M68kException {
 		final Stream s=new Stream(nextStream+=0x10);s.udp=true;
 		s.rcvBuff=memory.readLong(pb+CS);s.rcvBuffLen=memory.readLong(pb+CS+4);s.notifyProc=memory.readLong(pb+CS+8);s.localPort=memory.readWord(pb+CS+12);s.userData=memory.readLong(pb+CS+14);
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_UDP,"",s.localPort)){finish(pb,OPEN_FAILED,async);return true;}
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_UDP,"",s.localPort)){finish(pb,OPEN_FAILED,async);return true;}
 		try{s.datagram=new DatagramSocket(s.localPort==0?null:new InetSocketAddress(s.localPort));s.localPort=s.datagram.getLocalPort();memory.writeWord(pb+CS+12,s.localPort);}
 		catch(IOException e){finish(pb,DUPLICATE_SOCKET,async);return true;}
 		streams.put(s.pointer,s);memory.writeLong(pb+STREAM,s.pointer);
@@ -371,7 +371,7 @@ final class MacTCP68k {
 	private boolean udpWrite(int pb,boolean async) throws M68kException {
 		Stream s=stream(pb);if(s==null||!s.udp){finish(pb,INVALID_STREAM,async);return true;}
 		int host=memory.readLong(pb+CS+2),port=memory.readWord(pb+CS+6),wds=memory.readLong(pb+CS+8);
-		if(!Sandbox.allowNetwork(tb.name,Sandbox.NET_UDP,dotted(host),port)){finish(pb,IP_BAD_ADDR,async);return true;}
+		if(!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_UDP,dotted(host),port)){finish(pb,IP_BAD_ADDR,async);return true;}
 		ByteArrayOutputStream data=new ByteArrayOutputStream();
 		while(wds!=0){int length=memory.readWord(wds);if(length==0)break;int ptr=memory.readLong(wds+2);data.write(memory.readBytes(ptr,length),0,length);wds+=6;}
 		try{byte[] bytes=data.toByteArray();s.datagram.send(new DatagramPacket(bytes,bytes.length,fromInt(host),port));finish(pb,NO_ERR,async);}
@@ -394,7 +394,7 @@ final class MacTCP68k {
 				// a lookup the sandbox refuses fails like one without an answer - with a resultProc after StrToAddr has returned
 				// cacheFault, as MacTCP always answers then, at the program's next event call: MacWeb shows its window and draws its toolbar while it waits; failing at
 				// once put the "Can't locate remote host" alert up before the toolbar's first update
-				if(immediate==null&&!Sandbox.allowNetwork(tb.name,Sandbox.NET_LOOKUP,name,0)){
+				if(immediate==null&&!Sandbox68k.allowNetwork(tb.name,Sandbox68k.NET_LOOKUP,name,0)){
 					writeHostInfo(info,NO_ANS_ERR,name,new int[0]);
 					if(resultProc==0){cpu.d[0]=NO_ANS_ERR;return;}
 					memory.writeLong(info,CACHE_FAULT);cpu.d[0]=CACHE_FAULT;
@@ -405,7 +405,7 @@ final class MacTCP68k {
 				// = it was a number") returned INADDR_NONE when the cname held the address text, and connected to 255.255.255.255
 				if(immediate!=null){writeHostInfo(info,NO_ERR,"",new int[]{immediate});cpu.d[0]=NO_ERR;return;}
 				final boolean[] done={false};final int[][] addresses={null};final String[] cname={name};
-				Thread t=new Thread(new Runnable(){@Override public void run(){try{InetAddress[] all=InetAddress.getAllByName(name);java.util.List<Integer> v4=new java.util.ArrayList<Integer>();for(InetAddress a:all)if(a.getAddress().length==4)v4.add(toInt(a));int[] arr=new int[v4.size()];for(int i=0;i<arr.length;i++)arr[i]=v4.get(i);addresses[0]=arr;String[] dottedAll=new String[arr.length];for(int i=0;i<arr.length;i++)dottedAll[i]=dotted(arr[i]);Sandbox.hostResolved(name,dottedAll);try{cname[0]=all.length>0?all[0].getCanonicalHostName():name;}catch(Exception e){}}catch(IOException e){addresses[0]=null;}finally{signal(done);}}},"DNR");
+				Thread t=new Thread(new Runnable(){@Override public void run(){try{InetAddress[] all=InetAddress.getAllByName(name);java.util.List<Integer> v4=new java.util.ArrayList<Integer>();for(InetAddress a:all)if(a.getAddress().length==4)v4.add(toInt(a));int[] arr=new int[v4.size()];for(int i=0;i<arr.length;i++)arr[i]=v4.get(i);addresses[0]=arr;String[] dottedAll=new String[arr.length];for(int i=0;i<arr.length;i++)dottedAll[i]=dotted(arr[i]);Sandbox68k.hostResolved(name,dottedAll);try{cname[0]=all.length>0?all[0].getCanonicalHostName():name;}catch(Exception e){}}catch(IOException e){addresses[0]=null;}finally{signal(done);}}},"DNR");
 				t.setDaemon(true);t.start();
 				if(resultProc!=0){
 					memory.writeLong(info,CACHE_FAULT);cpu.d[0]=CACHE_FAULT;

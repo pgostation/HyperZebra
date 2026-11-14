@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -37,8 +38,9 @@ final class TalkCollection {
 
 	private static synchronized TalkCollection cached(String value) { return CACHE.get(value); }
 
+	/** Caches a copy of the collection (a copy only when it is small enough to cache) */
 	private static synchronized void remember(String encoded, TalkCollection collection) {
-		if((collection.isArray() ? collection.items.size() : collection.entries.size()) <= CACHE_MAX_SIZE) CACHE.put(encoded, collection);
+		if((collection.isArray() ? collection.items.size() : collection.entries.size()) <= CACHE_MAX_SIZE) CACHE.put(encoded, collection.copy());
 	}
 
 	/** The collection for reading only: it is shared, so use {@link #decodeForUpdate} before changing it. */
@@ -46,12 +48,17 @@ final class TalkCollection {
 		TalkCollection hit = cached(value);
 		if(hit != null) return hit;
 		TalkCollection result = decodeText(value);
-		remember(value, result);
+		synchronized(TalkCollection.class) {
+			if((result.isArray() ? result.items.size() : result.entries.size()) <= CACHE_MAX_SIZE) CACHE.put(value, result);
+		}
 		return result;
 	}
 
 	/** A private copy that may be changed and then {@link #encode}d. */
 	static TalkCollection decodeForUpdate(String value) throws xTalkException { return decode(value).copy(); }
+
+	/** Elements an array or a dictionary may have (an image of 3000 x 3000 pixels has 3000 rows of 3000) */
+	static final int MAX_SIZE = 10_000_000;
 
 	private static TalkCollection decodeText(String value) throws xTalkException {
 		if(!isCollection(value)) throw new xTalkException("An array or a dictionary is required");
@@ -59,13 +66,15 @@ final class TalkCollection {
 			byte[] bytes = Base64.getDecoder().decode(value.substring(PREFIX.length()));
 			DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
 			int kind = in.readUnsignedByte();
-			if(kind != 'A' && kind != 'D') throw new IOException("invalid collection kind");
+			// 'A'/'D': elements in writeUTF form (up to 64 KB each); 'a'/'d': an int length and UTF-8, for longer ones
+			boolean longForm = kind == 'a' || kind == 'd';
+			if(kind != 'A' && kind != 'D' && !longForm) throw new IOException("invalid collection kind");
 			int size = in.readInt();
-			if(size < 0 || size > 100000) throw new IOException("invalid collection size");
-			TalkCollection result = kind == 'A' ? array() : dictionary();
+			if(size < 0 || size > MAX_SIZE) throw new IOException("invalid collection size");
+			TalkCollection result = kind == 'A' || kind == 'a' ? array() : dictionary();
 			for(int i=0; i<size; i++) {
-				if(kind == 'A') result.items.add(in.readUTF());
-				else result.entries.put(in.readUTF(), in.readUTF());
+				if(result.isArray()) result.items.add(longForm ? readLong(in) : in.readUTF());
+				else result.entries.put(longForm ? readLong(in) : in.readUTF(), longForm ? readLong(in) : in.readUTF());
 			}
 			if(in.available()!=0) throw new IOException("trailing collection data");
 			return result;
@@ -74,22 +83,52 @@ final class TalkCollection {
 		}
 	}
 
+	private static String readLong(DataInputStream in) throws IOException {
+		int length = in.readInt();
+		if(length < 0 || length > in.available()) throw new IOException("invalid element length");
+		byte[] b = new byte[length];
+		in.readFully(b);
+		return new String(b, StandardCharsets.UTF_8);
+	}
+
 	String encode() throws xTalkException {
+		String encoded = isArray() ? encodeArray(items) : encodeDictionary(entries);
+		remember(encoded, this);
+		return encoded;
+	}
+
+	/** The encoded form of an array of these elements (the list is not kept) */
+	static String encodeArray(java.util.List<String> values) { return encodeParts(true, values, null); }
+	static String encodeDictionary(Map<String,String> values) { return encodeParts(false, null, values); }
+
+	private static String encodeParts(boolean array, java.util.List<String> list, Map<String,String> map) {
 		try {
-			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-			DataOutputStream out = new DataOutputStream(bytes);
-			out.writeByte(isArray() ? 'A' : 'D');
-			out.writeInt(isArray() ? items.size() : entries.size());
-			if(isArray()) for(String value : items) out.writeUTF(value);
-			else for(Map.Entry<String,String> entry : entries.entrySet()) {
-				out.writeUTF(entry.getKey());
-				out.writeUTF(entry.getValue());
-			}
-			out.close();
-			String encoded = PREFIX + Base64.getEncoder().encodeToString(bytes.toByteArray());
-			remember(encoded, copy());
-			return encoded;
-		}catch(IOException e){ throw new xTalkException("Collection is too large"); }
+			return encodeParts(array, list, map, false);
+		}catch(java.io.UTFDataFormatException e){
+			try { return encodeParts(array, list, map, true); }
+			catch(IOException e2){ throw new IllegalStateException(e2); }
+		}catch(IOException e){ throw new IllegalStateException(e); }
+	}
+
+	private static String encodeParts(boolean array, java.util.List<String> list, Map<String,String> map, boolean longForm) throws IOException {
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream(array ? 16+list.size()*8 : 64);
+		DataOutputStream out = new DataOutputStream(bytes);
+		out.writeByte(array ? (longForm ? 'a' : 'A') : (longForm ? 'd' : 'D'));
+		out.writeInt(array ? list.size() : map.size());
+		if(array) for(String value : list) write(out, value, longForm);
+		else for(Map.Entry<String,String> entry : map.entrySet()) {
+			write(out, entry.getKey(), longForm);
+			write(out, entry.getValue(), longForm);
+		}
+		out.close();
+		return PREFIX + Base64.getEncoder().encodeToString(bytes.toByteArray());
+	}
+
+	private static void write(DataOutputStream out, String value, boolean longForm) throws IOException {
+		if(!longForm){ out.writeUTF(value); return; }
+		byte[] b = value.getBytes(StandardCharsets.UTF_8);
+		out.writeInt(b.length);
+		out.write(b);
 	}
 
 	String get(String key) throws xTalkException {
@@ -101,7 +140,7 @@ final class TalkCollection {
 	void put(String key, String value) throws xTalkException {
 		if(!isArray()) { entries.put(key, value); return; }
 		int index = arrayIndex(key);
-		if(index > 100000) throw new xTalkException("Array index is too large");
+		if(index > MAX_SIZE) throw new xTalkException("Array index is too large");
 		while(items.size() < index) items.add("");
 		items.set(index-1, value);
 	}

@@ -28,8 +28,6 @@ import java.text.*;
 
 import javax.imageio.ImageIO;
 import javax.swing.JFileChooser;
-import javax.swing.JMenu;
-import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileFilter;
@@ -40,6 +38,8 @@ class Result {
 	String theResult;
 	/** A function's value is a computed number in its raw form (full precision): the calling expression formats it as text. */
 	boolean numeric;
+	/** The statement was an expression ("1 + 2" typed into the message box): theResult is its value. */
+	boolean evaluated;
 }
 
 class ObjResult {
@@ -56,6 +56,7 @@ class Message {
 	boolean do_script;
 	Runnable action; //スクリプトスレッドで直接実行する組み込み動作(TTalk.runOnScriptThread)
 	OStack origin; //do_script queued by a handler: the stack it belongs to (StackGuard)
+	boolean msgBox; //a line typed into the message box: an expression's value is shown there (messageBoxValue)
 	String afterKey; //a key's keyDown: what HyperCard does with it when no handler keeps it, an arrow's direction or "back" (Esc)
 	boolean keep; //エラー・中断・exit to HyperCard でキューが捨てられても残る(クローズボックスで閉じるスタック)
 }
@@ -111,6 +112,7 @@ class MemoryData {
 	boolean namesInSet;
 	/** The handler's state for compiled code (TalkJit) */
 	TalkJit.Frame jitFrame;
+	java.util.IdentityHashMap<ArrayList<String>, TalkWasmStatements.Cache> wasmStatements;
 	String message;
 	String[] params; //とりあえず引数を持っておく
 	/** 関数呼び出しで実行中のハンドラ(the params が name(p1,p2) の形になる) */
@@ -138,6 +140,7 @@ final class HandlerEntry {
 	final String name;
 	/** Lower case; null: see TTalk.plainParameters */
 	final String[] parameters;
+	TalkWasm.Cached wasm;
 	HandlerEntry(ArrayList<String> script, int start, int end, String name, String[] parameters){
 		this.script = script;
 		this.start = start;
@@ -206,7 +209,7 @@ interface TalkObject {
 		this.str = str;
 	}
 	public void setNum(Double num){
-		this.str = Double.toString(num);
+		this.str = Platform.get().doubleToString(num);
 	}
 	public void setNum(int in){
 		this.str = Integer.toString(in);
@@ -221,11 +224,11 @@ final class VariableObj implements TalkObject {
 	
 	//----getter-----
 	public String getStr(){
-		if(num_flag) return Double.toString(num);
+		if(num_flag) return Platform.get().doubleToString(num);
 		else return str.toString();
 	}
 	public StringBuilder getStrBldr(){
-		if(num_flag) return new StringBuilder(Double.toString(num));
+		if(num_flag) return new StringBuilder(Platform.get().doubleToString(num));
 		else return str;
 	}
 	public double getNum(){
@@ -374,7 +377,7 @@ final class ChunkObj implements TalkObject {
 		this.str = bldr;
 	}
 	public void setNum(Double num){
-		setStr(Double.toString(num));
+		setStr(Platform.get().doubleToString(num));
 	}
 	public void setNum(int in){
 		setStr(Integer.toString(in));
@@ -420,6 +423,12 @@ class OpenFile{
 	 *  encoding (UxWriteST's file read back by "read from file" was mojibake). */
 	boolean utf8;
 	String newline = "\r";
+	/** open file … for binary …: bytes as they are, one character each (TalkBinary), no line-end changes */
+	boolean binary;
+	/** for read: the file was opened read-only */
+	boolean readOnly;
+	/** for update / for append: close does not cut the file after the last write */
+	boolean keepTail;
 	String decode(byte[] data){ return utf8 ? new String(data, java.nio.charset.StandardCharsets.UTF_8) : TTalk.fileEncoding().decode(data, 0, data.length); }
 	byte[] encode(String text){ return utf8 ? text.getBytes(java.nio.charset.StandardCharsets.UTF_8) : TTalk.fileEncoding().encodeReplacing(text); }
 	/** Sets {@link #utf8} and {@link #newline} from the file's bytes. */
@@ -427,7 +436,7 @@ class OpenFile{
 		long length = file.length();
 		if(length<=0 || length>TextFile68k.LIMIT) return;
 		try{
-			byte[] b = java.nio.file.Files.readAllBytes(file.toPath());
+			byte[] b = Platform.get().readAllBytes(file);
 			utf8 = b.length>=3 && (b[0]&0xff)==0xef && (b[1]&0xff)==0xbb && (b[2]&0xff)==0xbf || TextFile68k.utf8MultiByte(b);
 			if(utf8){ newline = "\n"; for(int i=0; i<b.length; i++){ if(b[i]=='\n') break; if(b[i]=='\r'){ newline = i+1<b.length && b[i+1]=='\n' ? "\r\n" : "\r"; break; } } }
 		}catch(java.io.IOException e){}
@@ -492,7 +501,7 @@ public class TTalk extends Thread {
 		//the shortest decimal that reads back as the same double (HyperCard keeps 80-bit numbers: 1/3*3 = 1 must hold,
 		//so the intermediate value may not be cut to 15 decimals: "0.333333333333333" * 3 = 0.999999999999999)
 		if(value==0) return rawNumFormat.format(value); //-0
-		String shortest = Double.toString(value);
+		String shortest = Platform.get().doubleToString(value);
 		if(shortest.indexOf('E')<0) return shortest; //no exponent: plain already, and something after the point as the value is not whole here
 		String plain = new java.math.BigDecimal(shortest).toPlainString();
 		if(plain.indexOf('.')>=0){
@@ -530,7 +539,7 @@ public class TTalk extends Thread {
 		for(OCardBase layer : new OCardBase[]{cd, cd.bg}){
 			if(layer==null) continue;
 			for(OObject p : layer.partsList) if(p!=part && p.isShown()) taken.add(new Rectangle(p.left-gap, p.top-gap, p.width+2*gap, p.height+2*gap));
-			if(layer.shapeList!=null) for(OShape p : layer.shapeList) if(p.isShown()) taken.add(p.frame().getBounds());
+			if(layer.shapeList!=null) for(OShape p : layer.shapeList) if(p.isShown()) taken.add(UiHost.get().shapeFrameBounds(p));
 		}
 		Point best = null;
 		long bestDistance = Long.MAX_VALUE;
@@ -575,7 +584,7 @@ public class TTalk extends Thread {
 	static String hyperCardMod(String str1, String str2) {
 		double x = parseNumber(str1), y = parseNumber(str2);
 		if(!isRealNumber(str1) && !isRealNumber(str2)) return formatRawNumber(x % y);
-		double value = Math.IEEEremainder(x, y);
+		double value = HzMath.IEEEremainder(x, y);
 		if(value<0) value += y;
 		else if(value==0) value = 0; //-5 mod -2.5 = 0, not -0
 		return formatRealNumber(value);
@@ -589,12 +598,12 @@ public class TTalk extends Thread {
 	static boolean nearlyEqual(double a, double b) {
 		if(a==b) return true;
 		if(Double.isInfinite(a) || Double.isInfinite(b) || Double.isNaN(a) || Double.isNaN(b)) return false;
-		return Math.abs(a-b) <= 4*Math.ulp(Math.max(Math.abs(a), Math.abs(b)));
+		return Math.abs(a-b) <= 4*HzMath.ulp(Math.max(Math.abs(a), Math.abs(b)));
 	}
 
 	//|value|<10^15 の整数(-0 を除く)。この範囲の整数は double で正確に表せ、書式の結果が10進の整数表記そのものになる
 	private static boolean isPlainWholeNumber(double value) {
-		return value==Math.rint(value) && Math.abs(value)<1e15 && !(value==0 && 1/value<0);
+		return value==HzMath.rint(value) && Math.abs(value)<1e15 && !(value==0 && 1/value<0);
 	}
 
 	//Double.parseDouble と同じ値を返す。式の中でよく出る短い整数("123"、"-45")は FloatingDecimal を通さずに読む
@@ -658,7 +667,7 @@ public class TTalk extends Thread {
 			return Integer.parseInt(str.trim());
 		}catch(NumberFormatException e){
 			double d = Double.parseDouble(str.trim());
-			if(d!=Math.rint(d) || Math.abs(d)>Integer.MAX_VALUE) throw new NumberFormatException(str);
+			if(d!=HzMath.rint(d) || Math.abs(d)>Integer.MAX_VALUE) throw new NumberFormatException(str);
 			return (int)d;
 		}
 	}
@@ -673,7 +682,7 @@ public class TTalk extends Thread {
 			double value = parseNumber(str);
 			//既定の numberFormat("0.######")では整数値はその10進表記のまま
 			if(numFormat==DEFAULT_NUMBER_FORMAT_INSTANCE && isPlainWholeNumber(value)) return Long.toString((long)value);
-			String formatted = numFormat.format(value);
+			String formatted = Platform.get().formatNumber(numFormat, value);
 			if(formatted.equals("∞")) return "INF";
 			if(formatted.equals("-∞")) return "-INF";
 			return negativeSignTakesZero(formatted, numberFormatPattern);
@@ -708,6 +717,8 @@ public class TTalk extends Thread {
     private static final long SCRIPT_STACK_BYTES = 256L<<20;
 
     TTalk(){ super(null, null, "scriptEngine", SCRIPT_STACK_BYTES); }
+    /** A script engine without the big stack (Platform.newScriptThread off the JVM: no threads there). */
+    TTalk(String name){ super(name); }
     /** One-word containers that are objects, not variables (put … into msg / me / target / the selection). */
     /** Words that start an object reference as the argument of number(…): number(this cd) = the number of this cd */
     private static final java.util.Set<String> NUMBER_OBJECT_WORDS = java.util.Set.of("this", "card", "cd", "background", "bkgnd", "bg",
@@ -751,36 +762,26 @@ public class TTalk extends Thread {
      *  at display rate (Pidle) instead of 10 times a second: HyperCard sends idle whenever nothing else is happening,
      *  and games that animate or walk one step per idle were capped at 10 steps a second. */
     static volatile long idleHandlerAt = 0;
+    /** The player's look at input and the screen while a handler runs (PlayerLoop.tick), every 256 statements; null on the desktop. */
+    static Runnable statementTick;
+    private static int statementCount;
     /** The script thread is handling an idle message (idle stays true meanwhile, so clicks are queued as mouseDown/mouseUp). */
     static volatile boolean idleMessageRunning = false;
     static String itemDelimiter=",";
     static ArrayList<Message> messageList = new ArrayList<Message>();
-    static TSound tsound = new TSound();
+    static TSound tsound = UiHost.get().newSound();
 	    /** the soundChannel(HyperCard 2.3以降)ごとの再生キュー。チャンネル1は tsound。
 	     *  play / play stop / the sound は現在のチャンネルにだけ効くので、効果音用のチャンネルを
 	     *  play stop しても別チャンネルのBGMは止まらない。 */
-    private static final java.util.HashMap<Integer,TSound> soundChannels = new java.util.HashMap<Integer,TSound>();
+    static final java.util.HashMap<Integer,TSound> soundChannels = new java.util.HashMap<Integer,TSound>();
     static int soundChannel(){
     	try{ return Integer.parseInt(TUtil.compatibilityProperty("soundChannel").trim()); }
     	catch(NumberFormatException e){ return 1; }
     }
     /** Every soundChannel stops (play stop on each): the stack closed back to the launcher, as HyperCard quitting would.
      *  The notes playing get a short grace and fade (SoundMixer68k.release); the queued ones are dropped, the sound is done. */
-    static void stopAllSounds(){
-    	tsound.PlayStop(true);
-    	java.util.ArrayList<TSound> others;
-    	synchronized(soundChannels){ others = new java.util.ArrayList<TSound>(soundChannels.values()); }
-    	for(TSound s: others) s.PlayStop(true);
-    }
-    static TSound sound(){
-    	int channel = soundChannel();
-    	if(channel<=1) return tsound;
-    	synchronized(soundChannels){
-    		TSound s = soundChannels.get(channel);
-    		if(s==null){ s = new TSound(); soundChannels.put(channel, s); }
-    		return s;
-    	}
-    }
+    static void stopAllSounds(){ UiHost.get().stopAllSounds(); }
+    static TSound sound(){ return UiHost.get().sound(); }
     static volatile boolean stop = false;
     static volatile int tracemode = 0;
     static volatile boolean stepflag;
@@ -807,7 +808,7 @@ public class TTalk extends Thread {
         if(host==null || host.usingStacks==null) return false;
         if(host.usingStacks.size()>=MAX_USING_STACKS) return false;
         //HyperCard のメッセージパス: カレントスタック → 使用中のスタック → Home。Home は開いたときに一覧へ入っているので、その前に入れる
-        int homeAt = PCARD.home!=null && using!=PCARD.home ? host.usingStacks.indexOf(PCARD.home) : -1;
+        int homeAt = HZ.home!=null && using!=HZ.home ? host.usingStacks.indexOf(HZ.home) : -1;
         if(homeAt>=0) host.usingStacks.add(homeAt, using);
         else host.usingStacks.add(using);
         return true;
@@ -837,6 +838,8 @@ public class TTalk extends Thread {
     static int dragspeed = 0;
     static int wait = 0; //2.xのボタン移動でも既定では余分な待機を入れない。set waitで明示指定可能
     static ArrayList<OpenFile> openFileList = new ArrayList<OpenFile>();
+    private static final java.util.Set<String> READ_UNITS = java.util.Set.of("bytes", "byte", "chars", "char", "characters", "character");
+    private static final java.util.Set<String> OPEN_FILE_MODES = java.util.Set.of("read", "write", "update", "append");
     
     
 	enum wordType { 
@@ -880,7 +883,7 @@ public class TTalk extends Thread {
 		"shadowcolor", "filter",
 		"brushpattern", "penpattern", "fillpattern", "brushcolor", "pencolor", "brushbackcolor", "penbackcolor", "imagedata",
 		"brushsize", "brushhardness", "brushopacity", "brushspacing", "brushstabilization", "brushstabilizer", "brushpressure", "penpressure",
-		"zoom", "zoomorigin",
+		"zoom", "zoomorigin", "screenfilter", "screenoverlay",
 		"tablestyle", "outlinestyle", "outlinelevel", "selectedpath", "columnwidths", "columnnames", "sortable", "gridlines",
 		"selectedcolumn", "selectedlines", "titelwidth",
 		"text", "systemlang", "blendingmode", "blendinglevel", "color", "backcolor", "hilitecolor");
@@ -928,7 +931,7 @@ public class TTalk extends Thread {
 			//HyperCard: 値が整数なら "12.0" も integer
 			if(isIntegerString(value)) return true;
 			if(!isNumberString(value)) return false;
-			try{ double d = Double.parseDouble(value.trim()); return d==Math.rint(d) && !Double.isInfinite(d); }catch(NumberFormatException e){ return false; }
+			try{ double d = Double.parseDouble(value.trim()); return d==HzMath.rint(d) && !Double.isInfinite(d); }catch(NumberFormatException e){ return false; }
 		}
 		if(t.equals("empty")) return null; //HyperCard J-2.3は "is a empty" を受け付けない
 		if(t.equals("point") || t.equals("rect") || t.equals("rectangle")){
@@ -1287,6 +1290,8 @@ public class TTalk extends Thread {
 		propertySet.add("brushpressure");
 		propertySet.add("penpressure");
 		propertySet.add("zoom");
+		propertySet.add("screenfilter");//HyperZebra: the card window seen through image filters (TalkImage)
+		propertySet.add("screenoverlay");
 		propertySet.add("zoomorigin");
 		propertySet.add("printmargins");
 		propertySet.add("printtextalign");
@@ -1373,7 +1378,7 @@ public class TTalk extends Thread {
 		
 	    globalData.treeset = new TreeSet<String>();
 	    globalData.nameList = new ArrayList<String>();
-	    globalData.valueList = new ArrayList<String>();
+	    globalData.valueList = new ValueList();
 	}
 	
 	//受け取ったメッセージを実行するスレッド
@@ -1393,56 +1398,11 @@ public class TTalk extends Thread {
 				}
 			}
 			if(msg != null){
-				long messageStartTime = System.currentTimeMillis();
-				try {
-					if(msg.action!=null){
-						boolean changeIdle = idle;
-						idle = false;
-						try{ msg.action.run(); }
-						finally{ if(changeIdle) returnToIdle(); }
-						continue;
-					}
-					if(msg.do_script){
-						runQueuedScript(msg, messageStartTime);
-						continue;
-					}
-					//idleメッセージはキューに積んだ時点のカードではなく、
-					//実際に処理する時点の「現在のカード」に対して送る。
-					//そうしないと、キューに積んだ後にカード移動が起きた場合、
-					//移動前の古いカードにidleが届いてしまう
-					OObject msgTarget = msg.object;
-					if(msg.idle && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null){
-						msgTarget = idleMessageTarget(msg.object, PCARD.pc.stack.curCard);
-						if(msgTarget==null) continue;
-					}
-					//the start-up/open messages queued for a stack's first card go to the card that is current by then (Teka PIM's
-					//startUp goes to TCHome; HyperCard sends the open messages that follow to TCHome's card)
-					else if(msg.object instanceof OCard && isOpenSequenceMessage(msg.message) && PCARD.pc.stack!=null &&
-							PCARD.pc.stack.curCard!=null && PCARD.pc.stack.curCard!=msg.object){
-						msgTarget = PCARD.pc.stack.curCard;
-					}
-					if("startUp".equalsIgnoreCase(msg.message)){ if(startUpSent) continue; startUpSent = true; }
-					if(msg.idle) idleMessageRunning = true;
-					topMessage = msg.message;
-					afterKeyDown = msg.afterKey;
-					try{
-						boolean quiet = isPictureMessage(msg.message);
-						if(quiet) quietErrors++;
-						try{
-							if(msg.params!=null) ReceiveMessage(msg.message, msg.params, msgTarget, null, msg.idle);
-							else ReceiveMessage(msg.message, msg.param, msgTarget, null, msg.idle);
-						}finally{ if(quiet) quietErrors--; }
-					}finally{ afterKeyDown = null; if(msg.idle) idleMessageRunning = false; }
-					//an idle handler that ends goes back to HyperCard's event loop, which unlocks the screen, whether another idle is queued
-					//or not (HyperPiece++'s clock locks the screen in every idle: with the next one queued in time, its hands never showed)
-					if(msg.idle && PCARD.lockedScreen && PCARD.pc.tool==null && AuthTool.tool==null) returnToIdle();
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
+				dispatch(msg);
 			}
 			else{
 				/*if(idle==false)*/
-				if(PCARD.pc.tool==null && AuthTool.tool==null){
+				if(!Host.get().paintToolActive() && !Host.get().authToolActive()){
 					//暇なときの後始末(カーソル・mouseWithin など)の例外でスクリプトスレッドが終わると、以後どのスクリプトも
 					//動かなくなる。部品の一覧が別スレッド(EDT など)で同時に変わったときの例外などはここで受け止める
 					try{ returnToIdle(); }
@@ -1450,8 +1410,7 @@ public class TTalk extends Thread {
 				}
 				//68K externalの外部ウインドウ(XWindoid)はHyperCardのイベントループが暇なときにイベントを受け取る:
 				//ここがそれ。開いている間はidleイベントを間隔短く届ける
-				if(Xcmd68k.hasSessions()){ Xcmd68k.pump(); this.TalkSleep(15); }
-				else if(TXcmd.terazzaAry!=null) this.TalkSleep(50);
+				if(UiHost.get().xcmd68kHasSessions()){ Xcmd68k.pump(); this.TalkSleep(15); }
 				else waitForMessage(50);
 			}
 		}
@@ -1459,10 +1418,85 @@ public class TTalk extends Thread {
 		System.err.println("[script] the script thread left behind by a force quit has ended");
 	}
 
+	/** One queued message, as the script thread runs it (TTalk.run; the headless core's TalkPump calls this too). */
+	void dispatch(Message msg){
+		long messageStartTime = System.currentTimeMillis();
+		try {
+			if(msg.action!=null){
+				boolean changeIdle = idle;
+				idle = false;
+				try{ msg.action.run(); }
+				finally{ if(changeIdle) returnToIdle(); }
+				return;
+			}
+			if(msg.do_script){
+				runQueuedScript(msg, messageStartTime);
+				return;
+			}
+			//idleメッセージはキューに積んだ時点のカードではなく、
+			//実際に処理する時点の「現在のカード」に対して送る。
+			//そうしないと、キューに積んだ後にカード移動が起きた場合、
+			//移動前の古いカードにidleが届いてしまう
+			OObject msgTarget = msg.object;
+			if(msg.idle && HZ.stack()!=null && HZ.stack().curCard!=null){
+				msgTarget = idleMessageTarget(msg.object, HZ.stack().curCard);
+				if(msgTarget==null) return;
+			}
+			//the start-up/open messages queued for a stack's first card go to the card that is current by then (Teka PIM's
+			//startUp goes to TCHome; HyperCard sends the open messages that follow to TCHome's card)
+			else if(msg.object instanceof OCard && isOpenSequenceMessage(msg.message) && HZ.stack()!=null &&
+					HZ.stack().curCard!=null && HZ.stack().curCard!=msg.object){
+				msgTarget = HZ.stack().curCard;
+			}
+			//a key typed while a handler ran goes where HyperCard sends it when it takes the key from its event queue: the card
+			//current by then (or the open field). Earth 〜魔法の水晶〜: an arrow key typed ahead while a step met a monster reached
+			//the map card's bkgnd after the go to the battle card, and its "send mouseStillDown to bg btn Right" failed there
+			else if(isQueuedKeyMessage(msg.message) && HZ.stack()!=null && HZ.stack().curCard!=null &&
+					keyTargetLeft(msg.object, HZ.stack().curCard)){
+				msgTarget = HZ.stack().curCard;
+			}
+			if("startUp".equalsIgnoreCase(msg.message)){ if(startUpSent) return; startUpSent = true; }
+			if(msg.idle) idleMessageRunning = true;
+			topMessage = msg.message;
+			afterKeyDown = msg.afterKey;
+			afterKeyTarget = msgTarget;
+			try{
+				boolean quiet = isPictureMessage(msg.message);
+				if(quiet) quietErrors++;
+				try{
+					if(msg.params!=null) ReceiveMessage(msg.message, msg.params, msgTarget, null, msg.idle);
+					else ReceiveMessage(msg.message, msg.param, msgTarget, null, msg.idle);
+				}finally{ if(quiet) quietErrors--; }
+			}finally{ afterKeyDown = null; afterKeyTarget = null; if(msg.idle) idleMessageRunning = false; }
+			//an idle handler that ends goes back to HyperCard's event loop, which unlocks the screen, whether another idle is queued
+			//or not (HyperPiece++'s clock locks the screen in every idle: with the next one queued in time, its hands never showed)
+			if(msg.idle && HZ.lockedScreen && !Host.get().paintToolActive() && !Host.get().authToolActive()) returnToIdle();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	/** The next queued message, removed from the queue; null when there is none. */
+	static Message takeMessage(){
+		synchronized (messageList) { return messageList.isEmpty() ? null : messageList.remove(0); }
+	}
+
+	/** The script engine without its thread (the headless core, TalkPump): what run() sets up before its loop. */
+	static TTalk startWithoutThread(){
+		TTalk t = Platform.get().newScriptThread();
+		talk = t;
+		t.init();
+		return t;
+	}
+
 	/** Script threads left behind by a stack's force quit (stuck in a host call): they run no more statements once they get
 	 *  back, and the messages queued since go to the thread that replaced them. */
-	private static final java.util.Set<Thread> abandoned = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private static final java.util.Set<Thread> abandoned = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<Thread,Boolean>());
 	/** This thread is a script thread left behind by a force quit: its handlers end as with an abort. */
+	/** The thread the headless core runs its messages on (TalkPump.drain), which is the script thread there; null on the desktop. */
+	static volatile Thread pumpThread;
+	/** This is the script thread (talk), or the headless core's pump. */
+	static boolean onScriptThread(){ Thread c = Thread.currentThread(); return c==talk || (pumpThread!=null && c==pumpThread); }
 	static boolean abandonedThread(){ return !abandoned.isEmpty() && abandoned.contains(Thread.currentThread()); }
 
 	/** A stack's force quit: the script thread's sleep or wait is broken off (it may be held up outside the scripts). */
@@ -1485,7 +1519,7 @@ public class TTalk extends Thread {
 			abandoned.add(old);
 			old.interrupt();
 		}
-		TTalk t = new TTalk();
+		TTalk t = Platform.get().newScriptThread();
 		talk = t;
 		t.start();
 	}
@@ -1523,6 +1557,20 @@ public class TTalk extends Thread {
 	 */
 	static volatile int quietErrors = 0;
 
+	/** The key messages the windows queue for a key press (callKeyDown and the key messages sent for it). */
+	static boolean isQueuedKeyMessage(String m){
+		return m!=null && (m.equalsIgnoreCase("keyDown") || m.equalsIgnoreCase("arrowKey") || m.equalsIgnoreCase("returnKey") ||
+				m.equalsIgnoreCase("enterKey") || m.equalsIgnoreCase("tabKey") || m.equalsIgnoreCase("controlKey") ||
+				m.equalsIgnoreCase("functionKey") || m.equalsIgnoreCase("commandKeyDown"));
+	}
+
+	/** A key's target that is no longer on the card shown: another card, or a field of another card or background. */
+	static boolean keyTargetLeft(OObject object, OCard cur){
+		if(object instanceof OCard) return object!=cur;
+		if(object instanceof OField) return object.parent!=cur && object.parent!=cur.bg;
+		return false;
+	}
+
 	private static boolean isOpenSequenceMessage(String m){
 		return m!=null && (m.equalsIgnoreCase("startUp") || m.equalsIgnoreCase("openStack") || m.equalsIgnoreCase("openBackground") || m.equalsIgnoreCase("openCard"));
 	}
@@ -1536,23 +1584,27 @@ public class TTalk extends Thread {
 		if(idle){
 			idle = false;
 			changeIdle = true;
-			GUI.forgetClicks();
+			UiHost.get().gUIForgetClicks();
 		}
-		StackGuard.queuedBy = msg.origin;
+		HZ.queuedBy = msg.origin;
 		try{
-			doScriptforMenu(msg.message);
+			if(msg.msgBox){
+				String value = messageBoxValue(msg.message, messageStartTime);
+				if(value!=null) UiHost.get().setMsgText(value);
+			}
+			else doScriptforMenu(msg.message);
 		}catch(xTalkException e){
 			//メッセージボックスから直接実行したコマンドのエラー。
 			//ハンドラ経由のエラーは既にdoScriptでダイアログが出ている
 			if(!(e instanceof ExitToHyperCard) && !lockErrorDialogs && !stop && lastErrorTime < messageStartTime){
 				e.printStackTrace();
 				if(errorDialogForTest==null){
-					java.awt.Toolkit.getDefaultToolkit().beep();
+					UiHost.get().beep();
 					showScriptErrorDialog(e.getMessage(), msg.message, -1, null, false, false);
 				}
 			}
 		}finally{
-			StackGuard.queuedBy = null;
+			HZ.queuedBy = null;
 			if(changeIdle) returnToIdle();
 		}
 	}
@@ -1564,28 +1616,36 @@ public class TTalk extends Thread {
 	private static void waitForMessage(int ms){
 		synchronized (messageList) {
 			if(!messageList.isEmpty()) return;
-			try{ messageList.wait(ms); }catch(InterruptedException e){ Thread.currentThread().interrupt(); }
+			try{ Platform.get().waitOn(messageList, ms); }catch(InterruptedException e){ Thread.currentThread().interrupt(); }
 		}
 	}
 
 	/** Sleeps until a nanosecond deadline: a 1/60 s frame wait must not gain the 1-2 ms that sleep(ms) overshoots by each time. */
+	/** wait N ticks (or seconds) as HyperCard: until the ticks have gone N on from now, so it ends at a tick boundary (N-1 to N
+	 *  ticks; HyperCard waits on TickCount). 家計簿's + button (on mouseStillDown … wait 5) stepped 31 days in a 2.5 s press on
+	 *  HyperCard J-2.3, 29 here when every wait 5 took the whole 83.3 ms. Fractions of a tick stay where they fall. */
+	private void TalkSleepTicks(long nanos){
+		if(nanos<=0) return;
+		long now = Platform.get().nanoTime();
+		long tickStart = Math.floorDiv(now, TUtil.TICK_NANOS)*TUtil.TICK_NANOS;
+		long span = Math.round(nanos * 60.0 / 1_000_000_000.0 * TUtil.TICK_NANOS); //whole ticks on the ticks' own boundaries
+		TalkSleepNanos(tickStart + span - now);
+	}
+
 	private void TalkSleepNanos(long nanos){
 		//cmd+.による中断をすぐに反映できるよう、一度に全部sleepするのではなく
 		//30msずつ小刻みにsleepしてTTalk.stopを確認する。
-		long deadline = System.nanoTime() + nanos;
+		Platform platform = Platform.get();
+		long deadline = platform.nanoTime() + nanos;
 		while(true){
-			if(TXcmd.terazzaAry!=null){
-				//sleepしてる間にアニメーション実施
-				TXcmd.TerazzaAnime();
-			}
 			//waitの間もHyperCardは外部ウインドウ(XWindoid)にイベントを配る(nullイベントは割り込みコードのあるウインドウだけ)
-			if(Xcmd68k.hasSessions()) Xcmd68k.pumpWhileWaiting();
+			if(UiHost.get().xcmd68kHasSessions()) UiHost.get().xcmd68kPumpWhileWaiting();
 
-			long left = deadline - System.nanoTime();
+			long left = deadline - platform.nanoTime();
 			if(left <= 0){
 				break;
 			}
-			java.util.concurrent.locks.LockSupport.parkNanos(Math.min(left, 30_000_000L));
+			platform.parkNanos(Math.min(left, 30_000_000L));
 			if (Thread.currentThread().isInterrupted()) {
 				break;
 			}
@@ -1598,30 +1658,158 @@ public class TTalk extends Thread {
 	//メニューを実行するときに内部スクリプトを実行する
 	public static String doScriptforMenu(String script) throws xTalkException
 	{
-		if(Thread.currentThread()!=talk){
+		if(!onScriptThread()){
 			CallMessage(script, "", null, false, true);
 			return "";
 		}
+		Result result = doScriptforMenuResult(script);
+		return result == null ? "" : result.theResult;
+	}
+
+	/**
+	 * A line typed into the message box (Return): run as a message to the current card, as any other; when it is an
+	 * expression instead, its value goes into the message box (HyperCard: what no handler takes and is no command is
+	 * evaluated, "Can't understand" only when that fails too). The line runs on the script thread; from another thread it
+	 * is queued and the message box shows the value when it has run (null returned then).
+	 * 「1+2」は値が捨てられて「1+2」のまま、「the version」は「theがわかりません」だった (Earth 〜魔法の水晶〜 の確認で).
+	 */
+	public static String messageBoxLine(String line, OObject card) throws xTalkException {
+		if(!onScriptThread()){ queueMessageBoxLine(line, card); return null; }
+		return messageBoxValue(line, System.currentTimeMillis());
+	}
+
+	/** The typed line queued for the script thread (the player's message box: the line runs at its turn) */
+	public static void queueMessageBoxLine(String line, OObject card) {
+		idleMessagesSuppressed = false;
+		Message msg = new Message();
+		msg.message = line;
+		msg.object = card;
+		msg.param = "";
+		msg.do_script = true;
+		msg.msgBox = true;
+		synchronized (messageList) {
+			messageList.add(msg);
+			messageList.notifyAll();
+		}
+	}
+
+	/** The value to show in the message box for a typed line that ran (null: it was a command, the line stays). */
+	static String messageBoxValue(String line, long startTime) throws xTalkException {
+		String value;
+		try{
+			Result r = doScriptforMenuResult(line);
+			value = r!=null && r.evaluated ? r.theResult : null;
+			//a built-in function's call ("sqrt(16)", "random(6) + 1"): the message nothing took ran the function, its value
+			//was dropped - the line is an expression
+			if(value==null && r!=null && r.ret!=-1 && builtInFunctionCall(line)) value = messageBoxEvaluate(line.trim());
+		}catch(xTalkException e){
+			value = messageBoxExpression(line, e, startTime);
+			if(value==null) throw e;
+		}
+		if(value==null) return null;
+		try{ return TalkCollection.display(value); }
+		catch(xTalkException badCollection){ return value; }
+	}
+
+	/** The line, sent as a message that nothing took, as an expression: its value, or null when it is none (the error stays) */
+	private static String messageBoxExpression(String line, xTalkException e, long startTime) {
+		if(e instanceof ExitToHyperCard || stop || lastErrorTime >= startTime) return null; //a handler's error had its dialog
+		String text = line.trim();
+		if(text.isEmpty() || text.indexOf('\n')>=0 || text.indexOf('\r')>=0) return null;
+		int end = 0;
+		while(end<text.length() && (Character.isLetterOrDigit(text.charAt(end)) || text.charAt(end)=='_')) end++;
+		String first = end>0 ? text.substring(0, end) : null;
+		boolean literal = text.charAt(0)=='"' || Character.isDigit(text.charAt(0)) || text.charAt(0)=='(' || text.charAt(0)=='-';
+		// a chunk first (char 1 of "abc", line 1 of bg fld "敵の値", last word of x): the message's error names a later word
+		// ("Can't understand of"), and HyperCard shows the value (Favorite Story, typed while it fought)
+		boolean chunk = first!=null && end<text.length() && MESSAGE_BOX_CHUNK_WORDS.contains(first.toLowerCase(Locale.ROOT));
+		// a property or function with the ("the selectedLine & x"): the message "the" failed on its parameters, "Missing value
+		// to the left of &" (HyperCard shows the value; the Keyboard stack check, Nov 13)
+		boolean property = first!=null && end<text.length() && first.equalsIgnoreCase("the");
+		// only "Can't understand" the line's own first word (or a literal: the message was its text)
+		if(!literal && !chunk && !property && (first==null || !cantUnderstandMessage(e.getMessage(), first))) return null;
+		// one bare word: a variable of the message box's (globals) shows its value; any other word stays an error
+		if(!literal && end==text.length() && !isGlobalName(first)) return null;
+		return messageBoxEvaluate(text);
+	}
+
+	/** The words a chunk expression starts with (its chunk type, or an ordinal before it) */
+	private static final java.util.Set<String> MESSAGE_BOX_CHUNK_WORDS = java.util.Set.of("char", "chars", "character", "characters",
+		"word", "words", "item", "items", "line", "lines", "byte", "bytes", "first", "second", "third", "fourth", "fifth", "sixth",
+		"seventh", "eighth", "ninth", "tenth", "last", "mid", "middle", "any",
+		// there is a stack "Home" (HyperCard shows true/false; the error named "a")
+		"there");
+
+	/** A line that starts with a call of a built-in function no handler on the card's path takes: name(…) */
+	private static boolean builtInFunctionCall(String line) {
+		String text = line.trim();
+		int end = 0;
+		while(end<text.length() && Character.isLetterOrDigit(text.charAt(end))) end++;
+		if(end==0) return false;
+		String name = text.substring(0, end).toLowerCase(Locale.ROOT);
+		String rest = text.substring(end).trim();
+		if(!rest.startsWith("(") || funcSet==null || !funcSet.contains(name)) return false;
+		OObject card = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
+		return commandHandlerKind(name, card)==0 && commandHandlerKind(text.substring(0, end), card)==0;
+	}
+
+	/** The typed text as an expression (the message box's variables are globals): its value, null when it is none */
+	private static String messageBoxEvaluate(String text) {
+		OObject card = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
+		MemoryData memData = new MemoryData();
+		memData.treeset = new TreeSet<String>();
+		memData.nameList = new ArrayList<String>();
+		memData.valueList = new ValueList();
+		memData.allGlobal = true;
+		try{ return evaluateValueText(text, memData, card, card); }
+		catch(xTalkException notExpression){ return null; }
+		catch(RuntimeException notExpression){ return null; }
+	}
+
+	private static boolean cantUnderstandMessage(String error, String word) {
+		if(error==null) return false;
+		OObject card = HZ.stack()!=null ? HZ.stack().curCard : null;
+		for(String w : new String[]{word, word.toLowerCase(Locale.ROOT)}){
+			String m = UiHost.get().osaScriptCantUnderstand(w, card);
+			if(m!=null && m.equalsIgnoreCase(error)) return true;
+			if(International.t("Cannot interpret {0}", w).equalsIgnoreCase(error)) return true;
+		}
+		return false;
+	}
+
+	private static boolean isGlobalName(String name) {
+		MemoryData g = globalData;
+		if(g==null || g.nameList==null) return false;
+		for(String n : g.nameList) if(n!=null && n.equalsIgnoreCase(name)) return true;
+		return false;
+	}
+
+	private static final java.util.regex.Pattern IF_LINE = java.util.regex.Pattern.compile("\\s*if[\\s(]", java.util.regex.Pattern.CASE_INSENSITIVE);
+	static Result doScriptforMenuResult(String script) throws xTalkException
+	{
 		stop = false;
 		Result result=null;
 		MemoryData memData = new MemoryData();
 		memData.treeset = new TreeSet<String>();
 		memData.nameList = new ArrayList<String>();
-		memData.valueList = new ArrayList<String>();
+		memData.valueList = new ValueList();
 		memData.allGlobal = true; //メッセージボックスの変数(itも)はグローバル
 		//複数行(パレットボタンのメッセージはif/repeatを含む最大255文字のスクリプト)はdo文と同じく順に実行する
 		//メッセージボックスやメニューのメッセージは現在のカードへ送られる: the target はそのカード(HyperCard)。
 		//以前はtargetが無く、Myst Previewのon goの「get the short name of the target」がメニュー(Main Menu/Quit)から
 		//送ったgoでエラーになった
-		OObject card = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
-		if(script.indexOf('\n')>=0 || script.indexOf('\r')>=0){
+		OObject card = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
+		//a one-line if (the message box, a palette button's message: Sedit3.1's Compact Stack "if (the freeSize of this stack
+		//> 2048) and … then doMenu "Compact Stack"") is a control structure as well: one statement could not run it ("Cannot
+		//interpret then"); HyperCard runs it there as do does
+		if(script.indexOf('\n')>=0 || script.indexOf('\r')>=0 || IF_LINE.matcher(script).lookingAt()){
 			result = talk.doScript(null, card, "", script, memData, null, 1);
 		}
-		else result = talk.doScriptLine(script, /*PCARD.pc.stack.curCard*/null, card, memData, 0);
+		else result = talk.doScriptLine(script, /*HZ.stack().curCard*/null, card, memData, 0);
 		
-		if(result == null) return "";
+		if(result == null) return null;
 		if(result.ret==-1) cancelPendingMessages();
-		return result.theResult;
+		return result;
 	}
 	
 	//メッセージをスクリプトスレッドに投げる
@@ -1629,9 +1817,15 @@ public class TTalk extends Thread {
 	private static volatile String topMessage;
 	/** What HyperCard does with the key whose keyDown is on its way through the message path */
 	private static volatile String afterKeyDown;
+	/** Where that keyDown started (the open field, or the card) */
+	private static volatile OObject afterKeyTarget;
 
-	/** An arrow key or Esc pressed: keyDown first, arrowKey or go back only when the keyDown comes out of the path, unhandled or
-	 *  passed (HC J-2.3: a handler that keeps it stops them, and a script's own keyDown numToChar(28) does neither). */
+	/** An arrow key, Esc, Return or Enter pressed on the card: keyDown first, arrowKey, go back, returnKey or enterKey only when
+	 *  the keyDown comes out of the path, unhandled or passed (HC J-2.3: a handler that keeps it stops them, and a script's own
+	 *  keyDown numToChar(28) does neither; Hyper-Wordle's card keyDown takes charToNum 13/3 for its guesses). The same for Tab
+	 *  (tabKey) on the card, and in the open field for Return, Enter, Tab and Forward Delete (returnInField, enterInField, tabKey
+	 *  from the field, the character after the insertion point deleted): HC J-2.3 sends keyDown 13/3/9/127 there too, and the
+	 *  Keyboard stack's card keyDown (never passed) left the field's text and the focus as they were. */
 	static void callKeyDown(String key, String after, OObject target) {
 		idleMessagesSuppressed = false;
 		Message msg = new Message();
@@ -1648,17 +1842,27 @@ public class TTalk extends Thread {
 	/** The keyDown reached HyperCard itself. */
 	static void keyDownLeftThePath() {
 		String after = afterKeyDown;
+		OObject from = afterKeyTarget;
 		afterKeyDown = null;
-		if(after==null || PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return;
-		if(after.equals("back")) CallMessage("go back", "", PCARD.pc.stack.curCard, false, true);
-		else CallMessage("arrowKey", after, PCARD.pc.stack.curCard, false, false);
+		afterKeyTarget = null;
+		if(after==null || HZ.stack()==null || HZ.stack().curCard==null) return;
+		if(after.equals("returnInField") || after.equals("enterInField") || after.equals("tabKey")){
+			//the key command from where the keyDown started: through the path again, HyperCard's own action at its end
+			fieldKeyCommand(after, from instanceof OField ? from : HZ.stack().curCard);
+		}
+		else if(after.equals("forwardDelete")){
+			if(from instanceof OField) runOnScriptThread(() -> deleteAfterCaret((OField)from));
+		}
+		else if(after.equals("back")) CallMessage("go back", "", HZ.stack().curCard, false, true);
+		else if(after.equals("returnKey") || after.equals("enterKey")) CallMessage(after, "", HZ.stack().curCard, false, false);
+		else CallMessage("arrowKey", after, HZ.stack().curCard, false, false);
 	}
 
 	public static void CallMessage(String message, OObject object)
 	{
 		//System.out.println("CallMessage "+message+" "+object.getShortName());
 		if("mouseDown".equals(message)) clearFoundState(); //a user's click: the found box goes (HC J-2.3), the next find starts at the top
-		if("mouseUp".equals(message) && GUI.mouseUpCancelled()) return;
+		if("mouseUp".equals(message) && UiHost.get().gUIMouseUpCancelled()) return;
 		CallMessage(message, "", object, false, false);
 	}
 	
@@ -1682,7 +1886,7 @@ public class TTalk extends Thread {
 		msg.param = param;
 		msg.idle = idle;
 		msg.do_script = do_script;
-		if(do_script && Thread.currentThread() instanceof TTalk) msg.origin = StackGuard.runningStack(); //a handler queued it: not the user's typing
+		if(do_script && Thread.currentThread() instanceof TTalk) msg.origin = UiHost.get().stackGuardRunningStack(); //a handler queued it: not the user's typing
 
 		synchronized (messageList) {
 			if("mouseWithin".equals(message) && firstMessage("mouseWithin")!=null) return;
@@ -1699,7 +1903,7 @@ public class TTalk extends Thread {
 	 * waited for (as {@link GUI#takeHeldPress}).
 	 */
 	static boolean takeQueuedClick(){
-		if(!idleMessageRunning || !idle || Thread.currentThread()!=talk) return false;
+		if(!idleMessageRunning || !idle || !onScriptThread()) return false;
 		Message down;
 		synchronized (messageList) {
 			down = firstClickMessage("mouseDown");
@@ -1707,7 +1911,7 @@ public class TTalk extends Thread {
 		}
 		long limit = System.currentTimeMillis()+20000; //a release the window never heard of must not hang the script
 		while(GUI.mouseDown && !stop && System.currentTimeMillis()<limit){
-			try{ Thread.sleep(10); }catch(InterruptedException e){ Thread.currentThread().interrupt(); break; }
+			try{ Platform.get().sleep(10); }catch(InterruptedException e){ Thread.currentThread().interrupt(); break; }
 		}
 		//the release queues mouseUp right after GUI.mouseDown goes false (a press that moved sends none from the card)
 		long upLimit = System.currentTimeMillis()+300;
@@ -1727,7 +1931,7 @@ public class TTalk extends Thread {
 					return true;
 				}
 			}
-			try{ Thread.sleep(5); }catch(InterruptedException e){ Thread.currentThread().interrupt(); return true; }
+			try{ Platform.get().sleep(5); }catch(InterruptedException e){ Thread.currentThread().interrupt(); return true; }
 		}
 	}
 
@@ -1748,7 +1952,7 @@ public class TTalk extends Thread {
 	static void requestUserAbort()
 	{
 		//cantAbort が true のスタックでは Command-. でハンドラを止められない
-		if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.cantAbort) return;
+		if(Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().cantAbort) return;
 		stop = true;
 		idleMessagesSuppressed = true;
 		synchronized (messageList) {
@@ -1800,26 +2004,7 @@ public class TTalk extends Thread {
 	 * Edit > Cut, Copy, Paste and Clear for text (doMenu "Cut Text", type "x" with commandKey): what the field with the selection or
 	 * the insertion point, or the message box, has selected (HyperPiece 2 Type). Returns whether it was such a command.
 	 */
-	static boolean editSelectedText(String cmd) {
-		String c = cmd.toLowerCase(Locale.ROOT).replace(" text", "").trim();
-		if(!c.equals("cut") && !c.equals("copy") && !c.equals("paste") && !c.equals("clear") && !c.equals("delete")) return false;
-		if(PCARD.pc==null || PCARD.pc.tool!=null || AuthTool.tool!=null) return false;
-		OField field = TUtil.findFocusedOrClickedField();
-		final javax.swing.text.JTextComponent tc = field!=null && field.fld!=null ? field.fld :
-			GMsg.msg!=null && GMsg.msg.isVisible() ? GMsg.area : null;
-		if(tc==null) return false;
-		boolean locked = field!=null && field.enabled;
-		boolean selected = tc.getSelectionEnd()>tc.getSelectionStart();
-		if(!selected && !c.equals("paste") || locked && !c.equals("copy")) return false;
-		runOnEventThread(() -> {
-			if(c.equals("cut")) tc.cut();
-			else if(c.equals("copy")) tc.copy();
-			else if(c.equals("paste")) tc.paste();
-			else tc.replaceSelection("");
-		});
-		if(field!=null && !c.equals("copy") && field.parent instanceof OCardBase) ((OCardBase)field.parent).changed = true;
-		return true;
-	}
+	static boolean editSelectedText(String cmd) { return UiHost.get().editSelectedText(cmd); }
 
 	/** A key typed in the open field (GUI.fieldKey): the command goes through the message path from the field, HyperCard's own
 	 *  action comes at its end as for the same command in a script. */
@@ -1829,7 +2014,7 @@ public class TTalk extends Thread {
 			MemoryData memData = new MemoryData();
 			memData.treeset = new TreeSet<String>();
 			memData.nameList = new ArrayList<String>();
-			memData.valueList = new ArrayList<String>();
+			memData.valueList = new ValueList();
 			try{ talk.doScriptLine(command, fld, fld, memData, 0); }
 			catch(xTalkException e){ /* the error dialog was shown */ }
 		});
@@ -1840,7 +2025,7 @@ public class TTalk extends Thread {
 	static void callPendingMouseUp(OObject btn)
 	{
 		runOnScriptThread(() -> {
-			if(!GButton.onCurrentCard(btn) || GUI.mouseUpCancelled()) return;
+			if(!UiHost.get().gButtonOnCurrentCard(btn) || UiHost.get().gUIMouseUpCancelled()) return;
 			try{ talk.ReceiveMessage("mouseUp", "", btn, null, false); }
 			catch(xTalkException e){ /* the error dialog was shown */ }
 		});
@@ -1862,7 +2047,7 @@ public class TTalk extends Thread {
 		}
 	}
 	
-	private void ReceiveMessage(String message, String param, OObject object, MemoryData memData, boolean idlenow)
+	void ReceiveMessage(String message, String param, OObject object, MemoryData memData, boolean idlenow)
 	throws xTalkException
 	{
 		if(idlenow && StackSpeed.limited()) StackSpeed.idle(); //速度制限: idleを送るイベントループの1回
@@ -1871,7 +2056,7 @@ public class TTalk extends Thread {
 			//ビジー状態にする
 			idle=false;
 			changeIdle=true;
-			GUI.forgetClicks();
+			UiHost.get().gUIForgetClicks();
 		}
 
 		String[] params;
@@ -1897,7 +2082,7 @@ public class TTalk extends Thread {
 
 	/** テスト用: キューに積まれたメッセージ(openPaletteなど)をこのスレッドでその場で配る */
 	static void processPendingMessagesForTest() throws Exception {
-		TTalk t = new TTalk();
+		TTalk t = Platform.get().newScriptThread();
 		while(true){
 			Message msg;
 			synchronized (messageList) { if(messageList.isEmpty()) break; msg = messageList.remove(0); }
@@ -1909,14 +2094,14 @@ public class TTalk extends Thread {
 		}
 	}
 
-	private void ReceiveMessage(String message, String[] params, OObject object,
+	void ReceiveMessage(String message, String[] params, OObject object,
 		MemoryData memData, boolean idlenow) throws xTalkException
 	{
 		boolean changeIdle=false;
 		if(!idlenow && idle){
 			idle=false;
 			changeIdle=true;
-			GUI.forgetClicks();
+			UiHost.get().gUIForgetClicks();
 		}
 		lastResult = ReceiveMessage(message, params, object, object, memData);
 		if(lastResult!=null && lastResult.ret==-1) cancelPendingMessages();
@@ -1998,33 +2183,28 @@ public class TTalk extends Thread {
 		return found;
 	}
 
-	private static long lastExplicitGc = System.nanoTime()-60_000_000_000L;
+	static long lastExplicitGc = System.nanoTime()-60_000_000_000L;
 
 	private static void returnToIdle(){
 		boolean finishedHandler = !idle; //ハンドラの終了(busy→idle)か、単なるidle中の定期呼び出しか
 		if(finishedHandler) exitingToHyperCard = false;
 		//ハンドラの終わりの明示的なGCは全スレッドを止める(数十ms)。キーを押し続けて1キーごとにハンドラが走るゲームでは
 		//毎回のGCが引っかかりになるので、30秒に1回までにする
-		if(!idle && !GUI.mouseDown && System.nanoTime()-lastExplicitGc > 30_000_000_000L){
-			lastExplicitGc = System.nanoTime();
-			SwingUtilities.invokeLater(new Runnable() {
-				public void run() {
-					java.lang.System.gc();//GCをなるべく呼ぶ
-				}
-			});
-		}
+		UiHost.get().gcAtIdle();
 		idle=true;
 		TTalk.stop = false;
 		TTalk.tracemode = 0;
-		if(PCARD.pc.stack==null) return;
+		if(HZ.stack()==null) return;
 		
 		lockScreenDepth = 0;
-		if(PCARD.lockedScreen){
+		if(HZ.lockedScreen){
 			//ハンドラ終了時の暗黙unlock。カードをremoveAll/addし直す旧実装は
 			//スクリプトスレッドからSwingツリーを再構築して描画競合を起こすため、
 			//現在の部品状態をEDT上で一度だけ確定描画する。
-			applyDeferredMenuBar();
-			VEffect.visualEffect(0, 0, 3);
+			UiHost.get().unlockScreenAtIdle();
+			//HyperCard copies the card into the window here too: an external that hooked that copy draws (Colorizing
+			//HyperCard's "Copy to Destination Rect" ends with the screen locked; the copied picture showed only on the next card)
+			UiHost.get().xcmd68kRedrawHookedCards(HZ.stack());
 		}
 		//ハンドラごとの状態(visual effectの予約・numberFormat・itemDelimiter・lockMessages)は
 		//ハンドラが終わったときだけ初期化する(idle中の定期呼び出しでは触らない)
@@ -2044,12 +2224,7 @@ public class TTalk extends Thread {
 		dragspeed = 0;
 		//while the mouse is still down after a mouseDown handler HyperCard tracks the click (mouseStillDown) and is not idle: the
 		//cursor the handler set stays until the button comes up (OxSetCCursor's colour cursor went back to the hand at once)
-		if(!GUI.mouseDown) resetIdleCursor();
-		else cursorHeldByPress = true; //GUI.mouseUped puts the browse cursor back
-		if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.releaseHeldCursor(); //a script's choose tool shows its cursor now
-		PCARD.pc.stack.mouseWithinCheck();
-
-		ScriptDebugger.reset();
+		UiHost.get().pointerAtIdle();
 		//open file したファイルはHyperCardと同様に close file するまで開いたままにする
 		//(以前はハンドラ終了のたびに全部閉じていたので、別のハンドラから read できなかった)
 	}
@@ -2060,9 +2235,8 @@ public class TTalk extends Thread {
 	/** HyperCard's browse cursor at idle: the stack's CURS 128 when it has one. */
 	static void resetIdleCursor() {
 		cursorHeldByPress = false;
-		if(PCARD.pc==null || PCARD.pc.stack==null) return;
-		Cursor cr = TUtil.browseCursor(); //スタックの CURS 128 があればそれ(HyperCard のブラウズカーソル)
-		if(PCARD.pc.getCursor()!=cr) PCARD.pc.setCursor(cr);
+		if(!Host.get().hasCardWindow() || HZ.stack()==null) return;
+		UiHost.get().browseCursorNow();
 	}
 
 	/** スクリプトのハンドラ行を拾って handlerList / handlerLineList を作る(未作成のときだけ) */
@@ -2152,14 +2326,14 @@ public class TTalk extends Thread {
 	private static boolean isStaleObject(OObject o){
 		OObject x = o;
 		for(int guard=0; x!=null && guard<16; guard++){
-			if(x instanceof OStack) return x!=PCARD.pc.stack;
-			if(x instanceof OCardBase) return ((OCardBase)x).stack!=PCARD.pc.stack;
+			if(x instanceof OStack) return x!=HZ.stack();
+			if(x instanceof OCardBase) return ((OCardBase)x).stack!=HZ.stack();
 			x = x.parent;
 		}
 		return true;
 	}
 
-	private Result ReceiveMessage(String message, String[] params, OObject object, OObject target, MemoryData memData)
+	Result ReceiveMessage(String message, String[] params, OObject object, OObject target, MemoryData memData)
 	throws xTalkException
 	{
 		//System.out.println("ReceiveMessage "+message+" "+object.getShortName());
@@ -2174,7 +2348,7 @@ public class TTalk extends Thread {
 		boolean outerOff = messagePathStartOff;
 		OCard outerCard = messageSendCard;
 		messagePathStart = object;
-		OCard current = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+		OCard current = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
 		messagePathStartOff = current!=null && startsOff(object, current);
 		messageSendCard = current;
 		try{
@@ -2237,7 +2411,7 @@ public class TTalk extends Thread {
 	}
 	
 	//メッセージを受け取る
-	private final Result ReceiveMessage(String message, String[] params, OObject object, OObject target, MemoryData memData, Result result, boolean isFunc, boolean isDynamic, boolean isBgroot, int usingCnt)
+	final Result ReceiveMessage(String message, String[] params, OObject object, OObject target, MemoryData memData, Result result, boolean isFunc, boolean isDynamic, boolean isBgroot, int usingCnt)
 	throws xTalkException
 	{
 	    //long timestart = System.currentTimeMillis();
@@ -2245,13 +2419,13 @@ public class TTalk extends Thread {
 
 		result.ret=1;
 		
-		if(object == null && PCARD.pc!=null && PCARD.pc.stack!=null){
-			object = PCARD.pc.stack.curCard;
+		if(object == null && Host.get().hasCardWindow() && HZ.stack()!=null){
+			object = HZ.stack().curCard;
 		}
 		//a handler goes on after its stack was closed and opened again ("go home"/"go back" from AnimationMaker's AMLoad
 		//XCMD): its objects are the closed stack's, without scripts now, so its messages start at the current card
-		if(object!=null && object.scriptList==null && PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null &&
-				object!=PCARD.pc.stack.curCard && isStaleObject(object)){
+		if(object!=null && object.scriptList==null && Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().curCard!=null &&
+				object!=HZ.stack().curCard && isStaleObject(object)){
 			//a handler of the stack that was left calls one of its own functions/handlers (HyperCard: the message goes to
 			//me first): the closed stack's script still answers it
 			boolean own = false;
@@ -2264,11 +2438,11 @@ public class TTalk extends Thread {
 			//the closed stack's own externals still answer, as the message passes that stack (HC J-2.3 finds the running
 			//handler's stack's externals, see TXcmd.CallExternalCommandOf): UxCardToPICS's "Other stack" button goes to the
 			//target stack and calls its UxCardToPICS there ("uxcardtopicsがわかりません")
-			if(!own && !isDynamic && usingCnt==0 && object instanceof OStack && TXcmd.has68kExternal((OStack)object, message, isFunc ? "function" : "command")){
+			if(!own && !isDynamic && usingCnt==0 && object instanceof OStack && UiHost.get().tXcmdHas68kExternal((OStack)object, message, isFunc ? "function" : "command")){
 				messageReachedSystem = true;
-				return TXcmd.CallExternalCommandOf((OStack)object, message, params, target, memData, isFunc, result);
+				return UiHost.get().tXcmdCallExternalCommandOf((OStack)object, message, params, target, memData, isFunc, result);
 			}
-			if(!own) object = PCARD.pc.stack.curCard;
+			if(!own) object = HZ.stack().curCard;
 		}
 
 		if(object==null || object.scriptList == null){
@@ -2302,9 +2476,7 @@ public class TTalk extends Thread {
 			messageRingArray[ringCnt%128] = message;
 			objectRingArray[ringCnt%128] = object;
 			ringCnt++;
-			if(MessageWatcher.watcherWindow!=null && MessageWatcher.watcherWindow.isVisible()){
-				MessageWatcher.watcherWindow.setTable(messageRingArray, objectRingArray, ringCnt);
-			}
+			UiHost.get().showInMessageWatcher(this, message, params, object, target, memData, result, isFunc, isDynamic, isBgroot, usingCnt);
 			
 			HandlerEntry handler = handlerEntry(object, message, isFunc);
 			if(handler!=null) result = runHandler(handler, message, params, object, target, result, isFunc);
@@ -2312,7 +2484,7 @@ public class TTalk extends Thread {
 		
 		//timeIsMoney("ReceiveMessage2-2:",timestart,15);
 		if(result.ret==1){
-			OCard curCard = (PCARD.pc!=null && PCARD.pc.stack!=null) ? PCARD.pc.stack.curCard : null;
+			OCard curCard = (Host.get().hasCardWindow() && HZ.stack()!=null) ? HZ.stack().curCard : null;
 			OPanel panel = object.parent instanceof OCardBase ? ((OCardBase)object.parent).panelOf(object) : null;
 			if(object.parent==null && object instanceof OCard && object!=curCard){
 				//a card that is not shown and whose background was never loaded: its message path still goes through that
@@ -2343,18 +2515,18 @@ public class TTalk extends Thread {
 				}
 			}
 			else if(MSG_PATH_TRACE && object instanceof OStack && debugOwnStack((OStack)object, message, isFunc)) {}
-			else if(!isDynamic && usingCnt==0 && object instanceof OStack && PCARD.pc!=null && PCARD.pc.stack!=null && object!=PCARD.pc.stack
-					&& !isCurrentStackInUse((OStack)object) && TXcmd.has68kExternal((OStack)object, message, isFunc ? "function" : "command")){
+			else if(!isDynamic && usingCnt==0 && object instanceof OStack && Host.get().hasCardWindow() && HZ.stack()!=null && object!=HZ.stack()
+					&& !isCurrentStackInUse((OStack)object) && UiHost.get().tXcmdHas68kExternal((OStack)object, message, isFunc ? "function" : "command")){
 				//the running handler's own stack, outside the current card's hierarchy: HyperCard looks into its resource fork as the
 				//message passes it, before going on with the current card's path. Dartmouth XCMD's ResInStack goes to the target
 				//stack and calls its own IsResource XFCN there ("isresourceがわかりません")
 				messageReachedSystem = true;
-				result=TXcmd.CallExternalCommandOf((OStack)object, message, params, target, memData, isFunc, result);
+				result=UiHost.get().tXcmdCallExternalCommandOf((OStack)object, message, params, target, memData, isFunc, result);
 			}
 			else if(!isDynamic && target!=null && curCard!=null && (
 					target.parent!=null && "background".equals(target.parent.objectType) && !"card".equals(target.objectType) ||
 					"background".equals(target.objectType) && target != sentOnCard(curCard).bg ||
-					"stack".equals(target.objectType) && target != PCARD.pc.stack ||
+					"stack".equals(target.objectType) && target != HZ.stack() ||
 					"card".equals(target.objectType) && target != sentOnCard(curCard) ||
 					startsOffCurrentCard(curCard))){
 				//(a handler call starts at the handler's own object: ePhase's mouseUp goes to card shotMode, whose ShotIt goes back
@@ -2373,8 +2545,8 @@ public class TTalk extends Thread {
 				//ダイナミックパス:現在のカードに送信
 				result=ReceiveMessage(message, params, curCard, target, memData, result, isFunc, true, isBgroot, usingCnt);
 			}
-			else if(!isDynamic && usingCnt==0 && object instanceof OStack && object!=PCARD.pc.stack && curCard!=null &&
-					PCARD.pc.stack!=null && dynamicPathSkip==null && !isCurrentStackInUse((OStack)object)){
+			else if(!isDynamic && usingCnt==0 && object instanceof OStack && object!=HZ.stack() && curCard!=null &&
+					HZ.stack()!=null && dynamicPathSkip==null && !isCurrentStackInUse((OStack)object)){
 				//a handler of a stack outside the current card's hierarchy (a stack in use, sent to as "me") lets a message go:
 				//HyperCard J-2.3 goes on with the current card's path (measured: a stack in use whose barT passes reaches the
 				//current card's barT; 宇宙への旅's "pass music" reaches 音響ﾓｼﾞｭｰﾙ's on Music). That stack is not visited twice
@@ -2392,7 +2564,7 @@ public class TTalk extends Thread {
 				//using スタック自身(usingCnt>0)から先は、それを使っているスタックの一覧の続きを辿る。以前は using スタック
 				//自身の(空の)一覧を見ていたため、一覧の2番目以降(Home の後ろに積まれたライブラリ)へ届かなかった(DD の Uset)
 				if(usingCnt>0 && object instanceof OStack){
-					OStack current = PCARD.pc!=null ? PCARD.pc.stack : null;
+					OStack current = Host.get().hasCardWindow() ? HZ.stack() : null;
 					if(current!=null && current.usingStacks!=null && current.usingStacks.contains(object)) stack = current;
 				}
 				//a stack's own external comes right after its script, before the stacks in use and Home: WindowTalk's getHomeInfo
@@ -2400,8 +2572,8 @@ public class TTalk extends Thread {
 				//message passes it). Only when a handler further on would take the message first; otherwise the end of the path
 				//below runs the external as before. One that passes goes on along the path
 				if(object instanceof OStack && handlerFurtherOn(stack, usingCnt, message) &&
-						TXcmd.has68kExternal((OStack)object, message, isFunc ? "function" : "command")){
-					Result taken = TXcmd.CallExternalCommandOf((OStack)object, message, params, target, memData, isFunc, result);
+						UiHost.get().tXcmdHas68kExternal((OStack)object, message, isFunc ? "function" : "command")){
+					Result taken = UiHost.get().tXcmdCallExternalCommandOf((OStack)object, message, params, target, memData, isFunc, result);
 					if(taken.ret==0) return taken;
 					result = taken;
 					result.ret = 1;
@@ -2416,8 +2588,8 @@ public class TTalk extends Thread {
 					usingCnt++;
 					result=ReceiveMessage(message, params, stack.usingStacks.get(usingCnt-1), target, memData, result, isFunc, true, isBgroot, usingCnt);
 				}
-				else if(!commandSet.contains(message) || (!isFunc && TXcmd.runnable68kExternal(message, "command")) ||
-						(isFunc && TXcmd.externalOwner(message, "function")!=null)){ //an XFCN named like a command (バーチャマック's Drag(…))
+				else if(!commandSet.contains(message) || (!isFunc && UiHost.get().tXcmdRunnable68kExternal(message, "command")) ||
+						(isFunc && UiHost.get().tXcmdExternalOwner(message, "function")!=null)){ //an XFCN named like a command (バーチャマック's Drag(…))
 					messageReachedSystem = true; //どのハンドラにも捕まえられずにHyperCard自身へ届いた(組み込みコマンドと同名の XCMD もここで動く)
 					result=TUtil.CallSystemMessage(message, params, target, memData, isFunc);
 				}
@@ -2539,7 +2711,7 @@ public class TTalk extends Thread {
 		MemoryData memData2 = new MemoryData();
 		memData2.treeset = new TreeSet<String>();
 		memData2.nameList = new ArrayList<String>();
-		memData2.valueList = new ArrayList<String>();
+		memData2.valueList = new ValueList();
 		memData2.namesInSet = true;
 
 		//引数
@@ -2569,9 +2741,10 @@ public class TTalk extends Thread {
 		//getToday() then missed DiaryLib2 — "gettodayがわかりません")
 		OObject callerPathSkip = dynamicPathSkip;
 		dynamicPathSkip = null;
-		OStack callerStack = StackGuard.enter(object);
+		OStack callerStack = UiHost.get().stackGuardEnter(object);
 		try {
-			result = doScript(object,target,message,object.scriptList,handler.start,handler.end-1,memData2,params,0);
+			Result wasm = TalkWasm.enter(this, handler, object, memData2);
+			result = wasm!=null ? wasm : doScript(object,target,message,object.scriptList,handler.start,handler.end-1,memData2,params,0);
 			//return 文で終わらなかったハンドラの値は空(HyperCard)。最後に実行した文の Result をそのまま返すと、
 			//最後に呼んだ XCMD やハンドラの結果が関数の値になってしまうため、空に戻す
 			if(result.ret!=3 && result.ret!=-1){ Result r = new Result(); r.ret = result.ret; r.theResult = ""; result = r; }
@@ -2595,7 +2768,7 @@ public class TTalk extends Thread {
 		finally {
 			evalDepth = callerEvalDepth;
 			dynamicPathSkip = callerPathSkip;
-			StackGuard.leave(callerStack);
+			UiHost.get().stackGuardLeave(callerStack);
 			ScriptDebugger.popFrame(frame);
 			if(ScriptDebugger.frameDepth()==0) exitingToHyperCard = false; //the handlers have ended
 		}
@@ -2620,8 +2793,8 @@ public class TTalk extends Thread {
 		return messagePathStartOff;
 	}
 	private static boolean debugOwnStack(OStack st, String message, boolean isFunc){
-		Rsrc r = TXcmd.resourcesOf(st);
-		System.err.println("[path] own stack "+st.getShortName()+" rsrc="+(st.rsrc!=null)+" closed="+(st.closedResources!=null)+" has="+TXcmd.has68kExternal(st, message, isFunc ? "function" : "command")+" xcmds="+(r==null?"-":r.getXcmdResources().size())+" inUse="+isCurrentStackInUse(st)+" cur="+(PCARD.pc.stack==st));
+		Rsrc r = UiHost.get().tXcmdResourcesOf(st);
+		System.err.println("[path] own stack "+st.getShortName()+" rsrc="+(st.rsrc!=null)+" closed="+(st.closedResources!=null)+" has="+UiHost.get().tXcmdHas68kExternal(st, message, isFunc ? "function" : "command")+" xcmds="+(r==null?"-":r.getXcmdResources().size())+" inUse="+isCurrentStackInUse(st)+" cur="+(HZ.stack()==st));
 		return false;
 	}
 	/** The card that was current when the message being passed was sent (curCard for a path entered another way) */
@@ -3366,15 +3539,23 @@ public class TTalk extends Thread {
 	 *  handler that stays in one long loop is not entered again. Null: not (yet). */
 	private Result compiledLoop(OObject object, OObject target, String message, ArrayList<String> scriptList, int line, int endRepeat,
 			MemoryData memData, String[] parentparams, int mode) throws xTalkException {
-		if(!TalkJit.enabled || object==null || scriptList!=object.scriptList) return null;
-		return TalkJit.enterLoop(this, object, target, message, scriptList, line, endRepeat, memData, parentparams, mode);
+		if(object==null || scriptList!=object.scriptList) return null;
+		if(TalkWasm.backend!=null){ //the browser player: the whole numeric loop as one Wasm function
+			Result wasm = TalkWasmLoops.loop(this, object, scriptList, line, endRepeat, memData);
+			if(wasm!=null) return wasm;
+		}
+		return UiHost.get().jitLoop(this, object, target, message, scriptList, line, endRepeat, memData, parentparams, mode);
 	}
 
 	/** The same for repeat with and repeat n times, whose state is a count: the code goes on from {@code from} up to or down to {@code to}. */
 	private Result compiledCount(OObject object, OObject target, String message, ArrayList<String> scriptList, int line, int endRepeat, int from, int to,
 			MemoryData memData, String[] parentparams, int mode) throws xTalkException {
-		if(!TalkJit.enabled || object==null || scriptList!=object.scriptList) return null;
-		return TalkJit.enterCount(this, object, target, message, scriptList, line, endRepeat, from, to, memData, parentparams, mode);
+		if(object==null || scriptList!=object.scriptList) return null;
+		if(TalkWasm.backend!=null){ //may also hand the loop back at a pass (TalkWasmLoops.RESUME)
+			Result wasm = TalkWasmLoops.count(this, object, scriptList, line, endRepeat, from, to, memData);
+			if(wasm!=null) return wasm;
+		}
+		return UiHost.get().jitCount(this, object, target, message, scriptList, line, endRepeat, from, to, memData, parentparams, mode);
 	}
 
 	/** The one-line then/else statement of an if */
@@ -3461,8 +3642,8 @@ public class TTalk extends Thread {
 		String outerSource = statementSource.get();
 		if(StackSpeed.limited()) StackSpeed.block(); //repeatの1回、ifの分岐、ハンドラ
 		try{
-			if(TalkJit.enabled && object!=null && scriptList==object.scriptList){
-				Result compiled = TalkJit.enter(this, object, target, message, scriptList, start, end, memData, parentparams, mode);
+			if(object!=null && scriptList==object.scriptList){
+				Result compiled = UiHost.get().jitEnter(this, object, target, message, scriptList, start, end, memData, parentparams, mode);
 				if(compiled!=null) return compiled;
 			}
 			return doScriptLines(object, target, message, scriptList, start, end, memData, parentparams, mode);
@@ -3572,12 +3753,21 @@ public class TTalk extends Thread {
 					continue;
 				}
 				
+				if(statementTick!=null && (++statementCount & 255)==0) statementTick.run();
 				//デバッガ(チェックポイント/ステップ/トレース)
 				ScriptDebugger.beforeStatement(object, scriptList, line, memData);
 				//スタック個別設定の速度制限: 当時のHyperCardでこの文にかかった時間だけ待つ
 				if(StackSpeed.limited()) StackSpeed.statement(sList.size());
 				
 				String str0 = sList.get(0);
+                Result nativeStatement = TalkWasmStatements.enter(this, object, target, scriptList, line, memData, sList, tList);
+                if(nativeStatement!=null){
+                    result = nativeStatement;
+                    if(result.ret!=0) return result;
+                    lastResult = result;
+                    line++;
+                    continue;
+                }
 				if(str0=="repeat"){
 					start=line;
 					line=findEndRepeat(object, scriptList, line, end);
@@ -3648,7 +3838,14 @@ public class TTalk extends Thread {
 						}catch(NumberFormatException e){
 							throw new xTalkException("repeat with requires integer bounds");
 						}
-						while(down ? current>=rangeEnd : current<=rangeEnd){
+						boolean ranCompiled=false;
+						if(TalkWasm.backend!=null && (down ? current>=rangeEnd : current<=rangeEnd)){
+							//a loop compiled before (an inner loop entered again): natively from its first pass
+							Result compiled = TalkWasmLoops.start(this, object, scriptList, start, line, current, rangeEnd, memData);
+							if(compiled==TalkWasmLoops.RESUME) current = TalkWasmLoops.resumeAt;
+							else if(compiled!=null){ result = compiled; ranCompiled = true; }
+						}
+						while(!ranCompiled && (down ? current>=rangeEnd : current<=rangeEnd)){
 							setNumberVariable(memData,mem,Integer.toString(current));
 							result = doScript(object,target,message,scriptList,start+1,line-1,memData,parentparams,0);
 							if(result.ret==4) result.ret=0; //next repeat
@@ -3656,6 +3853,7 @@ public class TTalk extends Thread {
 							current += down ? -1 : 1;
 							if(down ? current<rangeEnd : current>rangeEnd) break; //the last pass's result stays
 							Result compiled = compiledCount(object, target, message, scriptList, start, line, current, rangeEnd, memData, parentparams, mode);
+							if(compiled==TalkWasmLoops.RESUME){ current = TalkWasmLoops.resumeAt; continue; }
 							if(compiled!=null){ result = compiled; break; }
 						}
 					}
@@ -3730,7 +3928,13 @@ public class TTalk extends Thread {
 						}catch(NumberFormatException e){
 							throw new xTalkException("The repeat count is not a number: {0}", cntStr);
 						}
-						while(cnt<times){
+						boolean ranCompiled=false;
+						if(TalkWasm.backend!=null && cnt<times){
+							Result compiled = TalkWasmLoops.start(this, object, scriptList, start, line, cnt, times, memData);
+							if(compiled==TalkWasmLoops.RESUME) cnt = TalkWasmLoops.resumeAt;
+							else if(compiled!=null){ result = compiled; ranCompiled = true; }
+						}
+						while(!ranCompiled && cnt<times){
 							result = doScript(object,target,message,scriptList,start+1,line-1,memData,parentparams,0);
 							if(result.ret==4) result.ret=0; //next repeat
 							else if(result.ret!=0)
@@ -3738,6 +3942,7 @@ public class TTalk extends Thread {
 							cnt++;
 							if(cnt>=times) break; //the last pass's result stays
 							Result compiled = compiledCount(object, target, message, scriptList, start, line, cnt, times, memData, parentparams, mode);
+							if(compiled==TalkWasmLoops.RESUME){ cnt = TalkWasmLoops.resumeAt; continue; }
 							if(compiled!=null){ result = compiled; break; }
 						}
 					}
@@ -3767,7 +3972,7 @@ public class TTalk extends Thread {
 					if(sList.size()>=2 && sList.get(1).equalsIgnoreCase("to")){
 						if(sList.size()>=3 && sList.get(2).equalsIgnoreCase("hypercard")){
 							//out of a click's mouseDown: the release sends no mouseUp (HC J-2.3)
-							if("mouseDown".equalsIgnoreCase(topMessage)) GUI.cancelMouseUp();
+							if("mouseDown".equalsIgnoreCase(topMessage)) UiHost.get().gUICancelMouseUp();
 							result.ret=-1;
 							return result;
 						}
@@ -3831,7 +4036,7 @@ public class TTalk extends Thread {
 					}
 					//外部命令の VM が生きているとき(XWindoid、PlayMOD のような常駐プレーヤ)は、ハンドラが走り続ける間も
 					//ときどきそのタイマー・サウンドの後始末を回す(実機の割り込みの代わり。idle と wait では別途回している)
-					if(Xcmd68k.hasSessions()) Xcmd68k.pumpIfDue();
+					if(UiHost.get().xcmd68kHasSessions()) UiHost.get().xcmd68kPumpIfDue();
 					/*if(object==null || scriptList != object.scriptList){
 						//System.out.println(">> "+str);
 						result = doScriptLine(str, object, target, memData);
@@ -3940,10 +4145,10 @@ public class TTalk extends Thread {
 		
 		if(lockErrorDialogs){
 			//ダイアログの代わりに errorDialog <エラー文> をカレントカードへ送り、ハンドラを終わらせる(HyperCard)
-			if(!inErrorDialog && PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null){
+			if(!inErrorDialog && Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().curCard!=null){
 				inErrorDialog = true;
 				try{
-					ReceiveMessage("errorDialog", new String[]{e.getMessage()==null ? "" : e.getMessage()}, PCARD.pc.stack.curCard, PCARD.pc.stack.curCard, memData);
+					ReceiveMessage("errorDialog", new String[]{e.getMessage()==null ? "" : e.getMessage()}, HZ.stack().curCard, HZ.stack().curCard, memData);
 				}catch(xTalkException ignore){
 				}finally{
 					inErrorDialog = false;
@@ -3960,14 +4165,14 @@ public class TTalk extends Thread {
 			//エディタがその行を赤く示す(次にそのスクリプトを保存するか、その位置以前を編集するまで)
 			object.lastErrorLine = line;
 			object.lastErrorMessage = e.getMessage();
-			ScriptEditor.showRuntimeError(object);
+			UiHost.get().scriptEditorShowRuntimeError(object);
 		}
 		int choice;
 		if(errorDialogForTest!=null){
 			choice = errorDialogForTest.getAsInt();
 		}
 		else{
-			java.awt.Toolkit.getDefaultToolkit().beep();
+			UiHost.get().beep();
 			choice = showScriptErrorDialog(e.getMessage(), statement, line, object, hasScript, canDebug);
 		}
 		if(choice==ERROR_DEBUG && !canDebug) choice = ERROR_CANCEL;
@@ -3977,7 +4182,7 @@ public class TTalk extends Thread {
 			return;
 		}
 		if(choice==ERROR_SCRIPT){
-			ScriptEditor.openScriptEditor(PCARD.pc, object, line);
+			UiHost.get().openEditorAtError(this, e, object, scriptList, line, memData, mode);
 		}
 		
 		TTalk.stop = true;//無駄なダイアログを発生させない
@@ -3994,25 +4199,7 @@ public class TTalk extends Thread {
 	/** エラーダイアログをEDT上で表示し、選ばれたボタンを返す */
 	static int showScriptErrorDialog(String errorMessage, String statement, int line, OObject object,
 			boolean hasScript, boolean canDebug)
-	{
-		final int[] choice = { ERROR_CANCEL };
-		Runnable show = new Runnable() {
-			public void run() {
-				choice[0] = showScriptErrorDialogOnEdt(errorMessage, statement, line, object, hasScript, canDebug);
-			}
-		};
-		if(SwingUtilities.isEventDispatchThread()){
-			show.run();
-		}
-		else{
-			try{
-				SwingUtilities.invokeAndWait(show);
-			}catch(Exception ex){
-				ex.printStackTrace();
-			}
-		}
-		return choice[0];
-	}
+	{ return UiHost.get().showScriptErrorDialog(errorMessage, statement, line, object, hasScript, canDebug); }
 
 	/** Shared by the dialog and headless checks, so details are retained in every language. */
 	static String scriptErrorText(String errorMessage, String statement, int line, OObject object){
@@ -4029,10 +4216,10 @@ public class TTalk extends Thread {
 		return text.toString();
 	}
 
-	private static int showScriptErrorDialogOnEdt(String errorMessage, String statement, int line, OObject object,
+	static int showScriptErrorDialogOnEdt(String errorMessage, String statement, int line, OObject object,
 			boolean hasScript, boolean canDebug)
 	{
-		International intl = PCARD.pc.intl;
+		International intl = HZ.intl();
 		String text = scriptErrorText(errorMessage, statement, line, object);
 		if(!hasScript){
 			Object[] options = { intl.getDialogText("OK") };
@@ -4087,7 +4274,7 @@ public class TTalk extends Thread {
 
 	private static void resolution(String script, ArrayList<String> stringList, ArrayList<wordType> typeList, boolean isCmd)
 	{
-		ScriptArea.checkWordsLine(script, stringList, typeList, isCmd, false);
+		TalkWords.checkWordsLine(script, stringList, typeList, isCmd, false);
 		for(int j=0; j<typeList.size(); j++){
 			if(typeList.get(j)==TTalk.wordType.COMMENT){
 				typeList.remove(j);
@@ -4107,12 +4294,16 @@ public class TTalk extends Thread {
 			if(!stringList.get(j).equals("-") || typeList.get(j)==wordType.STRING || typeList.get(j-1)==wordType.STRING) continue;
 			if(!isOrdinalNumber(stringList.get(j+1)) || isQuotedNumberLiteral(stringList.get(j+1))) continue;
 			if(!NEGATIVE_NUMBER_OBJECTS.contains(stringList.get(j-1).toLowerCase(Locale.ROOT))) continue;
+			//this cd - 120, the last card - 1: the object is named already, the minus is a subtraction (ThreadSlicer: random of
+			//(width of this cd-120)+60)
+			if(j>=2 && typeList.get(j-2)!=wordType.STRING && (OBJECT_ALREADY_NAMED.contains(stringList.get(j-2).toLowerCase(Locale.ROOT)) || isRelativeChunkSpecifier(stringList.get(j-2)))) continue;
 			stringList.set(j+1, "-"+stringList.get(j+1));
 			stringList.remove(j);
 			typeList.remove(j);
 		}
 	}
 	private static final java.util.Set<String> NEGATIVE_NUMBER_OBJECTS = java.util.Set.of("card", "cd", "button", "btn", "field", "fld");
+	private static final java.util.Set<String> OBJECT_ALREADY_NAMED = java.util.Set.of("this", "next", "prev", "previous", "recent");
 
 	private static final java.util.Set<String> ORDINAL_OBJECT_WORDS = java.util.Set.of("card", "cd", "cards", "cds", "background",
 		"bkgnd", "bg", "field", "fld", "button", "btn", "part");
@@ -4189,7 +4380,7 @@ public class TTalk extends Thread {
 	}
 	
 	/** fullresolution of a text of the running handler: the variables it sees are those of {@link #lexicalScope} */
-	private static void tokenize(String text, ArrayList<String> stringList, ArrayList<wordType> typeList, MemoryData memData, boolean isCmd)
+	static void tokenize(String text, ArrayList<String> stringList, ArrayList<wordType> typeList, MemoryData memData, boolean isCmd)
 	throws xTalkException
 	{
 		TreeSet<String> variables = memData.treeset;
@@ -4285,11 +4476,25 @@ public class TTalk extends Thread {
 		return text.startsWith("on ") || text.startsWith("function ");
 	}
 
+	/** The words fullresolution asks the variable set about (the X words of resolution): the code compiled ahead of time
+	 *  (TalkJit's Gen, TalkJitAot) is only for texts whose words come out the same whichever of these are variables */
+	static ArrayList<String> variableCandidates(String script, boolean isCmd)
+	{
+		ArrayList<String> stringList = new ArrayList<String>();
+		ArrayList<wordType> typeList = new ArrayList<wordType>();
+		resolution(script, stringList, typeList, isCmd);
+		ArrayList<String> candidates = new ArrayList<String>();
+		for(int i=0; i<stringList.size(); i++){
+			if(typeList.get(i)==wordType.X && !candidates.contains(stringList.get(i))) candidates.add(stringList.get(i));
+		}
+		return candidates;
+	}
+
 	static void fullresolution(String script, ArrayList<String> stringList, ArrayList<wordType> typeList, TreeSet<String> treeSet, boolean isCmd)
 	{
 		//同じ文字列の字句解析結果は、結果を左右する状態(単語が変数として宣言済みか、スタックの XCMD/XFCN)が
 		//同じなら同じなので使い回す。if の条件、repeat while、do/send の文字列、add の書き換えなどは実行のたびにここを通る
-		Rsrc rsrc = (PCARD.pc!=null && PCARD.pc.stack!=null) ? PCARD.pc.stack.rsrc : null;
+		Rsrc rsrc = (Host.get().hasCardWindow() && HZ.stack()!=null) ? HZ.stack().rsrc : null;
 		int xcmdGeneration = Rsrc.xcmdGeneration;
 		java.util.concurrent.ConcurrentHashMap<String,TokenizedLine> cache = isCmd ? commandTokenCache : expressionTokenCache;
 		TokenizedLine cached = cache.get(script);
@@ -4314,7 +4519,7 @@ public class TTalk extends Thread {
 		TreeSet<String> varSet;
 		if(treeSet!=null) varSet = treeSet;
 		else varSet = new TreeSet<String>();
-		ScriptArea.checkWordsLine2(script, stringList, typeList, isCmd, handler, varSet);
+		TalkWords.checkWordsLine2(script, stringList, typeList, isCmd, handler, varSet);
 		
 		//on/function/end ハンドラ行は変数の集合を空にすることがあるので覚えない
 		if(typeList.contains(wordType.ON_HAND) || typeList.contains(wordType.ON_FUNC) || typeList.contains(wordType.END_HAND)) return;
@@ -4519,7 +4724,7 @@ public class TTalk extends Thread {
 	}
 	private static String runExternalStatement(String statement, OObject object, OObject target, boolean callersScope) throws xTalkException {
 		MemoryData m = new MemoryData();
-		m.treeset = new TreeSet<String>(); m.nameList = new ArrayList<String>(); m.valueList = new ArrayList<String>();
+		m.treeset = new TreeSet<String>(); m.nameList = new ArrayList<String>(); m.valueList = new ValueList();
 		m.allGlobal = true; //呼び出し元ハンドラが無いとき(アイドル中の外部ウィンドウのイベント)は、メッセージボックスと同様にグローバルを見せる
 		//HyperCard runs the statement in the handler that called the external: its locals and `it` are the caller's.
 		//UxAnswer answers with SendHCMessage "put "MUSCLE!" into it" (M.J.DASH: `if it is "MUSCLE!"` never held when `it`
@@ -4527,7 +4732,7 @@ public class TTalk extends Thread {
 		//name it has no variable for becomes its LOCAL, a global is seen and set only when the handler declared it - QuickDraw
 		//Utilities' DefineDrawingModes sends "put 34 into addOver" for the demo handler's PenMode … addOver (they were globals,
 		//the handler read the bare word and drew in copy mode)
-		MemoryData caller = TXcmd.callVariables.get();
+		MemoryData caller = HZ.callVariables.get();
 		boolean shared = caller!=null && caller.treeset!=null && caller.nameList!=null && caller.valueList!=null;
 		if(shared){
 			if(caller.indexOfName("it")<0){ caller.nameList.add("it"); caller.valueList.add(""); caller.treeset.add("it"); caller.variableVersion++; }
@@ -4545,7 +4750,7 @@ public class TTalk extends Thread {
 		}
 	}
 	private static String runExternalStatement0(String statement, OObject object, OObject target, MemoryData m) throws xTalkException {
-		TTalk t = talk!=null ? talk : new TTalk();
+		TTalk t = talk!=null ? talk : Platform.get().newScriptThread();
 		//複数行("global X" & return & "put empty into X")もそのまま実行できるよう、スクリプトとして走らせる
 		//メッセージ自体のエラーはダイアログを出さず呼び出し元(XCMD)へ xresFail で返す(mode 1)。HyperCardも同じで、
 		//ヤスコDEけいさんの UxMovie が送る "put the itemdelimiter to "..."" は実機ではエラー表示なしで無視される
@@ -4587,7 +4792,7 @@ public class TTalk extends Thread {
 		if(words.length<2 || !words[0].equalsIgnoreCase("on")) return null;
 		String name = words[1];
 		MemoryData m = new MemoryData();
-		m.treeset = new TreeSet<String>(); m.nameList = new ArrayList<String>(); m.valueList = new ArrayList<String>();
+		m.treeset = new TreeSet<String>(); m.nameList = new ArrayList<String>(); m.valueList = new ValueList();
 		if(words.length>2){
 			for(String p: words[2].split(",")){
 				p = parameterName(p);
@@ -4625,10 +4830,10 @@ public class TTalk extends Thread {
 	private static String evaluateExternalExpression0(String expression, OObject object, OObject target) throws xTalkException {
 		MemoryData m = new MemoryData();
 		//呼び出し元ハンドラの global 宣言は見えないので、既存のグローバル変数はすべて宣言済みとして扱う
-		m.treeset = new TreeSet<String>(); m.nameList = new ArrayList<String>(); m.valueList = new ArrayList<String>();
+		m.treeset = new TreeSet<String>(); m.nameList = new ArrayList<String>(); m.valueList = new ValueList();
 		m.allGlobal = true;
 		//the calling handler's local variables (copies: EvalExpr only reads them); a local hides a global of that name
-		MemoryData caller = TXcmd.callVariables.get();
+		MemoryData caller = HZ.callVariables.get();
 		if(caller!=null && caller.nameList!=null && caller.valueList!=null){
 			m.nameList.addAll(caller.nameList); m.valueList.addAll(caller.valueList);
 			if(caller.treeset!=null) m.treeset.addAll(caller.treeset);
@@ -4750,7 +4955,7 @@ public class TTalk extends Thread {
 		return Math.max(start,1) > chunks;
 	}
 
-	private Result doScriptLine(String script, OObject object, OObject target,
+	Result doScriptLine(String script, OObject object, OObject target,
 			MemoryData memData, int startline)
 		throws xTalkException
 	{
@@ -5126,8 +5331,12 @@ public class TTalk extends Thread {
 
 	void keyboardCommand(String message, String param, MemoryData memData) throws xTalkException {
 		OField caretField = TUtil.findFocusedOrClickedField();
-		if(caretField!=null && caretField.fld==null) caretField = null;
-		OCard cur = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+		if(caretField!=null && !UiHost.get().fieldHasView(caretField)) caretField = null;
+		//the field typing changes: never a locked one. A script's select in a locked field gives it the selection (HZ.clickField)
+		//but no keys (HC; the desktop's Swing view of a locked field is not editable): the browser player's view took them,
+		//and DiskLibrary's file list (select line seLin of fld "Fils", locked) had file names replaced by what was typed
+		OField typeField = caretField!=null && !caretField.enabled ? caretField : null;
+		OCard cur = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
 		boolean textArrows = TUtil.compatibilityProperty("textArrows").equalsIgnoreCase("true");
 		if(cur==null) return;
 		//ここに来るのは、コマンド文がハンドラに捕まえられなかった(またはpassされた)とき。
@@ -5138,53 +5347,40 @@ public class TTalk extends Thread {
 			//(HC J-2.3 measured; FaceMark Maker's コピー button types tab to select the face before Copy)
 			if("\t".equals(param)){ doScriptLine("tabKey", cur, cur, memData, 0); break; }
 			//keyDown backspace deletes the selection or the character before the insertion point (HC J-2.3: type numToChar(8))
-			if("\b".equals(param)){ if(caretField!=null) deleteBeforeCaret(caretField); break; }
+			if("\b".equals(param)){ if(typeField!=null) deleteBeforeCaret(typeField); break; }
 			if(param.length()==1 && (param.charAt(0)>=27 && param.charAt(0)<=31 || param.charAt(0)==127)) break; //Esc, the arrows, Forward Delete: no text
-			if(caretField!=null) insertAtCaret(caretField, param);
+			if(typeField!=null) insertAtCaret(typeField, param);
 			break;
 		case "commandKeyDown":
 			commandKeyShortcut(param);
 			break;
 		case "returnKey": case "enterKey":
-			if(GMsg.msg!=null){
-				String line = GMsg.msg.getText();
+			if(UiHost.get().msgExists()){
+				String line = UiHost.get().msgText();
 				if(line!=null && line.trim().length()>0) doScriptLine(line, cur, cur, memData, 0);
 			}
 			break;
 		case "returnInField":
-			if(caretField!=null){
-				if(caretField.autoTab) tabToNextField(caretField);
-				else insertAtCaret(caretField, "\n");
+			if(typeField!=null){
+				if(typeField.autoTab && onLastVisibleLine(typeField)) tabToNextField(typeField);
+				else insertAtCaret(typeField, "\n");
 			}
 			break;
 		case "enterInField":
 			closeOpenField(true, false);
-			if(caretField!=null && caretField.fld!=null){
-				int c = caretField.fld.getSelectionEnd();
-				caretField.fld.setSelectionStart(c); caretField.fld.setSelectionEnd(c);
-				if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.requestFocusInWindow();
-				GUI.clickField = null;
+			if(caretField!=null && UiHost.get().fieldHasView(caretField)){
+				int c = caretField.view().getSelectionEnd();
+				caretField.view().setSelectionStart(c); caretField.view().setSelectionEnd(c);
+				UiHost.get().focusCardPane();
+				HZ.clickField = null;
 			}
 			break;
 		case "tabKey":
 			tabToNextField(caretField);
 			break;
 		case "arrowKey":
-			if(textArrows && caretField!=null && caretField.fld!=null){
-				javax.swing.text.JTextComponent tc = caretField.fld;
-				int pos = tc.getCaretPosition();
-				int len = tc.getText().length();
-				if(param.equals("left")) pos = Math.max(0, pos-1);
-				else if(param.equals("right")) pos = Math.min(len, pos+1);
-				else if(param.equals("up") || param.equals("down")){
-					try{
-						java.awt.Rectangle r = tc.modelToView2D(pos).getBounds();
-						int y = param.equals("up") ? r.y-1 : r.y+r.height+1;
-						int p = tc.viewToModel2D(new java.awt.Point(r.x, Math.max(0, y)));
-						if(p>=0) pos = p;
-					}catch(javax.swing.text.BadLocationException e){}
-				}
-				tc.setCaretPosition(pos);
+			if(textArrows && caretField!=null && (caretField.fld!=null || caretField==openField)){
+				UiHost.get().moveCaretInView(this, message, param, memData, caretField);
 			}else{
 				arrowKeyNavigation(param);
 			}
@@ -5193,10 +5389,10 @@ public class TTalk extends Thread {
 			//HyperCardの既定: F1 undo, F2 cut, F3 copy, F4 paste
 			try{
 				switch(param){
-				case "1": GMenuBrowse.doMenu("Undo"); break;
-				case "2": GMenuBrowse.doMenu("Cut"); break;
-				case "3": GMenuBrowse.doMenu("Copy"); break;
-				case "4": GMenuBrowse.doMenu("Paste"); break;
+				case "1": UiHost.get().doMenuCommand("Undo"); break;
+				case "2": UiHost.get().doMenuCommand("Cut"); break;
+				case "3": UiHost.get().doMenuCommand("Copy"); break;
+				case "4": UiHost.get().doMenuCommand("Paste"); break;
 				}
 			}catch(xTalkException e){}
 			break;
@@ -5209,36 +5405,78 @@ public class TTalk extends Thread {
 	static void arrowKeyNavigation(String dir) throws xTalkException {
 		if("left".equals(dir)) doScriptforMenu("go prev");
 		else if("right".equals(dir)) doScriptforMenu("go next");
-		else if("down".equals(dir)) PCARD.pc.stack.goBack();
-		else if("up".equals(dir)) PCARD.pc.stack.goForward();
+		else if("down".equals(dir)) HZ.stack().goBack();
+		else if("up".equals(dir)) HZ.stack().goForward();
 	}
 
 	static void insertAtCaret(OField field, String text) {
-		if(field==null || field.fld==null) return;
-		javax.swing.text.JTextComponent tc = field.fld;
-		int at = tc.getSelectionStart();
-		tc.replaceSelection(text);
-		tc.setCaretPosition(Math.min(at+text.length(), tc.getText().length()));
+		if(field==null || field.view()==null) return;
+		FieldView tc = field.view(); //(the desktop's MyTextArea: field.fld)
+		//the text component is changed on the EDT only: from the script thread, its document write lock and the EDT's
+		//highlighter repaint (DefaultHighlighter.SafeDamager) waited for each other (the Probe run hung in "type")
+		runOnEventThread(() -> {
+			int at = tc.getSelectionStart();
+			tc.replaceSelection(text);
+			tc.setCaretPosition(Math.min(at+text.length(), tc.getText().length()));
+		});
 		field.setSelectedLine(0);
 		if(field.parent instanceof OCardBase) ((OCardBase)field.parent).changed = true;
 	}
 
 	static void deleteBeforeCaret(OField field) {
-		if(field==null || field.fld==null) return;
-		javax.swing.text.JTextComponent tc = field.fld;
-		int start = tc.getSelectionStart(), end = tc.getSelectionEnd();
-		if(start==end && start>0) start--;
-		if(start==end) return;
-		tc.select(start, end);
-		tc.replaceSelection("");
+		if(field==null || field.view()==null) return;
+		FieldView tc = field.view(); //(the desktop's MyTextArea: field.fld)
+		boolean[] deleted = {false};
+		runOnEventThread(() -> { //on the EDT, as insertAtCaret
+			int start = tc.getSelectionStart(), end = tc.getSelectionEnd();
+			if(start==end && start>0) start--;
+			if(start==end) return;
+			tc.select(start, end);
+			tc.replaceSelection("");
+			deleted[0] = true;
+		});
+		if(!deleted[0]) return;
+		field.setSelectedLine(0);
+		if(field.parent instanceof OCardBase) ((OCardBase)field.parent).changed = true;
+	}
+
+	/** Forward Delete in the open field: the selection, or the character after the insertion point, goes */
+	static void deleteAfterCaret(OField field) {
+		if(field==null || field.enabled || field.view()==null) return;
+		FieldView tc = field.view();
+		boolean[] deleted = {false};
+		runOnEventThread(() -> {
+			int start = tc.getSelectionStart(), end = tc.getSelectionEnd();
+			if(start==end && end<tc.getText().length()) end++;
+			if(start==end) return;
+			tc.select(start, end);
+			tc.replaceSelection("");
+			deleted[0] = true;
+		});
+		if(!deleted[0]) return;
 		field.setSelectedLine(0);
 		if(field.parent instanceof OCardBase) ((OCardBase)field.parent).changed = true;
 	}
 
 	/** tabKey の組み込み動作: 次のロックされていないフィールドの全テキストを選択する(末尾なら最初へ)。開いていたフィールドは
 	 *  閉じ(closeField/exitField)、次のフィールドに openField を送る(HC J-2.3: o:Scratch,x:Scratch,o:Log) */
+	/** autoTab's condition: the insertion point is in the last line the field shows (a scrolling field never tabs). HyperCard
+	 *  J-2.3 counts a line the field shows only in part: 家計簿's amount field (21 high, lines of 13) puts a return in its first
+	 *  line and tabs only from the second; HyperZebra tabbed from any line and opened the heading field from there. */
+	static boolean onLastVisibleLine(OField f) {
+		if(f.style==5) return false;
+		String text = f.getText()==null ? "" : f.getText();
+		int caret = f.view()==null ? text.length() : Math.min(text.length(), f.view().getSelectionStart());
+		int line = 1;
+		for(int i=0; i<caret; i++){ char c = text.charAt(i); if(c=='\n' || c=='\r' && (i+1>=text.length() || text.charAt(i+1)!='\n')) line++; }
+		int lh = Math.max(1, f.lineHeight());
+		int inner = f.height - 2 - (f.style==4 ? 2 : 0); //inside the frame (and a shadow's two pixels)
+		int shown = Math.max(1, (inner + lh - 1) / lh);
+		return line >= shown;
+	}
+
 	static void tabToNextField(OField from) throws xTalkException {
-		OCard cur = PCARD.pc.stack.curCard;
+		OCard cur = HZ.stack().curCard;
 		if(cur==null) return;
 		ArrayList<OField> order = new ArrayList<OField>();
 		if(cur.bg!=null) for(OField f : cur.bg.fldList) if(!f.enabled && f.isShown()) order.add(f);
@@ -5281,7 +5519,7 @@ public class TTalk extends Thread {
 		openField = null;
 		openFieldEdited = false;
 		if(deselect) dropInsertionPoint(f);
-		if(message && !lockMessages && GButton.onCurrentCard(f)) sendFieldMessage(edited ? "closeField" : "exitField", f);
+		if(message && !lockMessages && UiHost.get().gButtonOnCurrentCard(f)) sendFieldMessage(edited ? "closeField" : "exitField", f);
 	}
 
 	/** A user's click or tool (EDT): the open field closes, its message queued */
@@ -5296,7 +5534,7 @@ public class TTalk extends Thread {
 
 	/** A script's put into the open field closes it without a message (HC J-2.3: the selectedField is empty after it) */
 	public static void putIntoField(OField fld) {
-		if(fld==null || fld!=openField || Thread.currentThread()!=talk) return;
+		if(fld==null || fld!=openField || !onScriptThread()) return;
 		openField = null;
 		openFieldEdited = false;
 		dropInsertionPoint(fld);
@@ -5309,13 +5547,13 @@ public class TTalk extends Thread {
 	}
 
 	private static void dropInsertionPoint(OField f) {
-		if(GUI.clickField==f) GUI.clickField = null;
+		if(HZ.clickField==f) HZ.clickField = null;
 		if(f.fld==null) return;
-		PCARD.runOnEDT(() -> {
-			int c = f.fld.getSelectionEnd();
-			f.fld.setSelectionStart(c);
-			f.fld.setSelectionEnd(c);
-			if(f.fld.isFocusOwner() && PCARD.pc.mainPane!=null) PCARD.pc.mainPane.requestFocusInWindow();
+		Host.get().runOnEDT(() -> {
+			int c = f.view().getSelectionEnd();
+			f.view().setSelectionStart(c);
+			f.view().setSelectionEnd(c);
+			if(f.view().isFocusOwner()) UiHost.get().focusCardPane();
 		});
 	}
 
@@ -5326,7 +5564,7 @@ public class TTalk extends Thread {
 	private static void sendFieldMessage(String message, OField f) throws xTalkException {
 		java.util.function.BiConsumer<String,OField> test = fieldMessageForTest;
 		if(test!=null){ test.accept(message, f); return; }
-		if(Thread.currentThread()==talk) talk.ReceiveMessage(message, new String[0], f, f, null);
+		if(onScriptThread()) talk.ReceiveMessage(message, new String[0], f, f, null);
 		else CallMessage(message, f);
 	}
 
@@ -5336,59 +5574,7 @@ public class TTalk extends Thread {
 		return "\""+text.replace("\"", "\" & quote & \"")+"\"";
 	}
 
-	static void commandKeyShortcut(String ch) {
-		if(PCARD.pc==null || PCARD.pc.menu==null || ch==null || ch.isEmpty()) return;
-		//command-B from a script is Edit > Background whatever the tool (HyperCard; HyperZebra's own item waits for a
-		//paint or authoring tool): らくがきカレンダー types it in the browse tool, then chooses the select tool
-		if(Thread.currentThread()==talk && ch.equalsIgnoreCase("b")){
-			if(StackProtection.effectiveUserLevel()<3) return;
-			try{ GMenuBrowse.doMenu("Background"); }
-			catch(xTalkException e){ System.out.println("commandKeyDown b: "+e.getMessage()); }
-			return;
-		}
-		//command-Q from a script is File > Quit HyperCard (M.J.DASH's 筋肉終了: type Q with cmdkey). On macOS Quit lives in the
-		//application menu, which has no JMenuItem here, so nothing was found; a script's Quit returns to the launcher
-		if(Thread.currentThread()==talk && ch.equalsIgnoreCase("q")){
-			try{ doScriptforMenu("doMenu \"Quit HyperCard\""); }
-			catch(xTalkException e){ System.out.println("commandKeyDown q: "+e.getMessage()); }
-			return;
-		}
-		//command-X, C and V from a script are Edit's Cut, Copy and Paste Text on what is selected (HyperPiece 2 Type)
-		if(!javax.swing.SwingUtilities.isEventDispatchThread() && "xcv".indexOf(Character.toLowerCase(ch.charAt(0)))>=0 &&
-				editSelectedText(new String[]{"cut","copy","paste"}["xcv".indexOf(Character.toLowerCase(ch.charAt(0)))])) return;
-		//the items follow the tool a script just chose
-		GMenu.updateAuthoringMenus();
-		int code = KeyEvent.getExtendedKeyCodeForChar(Character.toUpperCase(ch.charAt(0)));
-		//with a paint tool chosen, HyperCard's paint menus answer first (Paint > Select All for command-A, Edit > Copy Picture for
-		//command-C): ClipToPict's demo does "choose select tool", then types A and C with the command key
-		java.util.List<JMenu> menus = new java.util.ArrayList<JMenu>();
-		boolean painting = PCARD.pc.tool!=null && PCARD.pc.paintMenu!=null && PCARD.pc.paintMenu.mb!=null;
-		if(painting) for(int i=0; i<PCARD.pc.paintMenu.mb.getComponentCount(); i++) if(PCARD.pc.paintMenu.mb.getComponent(i) instanceof JMenu) menus.add((JMenu)PCARD.pc.paintMenu.mb.getComponent(i));
-		int paintMenus = menus.size();
-		menus.addAll(menuList());
-		for(int k=0; k<menus.size(); k++){
-			JMenu m = menus.get(k);
-			for(int j=0; j<m.getPopupMenu().getComponentCount(); j++){
-				Component c = m.getPopupMenu().getComponent(j);
-				if(!(c instanceof JMenuItem)) continue;
-				javax.swing.KeyStroke ks = ((JMenuItem)c).getAccelerator();
-				if(ks!=null && ks.getKeyCode()==code && ((JMenuItem)c).isEnabled()){
-					if(Thread.currentThread()==talk){
-						//from a script (type "B" with commandKey): the menu ignores clicks while a script runs, so the
-						//item is chosen as doMenu here, before the script's next line
-						//a paint menu's item by its name alone: doMenu finds it in the paint menus (the Edit menu of the bar shown has no Copy Picture)
-						String text = ((JMenuItem)c).getText();
-						if(k<paintMenus && PCARD.pc.intl!=null) text = PCARD.pc.intl.getEngText(text);
-						try{ doScriptforMenu("doMenu "+quoteLiteral(text)+(k<paintMenus ? "" : ","+quoteLiteral(m.getText()))); }
-						catch(xTalkException e){ System.out.println("commandKeyDown "+ch+": "+e.getMessage()); }
-						return;
-					}
-					((JMenuItem)c).doClick();
-					return;
-				}
-			}
-		}
-	}
+	static void commandKeyShortcut(String ch) { UiHost.get().commandKeyShortcut(ch); }
 
 	private static void pressKey(int keyCode, int modifier) throws xTalkException {
 		try {
@@ -5456,11 +5642,11 @@ public class TTalk extends Thread {
 			return p+3-pos;
 		if(!stringList.get(p+1).equalsIgnoreCase("stack") || typeAry[p+1]==wordType.STRING || p+2>=stringList.size()) return 0;
 		String which = stringList.get(p+2);
-		String stackName = PCARD.pc.stack.name==null ? "" : PCARD.pc.stack.name;
+		String stackName = HZ.stack().name==null ? "" : HZ.stack().name;
 		//the long name/id HyperZebra gives (stack ":Users:…:Name", a Mac-style path) names this stack too (HC J-2.3 probes
 		//A Push Var / B Obj In Var: pop card into v, then the short name of v)
 		if(!isCurrentStackPath(which) && !which.equalsIgnoreCase(stackName) && !which.equalsIgnoreCase(stackName.replaceAll("(?i)\\.hzb$", "")) &&
-				!stackNamed(PCARD.pc.stack, which))
+				!stackNamed(HZ.stack(), which))
 			throw new xTalkException("Cannot refer to a card in another stack: {0}", which);
 		return p+3-pos;
 	}
@@ -5617,13 +5803,13 @@ public class TTalk extends Thread {
 
 	private OObject getPictureOwner(ArrayList<String> words, wordType[] types, int next,
 			MemoryData memory, OObject object, OObject target) throws xTalkException {
-		if(isCardWord(words.get(next))) return PCARD.pc.stack.curCard;
-		if(isBackgroundWord(words.get(next))) return PCARD.pc.stack.curCard.bg;
+		if(isCardWord(words.get(next))) return HZ.stack().curCard;
+		if(isBackgroundWord(words.get(next))) return HZ.stack().curCard.bg;
 		if(next+1<words.size() && (words.get(next+1).equalsIgnoreCase("of") || isInQualifier(words, types, next+1))){ //"picture in card X"
 			//"picture of card" / "picture of bg": 番号の無いカード・バックグラウンドは今のもの
 			if(next+2==words.size()-1 && types[next+2]!=wordType.STRING){
-				if(isCardWord(words.get(next+2))) return PCARD.pc.stack.curCard;
-				if(isBackgroundWord(words.get(next+2))) return PCARD.pc.stack.curCard.bg;
+				if(isCardWord(words.get(next+2))) return HZ.stack().curCard;
+				if(isBackgroundWord(words.get(next+2))) return HZ.stack().curCard.bg;
 			}
 			OObject owner = getObject(words, types, next+2, words.size()-1,
 				memory, object, target);
@@ -5634,8 +5820,8 @@ public class TTalk extends Thread {
 	
 	/** The topmost visible button (or field) at a card point: card parts over background parts, later parts over earlier ones */
 	static OObject authToolPartAt(int x, int y, boolean buttons) {
-		if(PCARD.pc==null || PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return null;
-		OCard cd = PCARD.pc.stack.curCard;
+		if(!Host.get().hasCardWindow() || HZ.stack()==null || HZ.stack().curCard==null) return null;
+		OCard cd = HZ.stack().curCard;
 		for(OCardBase layer : new OCardBase[]{cd, cd.bg}){
 			if(layer==null || layer.partsList==null) continue;
 			for(int i=layer.partsList.size()-1; i>=0; i--){
@@ -5654,57 +5840,19 @@ public class TTalk extends Thread {
 	 * title button's mouseDown shows a hidden popup and clicks at it), so releasing it on an item chooses that item.
 	 * True when an item was chosen; it is the button's selectedLine then.
 	 */
-	static boolean choosePopupItem(OButton b) {
-		String[] items = b.getText().split("\n");
-		int[] chosen = {-1};
-		java.util.concurrent.CountDownLatch closed = new java.util.concurrent.CountDownLatch(1);
-		javax.swing.JPopupMenu[] shown = {null};
-		PCARD.runOnEDT(() -> {
-			if(b.popup==null || PCARD.pc.mainPane==null || !PCARD.pc.mainPane.isShowing()){ closed.countDown(); return; }
-			javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
-			menu.setLightWeightPopupEnabled(false); //over the picture of a locked screen
-			java.awt.Font font = OObject.stackFont(b.textFont, b.textStyle&0x03, b.textSize*PCARD.scale());
-			for(int i=0; i<items.length; i++){
-				if(items[i].equals("-")){ menu.addSeparator(); continue; }
-				JMenuItem mi = new JMenuItem(StackTranslation.popupItem(b, items[i]));
-				mi.setFont(font);
-				int line = i;
-				mi.addActionListener(e -> chosen[0] = line);
-				menu.add(mi);
-			}
-			menu.addPopupMenuListener(new javax.swing.event.PopupMenuListener(){
-				//an item's action comes after the menu has gone: count down behind it
-				public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e){ SwingUtilities.invokeLater(closed::countDown); }
-				public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e){}
-				public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e){}
-			});
-			shown[0] = menu;
-			menu.show(PCARD.pc.mainPane, b.popup.getX(), b.popup.getY());
-			if(!menu.isVisible()) closed.countDown();
-		});
-		try{
-			closed.await();
-		}catch(InterruptedException e){
-			Thread.currentThread().interrupt();
-			SwingUtilities.invokeLater(() -> { if(shown[0]!=null) shown[0].setVisible(false); });
-			return false;
-		}
-		if(chosen[0]<0) return false;
-		b.setSelectedLine(chosen[0]+1);
-		return true;
-	}
+	static boolean choosePopupItem(OButton b) { return UiHost.get().choosePopupItem(b); }
 
 	//---- メニュー操作(put/delete) ----
-	//メニューの実体は PCARD.pc.menu.mb にあり、表示用のメニューバーは GMenu.menuUpdate で作り直す。
+	//メニューの実体は MenuNodes.get().cardMenuBar() にあり、表示用のメニューバーは GMenu.menuUpdate で作り直す。
 
 	/** メニューバーのJMenu一覧 */
-	static ArrayList<JMenu> menuList() {
-		ArrayList<JMenu> list = new ArrayList<JMenu>();
-		javax.swing.JMenuBar mb = (PCARD.pc!=null && PCARD.pc.menu!=null) ? PCARD.pc.menu.mb : null;
+	static ArrayList<MMenu> menuList() {
+		ArrayList<MMenu> list = new ArrayList<MMenu>();
+		MMenuBar mb = UiHost.get().hasCardMenus() ? MenuNodes.get().cardMenuBar() : null;
 		if(mb==null) return list;
 		for(int i=0; i<mb.getComponentCount(); i++){
-			Component c = mb.getComponent(i);
-			if(c instanceof JMenu) list.add((JMenu)c);
+			MComponent c = mb.getComponent(i);
+			if(c instanceof MMenu) list.add((MMenu)c);
 		}
 		return list;
 	}
@@ -5718,7 +5866,7 @@ public class TTalk extends Thread {
 
 	/** The name a script sees for a menu (the menus, the name of menu N): "Apple" for the Apple menu (HyperCard), HyperCard J's
 	 *  half-width titles for HyperZebra's own menus, and a menu made by "create menu" exactly as it was named. */
-	static String scriptMenuName(JMenu m) {
+	static String scriptMenuName(MMenu m) {
 		if(m==null) return "";
 		if(m==appleMenu) return "Apple";
 		java.util.Map<String,String> own = Boolean.TRUE.equals(m.getClientProperty("hz.scriptMenu")) ? null : standaloneMenuTitles();
@@ -5726,15 +5874,15 @@ public class TTalk extends Thread {
 		if(m==fontMenuCache || m==styleMenuCache){
 			//the stand-ins for HyperCard's Font / Style: named as the menus lists them (HC J-2.3: ﾌｫﾝﾄ, ｽﾀｲﾙ), whenever HyperZebra's
 			//own menus have HC J's titles - also after a stack deleted the Go menu (Speaker! deletes ﾌｧｲﾙ, ｺﾞｰ and 編集)
-			boolean japanese = !englishMenuNames() && PCARD.pc!=null && PCARD.pc.intl!=null &&
-				HC_J_MENU_TITLES.containsKey(PCARD.pc.intl.getText("Go"));
+			boolean japanese = !englishMenuNames() && Host.get().hasCardWindow() && HZ.intl()!=null &&
+				HC_J_MENU_TITLES.containsKey(HZ.intl().getText("Go"));
 			return m==fontMenuCache ? (japanese ? "ﾌｫﾝﾄ" : "Font") : (japanese ? "ｽﾀｲﾙ" : "Style");
 		}
 		String t = m.getText();
 		if(t==null) return "";
 		if(Boolean.TRUE.equals(m.getClientProperty("hz.scriptMenu"))) return t;
 		if(englishMenuNames()){
-			String e = PCARD.pc.intl.getEngText(t);
+			String e = HZ.intl().getEngText(t);
 			return e.equalsIgnoreCase("Tool") ? "Tools" : e;
 		}
 		String hc = HC_J_MENU_TITLES.get(t);
@@ -5745,26 +5893,33 @@ public class TTalk extends Thread {
 	 *  English names of HyperZebra's own menus and items whatever the UI language (World Religions QuizBase deletes every
 	 *  menu whose English name is not on its list of protected menus, then disables the File items not on its own list) */
 	static boolean englishMenuNames() {
-		return PCARD.pc!=null && PCARD.pc.intl!=null && PCARD.pc.stack!=null && PCARD.pc.stack.legacyTextEncoding==StackTextEncoding.ROMAN;
+		return Host.get().hasCardWindow() && HZ.intl()!=null && HZ.stack()!=null && HZ.stack().legacyTextEncoding==StackTextEncoding.ROMAN;
 	}
 
 	/** The text a script sees for a menu item: the English one in an English stack (see {@link #englishMenuNames}) */
-	static String scriptMenuItemText(JMenu menu, javax.swing.JMenuItem mi) {
+	static String scriptMenuItemText(MMenu menu, MMenuItem mi) {
 		String t = mi.getText();
 		if(t==null || menu==null || Boolean.TRUE.equals(menu.getClientProperty("hz.scriptMenu")) || !englishMenuNames()) return t;
-		return PCARD.pc.intl.getEngText(t);
+		return HZ.intl().getEngText(t);
 	}
 
 	/** HyperCardではmenu 1がアップルメニュー(名前はリンゴ文字)。メニューバーには置かないが、
 	 *  「menu 2 = File」「repeat … delete menu 2」のようにスクリプトが番号で数える前提を合わせるための仮のメニュー */
-	static final JMenu appleMenu = new JMenu("\uF8FF");
+	/** The kind of menus (MenuNodes) the menus below were made with: another (a test switching to the core's own) makes them anew. */
+	private static Class<?> menusMadeBy = MenuNodes.get().getClass();
+	static MMenu appleMenu = MMenu.create("\uF8FF");
 	static { resetAppleMenu(); }
 	/** HyperCardのアップルメニューは項目1が "About HyperCard…"。スタックが
 	 *  put "About X…" into menuItem 1 of menu Apple with menuMsg … で差し替える(Carrot Patch, HyperPuzzle)。reset menuBar で戻す */
 	static void resetAppleMenu() {
+		if(menusMadeBy!=MenuNodes.get().getClass()){
+			menusMadeBy = MenuNodes.get().getClass();
+			appleMenu = MMenu.create("\uF8FF");
+			fontMenuCache = styleMenuCache = keyboardsMenuCache = applicationMenuCache = optionsMenuCache = null;
+		}
 		fontMenuDeleted = styleMenuDeleted = false; //reset menuBar / a new stack session: HyperCard's menus are back
 		appleMenu.removeAll();
-		JMenuItem about = new JMenuItem("About HyperCard\u2026");
+		MMenuItem about = MMenuItem.create("About HyperCard\u2026");
 		about.putClientProperty("menuMessage", "");
 		appleMenu.add(about);
 	}
@@ -5779,12 +5934,12 @@ public class TTalk extends Thread {
 	static java.util.List<String> scriptMenuNames() {
 		java.util.List<String> names = new java.util.ArrayList<String>();
 		//with a paint tool HyperCard shows Paint, Options and Patterns in the place of Objects, Font and Style (HC J-2.3, measured)
-		boolean paint = PCARD.pc!=null && PCARD.pc.tool!=null;
+		boolean paint = UiHost.get().paintMenusShown();
 		boolean japanese = false;
-		for(JMenu m : scriptMenus()){
+		for(MMenu m : scriptMenus()){
 			String n = scriptMenuName(m);
 			if(paint && !Boolean.TRUE.equals(m.getClientProperty("hz.scriptMenu"))){
-				String nn = java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFKC);
+				String nn = Platform.get().normalize(n, UnicodeNorm.Form.NFKC);
 				boolean objects = nn.equals("オブジェクト") || nn.equalsIgnoreCase("Objects");
 				if(objects){
 					japanese = nn.equals("オブジェクト");
@@ -5801,18 +5956,18 @@ public class TTalk extends Thread {
 
 	/** The menus as scripts number them (menu 1 = Apple … the number of menus): HyperZebra's own plus the stand-ins for HyperCard's
 	 *  Font and Style (fontMenu(), styleMenu()) after Objects until a script deletes them */
-	static java.util.List<JMenu> scriptMenus() {
-		java.util.List<JMenu> menus = new java.util.ArrayList<JMenu>();
+	static java.util.List<MMenu> scriptMenus() {
+		java.util.List<MMenu> menus = new java.util.ArrayList<MMenu>();
 		menus.add(appleMenu);
 		int after = -1;
 		boolean hasFont = false, hasStyle = false;
-		for(JMenu m : menuList()){
-			if(m.getClass()!=JMenu.class) continue;
+		for(MMenu m : menuList()){
+			if(!m.isPlainMenu()) continue;
 			String n = scriptMenuName(m);
 			menus.add(m);
-			String e = PCARD.pc!=null && PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(m.getText()) : m.getText();
+			String e = Host.get().hasCardWindow() && HZ.intl()!=null ? HZ.intl().getEngText(m.getText()) : m.getText();
 			if(e.equalsIgnoreCase("Go") || e.equalsIgnoreCase("Tool") || e.equalsIgnoreCase("Tools") || e.equalsIgnoreCase("Objects")) after = menus.size();
-			String nn = java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFKC);
+			String nn = Platform.get().normalize(n, UnicodeNorm.Form.NFKC);
 			if(nn.equalsIgnoreCase("Font") || nn.equals("フォント")) hasFont = true;
 			if(nn.equalsIgnoreCase("Style") || nn.equals("スタイル")) hasStyle = true;
 		}
@@ -5822,114 +5977,114 @@ public class TTalk extends Thread {
 		return menus;
 	}
 
-	private static JMenu fontMenuCache;
+	static MMenu fontMenuCache;
 	/** HyperCardのFontメニューの代わり: 使えるフォント名を項目にしたメニュー(表示はしない)。 */
-	static JMenu fontMenu() {
+	static MMenu fontMenu() {
 		if(fontMenuCache!=null) return fontMenuCache;
-		JMenu m = new JMenu("Font");
+		MMenu m = MMenu.create("Font");
 		java.util.TreeSet<String> names = new java.util.TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
 		//macOS's hidden system families (".AppleSystemUIFont") never appear in a Font menu (YT Editer: put menu "Font" into a pop-up)
-		for(String n : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames()) if(!n.startsWith(".")) names.add(n);
+		for(String n : UiHost.get().fontFamilyNames()) if(!n.startsWith(".")) names.add(n);
 		for(String n : new String[]{"Chicago","Geneva","New York","Monaco","Times","Helvetica","Courier","Symbol","Osaka"}) names.add(n);
-		for(String n : names) m.add(new JMenuItem(n));
+		for(String n : names) m.add(MMenuItem.create(n));
 		fontMenuCache = m;
 		return m;
 	}
 
-	private static JMenu styleMenuCache;
+	static MMenu styleMenuCache;
 	/** HyperCardのStyleメニューの代わり(表示はしない): Readymade Fields の書式フィールドが
 	 *  return & it & return is not in menu "Style" で書式名を確かめる。項目は HyperCard 2.4 と同じ並び */
-	static JMenu styleMenu() {
+	static MMenu styleMenu() {
 		if(styleMenuCache!=null) return styleMenuCache;
-		JMenu m = new JMenu("Style");
+		MMenu m = MMenu.create("Style");
 		for(String n : new String[]{"Plain","Bold","Italic","Underline","Outline","Shadow","Condense","Extend","Group",
 				"-","9","10","12","14","18","24","-","Other\u2026"}){
-			if(n.equals("-")) m.addSeparator(); else m.add(new JMenuItem(n));
+			if(n.equals("-")) m.addSeparator(); else m.add(MMenuItem.create(n));
 		}
 		styleMenuCache = m;
 		return m;
 	}
 
-	private static JMenu keyboardsMenuCache;
+	private static MMenu keyboardsMenuCache;
 	/**
 	 * HyperCard's menu "Keyboards", the system's Keyboard menu (KanjiTalk 7.5's 入力メニュー), which HyperZebra does not show: an
 	 * about item, a dividing line, then the keyboard layouts and input methods with the one in use checked. ScreenSaver Stack
 	 * puts the lines after the first two into a pop-up and doMenu's the chosen one; XT スクリーンセーバー asks for
 	 * there is a menuItem "U.S." of menu "Keyboards". An English stack's menu has U.S. only, a Japanese one's ことえり too.
 	 */
-	static JMenu keyboardsMenu() {
+	static MMenu keyboardsMenu() {
 		boolean english = englishMenuNames();
-		JMenu m = keyboardsMenuCache;
+		MMenu m = keyboardsMenuCache;
 		if(m==null || !Boolean.valueOf(english).equals(m.getClientProperty("hz.english"))){
-			m = new JMenu("Keyboards");
+			m = MMenu.create("Keyboards");
 			m.putClientProperty("hz.english", english);
-			m.add(new JMenuItem(english ? "About Keyboards…" : "入力メニューについて…"));
+			m.add(MMenuItem.create(english ? "About Keyboards…" : "入力メニューについて…"));
 			m.addSeparator();
-			m.add(new javax.swing.JCheckBoxMenuItem("U.S.", true));
-			if(!english) m.add(new javax.swing.JCheckBoxMenuItem("ことえり"));
+			m.add(MCheckBoxMenuItem.create("U.S.", true));
+			if(!english) m.add(MCheckBoxMenuItem.create("ことえり"));
 			keyboardsMenuCache = m;
 		}
 		//the check is the keyboard script once one was chosen (Toolbox68k.keyScript): an external's KeyScript moves it, choosing an
 		//item sets it
-		int script = Toolbox68k.keyScript;
-		if(script>=0) for(Component c : m.getPopupMenu().getComponents())
-			if(c instanceof javax.swing.JCheckBoxMenuItem) ((javax.swing.JCheckBoxMenuItem)c).setSelected(((JMenuItem)c).getText().equals(script==1 ? "ことえり" : "U.S."));
+		int script = UiHost.get().keyScript();
+		if(script>=0) for(MComponent c : m.getPopupMenu().getComponents())
+			if(c instanceof MCheckBoxMenuItem) ((MCheckBoxMenuItem)c).setSelected(((MMenuItem)c).getText().equals(script==1 ? "ことえり" : "U.S."));
 		return m;
 	}
 
 	static boolean isKeyboardsMenuName(String ref) {
-		return ref!=null && java.text.Normalizer.normalize(ref.trim(), java.text.Normalizer.Form.NFKC).equalsIgnoreCase("keyboards");
+		return ref!=null && Platform.get().normalize(ref.trim(), UnicodeNorm.Form.NFKC).equalsIgnoreCase("keyboards");
 	}
 
 	/** doMenu of an item of the Keyboards menu: a keyboard layout or input method gets the check (the host's input source stays as
 	 *  it is), the about item does nothing. False when the menu has no such item. */
 	static boolean chooseKeyboardsMenuItem(String item) {
 		if(item==null || item.trim().matches("[0-9]*")) return false; //doMenu names an item; findMenuItemIndex would take "1" as a number
-		JMenu m = keyboardsMenu();
+		MMenu m = keyboardsMenu();
 		int idx = findMenuItemIndex(m, item);
-		if(idx<0 || !(m.getPopupMenu().getComponent(idx) instanceof JMenuItem)) return false;
-		if(!(m.getPopupMenu().getComponent(idx) instanceof javax.swing.JCheckBoxMenuItem)) return true;
+		if(idx<0 || !(m.getPopupMenu().getComponent(idx) instanceof MMenuItem)) return false;
+		if(!(m.getPopupMenu().getComponent(idx) instanceof MCheckBoxMenuItem)) return true;
 		for(int k=0; k<m.getPopupMenu().getComponentCount(); k++){
-			Component c = m.getPopupMenu().getComponent(k);
-			if(c instanceof javax.swing.JCheckBoxMenuItem) ((javax.swing.JCheckBoxMenuItem)c).setSelected(k==idx);
+			MComponent c = m.getPopupMenu().getComponent(k);
+			if(c instanceof MCheckBoxMenuItem) ((MCheckBoxMenuItem)c).setSelected(k==idx);
 		}
-		Toolbox68k.keyScript = "ことえり".equals(((JMenuItem)m.getPopupMenu().getComponent(idx)).getText()) ? 1 : 0; //externals' GetKeyScript sees it
+		UiHost.get().setKeyScript("ことえり".equals(((MMenuItem)m.getPopupMenu().getComponent(idx)).getText()) ? 1 : 0); //externals' GetKeyScript sees it
 		return true;
 	}
 
-	private static JMenu applicationMenuCache;
+	private static MMenu applicationMenuCache;
 	/**
 	 * HyperCard's menu "Application", the system's Application menu, which HyperZebra does not show: Hide HyperCard, Hide Others,
 	 * Show All, a dividing line, then the programs that run, HyperCard checked. FullDrag 2.3's openStack looks for DragThing
 	 * in it (offset("DragThing",menu "Application")) and quits it while the stack is open. Read only; doMenu of its items does
 	 * nothing ({@link #chooseApplicationMenuItem}).
 	 */
-	static JMenu applicationMenu() {
+	static MMenu applicationMenu() {
 		boolean english = englishMenuNames();
 		if(applicationMenuCache!=null && Boolean.valueOf(english).equals(applicationMenuCache.getClientProperty("hz.english"))) return applicationMenuCache;
-		JMenu m = new JMenu("Application");
+		MMenu m = MMenu.create("Application");
 		m.putClientProperty("hz.english", english);
-		m.add(new JMenuItem(english ? "Hide HyperCard" : "HyperCard を隠す"));
-		m.add(new JMenuItem(english ? "Hide Others" : "ほかを隠す"));
-		m.add(new JMenuItem(english ? "Show All" : "すべてを表示"));
+		m.add(MMenuItem.create(english ? "Hide HyperCard" : "HyperCard を隠す"));
+		m.add(MMenuItem.create(english ? "Hide Others" : "ほかを隠す"));
+		m.add(MMenuItem.create(english ? "Show All" : "すべてを表示"));
 		m.addSeparator();
-		m.add(new javax.swing.JCheckBoxMenuItem("Finder"));
-		m.add(new javax.swing.JCheckBoxMenuItem("HyperCard", true));
+		m.add(MCheckBoxMenuItem.create("Finder"));
+		m.add(MCheckBoxMenuItem.create("HyperCard", true));
 		applicationMenuCache = m;
 		return m;
 	}
 
 	static boolean isApplicationMenuName(String ref) {
-		return ref!=null && java.text.Normalizer.normalize(ref.trim(), java.text.Normalizer.Form.NFKC).equalsIgnoreCase("application");
+		return ref!=null && Platform.get().normalize(ref.trim(), UnicodeNorm.Form.NFKC).equalsIgnoreCase("application");
 	}
 
 	/** doMenu of an item of the Application menu: nothing happens (the host's windows and programs stay as they are). False when
 	 *  the menu has no such item. */
 	static boolean chooseApplicationMenuItem(String item) {
 		if(item==null || item.trim().matches("[0-9]*")) return false;
-		JMenu m = applicationMenu();
+		MMenu m = applicationMenu();
 		int idx = findMenuItemIndex(m, item);
-		return idx>=0 && m.getPopupMenu().getComponent(idx) instanceof JMenuItem;
+		return idx>=0 && m.getPopupMenu().getComponent(idx) instanceof MMenuItem;
 	}
 
 	private static OStack standaloneTitlesOf;
@@ -5941,10 +6096,14 @@ public class TTalk extends Thread {
 	 * openStack deletes the menus by those names, leaving Apple, Tools, Objects and its own File; HyperZebra kept its own titles,
 	 * so `there is a menu " "` was false and Edit, Go, Font and Style stayed. Null for another stack or when no title differs.
 	 */
+	/** HyperCard's MENU resources' titles by ID-1 (MENU 1 = Apple … 11 = Patterns). */
+	static final String[] HYPERCARD_MENU_IDS = {"Apple","File","Edit","Go","Tools","Objects","Font","Style","Paint","Options","Patterns"};
+	/** Guards standaloneTitles / standaloneTitlesOf (it was the ExternalMenu class, which moved to ExternalMenusUI). */
+	private static final Object standaloneTitlesLock = new Object();
 	static java.util.Map<String,String> standaloneMenuTitles() {
-		OStack st = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack st = Host.get().hasCardWindow() ? HZ.stack() : null;
 		if(st==null || !st.standaloneApplication || st.rsrc==null) return null;
-		synchronized(ExternalMenu.class){
+		synchronized(standaloneTitlesLock){
 			if(st==standaloneTitlesOf) return standaloneTitles;
 			java.util.Map<String,String> titles = new java.util.HashMap<String,String>();
 			for(int id=2; id<=8; id++){ //File … Style (HYPERCARD_MENU_IDS: MENU id = index+1)
@@ -5952,7 +6111,7 @@ public class TTalk extends Thread {
 				String path = r==null ? null : st.rsrc.getFilePathAll(id, "MENU");
 				if(path==null) continue;
 				try{
-					byte[] b = java.nio.file.Files.readAllBytes(new File(path).toPath());
+					byte[] b = Platform.get().readAllBytes(new File(path));
 					if(b.length<15 || 15+(b[14]&0xff)>b.length) continue;
 					String title = st.legacyTextEncoding!=null ? st.legacyTextEncoding.decode(java.util.Arrays.copyOfRange(b, 15, 15+(b[14]&0xff)))
 						: new String(b, 15, b[14]&0xff, java.nio.charset.StandardCharsets.ISO_8859_1);
@@ -5972,22 +6131,22 @@ public class TTalk extends Thread {
 		return null;
 	}
 	/** HyperZebra's menu {@code m} under its English name (HyperCard's "Tools" for HyperZebra's "Tool") */
-	private static String englishMenuName(JMenu m) {
+	private static String englishMenuName(MMenu m) {
 		if(m==fontMenuCache) return "Font";
 		if(m==styleMenuCache) return "Style";
 		String t = m.getText();
 		if(t==null) return "";
-		String e = PCARD.pc!=null && PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(t) : t;
+		String e = Host.get().hasCardWindow() && HZ.intl()!=null ? HZ.intl().getEngText(t) : t;
 		return e.equalsIgnoreCase("Tool") ? "Tools" : e;
 	}
 
 	/** HyperCard's Font / Style menu (also HyperCard J's ﾌｫﾝﾄ / ｽﾀｲﾙ) and the system's Keyboards and Application menus, standing in
 	 *  for the menus HyperZebra does not show; null for another name or once a script deleted it */
-	static JMenu virtualHyperCardMenu(String ref) {
+	static MMenu virtualHyperCardMenu(String ref) {
 		if(ref==null) return null;
 		String english = standaloneMenuEnglishName(ref); //a stand-alone's own title for Font / Style
 		if(english!=null) ref = english;
-		String vn = java.text.Normalizer.normalize(ref.trim(), java.text.Normalizer.Form.NFKC);
+		String vn = Platform.get().normalize(ref.trim(), UnicodeNorm.Form.NFKC);
 		if((vn.equalsIgnoreCase("font") || vn.equals("フォント")) && !fontMenuDeleted) return fontMenu();
 		if((vn.equalsIgnoreCase("style") || vn.equals("スタイル")) && !styleMenuDeleted) return styleMenu();
 		if(isKeyboardsMenuName(vn)) return keyboardsMenu();
@@ -5996,28 +6155,28 @@ public class TTalk extends Thread {
 		return null;
 	}
 
-	private static JMenu optionsMenuCache;
+	private static MMenu optionsMenuCache;
 	/**
 	 * HyperCard 2.x's paint Options menu, which it shows with a paint tool: the checks of Grid, Draw Filled, Draw Centered and
 	 * Draw Multiple are the paint settings now (AOL Magic FlipBook: if the checkMark of menuItem 10 of menu "Options" is true).
 	 */
-	static JMenu optionsMenu() {
-		JMenu m = optionsMenuCache;
+	static MMenu optionsMenu() {
+		MMenu m = optionsMenuCache;
 		if(m==null){
-			m = new JMenu("Options");
+			m = MMenu.create("Options");
 			for(String n : new String[]{"Grid","FatBits","Power Keys","-","Line Size\u2026","Brush Shape\u2026","Edit Pattern\u2026",
 					"Polygon Sides\u2026","-","Draw Filled","Draw Centered","Draw Multiple"}){
 				if(n.equals("-")) m.addSeparator();
-				else if(n.equals("Grid") || n.startsWith("Draw ") || n.equals("FatBits") || n.equals("Power Keys")) m.add(new javax.swing.JCheckBoxMenuItem(n));
-				else m.add(new JMenuItem(n));
+				else if(n.equals("Grid") || n.startsWith("Draw ") || n.equals("FatBits") || n.equals("Power Keys")) m.add(MCheckBoxMenuItem.create(n));
+				else m.add(MMenuItem.create(n));
 			}
 			optionsMenuCache = m;
 		}
-		boolean[] checks = {PaintTool.drawingGrid, PCARD.pc!=null && PCARD.pc.fill, PaintTool.drawCentered, PaintTool.drawMultiple};
+		boolean[] checks = UiHost.get().paintOptionChecks(); //Grid, Draw Filled, Draw Centered, Draw Multiple
 		int[] items = {0, 9, 10, 11};
 		for(int k=0; k<items.length; k++){
-			Component c = m.getPopupMenu().getComponent(items[k]);
-			if(c instanceof javax.swing.JCheckBoxMenuItem) ((javax.swing.JCheckBoxMenuItem)c).setSelected(checks[k]);
+			MComponent c = m.getPopupMenu().getComponent(items[k]);
+			if(c instanceof MCheckBoxMenuItem) ((MCheckBoxMenuItem)c).setSelected(checks[k]);
 		}
 		return m;
 	}
@@ -6029,79 +6188,83 @@ public class TTalk extends Thread {
 	}
 
 	/** menu N (1始まり、1はアップルメニュー) / menu "名前" のメニューを探す。無ければnull */
-	static JMenu findMenu(String ref) {
+	static MMenu findMenu(String ref) {
 		if(ref==null) return null;
 		//a stand-alone application's own title (blank ones too: not trimmed) names that menu
 		if(standaloneMenuEnglishName(ref)!=null){
-			for(JMenu m : scriptMenus()) if(m!=appleMenu && ref.equalsIgnoreCase(scriptMenuName(m))) return m==fontMenuCache || m==styleMenuCache ? null : m;
+			for(MMenu m : scriptMenus()) if(m!=appleMenu && ref.equalsIgnoreCase(scriptMenuName(m))) return m==fontMenuCache || m==styleMenuCache ? null : m;
 		}
-		ArrayList<JMenu> list = menuList();
+		ArrayList<MMenu> list = menuList();
 		String r = ref.trim();
 		if(r.matches("[0-9]+")){
 			//numbered as the menus lists them: menu 7 is HyperCard's Font (Mosaïcon: reset menubar, delete menu 7 down to 2); the
 			//Font/Style stand-ins are not in the menu bar, so null for them (virtualHyperCardMenu has them)
-			java.util.List<JMenu> menus = scriptMenus();
+			java.util.List<MMenu> menus = scriptMenus();
 			int n = Integer.parseInt(r);
 			if(n<1 || n>menus.size()) return null;
-			JMenu m = menus.get(n-1);
+			MMenu m = menus.get(n-1);
 			return m==fontMenuCache || m==styleMenuCache ? null : m;
 		}
 		if(r.equals("\uF8FF") || r.equalsIgnoreCase("Apple")) return appleMenu;
-		for(JMenu m : list){
+		for(MMenu m : list){
 			if(m.getText().equalsIgnoreCase(ref)) return m; //create menu " Computer Course" (AOL HyperCard Info. Course): the title as given
 		}
-		for(JMenu m : list){
+		for(MMenu m : list){
 			if(m.getText().equalsIgnoreCase(r) || m.getText().trim().equalsIgnoreCase(r)) return m;
 		}
 		//旧漢字Talk時代のHyperCard 2.xJのメニュー名は半角カナ("ﾌｧｲﾙ","ｺﾞｰ")。全角に正規化して比べる
-		String rn = java.text.Normalizer.normalize(r, java.text.Normalizer.Form.NFKC);
-		for(JMenu m : list){
-			if(java.text.Normalizer.normalize(m.getText(), java.text.Normalizer.Form.NFKC).equalsIgnoreCase(rn)) return m;
+		String rn = Platform.get().normalize(r, UnicodeNorm.Form.NFKC);
+		for(MMenu m : list){
+			if(Platform.get().normalize(m.getText(), UnicodeNorm.Form.NFKC).equalsIgnoreCase(rn)) return m;
 		}
-		for(JMenu m : list){
-			if(PCARD.pc.intl!=null && (PCARD.pc.intl.getEngText(m.getText()).equalsIgnoreCase(r) ||
-				PCARD.pc.intl.getText(r).equalsIgnoreCase(m.getText()))) return m; //英語名でも探せる
+		for(MMenu m : list){
+			if(HZ.intl()!=null && (HZ.intl().getEngText(m.getText()).equalsIgnoreCase(r) ||
+				HZ.intl().getText(r).equalsIgnoreCase(m.getText()))) return m; //英語名でも探せる
 		}
 		//HyperCard の英語版は "Tools"(HyperZebra の英語名は "Tool")。Interactive Gradebook: delete menu "Tools"
 		if(r.equalsIgnoreCase("Tools")) return findMenu("Tool");
+		//HyperCard J's names of its own menus (半角カナ too) in another language: the browser player's English (Free Fighters
+		//-extra-: delete menu "編集"; Earth: enable menu "ｺﾞｰ")
+		String japanese = JapaneseMenuNames.english(r);
+		if(japanese!=null && !japanese.equalsIgnoreCase(r)) return findMenu(japanese);
 		//サブメニュー(「最近使ったスタックを開く」など)の名前でも探せる
-		for(JMenu m : list){
-			JMenu sub = findSubMenu(m, r);
+		for(MMenu m : list){
+			MMenu sub = findSubMenu(m, r);
 			if(sub!=null) return sub;
 		}
 		//ペイントツールの間はペイント用メニューバー(paintMenu)の「ペイント」も出ている
-		if(PCARD.pc!=null && PCARD.pc.tool!=null) return findPaintMenu(r);
+		if(UiHost.get().paintMenusShown()) return findPaintMenu(r);
 		return null;
 	}
 
 	/** The Paint menu, which lives in its own menu bar (PCARD.pc.paintMenu) shown while a paint tool is chosen:
 	 *  "Paint", "ペイント" or HyperCard J's "ﾍﾟｲﾝﾄ". Null when the name is another menu's. */
-	static JMenu findPaintMenu(String ref) {
-		if(ref==null || PCARD.pc==null || PCARD.pc.paintMenu==null || PCARD.pc.paintMenu.mb==null) return null;
-		String rn = java.text.Normalizer.normalize(ref.trim(), java.text.Normalizer.Form.NFKC);
-		javax.swing.JMenuBar mb = PCARD.pc.paintMenu.mb;
+	static MMenu findPaintMenu(String ref) {
+		if(ref==null || !UiHost.get().hasPaintMenus() || MenuNodes.get().paintMenuBar()==null) return null;
+		String rn = Platform.get().normalize(ref.trim(), UnicodeNorm.Form.NFKC);
+		MMenuBar mb = MenuNodes.get().paintMenuBar();
 		for(int i=0; i<mb.getComponentCount(); i++){
-			if(!(mb.getComponent(i) instanceof JMenu)) continue;
-			JMenu m = (JMenu)mb.getComponent(i);
-			String eng = PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(m.getText()) : m.getText();
+			if(!(mb.getComponent(i) instanceof MMenu)) continue;
+			MMenu m = (MMenu)mb.getComponent(i);
+			String eng = HZ.intl()!=null ? HZ.intl().getEngText(m.getText()) : m.getText();
 			if(!"Paint".equals(eng)) continue;
 			if(rn.equalsIgnoreCase("Paint") || rn.equalsIgnoreCase(m.getText()) ||
-					rn.equalsIgnoreCase(java.text.Normalizer.normalize(m.getText(), java.text.Normalizer.Form.NFKC))) return m;
+					rn.equalsIgnoreCase(Platform.get().normalize(m.getText(), UnicodeNorm.Form.NFKC))) return m;
 		}
 		return null;
 	}
 
 	/** menu 直下(再帰)のサブメニューを名前で探す。無ければnull */
-	private static JMenu findSubMenu(JMenu menu, String r) {
+	private static MMenu findSubMenu(MMenu menu, String r) {
 		int count = menu.getPopupMenu().getComponentCount();
 		for(int j=0; j<count; j++){
-			Component c = menu.getPopupMenu().getComponent(j);
-			if(!(c instanceof JMenu)) continue;
-			JMenu sub = (JMenu)c;
+			MComponent c = menu.getPopupMenu().getComponent(j);
+			if(!(c instanceof MMenu)) continue;
+			MMenu sub = (MMenu)c;
 			if(sub.getText().equalsIgnoreCase(r)) return sub;
-			if(PCARD.pc.intl!=null && (PCARD.pc.intl.getEngText(sub.getText()).equalsIgnoreCase(r) ||
-				PCARD.pc.intl.getText(r).equalsIgnoreCase(sub.getText()))) return sub;
-			JMenu deeper = findSubMenu(sub, r);
+			if(HZ.intl()!=null && (HZ.intl().getEngText(sub.getText()).equalsIgnoreCase(r) ||
+				HZ.intl().getText(r).equalsIgnoreCase(sub.getText()))) return sub;
+			MMenu deeper = findSubMenu(sub, r);
 			if(deeper!=null) return deeper;
 		}
 		return null;
@@ -6110,11 +6273,11 @@ public class TTalk extends Thread {
 	/** A menu item's text for a loose comparison: NFKC (half-width kana) without spaces */
 	private static String squeezeMenuText(String t) {
 		if(t==null) return "";
-		return java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFKC).replaceAll("[\\s\u3000]+", "");
+		return Platform.get().normalize(t, UnicodeNorm.Form.NFKC).replaceAll("[\\s\u3000]+", "");
 	}
 
 	/** menuItem N (1始まり、区切り線も1個に数える) / menuItem "名前" の位置(0始まり)。無ければ-1 */
-	static int findMenuItemIndex(JMenu menu, String ref) {
+	static int findMenuItemIndex(MMenu menu, String ref) {
 		if(menu==null || ref==null) return -1;
 		String r = ref.trim();
 		int count = menu.getPopupMenu().getComponentCount();
@@ -6123,590 +6286,64 @@ public class TTalk extends Thread {
 			if(n>=1 && n<=count) return n-1;
 			//no such item number: an item whose text is the number (Parara's "wait 0", tab + "15" … items)
 		}
+		//the item named so to its spaces first: Window Tools tells its items apart by trailing spaces (a window "X  ", an
+		//easy access stack "X   "), and the trimmed match below took the first of them, running the other item's menuMsg
 		for(int j=0; j<count; j++){
-			Component c = menu.getPopupMenu().getComponent(j);
-			if(c instanceof JMenuItem && (((JMenuItem)c).getText().equalsIgnoreCase(r) || ((JMenuItem)c).getText().trim().equalsIgnoreCase(r))) return j;
+			MComponent c = menu.getPopupMenu().getComponent(j);
+			if(c instanceof MMenuItem && ((MMenuItem)c).getText().equalsIgnoreCase(ref)) return j;
+		}
+		for(int j=0; j<count; j++){
+			MComponent c = menu.getPopupMenu().getComponent(j);
+			if(c instanceof MMenuItem && (((MMenuItem)c).getText().equalsIgnoreCase(r) || ((MMenuItem)c).getText().trim().equalsIgnoreCase(r))) return j;
 		}
 		//英語名(組み込みメニュー項目)でも探せる
-		if(PCARD.pc!=null && PCARD.pc.intl!=null){
+		if(Host.get().hasCardWindow() && HZ.intl()!=null){
 			for(int j=0; j<count; j++){
-				Component c = menu.getPopupMenu().getComponent(j);
-				if(c instanceof JMenuItem && (PCARD.pc.intl.getEngText(((JMenuItem)c).getText()).equalsIgnoreCase(r) ||
-					PCARD.pc.intl.getText(r).equalsIgnoreCase(((JMenuItem)c).getText()))) return j;
+				MComponent c = menu.getPopupMenu().getComponent(j);
+				if(c instanceof MMenuItem && (HZ.intl().getEngText(((MMenuItem)c).getText()).equalsIgnoreCase(r) ||
+					HZ.intl().getText(r).equalsIgnoreCase(((MMenuItem)c).getText()))) return j;
 			}
 		}
 		//HyperCard's "Quit HyperCard" is HyperZebra's Quit (AOL Social Exchange: put "Quit" into menuItem "Quit HyperCard" of menu "File")
 		if(r.equalsIgnoreCase("Quit HyperCard")) return findMenuItemIndex(menu, "Quit");
+		//HyperCard's paint Edit menu item "Clear Picture" is HyperZebra's Clear Selection, there while a selection is up ("Clear"
+		//without one; HC 2.4 measured). DoodlePaint's rubber band: drag, doMenu "Select", if there is a menuItem "Clear Picture"
+		//in menu "Edit" then doMenu "Clear picture"
+		if(r.equalsIgnoreCase("Clear Picture") && UiHost.get().paintSelectionUp()) return findMenuItemIndex(menu, "Clear Selection");
 		//doMenu "コピーボタン" (夏休み's install button, HyperCard J-2.0/2.1 item names): HyperZebra's Japanese items have a space
 		//("コピー ボタン"), and half-width kana or full-width letters are the same item
 		String squeezed = squeezeMenuText(r);
 		if(!squeezed.isEmpty()){
 			for(int j=0; j<count; j++){
-				Component c = menu.getPopupMenu().getComponent(j);
-				if(c instanceof JMenuItem && squeezeMenuText(((JMenuItem)c).getText()).equalsIgnoreCase(squeezed)) return j;
+				MComponent c = menu.getPopupMenu().getComponent(j);
+				if(c instanceof MMenuItem && squeezeMenuText(((MMenuItem)c).getText()).equalsIgnoreCase(squeezed)) return j;
 			}
 		}
 		//doMenu "Open Stack...","File" (Better Home): three periods for the ellipsis of the item, and the other way round
 		if(r.contains("...")) return findMenuItemIndex(menu, r.replace("...", "\u2026"));
 		if(r.contains("\u2026") && !ref.contains("...")){
 			for(int j=0; j<count; j++){
-				Component c = menu.getPopupMenu().getComponent(j);
-				if(c instanceof JMenuItem && ((JMenuItem)c).getText().trim().replace("...", "\u2026").equalsIgnoreCase(r)) return j;
+				MComponent c = menu.getPopupMenu().getComponent(j);
+				if(c instanceof MMenuItem && ((MMenuItem)c).getText().trim().replace("...", "\u2026").equalsIgnoreCase(r)) return j;
 			}
 		}
 		//"-3": HyperCard names a menu's dividing lines -1, -2, -3\u2026 (J-2.3: menu "File" lists them so; HyperBib's setupMenus
 		//deletes menuItem "-3" of menu "Edit")
 		if(r.equals("-")){
 			//menuItem "-": the last dividing line (Sonnet Folio: put "-" after menuItem y … then sets its cmdChar/enabled)
-			for(int j=count-1; j>=0; j--) if(menu.getPopupMenu().getComponent(j) instanceof javax.swing.JSeparator) return j;
+			for(int j=count-1; j>=0; j--) if(menu.getPopupMenu().getComponent(j) instanceof MSeparator) return j;
 		}
 		if(r.matches("-[0-9]+")){
 			int n = Integer.parseInt(r.substring(1));
 			for(int j=0; j<count; j++){
-				if(menu.getPopupMenu().getComponent(j) instanceof javax.swing.JSeparator && --n==0) return j;
+				if(menu.getPopupMenu().getComponent(j) instanceof MSeparator && --n==0) return j;
 			}
 		}
 		return -1;
 	}
 
-	private static void menuChanged() {
-		if(PCARD.pc!=null && PCARD.pc.menu!=null) GMenu.menuUpdate(PCARD.pc.menu.mb);
-	}
-
-	/**
-	 * The menus an external (XCMD/XFCN) put into the menu bar with InsertMenu, as menus of HyperCard's menu bar: scripts find
-	 * them by name and give their items menu messages, and choosing an item sends doMenu like any script-made menu.
-	 * A menu that leaves the external's menu bar (DeleteMenu) leaves this bar; one already there keeps what scripts set.
-	 */
-	static void syncExternalMenus(Object owner, java.util.List<MacAppHost.MenuModel> models){
-		if(PCARD.pc==null || PCARD.pc.menu==null || PCARD.pc.menu.mb==null) return;
-		PCARD.runOnEDT(() -> {
-			javax.swing.JMenuBar mb = PCARD.pc.menu.mb;
-			java.util.Set<Integer> live = new java.util.HashSet<Integer>();
-			boolean changed = false;
-			for(MacAppHost.MenuModel model : models){
-				live.add(model.id);
-				if(model.apple || model.title==null || model.title.isEmpty()) continue;
-				JMenu present = null;
-				for(int i=0; i<mb.getMenuCount() && present==null; i++){
-					JMenu jm = mb.getMenu(i);
-					if(jm!=null && jm.getClientProperty("hz.externalMenu")==owner && Integer.valueOf(model.id).equals(jm.getClientProperty("hz.externalMenuId"))) present = jm;
-				}
-				//already in the bar: it takes what the external did to it since (MenuHandler XCMD's Mark, Enable, Disable)
-				if(present!=null){ if(updateExternalMenu(present, model)) changed = true; continue; }
-				if(findMenu(model.title)!=null) continue;
-				final JMenu menu = new JMenu(model.title);
-				menu.putClientProperty("hz.scriptMenu", Boolean.TRUE);
-				menu.putClientProperty("hz.externalMenu", owner);
-				menu.putClientProperty("hz.externalMenuId", model.id);
-				menu.setEnabled(model.enabled);
-				//a click in the menu bar: the external's windows that registered menus (RegisterXWMenu) get xMBarClickedEvt (WindowsMenu fills its menu then)
-				menu.addMenuListener(new javax.swing.event.MenuListener(){
-					public void menuSelected(javax.swing.event.MenuEvent e){ Xcmd68k.menuBarClicked(owner); }
-					public void menuDeselected(javax.swing.event.MenuEvent e){}
-					public void menuCanceled(javax.swing.event.MenuEvent e){}
-				});
-				for(MacAppHost.ItemModel item : model.items){
-					if(item.separator){ menu.addSeparator(); continue; }
-					menu.add(externalMenuItem(menu, item));
-				}
-				//its place among HyperCard's menus, after the one before it in the external's bar (Menu "Switch": its File menu
-				//between Apple and Edit), else at the end
-				int at = mb.getComponentCount(), p = -2;
-				if(model.after==appleMenu) p = -1;
-				else if(model.after!=null) for(int i=0; i<mb.getComponentCount(); i++) if(mb.getComponent(i)==model.after) p = i;
-				if(p>=-1){
-					at = p+1;
-					while(at<mb.getComponentCount() && mb.getComponent(at) instanceof JMenu && ((JMenu)mb.getComponent(at)).getClientProperty("hz.externalMenu")==owner) at++;
-				}
-				mb.add(menu, at);
-				changed = true;
-			}
-			for(int i=mb.getMenuCount()-1; i>=0; i--){
-				JMenu jm = mb.getMenu(i);
-				if(jm!=null && jm.getClientProperty("hz.externalMenu")==owner && !live.contains(jm.getClientProperty("hz.externalMenuId"))){
-					mb.remove(i);
-					changed = true;
-				}
-			}
-			if(changed) menuChanged();
-		});
-	}
-
-	/** One of HyperCard's own menus as an external's Menu Manager is given it (see MenuManager68k.syncHyperCardMenus). */
-	static final class ExternalMenu {
-		final JMenu menu; final String title; final int id; final boolean enabled;
-		final java.util.List<String> items = new java.util.ArrayList<String>(); //"-" for a separator
-		/** The menu's components the items stand for (a separator's too), in the same order. */
-		final java.util.List<Object> components = new java.util.ArrayList<Object>();
-		final java.util.List<Boolean> enabledItems = new java.util.ArrayList<Boolean>(), checkedItems = new java.util.ArrayList<Boolean>();
-		/** Each item's Command key (0 none), textStyle (QuickDraw style bits) and markChar when it is not the check mark (else null). */
-		final java.util.List<Character> commands = new java.util.ArrayList<Character>();
-		final java.util.List<Integer> styles = new java.util.ArrayList<Integer>();
-		final java.util.List<String> marks = new java.util.ArrayList<String>();
-		/** The ID of the submenu an external hung on the item (see externalHierarchicalHyperCardItem), else 0. */
-		final java.util.List<Integer> submenus = new java.util.ArrayList<Integer>();
-		ExternalMenu(JMenu menu, String title, int id, boolean enabled){ this.menu=menu; this.title=title; this.id=id; this.enabled=enabled; }
-		void add(String text, Object component, boolean enabled, boolean checked, char command, int style, String mark){
-			items.add(text); components.add(component); enabledItems.add(enabled); checkedItems.add(checked); commands.add(command); styles.add(style); marks.add(mark); submenus.add(0);
-		}
-	}
-	/** An item of HyperCard's standard menu that HyperZebra's menu does not have (Print Card, Scroll …), or one of its dividing
-	 *  lines: an external sees it where HyperCard has it, but nothing in HyperZebra's bar stands for it. */
-	static final class MissingMenuItem {
-		final String text; final char command;
-		MissingMenuItem(String text, char command){ this.text=text; this.command=command; }
-		@Override public String toString(){ return text; }
-	}
-	/**
-	 * HyperCard 2.4's standard menus at userLevel 5, item by item (measured in the 68K VM, Oct 24 2026: `menu "File"` …), by MENU ID;
-	 * "-" a dividing line, after "/" the Command key of an item HyperZebra lacks. Externals number HyperCard's items: PowerMenus'
-	 * Properties hangs submenus on Objects items 10 and 11 (New Button, New Field; HyperZebra's Shape/Panel Info moved them to 14
-	 * and 15 and it checked Bring Closer instead), GetMenuKey reads Edit item 3's key (Cut). HyperZebra's own items HyperCard does
-	 * not have stay out of the externals' sight.
-	 */
-	private static final java.util.Map<Integer,String[]> HYPERCARD_MENU_ITEMS = java.util.Map.of(
-		2, new String[]{"New Stack…","Open Stack…","Close Stack","Save a Copy…","-","Compact Stack","Protect Stack…","Delete Stack…","-",
-			"Page Setup…","Print Field…","Print Card/P","Print Stack…","Print Report…","-","Quit HyperCard/Q"},
-		3, new String[]{"Undo","-","Cut","Copy","Paste","Clear","-","New Card","Delete Card","Cut Card","Copy Card","-","Text Style…/T","Background","Icon…"},
-		4, new String[]{"Back","Home","Help","Recent","-","First","Prev","Next","Last","-","Find…","Message","Scroll/E","Next Window"},
-		6, new String[]{"Button Info…","Field Info…","Card Info…","Bkgnd Info…","Stack Info…","-","Bring Closer","Send Farther","-","New Button","New Field","New Background"});
-	/** HyperCard's names of items HyperZebra names otherwise. */
-	private static final java.util.Map<String,String> HYPERCARD_ITEM_ALIASES = java.util.Map.of("Bkgnd Info…","Background Info…", "Quit HyperCard","Quit", "Clear","Delete");
-	/** The items of those menus HyperZebra never has (a script that deleted one of the others took it out of HyperCard's menu too). */
-	private static final java.util.Set<String> HYPERCARD_ONLY_ITEMS = java.util.Set.of("Page Setup…","Print Field…","Print Card","Print Stack…","Print Report…","Quit HyperCard","Cut Card","Text Style…","Scroll");
-	private static String looseItemName(String t){ return t==null ? "" : t.trim().replace("...", "…"); }
-	/** A component of a HyperCard menu as the external's view has it: the item a hierarchical stand-in replaced (see externalHierarchicalHyperCardItem). */
-	private static Object viewComponent(Component c){
-		Object o = c instanceof javax.swing.JComponent ? ((javax.swing.JComponent)c).getClientProperty(HIERARCHICAL_STAND_IN_FOR) : null;
-		return o!=null ? o : c;
-	}
-	private static final String HIERARCHICAL_STAND_IN_FOR = "hz.hierarchicalStandInFor";
-	/**
-	 * The items of HyperCard's menu {@code m} (HyperCard's MENU {@code id}) as an external sees them: HyperCard's own items in
-	 * HyperCard's order (HYPERCARD_MENU_ITEMS) with the items scripts and externals added after the item before them; HyperZebra's
-	 * components, or MissingMenuItem. A menu that no longer looks like HyperZebra's standard one (paint mode, rebuilt by a script)
-	 * is shown as it is.
-	 */
-	static java.util.List<Object> hyperCardMenuView(JMenu m, int id){
-		Component[] cs = m.getPopupMenu().getComponents();
-		java.util.List<Object> own = new java.util.ArrayList<Object>();
-		for(Component c : cs) own.add(viewComponent(c));
-		String[] layout = id>0 && !Boolean.TRUE.equals(m.getClientProperty("hz.scriptMenu")) ? HYPERCARD_MENU_ITEMS.get(id) : null;
-		if(layout==null) return own;
-		boolean[] used = new boolean[cs.length];
-		java.util.List<Object> view = new java.util.ArrayList<Object>();
-		int matched = 0, wanted = 0;
-		for(String entry : layout){
-			int slash = entry.length()>2 ? entry.indexOf('/') : -1;
-			String name = slash>0 ? entry.substring(0, slash) : entry;
-			char key = slash>0 ? entry.charAt(slash+1) : 0;
-			if(name.equals("-")){ view.add(new MissingMenuItem("-", (char)0)); continue; }
-			boolean onlyHyperCard = HYPERCARD_ONLY_ITEMS.contains(name);
-			if(!onlyHyperCard) wanted++;
-			String alias = HYPERCARD_ITEM_ALIASES.get(name);
-			int found = -1;
-			for(int j=0; j<cs.length && found<0; j++){
-				Object o = own.get(j);
-				if(used[j] || !(o instanceof JMenuItem) || o instanceof JMenu && o==cs[j]) continue; //a submenu of HyperZebra's (Open Recent Stack) is not HyperCard's
-				String text = ((JMenuItem)o).getText(), english = PCARD.pc!=null && PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(text) : text;
-				for(String t : new String[]{text, english}) if(looseItemName(t).equalsIgnoreCase(name) || alias!=null && looseItemName(t).equalsIgnoreCase(alias)) found = j;
-			}
-			if(found>=0){ used[found] = true; view.add(own.get(found)); matched++; }
-			else if(onlyHyperCard) view.add(new MissingMenuItem(name.replace("…", "..."), key));
-		}
-		if(matched*2<wanted) return own;
-		for(int j=0; j<cs.length; j++){
-			if(used[j] || !(cs[j] instanceof javax.swing.JComponent) || ((javax.swing.JComponent)cs[j]).getClientProperty("menuMessage")==null) continue;
-			int at = 0;
-			for(int b=j-1; b>=0 && at==0; b--){ int v = view.indexOf(own.get(b)); if(v>=0) at = v+1; }
-			view.add(at, own.get(j));
-		}
-		return view;
-	}
-	/** HyperCard's MENU resource IDs of its standard menus (HyperCard 2.4: Apple 1, File 2 … Patterns 11), by English title. */
-	private static final String[] HYPERCARD_MENU_IDS = {"Apple","File","Edit","Go","Tools","Objects","Font","Style","Paint","Options","Patterns"};
-
-	/** HyperCard's menus (the Apple menu, then the bar's own menus and the ones scripts made, not externals' menus) for an external:
-	 *  the titles scripts use (`the menus`), the standard menus with HyperCard's IDs, the others 0 (the Menu Manager numbers them). */
-	static java.util.List<ExternalMenu> hyperCardMenusForExternals() {
-		java.util.List<ExternalMenu> out = new java.util.ArrayList<ExternalMenu>();
-		if(PCARD.pc==null) return out;
-		java.util.List<JMenu> menus = new java.util.ArrayList<JMenu>();
-		menus.add(appleMenu);
-		int after = -1; boolean japanese = false, hasFont = false, hasStyle = false;
-		for(JMenu m : menuList()) if(m.getClass()==JMenu.class && m.getClientProperty("hz.externalMenu")==null){
-			menus.add(m);
-			String n = scriptMenuName(m), e = PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(m.getText()) : m.getText();
-			if(n.equals("ｺﾞｰ")) japanese = true;
-			if(e.equalsIgnoreCase("Go") || e.equalsIgnoreCase("Tool") || e.equalsIgnoreCase("Tools") || e.equalsIgnoreCase("Objects")) after = menus.size();
-			hasFont |= e.equalsIgnoreCase("Font"); hasStyle |= e.equalsIgnoreCase("Style");
-		}
-		//the Font and Style menus HyperZebra keeps out of its bar are where `the menus` names them (MENU 7 and 8: Menu "Switch" deletes them)
-		if(after<0) after = menus.size();
-		if(!styleMenuDeleted && !hasStyle) menus.add(after, styleMenu());
-		if(!fontMenuDeleted && !hasFont) menus.add(after, fontMenu());
-		for(JMenu m : menus){
-			String title = m==appleMenu ? "\u0014" : m==fontMenuCache ? (japanese ? "ﾌｫﾝﾄ" : "Font") : m==styleMenuCache ? (japanese ? "ｽﾀｲﾙ" : "Style") : scriptMenuName(m);
-			String english = m==appleMenu ? "Apple" : PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(m.getText()) : m.getText();
-			if("Tool".equalsIgnoreCase(english)) english = "Tools";
-			int id = 0;
-			if(!Boolean.TRUE.equals(m.getClientProperty("hz.scriptMenu")))
-				for(int i=0; i<HYPERCARD_MENU_IDS.length; i++) if(HYPERCARD_MENU_IDS[i].equalsIgnoreCase(english)) id = i+1;
-			ExternalMenu em = new ExternalMenu(m, title, id, m.isEnabled());
-			for(Object o : hyperCardMenuView(m, id)){
-				if(o instanceof MissingMenuItem){
-					MissingMenuItem missing = (MissingMenuItem)o;
-					em.add(missing.text, o, !missing.text.equals("-"), false, missing.command, 0, null);
-					continue;
-				}
-				JMenuItem mi = o instanceof JMenuItem ? (JMenuItem)o : null;
-				boolean checked = mi instanceof javax.swing.JCheckBoxMenuItem && ((javax.swing.JCheckBoxMenuItem)mi).isSelected();
-				Object style = mi==null ? null : mi.getClientProperty("hzTextStyle"), mark = mi==null ? null : mi.getClientProperty("hzMarkChar");
-				em.add(mi==null ? "-" : scriptMenuItemText(m, mi), o, mi!=null && mi.isEnabled(), checked, mi==null ? 0 : acceleratorChar(mi.getAccelerator()),
-					style instanceof Integer ? (Integer)style : 0, checked && mark!=null ? mark.toString() : null);
-				//an item an external made hierarchical stays so for the next external (HyperCard keeps the $1B in its menu)
-				for(Component c : m.getPopupMenu().getComponents())
-					if(c!=o && viewComponent(c)==o && c instanceof javax.swing.JComponent && ((javax.swing.JComponent)c).getClientProperty("hz.submenuId") instanceof Integer)
-						em.submenus.set(em.submenus.size()-1, (Integer)((javax.swing.JComponent)c).getClientProperty("hz.submenuId"));
-			}
-			out.add(em);
-		}
-		return out;
-	}
-
-	/** An external changed HyperCard's menu {@code menu}: the menu itself ({@code item} 0) or item {@code item} (1-based, separators
-	 *  counted) is enabled/disabled, checked/unchecked or renamed as a script's `set` of that property would do it; null = unchanged. */
-	static void externalChangedHyperCardMenu(Object menu, int item, Boolean enabled, Boolean checked, String text) {
-		if(!(menu instanceof JMenu)) return;
-		JMenu m = (JMenu)menu;
-		if(item==0){ if(enabled!=null) m.setEnabled(enabled); return; }
-		OMenuItem omi = new OMenuItem(m, item-1);
-		try{
-			if(text!=null) TUtil.setMenuItemProperty(omi, "name", text);
-			if(enabled!=null) TUtil.setMenuItemProperty(omi, "enabled", enabled.toString());
-			if(checked!=null) TUtil.setMenuItemProperty(omi, "checkmark", checked.toString());
-		}catch(xTalkException e){
-			System.err.println("[xcmd] menu "+m.getText()+" item "+item+": "+e.getMessage());
-		}
-	}
-
-	/** An accelerator's key as a menu item's Command character (HyperZebra's Back is Command-~, Bring Closer Command-+), 0 for none. */
-	static char acceleratorChar(javax.swing.KeyStroke ks){
-		if(ks==null) return 0;
-		int code = ks.getKeyCode();
-		if(code>='A' && code<='Z' || code>='0' && code<='9') return (char)code;
-		switch(code){
-			case KeyEvent.VK_DEAD_TILDE: case KeyEvent.VK_BACK_QUOTE: return '~';
-			case KeyEvent.VK_PLUS: case KeyEvent.VK_EQUALS: return '+';
-			case KeyEvent.VK_MINUS: return '-';
-			case KeyEvent.VK_SLASH: return (ks.getModifiers() & InputEvent.SHIFT_DOWN_MASK)!=0 ? '?' : '/';
-			case KeyEvent.VK_PERIOD: return '.';
-			case KeyEvent.VK_COMMA: return ',';
-			default: return 0;
-		}
-	}
-	/** The popup index of the component an external's item stands for (or of the hierarchical stand-in put in its place), -1 if gone. */
-	private static int hyperCardItemIndex(JMenu m, Object item){
-		Component[] cs = m.getPopupMenu().getComponents();
-		for(int j=0; j<cs.length; j++) if(cs[j]==item || viewComponent(cs[j])==item) return j;
-		return -1;
-	}
-	/** A mark as HyperTalk's markChar has it: HyperCard's $11/$13/$14 for the command, diamond and apple glyphs, null for the check mark. */
-	private static String hyperTalkMark(String mark){
-		if(mark==null || mark.isEmpty()) return mark;
-		switch(mark.charAt(0)){
-			case '✓': case '\u0012': return null;
-			case '⌘': return "\u0011";
-			case '◆': return "\u0013";
-			case '': return "\u0014";
-			default: return mark.substring(0, 1);
-		}
-	}
-	/**
-	 * An external changed item {@code item} (a component of the menu's external view, see hyperCardMenuView) of HyperCard's menu
-	 * {@code menu}, as a script's `set` of the property does it; null = unchanged. {@code mark}: "" none, the check mark or another
-	 * character (SetItemMark), {@code command} 0 for none (SetItemCmd), {@code style} the QuickDraw style (SetItemStyle). Returns the
-	 * component now in the item's place (checking an item makes a check-box item of it); an item HyperZebra lacks changes nothing.
-	 */
-	static Object externalChangedHyperCardItem(Object menu, Object item, Boolean enabled, String text, String mark, Character command, Integer style) {
-		if(!(menu instanceof JMenu) || !(item instanceof Component)) return item;
-		JMenu m = (JMenu)menu;
-		final Object[] placed = {item};
-		PCARD.runOnEDT(() -> {
-			int at = hyperCardItemIndex(m, item);
-			if(at<0) return;
-			Component now = m.getPopupMenu().getComponent(at);
-			if(now!=item){ //a hierarchical stand-in: it and the item it stands for take the name and the state
-				for(Component c : new Component[]{now, (Component)item}) if(c instanceof JMenuItem){
-					if(text!=null) ((JMenuItem)c).setText(text);
-					if(enabled!=null) ((JMenuItem)c).setEnabled(enabled);
-				}
-				menuChanged();
-				return;
-			}
-			OMenuItem omi = new OMenuItem(m, at);
-			try{
-				if(text!=null) TUtil.setMenuItemProperty(omi, "name", text);
-				if(enabled!=null) TUtil.setMenuItemProperty(omi, "enabled", enabled.toString());
-				if(mark!=null){
-					String hc = hyperTalkMark(mark);
-					if(mark.isEmpty()) TUtil.setMenuItemProperty(omi, "checkmark", "false");
-					else if(hc==null) TUtil.setMenuItemProperty(omi, "checkmark", "true");
-					else TUtil.setMenuItemProperty(omi, "markchar", hc);
-				}
-				if(command!=null) TUtil.setMenuItemProperty(omi, "commandchar", command==0 ? "" : String.valueOf(command));
-				if(style!=null) TUtil.setMenuItemProperty(omi, "textstyle", TUtil.textStyleName(style));
-			}catch(xTalkException e){
-				System.err.println("[xcmd] menu "+m.getText()+" item "+(at+1)+": "+e.getMessage());
-			}
-			placed[0] = m.getPopupMenu().getComponent(at);
-		});
-		return placed[0];
-	}
-	/**
-	 * An external made item {@code item} of HyperCard's menu {@code menu} hierarchical (SetItemCmd $1B and the submenu's ID as its
-	 * mark): a stand-in submenu takes the item's place, its items send doMenu with their text and the submenu's title (PowerMenus'
-	 * Properties hangs its button and field styles on New Button and New Field; its doMenu handler makes the object chosen).
-	 * {@code submenu} null puts the item back.
-	 */
-	static void externalHierarchicalHyperCardItem(Object menu, Object item, MacAppHost.MenuModel submenu) {
-		if(!(menu instanceof JMenu) || !(item instanceof JMenuItem)) return;
-		JMenu m = (JMenu)menu; JMenuItem original = (JMenuItem)item;
-		PCARD.runOnEDT(() -> {
-			int at = hyperCardItemIndex(m, item);
-			if(at<0) return;
-			Component put = original;
-			if(submenu!=null){
-				JMenu standIn = new JMenu(original.getText());
-				standIn.putClientProperty(HIERARCHICAL_STAND_IN_FOR, original);
-				standIn.putClientProperty("hz.submenuId", submenu.id);
-				standIn.setEnabled(original.isEnabled());
-				fillExternalSubmenu(standIn, submenu);
-				put = standIn;
-			}
-			m.getPopupMenu().remove(at);
-			m.getPopupMenu().insert(put, at);
-			menuChanged();
-		});
-	}
-
-	/** HyperCard's menus an external took out of the menu bar (DeleteMenu), with the bar they were in: they can come back. */
-	private static final java.util.Map<JMenu,javax.swing.JMenuBar> menusOutOfBar = new java.util.IdentityHashMap<JMenu,javax.swing.JMenuBar>();
-
-	/**
-	 * An external took one of HyperCard's menus out of the menu bar (DeleteMenu: Rinaldi's Menu "Switch" leaves only Apple, File and
-	 * Edit): it leaves HyperZebra's bar too, so `the menus` no longer names it (HC 2.2 measured), until the external puts it back
-	 * ({@link #externalRestoredHyperCardMenu}) or `reset menuBar` makes the bar again.
-	 */
-	static void externalRemovedHyperCardMenu(Object menu) {
-		if(!(menu instanceof JMenu) || menu==appleMenu || PCARD.pc==null || PCARD.pc.menu==null || PCARD.pc.menu.mb==null) return;
-		if(menu==fontMenuCache){ fontMenuDeleted = true; return; }
-		if(menu==styleMenuCache){ styleMenuDeleted = true; return; }
-		JMenu m = (JMenu)menu;
-		PCARD.runOnEDT(() -> {
-			javax.swing.JMenuBar mb = PCARD.pc.menu.mb;
-			for(int i=0; i<mb.getComponentCount(); i++) if(mb.getComponent(i)==m){ mb.remove(i); menusOutOfBar.put(m, mb); menuChanged(); return; }
-		});
-	}
-	/** The menu comes back into the bar (SetMenuBar with the list saved before), after {@code previous} (a menu of the bar, null = first). */
-	static void externalRestoredHyperCardMenu(Object menu, Object previous) {
-		if(!(menu instanceof JMenu) || PCARD.pc==null || PCARD.pc.menu==null) return;
-		if(menu==fontMenuCache){ fontMenuDeleted = false; return; }
-		if(menu==styleMenuCache){ styleMenuDeleted = false; return; }
-		JMenu m = (JMenu)menu;
-		PCARD.runOnEDT(() -> {
-			javax.swing.JMenuBar mb = PCARD.pc.menu.mb;
-			if(menusOutOfBar.remove(m)!=mb || mb==null) return; //reset menuBar has made the bar again since
-			int at = 0;
-			for(int i=0; i<mb.getComponentCount(); i++) if(mb.getComponent(i)==previous) at = i+1;
-			mb.add(m, at);
-			menuChanged();
-		});
-	}
-	/**
-	 * An external deleted, inserted or brought back items of HyperCard's menu {@code menu} (Menu "Switch" cuts Edit down to its
-	 * clipboard items and later restores the menu from a copy of its handle): {@code arrangement} is the menu's items as the
-	 * external left them, each a component the menu had or a String, the text of a new item (choosing it sends doMenu, as HyperCard
-	 * does for an item it does not know); {@code enabled}/{@code checked} are their states. Returns the components now in the menu.
-	 */
-	static java.util.List<Object> externalArrangedHyperCardMenu(Object menu, java.util.List<Object> arrangement, boolean[] enabled, boolean[] checked) {
-		return externalArrangedHyperCardMenu(menu, arrangement, enabled, checked, null);
-	}
-	/** As above; {@code seen} the items the external was ever given (see hyperCardMenuView): HyperZebra's own items it never saw
-	 *  (Shape Info…) stay after the item they followed, the items HyperZebra lacks (MissingMenuItem) keep their places in the list only. */
-	static java.util.List<Object> externalArrangedHyperCardMenu(Object menu, java.util.List<Object> arrangement, boolean[] enabled, boolean[] checked, java.util.Collection<Object> seen) {
-		java.util.List<Object> out = new java.util.ArrayList<Object>();
-		if(!(menu instanceof JMenu)) return out;
-		JMenu m = (JMenu)menu;
-		PCARD.runOnEDT(() -> {
-			javax.swing.JPopupMenu popup = m.getPopupMenu();
-			Component[] before = popup.getComponents();
-			popup.removeAll();
-			for(int i=0; i<arrangement.size(); i++){
-				Object o = arrangement.get(i);
-				if(o instanceof MissingMenuItem){ out.add(o); continue; }
-				Component c;
-				if(o instanceof Component){
-					c = (Component)o;
-					for(Component b : before) if(b!=o && viewComponent(b)==o) c = b; //its hierarchical stand-in
-				}
-				else if("-".equals(o) || ((String)o).startsWith("-")) c = new javax.swing.JPopupMenu.Separator();
-				else{
-					MacAppHost.ItemModel item = new MacAppHost.ItemModel();item.text = (String)o;item.enabled = enabled[i];
-					c = externalMenuItem(m, item);
-				}
-				if(c instanceof javax.swing.JMenuItem){
-					javax.swing.JMenuItem mi = (javax.swing.JMenuItem)c;
-					mi.setEnabled(enabled[i]);
-					if(mi instanceof javax.swing.JCheckBoxMenuItem) ((javax.swing.JCheckBoxMenuItem)mi).setSelected(checked[i]);
-				}
-				popup.add(c);
-				out.add(o instanceof Component ? o : c);
-			}
-			if(seen!=null){
-				java.util.Set<Object> known = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Object,Boolean>());
-				known.addAll(seen);
-				for(int j=0; j<before.length; j++){
-					if(known.contains(viewComponent(before[j]))) continue;
-					int at = 0;
-					for(int b=j-1; b>=0 && at==0; b--){ int k = popup.getComponentIndex(before[b]); if(k>=0) at = k+1; }
-					popup.insert(before[j], at);
-				}
-			}
-			menuChanged();
-		});
-		return out;
-	}
-
-	/** The menu name doMenu gets for an item of {@code menu}: a submenu's own title (HyperCard Menus' "CreateIndex"), else the menu's. */
-	private static String externalMenuTitle(JMenu menu){
-		Object t = menu.getClientProperty("hz.externalMenuTitle");
-		return t!=null ? t.toString() : menu.getText();
-	}
-	/** The items of an external's submenu. */
-	private static void fillExternalSubmenu(JMenu sub, MacAppHost.MenuModel model){
-		sub.putClientProperty("hz.externalMenuTitle", model.title);
-		for(MacAppHost.ItemModel item : model.items){
-			if(item.separator) sub.addSeparator();
-			else sub.add(externalMenuItem(sub, item));
-		}
-	}
-	/**
-	 * An item of an external's menu in HyperCard's bar: choosing it sends doMenu with its text as it is then. A checked item
-	 * (CheckItem/SetItemMark) is a check-box item, as `set the checkMark` makes one; a hierarchical item (InsertSubMenu: HyperCard
-	 * Menus' "Index", the stack's only way to its 14 help cards) is a submenu of the submenu's items. The item's text style,
-	 * mark character and icon go with it.
-	 */
-	private static JMenuItem externalMenuItem(JMenu menu, MacAppHost.ItemModel item){
-		if(item.submenu!=null){
-			JMenu sub = new JMenu(item.text);
-			sub.setEnabled(item.enabled && item.submenu.enabled);
-			fillExternalSubmenu(sub, item.submenu);
-			decorateExternalItem(sub, item);
-			return sub;
-		}
-		JMenuItem mi = externalMarked(item) ? new javax.swing.JCheckBoxMenuItem(item.text, true) : new JMenuItem(item.text);
-		mi.setEnabled(item.enabled);
-		setExternalCommandKey(mi, item.command);
-		decorateExternalItem(mi, item);
-		mi.putClientProperty("menuMessage", "");
-		mi.addActionListener(e -> {
-			//a menu an external window registered (RegisterXWMenu): the choice is that window's xMenuEvt, not a doMenu
-			Object owner = menu.getClientProperty("hz.externalMenu"), id = menu.getClientProperty("hz.externalMenuId");
-			if(owner!=null && id instanceof Integer && Xcmd68k.menuChosen(owner, (Integer)id, menu.getPopupMenu().getComponentIndex(mi)+1)) return;
-			if(!TTalk.idle) return;
-			TTalk.CallMessage("doMenu", new String[]{mi.getText(), externalMenuTitle(menu)}, PCARD.pc.stack.curCard);
-		});
-		return mi;
-	}
-	/** Whether the item has a mark: the check mark or another character (SetItemMark "#"). */
-	private static boolean externalMarked(MacAppHost.ItemModel item){ return item.checked || item.markText!=null && !item.markText.isEmpty(); }
-	/** The item's text style (the textStyle a script reads), mark character (its markChar) and icon as the external set them; true when one changed. */
-	private static boolean decorateExternalItem(JMenuItem mi, MacAppHost.ItemModel item){
-		boolean changed = false;
-		Object style = mi.getClientProperty("hzTextStyle");
-		if((style instanceof Integer ? (Integer)style : 0)!=item.style){
-			java.awt.Font base = javax.swing.UIManager.getFont(mi instanceof JMenu ? "Menu.font" : "MenuItem.font");
-			if(base!=null) mi.setFont(base);
-			MacAppHost.applyItemStyle(mi, item.style);
-			mi.putClientProperty("hzTextStyle", item.style==0 ? null : (Object)item.style);
-			changed = true;
-		}
-		String mark = externalMarked(item) && !item.checked ? hyperTalkMark(item.markText) : null;
-		if(!java.util.Objects.equals(mark, mi.getClientProperty("hzMarkChar"))){ mi.putClientProperty("hzMarkChar", mark); changed = true; }
-		Object icon = mi.getClientProperty("hz.iconKey");
-		int key = item.icon!=null ? item.iconKey : 0;
-		if((icon instanceof Integer ? (Integer)icon : 0)!=key){
-			mi.setIcon(item.icon!=null ? new javax.swing.ImageIcon(item.icon) : null);
-			mi.putClientProperty("hz.iconKey", key==0 ? null : (Object)key);
-			changed = true;
-		}
-		return changed;
-	}
-
-	/** The item's Command key as SetItemCmd gave it (the commandChar a script reads: Rinaldi's Menu "SetCmd", HC 2.2 measured); true when it changed. */
-	private static boolean setExternalCommandKey(JMenuItem mi, char command){
-		javax.swing.KeyStroke now = mi.getAccelerator();
-		int code = command>' ' && command<0x7f ? Character.toUpperCase(command) : 0;
-		if(now==null ? code==0 : now.getKeyCode()==code) return false;
-		mi.setAccelerator(code==0 ? null : javax.swing.KeyStroke.getKeyStroke(code, java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
-		return true;
-	}
-
-	/** Brings an external's menu in the bar up to its MenuHandle's state; true when anything changed. Items stay (with any menu
-	 *  message a script gave them) as long as the same texts are in the same places; otherwise the items are made again. */
-	private static boolean updateExternalMenu(JMenu menu, MacAppHost.MenuModel model){
-		boolean changed = menu.isEnabled()!=model.enabled;
-		menu.setEnabled(model.enabled);
-		return updateExternalItems(menu, model) || changed;
-	}
-	private static boolean updateExternalItems(JMenu menu, MacAppHost.MenuModel model){
-		javax.swing.JPopupMenu popup = menu.getPopupMenu();
-		boolean same = popup.getComponentCount()==model.items.size();
-		for(int i=0; same && i<model.items.size(); i++){
-			java.awt.Component c = popup.getComponent(i);
-			MacAppHost.ItemModel item = model.items.get(i);
-			same = item.separator ? !(c instanceof JMenuItem) : c instanceof JMenuItem && (c instanceof JMenu)==(item.submenu!=null) && java.util.Objects.equals(((JMenuItem)c).getText(), item.text);
-		}
-		if(!same){
-			menu.removeAll();
-			for(MacAppHost.ItemModel item : model.items){
-				if(item.separator) menu.addSeparator();
-				else menu.add(externalMenuItem(menu, item));
-			}
-			if(popup.isVisible()){ popup.pack(); popup.revalidate(); popup.repaint(); } //filled while it is open (xMBarClickedEvt)
-			return true;
-		}
-		boolean changed = false;
-		for(int i=0; i<model.items.size(); i++){
-			MacAppHost.ItemModel item = model.items.get(i);
-			if(item.separator) continue;
-			JMenuItem mi = (JMenuItem)popup.getComponent(i);
-			if(item.submenu!=null){
-				boolean on = item.enabled && item.submenu.enabled;
-				if(mi.isEnabled()!=on){ mi.setEnabled(on); changed = true; }
-				mi.putClientProperty("hz.externalMenuTitle", item.submenu.title);
-				if(updateExternalItems((JMenu)mi, item.submenu)) changed = true;
-				if(decorateExternalItem(mi, item)) changed = true;
-				continue;
-			}
-			if(mi.isEnabled()!=item.enabled){ mi.setEnabled(item.enabled); changed = true; }
-			if(setExternalCommandKey(mi, item.command)) changed = true;
-			boolean checked = mi instanceof javax.swing.JCheckBoxMenuItem && ((javax.swing.JCheckBoxMenuItem)mi).isSelected(), marked = externalMarked(item);
-			if(checked!=marked){
-				if(mi instanceof javax.swing.JCheckBoxMenuItem) ((javax.swing.JCheckBoxMenuItem)mi).setSelected(marked);
-				else{
-					JMenuItem replacement = externalMenuItem(menu, item);
-					replacement.putClientProperty("menuMessage", mi.getClientProperty("menuMessage"));
-					menu.remove(i); menu.insert(replacement, i);
-					mi = replacement;
-				}
-				changed = true;
-			}
-			if(decorateExternalItem(mi, item)) changed = true;
-		}
-		return changed;
+	static void menuChanged() {
+		if(UiHost.get().hasCardMenus()) MenuNodes.get().menuBarChanged();
 	}
 
 	/** menuItem X of menu Y (pos は "menuItem" の位置、ref が非nullなら "last menuItem" のように前置された指定)。
@@ -6743,7 +6380,7 @@ public class TTalk extends Thread {
 
 	/** Font/Style/Paint/Options/Patterns: always there in HyperCard, not in HyperZebra's menu bar */
 	static boolean isHyperCardOnlyMenu(String ref){
-		String vn = java.text.Normalizer.normalize(ref.trim(), java.text.Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+		String vn = Platform.get().normalize(ref.trim(), UnicodeNorm.Form.NFKC).toLowerCase(Locale.ROOT);
 		return vn.equals("font") || vn.equals("style") || vn.equals("paint") || vn.equals("options") || vn.equals("patterns") ||
 			vn.equals("フォント") || vn.equals("スタイル") || vn.equals("ペイント") || vn.equals("オプション") || vn.equals("パターン");
 	}
@@ -6781,9 +6418,9 @@ public class TTalk extends Thread {
 			String o = stringList.get(ordinalMenu-1);
 			int n = menuCount();
 			int m = o.equalsIgnoreCase("last") ? n : o.equalsIgnoreCase("middle") ? (n+2)/2 : o.equalsIgnoreCase("any") ? 1+(int)(Math.random()*n) : ordinalChunkNumber(o);
-			JMenu menu = findMenu(Integer.toString(m));
+			MMenu menu = findMenu(Integer.toString(m));
 			//menuItem 1 of the last menu (Intercom) after reset menubar: HyperCard's Style menu, a stand-in here
-			java.util.List<JMenu> menus = scriptMenus();
+			java.util.List<MMenu> menus = scriptMenus();
 			if(menu==null && m>=1 && m<=menus.size()) menu = virtualHyperCardMenu(scriptMenuName(menus.get(m-1)));
 			if(menu==null) throw new xTalkException("No such menu: {0}", o);
 			return menuItemOf(menu, ref, ordinalMenu-start+1);
@@ -6804,16 +6441,16 @@ public class TTalk extends Thread {
 			}
 		}
 		String menuRef = Evalution(new ArrayList<String>(stringList), typeAry.clone(), ofIdx+2, menuEnd, memData, object, target);
-		JMenu menu = findMenu(menuRef);
+		MMenu menu = findMenu(menuRef);
 		if(menu==null) menu = virtualHyperCardMenu(menuRef); //menuItem random(n) of menu "Font" (UxBack 1.7: a font name)
 		if(menu==null && isHyperCardOnlyMenu(menuRef)) throw new xTalkException(HYPERCARD_ONLY_MENU, menuRef);
 		if(menu==null) throw new xTalkException("No such menu: {0}", menuRef);
-		if(PCARD.pc!=null && PCARD.pc.tool!=null){
+		if(UiHost.get().paintMenusShown()){
 			//with a paint tool chosen the Edit menu is the paint bar's (Cut/Copy/Paste Picture): there is a menuItem "Copy Picture"
 			//of menu "Edit" (J-Paint's Check() and Fill)
 			try{ return menuItemOf(menu, ref, menuEnd-start+1); }
 			catch(xTalkException e){
-				JMenu paintBarMenu = findPaintBarMenu(menuRef);
+				MMenu paintBarMenu = findPaintBarMenu(menuRef);
 				if(paintBarMenu!=null && paintBarMenu!=menu){
 					try{ return menuItemOf(paintBarMenu, ref, menuEnd-start+1); }catch(xTalkException e2){ /* not there either: the first error */ }
 				}
@@ -6824,21 +6461,21 @@ public class TTalk extends Thread {
 	}
 
 	/** The menu of that name in the paint tools' menu bar (PCARD.pc.paintMenu), else null. */
-	private static JMenu findPaintBarMenu(String ref) {
-		if(ref==null || PCARD.pc==null || PCARD.pc.paintMenu==null || PCARD.pc.paintMenu.mb==null) return null;
-		String rn = java.text.Normalizer.normalize(ref.trim(), java.text.Normalizer.Form.NFKC);
-		javax.swing.JMenuBar mb = PCARD.pc.paintMenu.mb;
+	private static MMenu findPaintBarMenu(String ref) {
+		if(ref==null || !UiHost.get().hasPaintMenus() || MenuNodes.get().paintMenuBar()==null) return null;
+		String rn = Platform.get().normalize(ref.trim(), UnicodeNorm.Form.NFKC);
+		MMenuBar mb = MenuNodes.get().paintMenuBar();
 		for(int i=0; i<mb.getComponentCount(); i++){
-			if(!(mb.getComponent(i) instanceof JMenu)) continue;
-			JMenu m = (JMenu)mb.getComponent(i);
-			String eng = PCARD.pc.intl!=null ? PCARD.pc.intl.getEngText(m.getText()) : m.getText();
+			if(!(mb.getComponent(i) instanceof MMenu)) continue;
+			MMenu m = (MMenu)mb.getComponent(i);
+			String eng = HZ.intl()!=null ? HZ.intl().getEngText(m.getText()) : m.getText();
 			if(rn.equalsIgnoreCase(m.getText().trim()) || rn.equalsIgnoreCase(eng) ||
-					rn.equalsIgnoreCase(java.text.Normalizer.normalize(m.getText(), java.text.Normalizer.Form.NFKC).trim())) return m;
+					rn.equalsIgnoreCase(Platform.get().normalize(m.getText(), UnicodeNorm.Form.NFKC).trim())) return m;
 		}
 		return null;
 	}
 
-	private static ObjResult menuItemOf(JMenu menu, String ref, int cnt) throws xTalkException {
+	private static ObjResult menuItemOf(MMenu menu, String ref, int cnt) throws xTalkException {
 		int count = menu.getPopupMenu().getComponentCount();
 		int idx;
 		if(ref.equalsIgnoreCase("last")) idx = count-1;
@@ -6864,7 +6501,7 @@ public class TTalk extends Thread {
 	static void setMenuItems(String menuRef, String menuItemRef, String mode, String itemsValue, String menuMsgValue)
 	throws xTalkException
 	{
-		JMenu menu = findMenu(menuRef);
+		MMenu menu = findMenu(menuRef);
 		//HyperCard の Font / Style(menu 7 / 8 を含む)は HyperZebra のメニューバーに無い: 入れても何もしない(FontCard)
 		if(menu==null && isHyperCardOnlyMenuRef(menuRef)) return;
 		if(menu==null) throw new xTalkException("No such menu: {0}", menuRef);
@@ -6906,22 +6543,20 @@ public class TTalk extends Thread {
 			if(item.equals("-") || item.equals("--")){ //"--" も区切り線(HyperCard J-2.3: put "--" after menuItem 3)
 				menu.insertSeparator(pos++);
 				//the message given for a "-" item is kept (the menuMsg of menuItem 3 = "-")
-				Component sep = menu.getPopupMenu().getComponent(pos-1);
-				if(msgs!=null && sep instanceof javax.swing.JComponent) ((javax.swing.JComponent)sep).putClientProperty("menuMessage", msgs[i].trim());
+				MComponent sep = menu.getPopupMenu().getComponent(pos-1);
+				if(msgs!=null) sep.putClientProperty("menuMessage", msgs[i].trim()); //(a JComponent's client property; nothing for another kind)
 				continue;
 			}
-			JMenuItem mi = new JMenuItem(item);
+			MMenuItem mi = MMenuItem.create(item);
 			final String msg = (msgs!=null) ? msgs[i].trim() : "";
 			mi.putClientProperty("menuMessage", msg.equalsIgnoreCase("empty") ? "" : msg);
 			//ユーザーが選ぶと、まず doMenu <項目>,<メニュー> をカレントカードへ送る。
 			//スクリプトが捕まえなければ(passし切れば) menuMessage を実行する(TUtil の doMenu の組み込み動作)
 			final String menuTitle = menu.getText();
 			final String itemTitle = item;
-			mi.addActionListener(new ActionListener(){
-				public void actionPerformed(ActionEvent e){
-					if(!TTalk.idle) return;
-					TTalk.CallMessage("doMenu", new String[]{itemTitle, menuTitle}, PCARD.pc.stack.curCard);
-				}
+			mi.addAction(() -> {
+				if(!TTalk.idle) return;
+				TTalk.CallMessage("doMenu", new String[]{itemTitle, menuTitle}, HZ.stack().curCard);
 			});
 			menu.insert(mi, pos++);
 		}
@@ -7194,7 +6829,7 @@ public class TTalk extends Thread {
 		//メッセージボックスやメニュー(menuMsg)から送ったコマンドは現在のカードから辿る(ReceiveMessageと同じ)。
 		//以前はオブジェクトが無いと探さず、Myst Previewの「About Myst Preview…」(menuMsg about)がスタックの
 		//on aboutではなくHyperZebra独自の組み込みaboutに取られて何も出なかった
-		OCard curCard = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+		OCard curCard = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
 		OObject obj = pathStart!=null ? pathStart : curCard;
 		boolean curCardInPath = false;
 		while(obj!=null){
@@ -7213,8 +6848,8 @@ public class TTalk extends Thread {
 		}
 		//使用中のスタック(start using したライブラリ、Home)のハンドラも組み込みコマンドを横取りできる
 		//(HyperCard: answer/ask/go などのコマンドはメッセージとしてパスを通る。以前はオブジェクトの親だけを見ていた)
-		if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.usingStacks!=null){
-			ArrayList<OStack> using = PCARD.pc.stack.usingStacks;
+		if(Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().usingStacks!=null){
+			ArrayList<OStack> using = HZ.stack().usingStacks;
 			for(int ui=0; ui<using.size(); ui++){
 				OStack u = using.get(ui);
 				if(u==null || u.scriptList==null || isCurrentStackInUse(u)) continue;
@@ -7224,7 +6859,7 @@ public class TTalk extends Thread {
 		}
 		//スタックの XCMD は同名の組み込みコマンドより先(HyperCard: XCMD はメッセージの経路にある)。MacinTalk Stack /
 		//Esperanto Course の Speak XCMD: "Speak voice,natural" が組み込みの speak に取られて「,がわかりません」だった
-		return TXcmd.runnable68kExternal(str, "command") ? 2 : 0;
+		return UiHost.get().tXcmdRunnable68kExternal(str, "command") ? 2 : 0;
 	}
 
 	/** A statement: the replay list of an outer statement is not seen by the handlers this one calls, and comes back after it. */
@@ -7381,6 +7016,7 @@ public class TTalk extends Thread {
 				//値を評価する(msg box用)
 				result.theResult = Evalution(stringList, typeAry, 0, stringList.size()-1, memData, object, target);
 				result.ret = 0;
+				result.evaluated = true; //(the message box shows it: messageBoxValue)
 			}
 		}
 		
@@ -7398,16 +7034,25 @@ public class TTalk extends Thread {
 				int into=collectionCommandWord(stringList, typeAry, 2, "into");
 				if(into<3 || into+1>=stringList.size()) throw new xTalkException("put URL requires into and a destination");
 				String address=Evalution(stringList, typeAry, 2, into-1, memData, object, target);
-				stringList.set(1, ScriptWeb.fetch(address));
+				stringList.set(1, UiHost.get().scriptWebFetch(address));
 				typeAry[1]=wordType.STRING;
 				for(int i=2; i<into; i++) typeAry[i]=wordType.NOP;
+			}
+			//put <value> into|after URL "file:…"|"binfile:…" (LiveCode)
+			int toUrl=collectionCommandWord(stringList, typeAry, 1, "into", "after");
+			if(toUrl>=2 && toUrl+2<stringList.size() && typeAry[toUrl+1]!=wordType.STRING && stringList.get(toUrl+1).equalsIgnoreCase("url")) {
+				String value=Evalution(stringList, typeAry, 1, toUrl-1, memData, object, target);
+				String address=Evalution(stringList, typeAry, toUrl+2, stringList.size()-1, memData, object, target);
+				UiHost.get().scriptWebStore(address, value, stringList.get(toUrl).equalsIgnoreCase("after"));
+				result.theResult="";
+				return result;
 			}
 			if(collectionPutCommand(stringList, typeAry, memData, object, target)) return result;
 			int msgInto = messageBoxDestination(stringList, typeAry);
 			if(msgInto>0){
 				//put x into msg / message / msg box / the message box (Phone Dialer: put statusText into msg box)
 				String value=Evalution(stringList,typeAry,1,msgInto-1, memData, object, target);
-				GMsg.msg.setText(TalkCollection.display(value));
+				UiHost.get().setMsgText(TalkCollection.display(value));
 			}
 			else if(stringList.size()>=2){
 				//this put is the into-form of a put … before|after a field (OField.putAlign): its field keeps its style runs
@@ -7439,7 +7084,7 @@ public class TTalk extends Thread {
 				if(next+1>=stringList.size()){
 					//put xx
 					String value=Evalution(stringList,typeAry,1,stringList.size()-1, memData, object, target);
-					GMsg.msg.setText(TalkCollection.display(value));
+					UiHost.get().setMsgText(TalkCollection.display(value));
 				}
 				else if(putIntoMenu(stringList, typeAry, next, dirStr, memData, object, target)){
 					//put ... into|before|after menu / menuItem
@@ -7454,10 +7099,7 @@ public class TTalk extends Thread {
 						String old = TUtil.CallSystemFunction("clipboard", new String[0], target, memData, true).theResult;
 						value = mode.equals("before") ? value+old : old+value;
 					}
-					try{
-						java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-							new java.awt.datatransfer.StringSelection(value), null);
-					}catch(Exception e){ /* no clipboard (headless): nothing to put into */ }
+					UiHost.get().setClipboardText(value);
 				}
 				else if(isSelectionDestination(stringList, typeAry, next+1)){
 					//put x into|before|after the selection: 選択中のテキスト(挿入ポイント)を置き換える
@@ -7591,6 +7233,9 @@ public class TTalk extends Thread {
 							next3++;
 						}
 						chunkStart = chunkNumberText(Evalution(stringList, typeAry, chunkPos+1, next3-1, memData, object, target));
+						//put x into line (n): a chunk with no "of" and no container after it (RAVEN -Wings ZERO-'s FolderCheck) is
+						//a script error, not Java's index exception
+						if(next2+1>=stringList.size()) throw new xTalkException("Cannot interpret {0}", serializeWords(stringList, typeAry, 0, stringList.size()-1));
 						
 						if( next2+1<stringList.size() &&(
 								stringList.get(next2+1).equalsIgnoreCase("item") || stringList.get(next2+1).equalsIgnoreCase("word") 
@@ -8037,7 +7682,7 @@ public class TTalk extends Thread {
 				//"x-8,y-5": HyperCard evaluates the items of a point or rectangle that are not numbers (any object, the card window too)
 				param = evaluateCoordinateItems(property, param, memData, object, target);
 				//asked no: the stack stays as it is and the script goes on, as with a locked stack
-				if(StackGuard.allowsSet(obj, property, param)) TUtil.SetProperty(obj, property, param);
+				if(UiHost.get().stackGuardAllowsSet(obj, property, param)) TUtil.SetProperty(obj, property, param);
 				else result.theResult = StackGuard.REFUSED;
 			}
 		}
@@ -8161,10 +7806,10 @@ public class TTalk extends Thread {
 				else if(typeAry[next]==wordType.STRING && next==last && !stringList.get(next).matches("[0-9]+")){
 					//go "StackName": カード名でもスタック名でもあり得る。まずカード、無ければスタック
 					String v = stringList.get(next);
-					if(PCARD.pc.stack.GetCard(v)==null) stackRef = v;
+					if(HZ.stack().GetCard(v)==null) stackRef = v;
 				}
 				else if(next==last && typeAry[next]!=wordType.STRING && isUnquotedStackNameWord(stringList.get(next)) &&
-						getVariable(memData, stringList.get(next))==null && PCARD.pc.stack.GetCard(stringList.get(next))==null &&
+						getVariable(memData, stringList.get(next))==null && HZ.stack().GetCard(stringList.get(next))==null &&
 						resolveStackPath(stringList.get(next))!=null){
 					//go TCHome (Teka PIM, HyperCard J-2.3): an unquoted word that is no keyword, variable or card is the stack's name
 					stackRef = stringList.get(next);
@@ -8174,10 +7819,10 @@ public class TTalk extends Thread {
 					//go to Verb Conjugation / go to French-English Translator (AOL, the stacks beside it): several unquoted words, as
 					//written, that name a stack and no card
 					String raw = goDestinationAsWritten(statementSource.get());
-					if(raw!=null && PCARD.pc.stack.GetCard(raw)==null && resolveStackPath(raw)!=null) stackRef = raw;
+					if(raw!=null && HZ.stack().GetCard(raw)==null && resolveStackPath(raw)!=null) stackRef = raw;
 					//go to File Index (HomePopUpMenu) with no such stack: plain words are a stack's name all the same, and HyperCard
 					//asks where it is (cancelled: the result, the handler goes on; HC J-2.3 as for go to card ld 28280)
-					else if(raw!=null && PCARD.pc.stack.GetCard(raw)==null && plainUnquotedWords(stringList, typeAry, next, last) &&
+					else if(raw!=null && HZ.stack().GetCard(raw)==null && plainUnquotedWords(stringList, typeAry, next, last) &&
 							raw.matches("[^+\\-*/&=<>(),\\[\\]^]+")) stackRef = raw;
 				}
 				if(stackRef!=null){
@@ -8214,32 +7859,32 @@ public class TTalk extends Thread {
 			}
 			else if(w.equalsIgnoreCase("next") && !(next+1<=last && isBackgroundWord(stringList.get(next+1)))){ //go next background: below
 				int i;
-				for(i=0; i<PCARD.pc.stack.cardIdList.size();i++){
-					if(PCARD.pc.stack.curCard!=null && PCARD.pc.stack.curCard.id == PCARD.pc.stack.cardIdList.get(i))
+				for(i=0; i<HZ.stack().cardIdList.size();i++){
+					if(HZ.stack().curCard!=null && HZ.stack().curCard.id == HZ.stack().cardIdList.get(i))
 						break;
 				}
-				if(i==PCARD.pc.stack.cardIdList.size()) i=0;
+				if(i==HZ.stack().cardIdList.size()) i=0;
 				else{
 					i++;
-					if(i>=PCARD.pc.stack.cardIdList.size()) i=0;
+					if(i>=HZ.stack().cardIdList.size()) i=0;
 				}
-				id = PCARD.pc.stack.cardIdList.get(i);
+				id = HZ.stack().cardIdList.get(i);
 			}
 			else if((w.equalsIgnoreCase("prev")||w.equalsIgnoreCase("previous")) && !(next+1<=last && isBackgroundWord(stringList.get(next+1)))){
 				int i;
-				for(i=0; i<PCARD.pc.stack.cardIdList.size();i++){
-					if(PCARD.pc.stack.curCard.id == PCARD.pc.stack.cardIdList.get(i))
+				for(i=0; i<HZ.stack().cardIdList.size();i++){
+					if(HZ.stack().curCard.id == HZ.stack().cardIdList.get(i))
 						break;
 				}
-				if(i==0) i=PCARD.pc.stack.cardIdList.size()-1;
+				if(i==0) i=HZ.stack().cardIdList.size()-1;
 				else i--;
-				id=PCARD.pc.stack.cardIdList.get(i);
+				id=HZ.stack().cardIdList.get(i);
 			}
 			else if(bareOrdinal && (w.equalsIgnoreCase("this") || isRelativeChunkSpecifier(w) || ordinalChunkNumber(w)>0)){
 				//go first / last / second … / middle / any / this
-				int count = PCARD.pc.stack.cardIdList.size();
+				int count = HZ.stack().cardIdList.size();
 				int n;
-				if(w.equalsIgnoreCase("this")) id = PCARD.pc.stack.curCard.id;
+				if(w.equalsIgnoreCase("this")) id = HZ.stack().curCard.id;
 				else{
 					if(w.equalsIgnoreCase("last")) n = count;
 					else if(w.equalsIgnoreCase("middle")) n = count/2+1;
@@ -8249,13 +7894,17 @@ public class TTalk extends Thread {
 						result.theResult = "No such card";
 						return result;
 					}
-					id = PCARD.pc.stack.cardIdList.get(n-1);
+					id = HZ.stack().cardIdList.get(n-1);
 				}
 			}
 			else if(w.equalsIgnoreCase("home")){
 				//go home: Homeスタックへの通常の移動(ハンドラは続行する)。
 				//Homeスタック(HomeStack.folder())が無ければ現在のスタックを閉じる。
-				String homePath = HomeStack.folder().exists() ? HomeStack.folder().getPath() : null;
+				//the Home in use first: on the desktop the Home folder's stack (TTalk sets HZ.home only for it), in the web player
+				//the Home.hzb Export for Web packed beside the stack (HeadlessStacks.openPlayerStack), which has no Home folder:
+				//go home closed the stack there - a blank card, no message box (HyperPiece 2's 終了 > Home), its palette gone
+				String homePath = HZ.home!=null && HZ.home.path!=null ? HZ.home.path
+					: HomeStack.folder().exists() ? HomeStack.folder().getPath() : null;
 				if(homePath!=null && !isCurrentStackPath(homePath)){
 					boolean ok = goToStack(homePath, null, memData, object, target);
 					result.theResult = ok ? "" : "No such stack.";
@@ -8265,31 +7914,34 @@ public class TTalk extends Thread {
 					result.theResult = "";
 					return result; //すでにHome
 				}
-				boolean suppress = lockMessages || PCARD.pc.tool!=null || AuthTool.tool!=null;
-				if(PCARD.pc.tool!=null){
-					PaintTool.endCardTool();
-					PCARD.pc.tool = null;
-					PaintTool.saveCdPictures();
-			    	//ペイント用バッファ
-			    	PCARD.pc.releasePaintBuffers();
+				//no Home at all: the desktop closes the stack (its launcher is there); the web player has nothing to show then -
+				//a blank card and a dead message box (Year Calendar 2.1's Home button) - so it stays, as HyperCard's
+				//"Where is Home?" cancelled does
+				if(!UiHost.get().closesStackWithoutHome()){
+					result.theResult = "No such stack.";
+					return result;
+				}
+				boolean suppress = lockMessages || Host.get().paintToolActive() || Host.get().authToolActive();
+				if(Host.get().paintToolActive()){
+					UiHost.get().endPaintBeforeHome(this, stringList, typeAry, object, target, memData, result, str);
 				}
 				if(!suppress) sendCloseStackMessages(memData);
-				if(PCARD.pc.stack.curCard!=null) {
-					PCARD.pc.stack.curCard.removeData();
-					if(PCARD.pc.stack.curCard.bg!=null) PCARD.pc.stack.curCard.bg.removeData();
+				if(HZ.stack().curCard!=null) {
+					HZ.stack().curCard.removeData();
+					if(HZ.stack().curCard.bg!=null) HZ.stack().curCard.bg.removeData();
 				}
-				PCARD.pc.stack.clean();
-	    		PCARD.pc.emptyWindow();
+				HZ.stack().clean();
+	    		UiHost.get().emptyCardWindow(this, stringList, typeAry, object, target, memData, result, str);
 				result.ret = -1; //スタックが無くなるので、このハンドラは続行できない
 				return result;
 			}
 			else if(w.equalsIgnoreCase("back")){
 				//直前に表示していたカードへ(リーセント履歴を遡る)
-				id = PCARD.pc.stack.beginGoBack();
+				id = HZ.stack().beginGoBack();
 				if(id<0 && previousStackCard!=null && !isCurrentStackPath(previousStackCard.stackPath)){
 					//このスタックに来たばかり: 来る前のスタックのカードへ(AnimationMaker の AMLoad は "go home" / "go back" を送る)
 					PushedCard back = previousStackCard;
-					PCARD.pc.stack.endBackNavigation();
+					HZ.stack().endBackNavigation();
 					boolean ok = goToStack(back.stackPath, "card id "+back.cardId, memData, object, target);
 					result.theResult = ok ? "" : "No such card";
 					return result;
@@ -8300,7 +7952,7 @@ public class TTalk extends Thread {
 				}
 			}
 			else if(w.equalsIgnoreCase("forth")){
-				id = PCARD.pc.stack.beginGoForward();
+				id = HZ.stack().beginGoForward();
 				if(id<0){
 					result.theResult = "No such card";
 					return result;
@@ -8355,7 +8007,7 @@ public class TTalk extends Thread {
 						if(ordinalCard) break cardOfExpression; //the ordinal forms go on as before (go first cd of bg "Nope": No such card)
 						if(ofPos>0 && inBg==null){
 							//go cd 1 of bg "Index by Terms" (QuickTime Tools): no such background is the result, not an error
-							result.theResult = "No such card"; PCARD.pc.stack.endBackNavigation(); return result;
+							result.theResult = "No such card"; HZ.stack().endBackNavigation(); return result;
 						}
 						String asStackName = unquotedWordsKeepingStrings(words, types, next, last);
 						String v;
@@ -8366,33 +8018,33 @@ public class TTalk extends Thread {
 							//name and asks where "card ld 28280" is; cancelled, the handler goes on (probe "AR Go Typo")
 							String stackPath = resolveStackPath(asStackName);
 							if(stackPath==null) stackPath = askWhereIsStack(asStackName);
-							if(stackPath==null){ result.theResult = "No such stack."; PCARD.pc.stack.endBackNavigation(); return result; }
+							if(stackPath==null){ result.theResult = "No such stack."; HZ.stack().endBackNavigation(); return result; }
 							result.theResult = goCardOfStack(stackPath, null, memData, object, target);
 							return result;
 						}
 						if(inBg!=null){
 							java.util.List<OCard> cards = new ArrayList<OCard>();
-							for(int k=0; k<PCARD.pc.stack.cardIdList.size(); k++){
-								OCard c = OCard.getOCard(PCARD.pc.stack, PCARD.pc.stack.cardIdList.get(k), true);
+							for(int k=0; k<HZ.stack().cardIdList.size(); k++){
+								OCard c = OCard.getOCard(HZ.stack(), HZ.stack().cardIdList.get(k), true);
 								if(c!=null && c.bgid==inBg.id) cards.add(c);
 							}
 							if(isOrdinalNumber(v)){ int n = Integer.parseInt(v.trim()); if(n>=1 && n<=cards.size()) obj = cards.get(n-1); }
 							if(obj==null) for(OCard c : cards) if(c.name!=null && c.name.equalsIgnoreCase(v.trim())){ obj = c; break; }
 						}else{
 							//a computed number is the card's number only (HC J-2.3: no card name fallback)
-							if(isOrdinalNumber(v)) obj = PCARD.pc.stack.GetCardbyNum(Integer.parseInt(v.trim()));
-							else obj = PCARD.pc.stack.GetCard(v);
+							if(isOrdinalNumber(v)) obj = HZ.stack().GetCardbyNum(Integer.parseInt(v.trim()));
+							else obj = HZ.stack().GetCard(v);
 						}
-						if(obj==null){ result.theResult = "No such card"; PCARD.pc.stack.endBackNavigation(); return result; }
+						if(obj==null){ result.theResult = "No such card"; HZ.stack().endBackNavigation(); return result; }
 					}
 					if(obj==null && namesMissingBackground(words, types, next+2, last, object, target)){
 						//go first cd of bg "Home Cards" (HyperCard 2.x Home's goHomeCards): no such background is the result, as
 						//for go cd 1 of bg "Nope"
-						result.theResult = "No such card"; PCARD.pc.stack.endBackNavigation(); return result;
+						result.theResult = "No such card"; HZ.stack().endBackNavigation(); return result;
 					}
 					if(obj==null && e.isMissingObject()){
 						//a card or background that is not there: HyperCard sets the result and goes on
-						result.theResult = "No such card"; PCARD.pc.stack.endBackNavigation(); return result;
+						result.theResult = "No such card"; HZ.stack().endBackNavigation(); return result;
 					}
 					if(obj==null) throw e;
 				}
@@ -8401,21 +8053,21 @@ public class TTalk extends Thread {
 					String text = Evalution(new ArrayList<String>(words), types.clone(), next, last, memData, object, target);
 					if(!fieldNamesCard(text)){ result.theResult = goStackNamedInField(text, memData, object, target); return result; }
 					obj = cardNamedByText(text, memData, target);
-					if(obj==null){ result.theResult = "No such card"; PCARD.pc.stack.endBackNavigation(); return result; }
+					if(obj==null){ result.theResult = "No such card"; HZ.stack().endBackNavigation(); return result; }
 				}
 				if(obj!=null) id = obj.id;
 			}
 			else if((w.equalsIgnoreCase("prev") || w.equalsIgnoreCase("previous") || w.equalsIgnoreCase("next")) && next+1==last &&
-					isBackgroundWord(stringList.get(next+1)) && PCARD.pc.stack.curCard!=null){
+					isBackgroundWord(stringList.get(next+1)) && HZ.stack().curCard!=null){
 				//go prev|next bkgnd: the nearest card before (after) this one, wrapping, on another background, not that background's
 				//first card (HC J-2.3 probe E GoBkgnd: from card 1 "Probe" prev is the stack's last card "Last Data"; with the cards
 				//Probe(1) _1(2) Reference(1) _2(2) next from Reference is _2, not bg 2's first card _1)
 				boolean forward = w.equalsIgnoreCase("next");
-				java.util.List<Integer> ids = PCARD.pc.stack.cardIdList;
-				int here = ids.indexOf(PCARD.pc.stack.curCard.id);
-				int bgid = PCARD.pc.stack.curCard.bgid;
+				java.util.List<Integer> ids = HZ.stack().cardIdList;
+				int here = ids.indexOf(HZ.stack().curCard.id);
+				int bgid = HZ.stack().curCard.bgid;
 				for(int k=1; here>=0 && k<ids.size(); k++){
-					OCard c = OCard.getOCard(PCARD.pc.stack, ids.get(forward ? (here+k)%ids.size() : (here-k+ids.size())%ids.size()), true);
+					OCard c = OCard.getOCard(HZ.stack(), ids.get(forward ? (here+k)%ids.size() : (here-k+ids.size())%ids.size()), true);
 					if(c!=null && c.bgid!=bgid){ id = c.id; break; }
 				}
 			}
@@ -8431,8 +8083,8 @@ public class TTalk extends Thread {
 					if(cd!=null) id = cd.id;
 				}
 				else if(obj!=null && obj.objectType.equals("background")){
-					for(int i=0; i<PCARD.pc.stack.cardIdList.size(); i++){
-						OCard c = OCard.getOCard(PCARD.pc.stack, PCARD.pc.stack.cardIdList.get(i), true);
+					for(int i=0; i<HZ.stack().cardIdList.size(); i++){
+						OCard c = OCard.getOCard(HZ.stack(), HZ.stack().cardIdList.get(i), true);
 						if(c!=null && c.bgid==obj.id){ id = c.id; break; }
 					}
 				}
@@ -8443,92 +8095,81 @@ public class TTalk extends Thread {
 				String v = objectNumberText(Evalution(stringList, typeAry, next, last, memData, object, target));
 				OObject obj = null;
 				boolean ordinalOnly = isOrdinalNumber(v) && !literal; //a bare number is no card name (HC J-2.3)
-				if(ordinalOnly) obj = PCARD.pc.stack.GetCardbyNum(Integer.parseInt(v.trim()));
-				if(obj==null && !ordinalOnly) obj = PCARD.pc.stack.GetCard(v);
-				if(obj==null && literal) obj = PCARD.pc.stack.GetCardbyNum(Integer.parseInt(v.trim()));
+				if(ordinalOnly) obj = HZ.stack().GetCardbyNum(Integer.parseInt(v.trim()));
+				if(obj==null && !ordinalOnly) obj = HZ.stack().GetCard(v);
+				if(obj==null && literal) obj = HZ.stack().GetCardbyNum(Integer.parseInt(v.trim()));
 				if(obj!=null) id = obj.id;
 			}
 			if(id==0) {
 				result.theResult = "No such card";
-				PCARD.pc.stack.endBackNavigation();
+				HZ.stack().endBackNavigation();
 				return result;
 			}
 
 			//「リーセント」メニュー用に、このカードから移動することを履歴に記録しておく
 			//（removeDataで絵が消される前に、まだ有効なpictからサムネイルを作る）
-			PCARD.pc.stack.recordRecentCard(PCARD.pc.stack.curCard);
+			HZ.stack().recordRecentCard(HZ.stack().curCard);
 
 			//ペイント/オーサリングツール中のカード移動では open/close 系のメッセージを出さないが、
 			//lockMessagesプロパティ自体は変えない(以前はtrueを書き込んだままになっていた)
 			boolean suppressOpenClose = lockMessages;
-			if(PCARD.pc.tool!=null){
-				PaintTool.endCardTool();
-				PaintTool.saveCdPicturesLater();
-		    	//ペイント用バッファ
-		    	PCARD.pc.releasePaintBuffers();
+			if(Host.get().paintToolActive()){
+				UiHost.get().endPaintBeforeGo(this, stringList, typeAry, object, target, memData, result, str);
 				suppressOpenClose = true;
 			}
-			else if(AuthTool.tool!=null){
+			else if(Host.get().authToolActive()){
 				//browseツール以外（ボタン/フィールドツール）でのカード移動でも
 				//openCard等のシステムメッセージは出さない
 				suppressOpenClose = true;
 			}
 			//going to the card already shown sends no close/open messages (HyperCard: QuickTime Tools' openCard handler
 			//does "go cd (short name of this cd)" through setTab, which would otherwise call itself for ever)
-			if(PCARD.pc.stack.curCard!=null && PCARD.pc.stack.curCard.id==id) suppressOpenClose = true;
+			if(HZ.stack().curCard!=null && HZ.stack().curCard.id==id) suppressOpenClose = true;
 			//the open field closes first, going to this card too (HC J-2.3: exitField, then closeCard)
-			closeOpenField(PCARD.pc.tool==null && AuthTool.tool==null, true);
+			closeOpenField(!Host.get().paintToolActive() && !Host.get().authToolActive(), true);
 
 			if(!suppressOpenClose){
-				talk.ReceiveMessage("closeCard",new String[0],PCARD.pc.stack.curCard,PCARD.pc.stack.curCard,null);
+				talk.ReceiveMessage("closeCard",new String[0],HZ.stack().curCard,HZ.stack().curCard,null);
 			}
-			OCard cd = OCard.getOCard(PCARD.pc.stack, id, true);//データのみ読み込む
+			OCard cd = OCard.getOCard(HZ.stack(), id, true);//データのみ読み込む
 			//バックグラウンドが変わるかどうかは、curCardをcdに置き換える前
 			//(ここ)で判定して覚えておく。置き換えた後だと自分自身と比較する
 			//ことになり常にfalseとなってしまい、openBackgroundが送られなく
 			//なってしまう。
-			boolean bgChanged = cd.bgid!=PCARD.pc.stack.curCard.bgid;
+			boolean bgChanged = cd.bgid!=HZ.stack().curCard.bgid;
 			if(!suppressOpenClose){
 				if(bgChanged){
-					talk.ReceiveMessage("closeBackground",new String[0],PCARD.pc.stack.curCard,PCARD.pc.stack.curCard,null);
+					talk.ReceiveMessage("closeBackground",new String[0],HZ.stack().curCard,HZ.stack().curCard,null);
 				}
 			}
-			boolean saveLockedScreen = PCARD.lockedScreen;
-			if(!PCARD.lockedScreen) {
+			boolean saveLockedScreen = HZ.lockedScreen;
+			if(!HZ.lockedScreen) {
 				//部品ツリーを組み替えている途中の画面を見せないよう画面を止める。視覚効果があるときは
 				//効果の始まりの絵として現在の完成画面を保持する。効果が無ければ絵は要らないので、
 				//カード全体をオフスクリーンへ描かず、描画を止めるだけにする(移動のたびの全体描画を省く)
-				if(pendingVisuals.isEmpty()) VEffect.freezeScreen();
-				else VEffect.setOldOff();
+				UiHost.get().freezeForCardChange(this, stringList, typeAry, object, target, memData, result, str);
 				//メインスレッドで画面を書き換えられてしまうのを防ぐ
-				PCARD.lockedScreen = true;
+				HZ.lockedScreen = true;
 			}
-			PCARD.pc.stack.curCard.removeData();
-			if(PCARD.pc.stack.curCard.bg!=null) PCARD.pc.stack.curCard.bg.removeData();
-			PCARD.pc.stack.curCard.bg = null;
-			for(int i=PCARD.pc.mainPane.getComponentCount()-1; i>=0; i--){
-				//PCARD.pc.mainPane.remove(PCARD.pc.mainPane.getComponent(i));
-			}
-			cd = OCard.getOCard(PCARD.pc.stack, id, false);//部品もピクチャも読み込む
-			cd.bg = OBackground.getOBackground(PCARD.pc.stack, cd, cd.bgid, false);//new OBackground(PCARD.pc.stack, cd, cd.bgid, false);
+			HZ.stack().curCard.removeData();
+			if(HZ.stack().curCard.bg!=null) HZ.stack().curCard.bg.removeData();
+			HZ.stack().curCard.bg = null;
+			cd = OCard.getOCard(HZ.stack(), id, false);//部品もピクチャも読み込む
+			cd.bg = OBackground.getOBackground(HZ.stack(), cd, cd.bgid, false);//new OBackground(HZ.stack(), cd, cd.bgid, false);
 			cd.parent = cd.bg;
 			//移動先のカードも履歴に記録する(サムネイルは既にあればそれを使う。離れるときに描き直す)
-			PCARD.pc.stack.recordRecentCard(cd, false);
+			HZ.stack().recordRecentCard(cd, false);
 			//the card left behind lets its picture go - unless it is the card being opened again ("go to this card": the
 			//picture just built for it was taken away, Number Aquarium's and HierPopup's card pictures vanished)
-			if(PCARD.pc.stack.curCard.label!=null && PCARD.pc.stack.curCard!=cd) {
-				PCARD.pc.mainPane.remove(PCARD.pc.stack.curCard.label);
-				PCARD.pc.stack.curCard.label = null;
-				PCARD.pc.stack.curCard.pict = null;
-			}
-			if(PCARD.pc.stack.curCard!=cd){
+			UiHost.get().dropLeftCardPicture(this, stringList, typeAry, object, target, memData, result, str, cd);
+			if(HZ.stack().curCard!=cd){
 				clearFoundMark(); //the box of find stays on its card: the foundChunk is empty after going on
-				GUI.dropSelectedRange();
+				UiHost.get().dropSelectedRange(this, stringList, typeAry, object, target, memData, result, str);
 			}
-			PCARD.pc.stack.curCard = cd;
-			CardWindow68k.cardRedrawn();
+			HZ.stack().curCard = cd;
+			UiHost.get().cardRedrawn(this, stringList, typeAry, object, target, memData, result, str);
 			if(!saveLockedScreen) {
-				VEffect.playEffects(pendingVisuals);
+				UiHost.get().playVisualEffects(this, stringList, typeAry, object, target, memData, result, str);
 				pendingVisuals.clear();
 			}
 			//「New Card」「New Background」で作られた直後のカードなら、HyperCardと
@@ -8537,36 +8178,21 @@ public class TTalk extends Thread {
 			sendNewBackground = false; sendNewCard = false;
 			//newCard/newBackground は lockMessages の対象外(lockMessagesが抑止するのは open/close/suspend/resume 系)
 			if(newBackground){
-				talk.ReceiveMessage("newBackground",new String[0],PCARD.pc.stack.curCard,PCARD.pc.stack.curCard,null);
+				talk.ReceiveMessage("newBackground",new String[0],HZ.stack().curCard,HZ.stack().curCard,null);
 			}
 			if(newCard){
-				talk.ReceiveMessage("newCard",new String[0],PCARD.pc.stack.curCard,PCARD.pc.stack.curCard,null);
+				talk.ReceiveMessage("newCard",new String[0],HZ.stack().curCard,HZ.stack().curCard,null);
 			}
 			if(!suppressOpenClose){
 				if(bgChanged){
-					talk.ReceiveMessage("openBackground",new String[0],PCARD.pc.stack.curCard,PCARD.pc.stack.curCard,null);
+					talk.ReceiveMessage("openBackground",new String[0],HZ.stack().curCard,HZ.stack().curCard,null);
 				}
-				talk.ReceiveMessage("openCard",new String[0],PCARD.pc.stack.curCard,PCARD.pc.stack.curCard,null);
+				talk.ReceiveMessage("openCard",new String[0],HZ.stack().curCard,HZ.stack().curCard,null);
 			}
 
-			if(PCARD.pc.tool!=null){
-				//ペイントの開始
-				String toolName = PCARD.pc.tool.getName();
-				PCARD.pc.tool = null;
-				TBButtonListener.ChangeTool(toolName, null);
-			}
-			else if(AuthTool.tool!=null){
-				//オーサリングの開始
-				if(AuthTool.tool.getClass()==ButtonTool.class){
-					TBButtonListener.ChangeTool("button", null);
-				}
-				else if(AuthTool.tool.getClass()==FieldTool.class){
-					TBButtonListener.ChangeTool("field", null);
-				}
-				else if(AuthTool.tool instanceof ShapeTool){TBButtonListener.ChangeTool("Shape",null);}
-			}
-			PCARD.pc.stack.endBackNavigation();
-			//System.out.println("curCard:"+PCARD.pc.stack.curCard.getShortName());
+			UiHost.get().restartToolAfterGo(this, stringList, typeAry, object, target, memData, result, str);
+			HZ.stack().endBackNavigation();
+			//System.out.println("curCard:"+HZ.stack().curCard.getShortName());
 		}
 		else if(str=="visual"){
 			int next=1;
@@ -8584,14 +8210,14 @@ public class TTalk extends Thread {
 			if(stringList.get(next).equalsIgnoreCase("screen")){
 				//ネストしたlockでは最初に見えていた画面を維持する。ロックされて
 				//いない状態から入る時だけ、完成画面をEDT上で取得する。
-				if(!PCARD.lockedScreen){
+				if(!HZ.lockedScreen){
 					//解除で視覚効果を使うハンドラ(unlock screen with …)と効果の予約がある場合は、従来どおり
 					//開始時の画面を絵にする。それ以外は絵を取らない(必要になったときだけ取る: VEffect.lazyLock)
-					if(pendingVisuals.isEmpty() && !EAGER_LOCK_PICTURE && !unlocksWithEffect(object)) VEffect.lockLazily();
-					else VEffect.setOldOff();
+					if(pendingVisuals.isEmpty() && !EAGER_LOCK_PICTURE && !unlocksWithEffect(object)) UiHost.get().vEffectLockLazily();
+					else UiHost.get().vEffectSetOldOff();
 					lockScreenDepth = 0;
 				}
-				PCARD.lockedScreen=true;
+				HZ.lockedScreen=true;
 				lockScreenDepth++; //HyperCard: lock screenはネストし、同じ数のunlock screenで解除
 			}
 			else if(stringList.get(next).equalsIgnoreCase("messages")){
@@ -8620,13 +8246,13 @@ public class TTalk extends Thread {
 			int next=1;
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand unlock");
 			if(stringList.get(next).equalsIgnoreCase("screen")){
-				if(PCARD.lockedScreen && lockScreenDepth>1){
+				if(HZ.lockedScreen && lockScreenDepth>1){
 					//ネストしたlock screenの内側のunlock: まだロックしたまま
 					lockScreenDepth--;
 					return result;
 				}
 				lockScreenDepth = 0;
-				GUI.dropSelectedRange();
+				UiHost.get().gUIDropSelectedRange();
 				//unlock screen の効果は "with [visual effect] …" で指定したものだけ。
 				//単独の visual effect 文は次の go 用の予約なので、ここでは使わない(HyperCard)
 				int vis=0, tovis=0, spd=3;
@@ -8643,17 +8269,18 @@ public class TTalk extends Thread {
 						vis = mode & 0xFF;
 						tovis = (mode>>8) & 0xFF;
 						spd = (mode>>16) & 0xFF;
-						if(vis==0 && ((mode>>24) & 1)!=0) VEffect.holdPlain(spd); //unlock screen with plain/cut <speed>: its time passes
+						if(vis==0 && ((mode>>24) & 1)!=0) UiHost.get().vEffectHoldPlain(spd); //unlock screen with plain/cut <speed>: its time passes
 					}
 				}
 				//visualEffect内で新状態をキャプチャしてからlockを解除する。
 				//先にfalseへ戻すと、キャプチャ前にSwingの通常repaintが割り込む。
 				applyDeferredMenuBar();
-				VEffect.visualEffect(vis, tovis, spd);
-				if(PCARD.pc==null || PCARD.pc.mainPane==null) PCARD.lockedScreen = false; //画面なし(テスト)でも解除する
+				UiHost.get().vEffectVisualEffect(vis, tovis, spd);
+				if(!UiHost.get().hasCardPane()) HZ.lockedScreen = false; //画面なし(テスト)でも解除する
 				//HyperCard copies the card into the window when the screen is unlocked: an external that hooked that copy draws
-				//(LineFeedNuker: colorizeHC "Add","Nuke16",… then "unlock screen -- to activate it")
-				else if(PCARD.pc.stack!=null) Xcmd68k.redrawHookedCards(PCARD.pc.stack);
+				//(LineFeedNuker: colorizeHC "Add","Nuke16",… then "unlock screen -- to activate it"). The web player has no card
+				//pane but draws 68K externals too (Colorizing HyperCard's splash stayed white there)
+				if(HZ.stack()!=null) UiHost.get().xcmd68kRedrawHookedCards(HZ.stack());
 			}
 			else if(stringList.get(next).equalsIgnoreCase("messages")){
 				lockMessages = false;
@@ -8672,146 +8299,9 @@ public class TTalk extends Thread {
 			//answer
 			int next=1;
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand answer");
-			if(stringList.get(next).equalsIgnoreCase("program") && typeAry[next]!=wordType.STRING && next+1<stringList.size()){
-				//answer program <prompt> [of type <type>]: HyperCard 2.x のプログラムリンク(PPCブラウザ)。The programs the 68K PPC
-				//Browser lists (PpcBrowser68k: HyperCard = this program, the running VM programs, the Finder); it = "zone:machine:
-				//program" (HC J-2.3 through that browser, measured: "*:HyperZebra:HyperCard", the result empty), Cancel: it empty,
-				//the result "Cancel". SendAEData's "Select Target App:" button always got Cancel (an address had to be typed)
-				int ofType = -1;
-				for(int k=next+1; k+1<stringList.size(); k++){
-					if(typeAry[k]!=wordType.STRING && typeAry[k+1]!=wordType.STRING && stringList.get(k).equalsIgnoreCase("of") && stringList.get(k+1).equalsIgnoreCase("type")){ ofType = k; break; }
-				}
-				String prompt = ofType==next+1 ? "" : Evalution(stringList, typeAry, next+1, ofType>0 ? ofType-1 : stringList.size()-1, memData, object, target);
-				java.util.List<String> names = answerProgramNames();
-				int choice = chooseProgram(StackTranslation.dialogText(stackOf(object), prompt), names);
-				if(choice<0 || choice>=names.size()){
-					setVariable(memData, "it", "");
-					result.theResult = "Cancel";
-				}else{
-					setVariable(memData, "it", "*:"+Toolbox68k.COMPUTER_NAME+":"+names.get(choice));
-					result.theResult = "";
-				}
-				return result;
-			}
-			if(stringList.get(next).equals("folder") && typeAry[next]!=wordType.STRING && next+1<stringList.size()){
-				//answer folder <prompt> (HyperCard 2.4; The Update: answer folder "Select the source folder:"): a folder chooser,
-				//it = the folder's path ending with the separator, as a folder path does; cancelled: it empty, the result "Cancel"
-				String prompt = Evalution(stringList, typeAry, next+1, stringList.size()-1, memData, object, target);
-				JFileChooser chooser = new JFileChooser();
-				if(PCARD.pc.stack!=null&&PCARD.pc.stack.file!=null){
-					File directory = fileDialogFolder(GMenuBrowse.stackChooserDirectory(PCARD.pc.stack.file));
-					if(directory!=null) chooser.setCurrentDirectory(directory);
-				}
-				chooser.setDialogTitle(StackTranslation.dialogText(stackOf(object), prompt));
-				chooser.setDialogType(JFileChooser.OPEN_DIALOG);
-				chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-				int selected = PCARD.showFileChooser(chooser, PCARD.pc, false);
-				GPictWindow.restorePictureWindows();
-				if(selected == JFileChooser.APPROVE_OPTION && chooser.getSelectedFile()!=null){
-					String path = scriptPath(chooser.getSelectedFile());
-					if(!path.endsWith(":") && !path.endsWith(File.separator)) path += path.indexOf(':')>=0 ? ":" : File.separator;
-					setVariable(memData, "it", path);
-				}else{
-					setVariable(memData, "it", "");
-					result.theResult = "Cancel";
-				}
-				return result;
-			}
-			if(stringList.get(next).equals("file")){
-				//ファイルオープンダイアログ
-				next++;
-				int j;
-				for(j=next; j+1<stringList.size(); j++){
-					if(stringList.get(j).equals("of") && stringList.get(j+1).equals("type")){
-						break;
-					}
-				}
-				//no "of type": the prompt runs to the end (AOL ppat Library: answer file "…“" & thename & "” in what file?" lost its last word)
-				if(j+1>=stringList.size()) j = stringList.size();
-				String answerStr=Evalution(stringList,typeAry,next,j-1, memData, object, target);
-				//of type "tfil" or "FFIL" (HyperCard 2.2+; GX Font Display): several types joined by "or", or by commas
-				//(MiniWriter: of type PNTG,PICT)
-				java.util.List<String> types = new ArrayList<String>();
-				if(j+2<stringList.size()){
-					int from = j+2;
-					for(int k=j+2; k<=stringList.size(); k++){
-						if(k==stringList.size() || (typeAry[k]!=wordType.STRING && (stringList.get(k).equalsIgnoreCase("or") || stringList.get(k).equals(",")) && k>from)){
-							types.add(Evalution(stringList,typeAry,from,k-1, memData, object, target));
-							from = k+1;
-						}
-					}
-				}
-				JFileChooser chooser = new JFileChooser();
-				for(String type : types){
-					class AnswerFileFilter extends FileFilter{
-						String type;
-						String type2;
-						
-						AnswerFileFilter(String type){
-							this.type = type;
-							if(type.equals("TEXT")) type2 = "txt";
-							if(type.equals("PICT")) type2 = "png";
-							if(type.equals("STAK")) type2 = "xml";
-							if(type.equals("JPEG") || type.equals("JFIF")) type2 = "jpg";
-							if(type.equals("GIFf")) type2 = "gif";
-						}
-						//a stack is also a HyperZebra stack file (.hzb), the kind HyperZebra makes
-						private boolean stackFile(String ext){ return type.equals("STAK") && "hzb".equalsIgnoreCase(ext); }
-						
-						public boolean accept(File f){
-							if (f.isDirectory()){
-								return true; //フォルダは移動できるように常に表示する
-							}
-
-							String ext = getExtension(f);
-							if (ext==null || ext.equalsIgnoreCase(type) || ext.equalsIgnoreCase(type2) || stackFile(ext)){
-								return true;
-							}
-							return false;
-						}
-
-						public String getDescription(){
-							return type+"ファイル";
-						}
-
-						private String getExtension(File f){
-							String ext = null;
-							String filename = f.getName();
-							int dotIndex = filename.lastIndexOf('.');
-
-							if ((dotIndex > 0) && (dotIndex < filename.length() - 1)){
-								ext = filename.substring(dotIndex + 1).toLowerCase();
-							}
-
-							return ext;
-						}
-					}
-					chooser.addChoosableFileFilter(new AnswerFileFilter(type));
-				}
-				if(PCARD.pc.stack!=null&&PCARD.pc.stack.file!=null){
-					File directory = fileDialogFolder(GMenuBrowse.stackChooserDirectory(PCARD.pc.stack.file));
-					if(directory!=null) chooser.setCurrentDirectory(directory);
-				}
-				chooser.setDialogTitle(StackTranslation.dialogText(stackOf(object), answerStr));
-				chooser.setDialogType(JFileChooser.OPEN_DIALOG);
-				chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-				//lowerPictureWindows()はPictureウインドウを全ウインドウの最背面(カードウインドウの
-				//背面)へ送ってしまうため呼ばない。ファイル選択ダイアログは新規表示時に自然と
-				//最前面へ来るため、Pictureウインドウ側の順序には触れる必要がない。
-				int selected = PCARD.showFileChooser(chooser, PCARD.pc, false);
-				GPictWindow.restorePictureWindows();
-				if (selected == JFileChooser.APPROVE_OPTION) {
-					//a stack is named as "the long name" names it, without .hzb: Miko's installer refuses to install into the stack
-					//itself when it is pathThis(), and scripts compare the two
-					File chosenFile = chooser.getSelectedFile();
-					boolean stackFile = chosenFile!=null && StackBundle.hasHzbExtension(chosenFile);
-					setVariable(memData, "it", stackFile ? macStackPath(chosenFile.getPath()) : scriptPath(chosenFile));
-				}else{
-					//キャンセル: itは空、the resultは"Cancel"(HyperCard)
-					setVariable(memData, "it", "");
-					result.theResult = "Cancel";
-				}
-			}
+			if(stringList.get(next).equalsIgnoreCase("program") && typeAry[next]!=wordType.STRING && next+1<stringList.size()){ return UiHost.get().answerProgram(this, stringList, typeAry, object, target, memData, result, str, next); }
+			if(stringList.get(next).equals("folder") && typeAry[next]!=wordType.STRING && next+1<stringList.size()){ return UiHost.get().answerFolder(this, stringList, typeAry, object, target, memData, result, str, next); }
+			if(UiHost.get().answerFile(this, stringList, typeAry, object, target, memData, result, str, next)){}
 			else{
 				//answerダイアログボックスの表示
 				String answerStr="";
@@ -8842,9 +8332,9 @@ public class TTalk extends Thread {
 					if(labels.size()>=3) btn3 = labels.get(labels.size()-3);
 				}
 				//翻訳がオンのスタックでは、プロンプトとボタン名を訳して見せる(itはボタンの元の名前)
-				new GDialog(PCARD.pc, new StackTranslation.Dialog(stackOf(object)), answerStr, null, btn3, btn2, btn1);
+				String clicked = UiHost.get().answer(stackOf(object), answerStr, btn3, btn2, btn1);
 				if(TTalk.stop) throw new xTalkException("user abort."); //Command-period closed it: no button, no it
-				setVariable(memData, "it", GDialog.clicked);
+				setVariable(memData, "it", clicked);
 			}
 		}
 		else if(str=="add"){
@@ -8883,19 +8373,7 @@ public class TTalk extends Thread {
 			}
 			//the destination read once (onceChunkDestination): the chunk read is the chunk written
 			String dest = destinationText(stringList, typeAry, next+1, stringList.size()-1, memData, object, target);
-			String newStr="";
-			newStr += "put (";
-			newStr += dest;
-			newStr += " ) + (";
-			for(int i=1; i<next; i++){
-				if(typeAry[i]==wordType.STRING){
-					newStr += " \""+stringList.get(i)+"\"";
-				}else{
-					newStr += " "+stringList.get(i);
-				}
-			}
-			newStr += " ) into";
-			newStr += dest;
+			String newStr = arithmeticPutLine(dest, "+", stringList, typeAry, 1, next);
 			//doScript(object, target, "", newStr, memData,1);
 			builtinLine(newStr, object, target, memData, 0);
 		}
@@ -8909,19 +8387,7 @@ public class TTalk extends Thread {
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand subtract");
 			//the destination read once (onceChunkDestination): the chunk read is the chunk written
 			String dest = destinationText(stringList, typeAry, next+1, stringList.size()-1, memData, object, target);
-			String newStr="";
-			newStr += "put (";
-			newStr += dest;
-			newStr += " ) - (";
-			for(int i=1; i<next; i++){
-				if(typeAry[i]==wordType.STRING){
-					newStr += " \""+stringList.get(i)+"\"";
-				}else{
-					newStr += " "+stringList.get(i);
-				}
-			}
-			newStr += " ) into";
-			newStr += dest;
+			String newStr = arithmeticPutLine(dest, "-", stringList, typeAry, 1, next);
 			//doScript(object, target, "", newStr, memData,1);
 			builtinLine(newStr, object, target, memData, 0);
 		}
@@ -8955,6 +8421,18 @@ public class TTalk extends Thread {
 		return result;
 	}
 
+	/** add/subtract/divide as the put line it runs: "put ( dest ) op ( words ) into dest" (one StringBuilder: a
+	 *  dozen string concatenations cost ~1 us in the browser) */
+	private static String arithmeticPutLine(String dest, String op, ArrayList<String> stringList, wordType[] typeAry, int from, int to){
+		StringBuilder b = new StringBuilder(32 + 2*dest.length());
+		b.append("put (").append(dest).append(" ) ").append(op).append(" (");
+		for(int i=from; i<to; i++){
+			if(typeAry[i]==wordType.STRING) b.append(" \"").append(stringList.get(i)).append('"');
+			else b.append(' ').append(stringList.get(i));
+		}
+		return b.append(" ) into").append(dest).toString();
+	}
+
 	@SuppressWarnings("unchecked")
 	private Result CommandExec5(ArrayList<String> stringList, wordType[] typeAry, OObject object, OObject target,
 			MemoryData memData, Result result, String str)
@@ -8970,19 +8448,7 @@ public class TTalk extends Thread {
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand divide");
 			//the destination read once (onceChunkDestination): the chunk read is the chunk written
 			String dest = destinationText(stringList, typeAry, 1, next-1, memData, object, target);
-			String newStr="";
-			newStr += "put (";
-			newStr += dest;
-			newStr += " ) / (";
-			for(int i=next+1; i<stringList.size(); i++){
-				if(typeAry[i]==wordType.STRING){
-					newStr += " \""+stringList.get(i)+"\"";
-				}else{
-					newStr += " "+stringList.get(i);
-				}
-			}
-			newStr += " ) into";
-			newStr += dest;
+			String newStr = arithmeticPutLine(dest, "/", stringList, typeAry, next+1, stringList.size());
 			//doScript(object, target, "", newStr, memData,1);
 			builtinLine(newStr, object, target, memData, 0);
 		}
@@ -8993,7 +8459,7 @@ public class TTalk extends Thread {
 			String value;
 			if(typeAry[next]!=wordType.STRING && stringList.get(next).equalsIgnoreCase("url")) {
 				if(next+1>=stringList.size()) throw new xTalkException("get URL requires a URL");
-				value=ScriptWeb.fetch(Evalution(stringList,typeAry,next+1,stringList.size()-1,memData,object,target));
+				value=UiHost.get().scriptWebFetch(Evalution(stringList,typeAry,next+1,stringList.size()-1,memData,object,target));
 				setVariable(memData, "it", value);
 			}else if(next+1==stringList.size() && typeAry[next]!=wordType.STRING && isBareGlobalProperty(stringList.get(next)) &&
 					getVariable(memData, stringList.get(next))==null){
@@ -9017,6 +8483,7 @@ public class TTalk extends Thread {
 			String objStr="";
 			int next=1;
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand show");
+			if(watcherWithoutWindow(stringList, typeAry, next)) return result;
 			if(stringList.get(next).equalsIgnoreCase("scroll") &&
 				next+1<stringList.size() &&
 				(stringList.get(next+1).equalsIgnoreCase("window")||stringList.get(next+1).equalsIgnoreCase("windows")))
@@ -9026,7 +8493,7 @@ public class TTalk extends Thread {
 			}
 			else if(stringList.get(next).equalsIgnoreCase("menuBar")){
 				//画面がロックされている間は表示せず、unlock のときに表示する(HyperCard)
-				if(PCARD.lockedScreen) showMenuBarOnUnlock = true;
+				if(HZ.lockedScreen) showMenuBarOnUnlock = true;
 				else setMenuBarVisible(true);
 			}
 			else if(stringList.get(next).equalsIgnoreCase("titleBar")){
@@ -9039,7 +8506,7 @@ public class TTalk extends Thread {
 				OObject pictureOwner = getPictureOwner(stringList, typeAry, next,
 					memData, object, target);
 				TUtil.SetProperty(pictureOwner, "showPict", "true");
-				PCARD.pc.mainPane.repaint();
+				UiHost.get().repaintCardPane();
 			}
 			else if(stringList.size()==next+1 && typeAry[next]!=wordType.STRING &&
 				(stringList.get(next).equalsIgnoreCase("cds") || stringList.get(next).equalsIgnoreCase("cards"))){
@@ -9050,11 +8517,11 @@ public class TTalk extends Thread {
 				try{
 					while(true){
 						doScriptLine("go next card", object, target, memData, 0);
-						if(!PCARD.lockedScreen) TalkSleep(1000/60);
+						if(!HZ.lockedScreen) TalkSleep(1000/60);
 						if(TTalk.stop) throw new xTalkException("user abort.");
 						Result click = TUtil.CallSystemFunction("mouseclick", new String[0], target, memData, true);
 						if(click!=null && "true".equals(click.theResult)) break;
-						if(PCARD.lockedScreen) TalkSleep(1000/60);
+						if(HZ.lockedScreen) TalkSleep(1000/60);
 					}
 				}finally{
 					if(weLocked) lockMessages = false;
@@ -9071,7 +8538,7 @@ public class TTalk extends Thread {
 				//lock messages は自分がロックしたときだけ解除する。
 				boolean markedOnly = stringList.get(next).equalsIgnoreCase("marked");
 				int count;
-				OStack st = PCARD.pc.stack;
+				OStack st = HZ.stack();
 				if(stringList.get(next).equalsIgnoreCase("all")) count = st.cardIdList.size();
 				else if(markedOnly) count = st.markedCardCount();
 				else{
@@ -9090,7 +8557,7 @@ public class TTalk extends Thread {
 				try{
 					for(int i=0; i<count; i++){
 						doScriptLine(markedOnly ? "go next marked card" : "go next card", object, target, memData, 0);
-						if(!PCARD.lockedScreen) TalkSleep(1000/60);
+						if(!HZ.lockedScreen) TalkSleep(1000/60);
 						if(TTalk.stop) throw new xTalkException("user abort.");
 					}
 					boolean cycle = stringList.get(next).equalsIgnoreCase("all") || markedOnly;
@@ -9103,8 +8570,8 @@ public class TTalk extends Thread {
 			}
 			else if(stringList.get(next).equalsIgnoreCase("groups")){
 				//フィールドのグループ指定スタイルに下線を付ける
-				PCARD.showGroups = true;
-				PCARD.pc.mainPane.repaint();
+				HZ.showGroups = true;
+				UiHost.get().repaintCardPane();
 			}
 			else{
 				while(next<stringList.size()){
@@ -9151,6 +8618,7 @@ public class TTalk extends Thread {
 		else if(str=="hide"){
 			int next=1;
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand hide");
+			if(watcherWithoutWindow(stringList, typeAry, next)) return result;
 			if(stringList.get(next).equalsIgnoreCase("scroll") &&
 				next+1<stringList.size() &&
 				(stringList.get(next+1).equalsIgnoreCase("window")||stringList.get(next+1).equalsIgnoreCase("windows")))
@@ -9160,8 +8628,8 @@ public class TTalk extends Thread {
 				return result;
 			}
 			if(stringList.get(next).equalsIgnoreCase("groups")){
-				PCARD.showGroups = false;
-				PCARD.pc.mainPane.repaint();
+				HZ.showGroups = false;
+				UiHost.get().repaintCardPane();
 				return result;
 			}
 			if(stringList.get(next).equalsIgnoreCase("titleBar")){
@@ -9182,7 +8650,7 @@ public class TTalk extends Thread {
 				OObject pictureOwner = getPictureOwner(stringList, typeAry, next,
 					memData, object, target);
 				TUtil.SetProperty(pictureOwner, "showPict", "false");
-				PCARD.pc.mainPane.repaint();
+				UiHost.get().repaintCardPane();
 				return result;
 			}
 			OObject hiddenObject = getObject(stringList, typeAry, next,
@@ -9227,8 +8695,8 @@ public class TTalk extends Thread {
 		}
 		else if(str=="wait"){
 			int next=1;
-			//wait N [ticks|seconds]: 0以上の数値のみ。1 tick = 1000/60 ms を切り捨てず丸める
-			//(以前は int(ticks*1000/60) で 1 tick が 16ms になり、繰り返すと遅れが累積していた)
+			//wait N [ticks|seconds]: 0以上の数値のみ。ticks と seconds は HyperCard と同じく the ticks の刻みで数える
+			//(TalkSleepTicks: the ticks が N 進むまで、つまり次の刻みの境目まで。wait 5 は 4〜5 tick)
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand wait");
 			if(stringList.get(next).equalsIgnoreCase("until")){
 				while(true){
@@ -9265,7 +8733,7 @@ public class TTalk extends Thread {
 					0==stringList.get(stringList.size()-1).compareToIgnoreCase("sec")){
 				if(stringList.get(next).equalsIgnoreCase("for")) next++;
 				String secs = Evalution(stringList, typeAry, next, stringList.size()-2, memData, object, target);
-				this.TalkSleepNanos(waitNanos(secs, 1000.0));
+				this.TalkSleepTicks(waitNanos(secs, 1000.0));
 				if(TTalk.stop == true){
 					throw new xTalkException("user abort.");
 				}
@@ -9282,7 +8750,7 @@ public class TTalk extends Thread {
 					0==stringList.get(stringList.size()-1).compareToIgnoreCase("tick")){
 				if(stringList.get(next).equalsIgnoreCase("for")) next++;
 				String ticks = Evalution(stringList, typeAry, next, stringList.size()-2, memData, object, target);
-				this.TalkSleepNanos(waitNanos(ticks, 1000.0/60));
+				this.TalkSleepTicks(waitNanos(ticks, 1000.0/60));
 				if(TTalk.stop == true){
 					throw new xTalkException("user abort.");
 				}
@@ -9291,7 +8759,7 @@ public class TTalk extends Thread {
 				if(stringList.get(next).equalsIgnoreCase("for")) next++;
 				String ticks = Evalution(stringList, typeAry, next, stringList.size()-1, memData, object, target);
 				if(ticks.length()>0){
-					this.TalkSleepNanos(waitNanos(ticks, 1000.0/60));
+					this.TalkSleepTicks(waitNanos(ticks, 1000.0/60));
 					if(TTalk.stop == true){
 						throw new xTalkException("user abort.");
 					}
@@ -9412,7 +8880,7 @@ public class TTalk extends Thread {
 					if(obj==null){
 						String path = resolveStackPath(ref);
 						if(path==null) throw new xTalkException("No such stack: {0}", ref);
-						OStack other = new OStack(PCARD.pc);
+						OStack other = UiHost.get().newStack();
 						if(!other.openStackFileInThread(path, true)) throw new xTalkException("Cannot open stack: {0}", ref);
 						obj = other;
 					}
@@ -9421,7 +8889,7 @@ public class TTalk extends Thread {
 						stringList.get(next).equalsIgnoreCase("stack"))){
 					//send x to cd / to card / to bkgnd / to stack = このカード/バックグラウンド/スタック(HyperCard J-2.3 で確認。
 					//Colorizing HC XCMD: send HCcolorize to cd、Stack Starter: send idle to stack)
-					obj = isCardWord(stringList.get(next)) ? PCARD.pc.stack.curCard : isBackgroundWord(stringList.get(next)) ? PCARD.pc.stack.curCard.getBg() : PCARD.pc.stack;
+					obj = isCardWord(stringList.get(next)) ? HZ.stack().curCard : isBackgroundWord(stringList.get(next)) ? HZ.stack().curCard.getBg() : HZ.stack();
 				}
 				else{
 					try{ obj = getObject(stringList, typeAry, next, stringList.size()-1, memData, object, target); }
@@ -9487,162 +8955,7 @@ public class TTalk extends Thread {
 				}
 			}
 		}
-		else if(str=="edit"){
-			String newStr="";
-			OObject obj=null;
-			int next=1;
-			if(next>=stringList.size()) throw new xTalkException("Cannot understand edit");
-
-			if(stringList.get(next).equalsIgnoreCase("picture")){
-				//picture
-				if(!Sandbox.allowFile(new File(stringList.get(2)), Sandbox.Access.READ, Sandbox.scriptRequester()))
-					throw new xTalkException("File access was denied: {0}", stringList.get(2));
-				//ランチャーへの画像ドロップ等で開く、スタックを持たない画像ビューア/エディタ。元画像を見る・なるべく情報を
-				//落とさずに編集するためのものなので、白黒32x32に潰れるICONではなく、任意サイズ・フルカラーのPICTとして扱う
-				if(ResEdit.nulleditor==null || ResEdit.nulleditor.child.pcard==null
-						|| !ResEdit.nulleditor.child.isDisplayable() || !"PICT".equals(ResEdit.nulleditor.child.type)){
-					ResEdit.nulleditor = new ResEdit((PCARD)null, "PICT", (OObject)null);
-				}
-				//作業用コピー(一時フォルダ)へコピーして登録する。以前は元ファイルの絶対パスをそのまま登録していたため、
-				//エディタを閉じたときの書き戻し先が解決できず、画像が壊れた表示(❌)になっていた
-				((IconTypeEditor)ResEdit.nulleditor.child).addPictureFile(new File(stringList.get(2)));
-				ResEdit.nulleditor.child.open(ResEdit.nulleditor.child.pcard, 0);
-				/*Rsrc.rsrcClass[] newAry = new Rsrc.rsrcClass[ResEdit.nulleditor.child.rsrcAry.length+1];
-				for(int i=0; i<newAry.length-1; i++){
-					newAry[i] = ResEdit.nulleditor.child.rsrcAry[i];
-				}
-				newAry[newAry.length-1] = ResEdit.nulleditor.child.pcard.stack.rsrc.
-					new rsrcClass(newAry.length, "icon", stringList.get(2), stringList.get(2), "0", "0", null);
-				ResEdit.nulleditor.child.rsrcAry = newAry;*/
-			}
-			else{
-				//script
-				while(!stringList.get(next).equalsIgnoreCase("of")){
-					if(!newStr.equals("")) newStr += " ";
-					newStr += stringList.get(next);
-					next++;
-					if(next>=stringList.size()) throw new xTalkException("edit requires of");
-				}
-				next++;
-				if(next>=stringList.size()) throw new xTalkException("Cannot understand edit of");
-				String only = next==stringList.size()-1 && typeAry[next]!=wordType.STRING ? stringList.get(next) : "";
-				if(PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null && (isCardWord(only) || isBackgroundWord(only) || only.equalsIgnoreCase("stack"))){
-					//edit script of card (AOL AppendXcmd): a bare card/bkgnd/stack at the end is this one
-					obj = isCardWord(only) ? PCARD.pc.stack.curCard : isBackgroundWord(only) ? PCARD.pc.stack.curCard.getBg() : PCARD.pc.stack;
-				}
-				else obj = getObject(stringList, typeAry, next, stringList.size()-1, memData, object, target);
-				if(obj == null) throw new xTalkException("Cannot identify the object to edit");
-				//edit the script of this stack (HyperCard Instance Variables): "the" may come first
-				if(newStr.equalsIgnoreCase("script") || newStr.equalsIgnoreCase("the script")){
-					if(PCARD.pc.stack!=null && PCARD.pc.stack.cantPeek) throw new xTalkException("This stack's scripts cannot be viewed (cantPeek)");
-					ScriptEditor.openScriptEditor(PCARD.pc, obj);
-				} else {
-					 throw new xTalkException("Cannot edit {0}", newStr);
-				}
-			}
-		}
-		else if(str=="export"){
-			//export paint/card to file <expr>
-			int next=1;
-			if(next>=stringList.size() || (!stringList.get(next).equalsIgnoreCase("paint") && !stringList.get(next).equalsIgnoreCase("card")))
-				throw new xTalkException("Cannot understand export");
-			boolean exportCard=stringList.get(next).equalsIgnoreCase("card");
-			next++;
-			if(next>=stringList.size() || !stringList.get(next).equalsIgnoreCase("to"))
-				throw new xTalkException("export paint requires to file");
-			next++;
-			if(next>=stringList.size() || !stringList.get(next).equalsIgnoreCase("file"))
-				throw new xTalkException("export paint requires to file");
-			next++;
-			if(next>=stringList.size()) throw new xTalkException("Cannot understand export paint to file");
-			String path = Evalution(stringList, typeAry, next, stringList.size()-1, memData, object, target);
-			if(!new File(path).exists()){
-				path = convertFromMacPath(path);
-			}
-			if(PaintFile.formatOf(path)==null){
-				path = path+".png";
-			}
-			//ペイントツール中なら浮いている選択範囲も含めて(Export Paint…と同じ)
-			BufferedImage exportPict;
-			if(exportCard) exportPict=CardImageExport.render(PCARD.pc.stack.curCard);
-			else if(PCARD.pc.tool!=null) exportPict = PaintFile.exportImage(PCARD.pc);
-			else exportPict = PaintTool.editBackground ?
-				PCARD.pc.stack.curCard.bg.pict : PCARD.pc.stack.curCard.pict;
-			if(exportPict==null) throw new xTalkException("No image to export");
-			if(!Sandbox.allowFile(new File(path), Sandbox.Access.WRITE, Sandbox.scriptRequester()))
-				throw new xTalkException("File access was denied: {0}", path);
-			try{
-				PaintFile.write(exportPict, new File(path));
-			}catch(IOException e){
-				throw new xTalkException("Could not export to file: {0}", e.getMessage());
-			}
-		}
-		else if(str=="feather" || str=="grow" || str=="shrink"){
-			//feather [selection] [by] <expr> / grow [selection] [by] <expr> / shrink [selection] [by] <expr>
-			//今の浮動選択の形を変える(ペイントメニューのFeather/Grow/Shrink Selection…と同じ)
-			int next=1;
-			if(next<stringList.size() && stringList.get(next).equalsIgnoreCase("the")) next++;
-			if(next<stringList.size() && stringList.get(next).equalsIgnoreCase("selection")) next++;
-			if(next<stringList.size() && stringList.get(next).equalsIgnoreCase("by")) next++;
-			if(next>=stringList.size()) throw new xTalkException("{0} requires a width in pixels", str);
-			String v = Evalution(stringList, typeAry, next, stringList.size()-1, memData, object, target);
-			final float radius;
-			try{ radius = Float.parseFloat(v.trim()); }
-			catch(NumberFormatException e){ throw new xTalkException("The width for {0} must be a number: {1}", str, v); }
-			if(radius<0) throw new xTalkException("The width for {0} must be at least 0", str);
-			if(PCARD.pc.floating==null) throw new xTalkException("No selection");
-			final String which = str;
-			PCARD.runOnEDT(() -> {
-				PaintTool.owner = PCARD.pc;
-				if(radius==0) return;
-				if(which.equals("feather")) PaintTool.featherSelection(radius);
-				else if(which.equals("grow")) PaintTool.growSelection(radius);
-				else PaintTool.shrinkSelection(radius);
-			});
-		}
-		else if(str=="import"){
-			//import paint from file <expr>
-			int next=1;
-			if(next>=stringList.size() || !stringList.get(next).equalsIgnoreCase("paint"))
-				throw new xTalkException("Cannot understand import");
-			next++;
-			if(next>=stringList.size() || !stringList.get(next).equalsIgnoreCase("from"))
-				throw new xTalkException("import paint requires from file");
-			next++;
-			if(next>=stringList.size() || !stringList.get(next).equalsIgnoreCase("file"))
-				throw new xTalkException("import paint requires from file");
-			next++;
-			if(next>=stringList.size()) throw new xTalkException("Cannot understand import paint from file");
-			String path = Evalution(stringList, typeAry, next, stringList.size()-1, memData, object, target);
-			if(!new File(path).exists()){
-				path = convertFromMacPath(path);
-			}
-			if(!Sandbox.allowFile(new File(path), Sandbox.Access.READ, Sandbox.scriptRequester()))
-				throw new xTalkException("File access was denied: {0}", path);
-			BufferedImage imported;
-			try{
-				imported = PaintFile.read(new File(path));
-			}catch(IOException e){
-				throw new xTalkException("Could not read file: {0}", e.getMessage());
-			}
-			if(imported==null) throw new xTalkException("Could not read the file as an image");
-			if(PCARD.pc.tool!=null){
-				//ペイントツール中はHyperCardと同じく選択範囲(浮動選択)として置く
-				final BufferedImage img = imported;
-				PCARD.runOnEDT(() -> { PaintTool.owner = PCARD.pc; PaintTool.pasteAsSelection(img); });
-				return result;
-			}
-			OCardBase cdbase = PaintTool.editBackground ?
-				(OCardBase)PCARD.pc.stack.curCard.bg : (OCardBase)PCARD.pc.stack.curCard;
-			if(cdbase.pict==null){
-				cdbase.pict = new BufferedImage(PCARD.pc.stack.width, PCARD.pc.stack.height, BufferedImage.TYPE_INT_ARGB);
-			}
-			cdbase.pict = PictureCache.writable(cdbase.pict);
-			Graphics2D g2 = (Graphics2D) cdbase.pict.getGraphics();
-			g2.drawImage(imported, 0, 0, null);
-			cdbase.changed = true;
-			PCARD.pc.mainPane.repaint();
-		}
+		else if(UiHost.get().editorsAndPictures(this, stringList, typeAry, object, target, memData, result, str)){}
 		else if(str=="play" && stringList.size()>=3 && typeAry[1]!=wordType.STRING && stringList.get(1).equalsIgnoreCase("movie")){
 			//play movie <ref> (HyperCard 2.4)
 			movieCommand("play", stringList, typeAry, memData, object, target);
@@ -9668,7 +8981,7 @@ public class TTalk extends Thread {
 				throw new xTalkException("Cannot understand play");
 			if(stringList.get(next).equalsIgnoreCase("stop")){
 				//play stop
-				sound().PlayStop();
+				UiHost.get().playStop();
 			} else {
 				//commas between the parts are separators: play "harpsichord", "c d" / play "harpsichord" tempo 400 ,"g5 c6"
 				//(いまなんじ?; both play in HyperCard J-2.3). Commas inside a function call's brackets stay
@@ -9893,7 +9206,7 @@ public class TTalk extends Thread {
 									vol *= 2;
 									if(vol > 100) vol = 100;
 								}
-								if(!sound().Play(PCARD.pc==null ? null : PCARD.pc.stack, soundRsrc, neiro, tempo, vol)) playFailed = true;
+								if(!UiHost.get().playNotes(!Host.get().hasCardWindow() ? null : HZ.stack(), soundRsrc, neiro, tempo, vol)) playFailed = true;
 							}
 							flag = true;
 							notesPlayed = true;
@@ -9908,10 +9221,10 @@ public class TTalk extends Thread {
 				if(!notesPlayed) {
 					//音符指定なし: サウンド名だけ(またはtempoだけ)なのでそのまま鳴らす
 					if(soundRsrc.equals("")) soundRsrc = Evalution(stringList, typeAry, 1, next-1, memData, object, target);
-					if(!sound().Play(PCARD.pc==null ? null : PCARD.pc.stack, soundRsrc, neiro, tempo, vol)) playFailed = true;
+					if(!UiHost.get().playNotes(!Host.get().hasCardWindow() ? null : HZ.stack(), soundRsrc, neiro, tempo, vol)) playFailed = true;
 				}
 				//失敗はエラーにせず the result で知らせる: "Couldn't load sound" / "Sound is off"(HyperCard)
-				result.theResult = playFailed ? sound().lastError : "";
+				result.theResult = playFailed ? UiHost.get().soundLastError() : "";
 				result.ret = 0;
 			}
 		}
@@ -9922,20 +9235,31 @@ public class TTalk extends Thread {
 			OCard cd = null;
 			if(next>=stringList.size() || (stringList.size()==2 && isCardWord(stringList.get(1))) ||
 					(stringList.size()==3 && stringList.get(1).equalsIgnoreCase("this") && isCardWord(stringList.get(2)))){
-				cd = PCARD.pc.stack.curCard;
+				cd = HZ.stack().curCard;
 			}
 			else if(stringList.get(next).equalsIgnoreCase("recent") && next+1<stringList.size() && isCardWord(stringList.get(next+1))){
-				int rid = PCARD.pc.stack.recentCardId();
-				if(rid>=0) cd = PCARD.pc.stack.GetCardbyId(rid);
-				if(cd==null) cd = PCARD.pc.stack.curCard;
+				int rid = HZ.stack().recentCardId();
+				if(rid>=0) cd = HZ.stack().GetCardbyId(rid);
+				//the stack was just opened: the recent card is the one left in the other stack (HC 2.4: netnews reader's Saved Message
+				//Stack does push recent card in openStack, and its Return button's pop card goes back to the card it came from)
+				PushedCard left = previousStackCard;
+				if(cd==null && left!=null && left.stackPath!=null && !isCurrentStackPath(left.stackPath)){
+					PushedCard p = new PushedCard();
+					p.stackPath = stackIdentityPath(left.stackPath);
+					p.cardId = left.cardId;
+					pushCardList.add(p);
+					while(pushCardList.size()>MAX_PUSHED_CARDS) pushCardList.remove(0);
+					return result;
+				}
+				if(cd==null) cd = HZ.stack().curCard;
 			}
 			else{
 				OObject obj = null;
 				if(stringList.get(next).equalsIgnoreCase("stack") || (next+1<stringList.size() && stringList.get(next+1).equalsIgnoreCase("stack"))){
-					obj = PCARD.pc.stack; //push [this] stack
+					obj = HZ.stack(); //push [this] stack
 				}else if(stringList.size()==next+1 && isBackgroundWord(stringList.get(next)) ||
 						stringList.size()==next+2 && stringList.get(next).equalsIgnoreCase("this") && isBackgroundWord(stringList.get(next+1))){
-					obj = PCARD.pc.stack.curCard.bg; //push [this] background
+					obj = HZ.stack().curCard.bg; //push [this] background
 				}else{
 					try{ obj = getObject(stringList, typeAry, next, stringList.size()-1, memData, object, target); }
 					catch(xTalkException e){ obj = null; }
@@ -9949,19 +9273,19 @@ public class TTalk extends Thread {
 				if(obj instanceof OCard) cd = (OCard)obj;
 				else if(obj instanceof OBackground){
 					//バックグラウンドならその最初のカード
-					for(int i=0; i<PCARD.pc.stack.cardIdList.size(); i++){
-						OCard c = OCard.getOCard(PCARD.pc.stack, PCARD.pc.stack.cardIdList.get(i), true);
+					for(int i=0; i<HZ.stack().cardIdList.size(); i++){
+						OCard c = OCard.getOCard(HZ.stack(), HZ.stack().cardIdList.get(i), true);
 						if(c!=null && c.bgid==obj.id){ cd = c; break; }
 					}
 				}
 				else if(obj instanceof OStack){
-					cd = PCARD.pc.stack.GetCardbyNum(1);
+					cd = HZ.stack().GetCardbyNum(1);
 				}
 				else throw new xTalkException("push supports only cards, backgrounds and stacks");
 			}
 			if(cd==null) throw new xTalkException("Cannot identify the card to push");
 			PushedCard pc = new PushedCard();
-			pc.stackPath = stackIdentityPath(PCARD.pc.stack.path);
+			pc.stackPath = stackIdentityPath(HZ.stack().path);
 			pc.cardId = cd.id;
 			pushCardList.add(pc);
 			while(pushCardList.size()>MAX_PUSHED_CARDS) pushCardList.remove(0);
@@ -9986,7 +9310,7 @@ public class TTalk extends Thread {
 					OStack h = homeStackObject();
 					String value = "empty";
 					if(h!=null && h.cardIdList!=null && !h.cardIdList.isEmpty()){
-						String stackName = h==PCARD.pc.stack || h.path!=null && isCurrentStackPath(h.path) ? PCARD.pc.stack.stackPathName() : h.stackPathName();
+						String stackName = h==HZ.stack() || h.path!=null && isCurrentStackPath(h.path) ? HZ.stack().stackPathName() : h.stackPathName();
 						value = "(\"card id "+h.cardIdList.get(0)+" of stack \" & quote & \""+stackName+"\" & quote)";
 					}
 					doScriptLine("put "+value+" "+prep+" "+joinTokens(stringList, typeAry, next+1, stringList.size()-1), object, target, memData, 0);
@@ -10003,7 +9327,7 @@ public class TTalk extends Thread {
 				if(next+1>=stringList.size()) throw new xTalkException("Missing container for pop card {0}", prep);
 				//the stack as in its long name (stack ":Disk:…:Name", like HyperCard's "HD:Stacks:Name"; HC J-2.3 probe A Push Var2),
 				//not the host path of the .hzb
-				String stackName = isCurrentStackPath(pc.stackPath) ? PCARD.pc.stack.stackPathName() : pc.stackPath;
+				String stackName = isCurrentStackPath(pc.stackPath) ? HZ.stack().stackPathName() : pc.stackPath;
 				String ident = "(\"card id "+pc.cardId+" of stack \" & quote & \""+stackName+"\" & quote)";
 				doScriptLine("put "+ident+" "+prep+" "+joinTokens(stringList, typeAry, next+1, stringList.size()-1), object, target, memData, 0);
 			}
@@ -10025,299 +9349,7 @@ public class TTalk extends Thread {
 			MemoryData memData, Result result, String str)
 	throws xTalkException
 	{
-		if(str=="click"){
-			int next=1;
-			if(next<stringList.size()&&stringList.get(next).equalsIgnoreCase("at"))
-			{
-				resetFindResume(); //a click makes the next find start at the top (HC J-2.3 probe F Unyo Find2)
-				next++;
-				if(next>=stringList.size()) throw new xTalkException("Missing coordinates for click at");
-				int[] stop = new int[1];
-				String param = evalPointList(stringList, typeAry, next, "with", stop, memData, object, target);
-				next = stop[0];
-				int[] at = commandPoint(param, "Cannot interpret the coordinates for click at", memData, object, target);
-				int x = at[0], y = at[1];
-				
-				//with shiftKey,optionKey,commandKey : クリック中だけそのキーが押されている状態にする
-				int[] modKeys = clickModifierKeys(stringList, typeAry, next, memData, object, target);
-				if(PCARD.pc.tool==null && AuthTool.tool==null){
-					//browse tool
-					OObject obj = null;
-					for(int k : modKeys) GUI.key[k] = 1;
-					try{
-					//under lock screen show/hide/move wait for the unlock (runOnEDTWhenShown): bring the parts up to date first, so
-					//a part the script has just shown takes the click (BIKKY流's pseudo menu bar: lock screen, show the popup, click at it)
-					if(PCARD.lockedScreen) PCARD.runOnEDT(() -> {});
-					//the parts are laid out in window pixels (display zoom)
-					int px = PCARD.toPhysical(x), py = PCARD.toPhysical(y);
-					for(int i=0; i<PCARD.pc.mainPane.getComponentCount(); i++)
-					{
-						Component c = PCARD.pc.mainPane.getComponent(i);
-						if(c.isVisible() &&
-								px>=c.getX()&&py>=c.getY()&&px<c.getX()+c.getWidth()&&py<c.getY()+c.getHeight() && //containsを使うと透明ボタンで反応しない
-								c.isEnabled()){
-							if(c.getClass()==MyPopup.class) obj = ((MyPopup)c).btnData;
-							if(c.getClass()==MyPopupNameLabel.class) obj = ((MyPopupNameLabel)c).btnData;
-							if(c.getClass()==MyCheck.class) obj = ((MyCheck)c).btnData;
-							if(c.getClass()==MyRadio.class) obj = ((MyRadio)c).btnData;
-							if(c.getClass()==RoundButton.class) obj = ((RoundButton)c).btnData;
-							if(c.getClass()==RectButton.class) obj = ((RectButton)c).btnData;
-							if(c.getClass()==RoundedCornerButton.class) obj = ((RoundedCornerButton)c).btnData;
-							if(c.getClass()==MyButton.class) obj = ((MyButton)c).btnData;
-							if(c.getClass()==MyTextArea.class) obj = ((MyTextArea)c).fldData;
-							if(c instanceof MyScrollPane) obj = ((MyScrollPane)c).fldData;
-							//シェイプは描いている部分だけがクリックを受ける(外れたら下の部品へ)
-							if(c instanceof OShape.ShapeView && ((OShape.ShapeView)c).shape.hitsCard(x, y)) obj = ((OShape.ShapeView)c).shape;
-							//if(c.getClass()==MyLabel.class) obj = ((MyLabel)c).cd;
-							
-							if(obj!=null){
-								GUI.clickH = x;
-								GUI.clickV = y;
-								if(obj instanceof OField && scrollBarClick((OField)obj, x, y)) break;
-								GUI.mouseClicked = true; GUI.userClickPending = false;
-								//click at a button: the clickChunk/clickText no longer name the last field click (HC J-2.3
-								//probe D Click BgField; a user's click on the card during a handler keeps them)
-								if(!(obj instanceof OField)) GUI.clickTextField = null;
-								if(obj instanceof OField && ((OField)obj).fld!=null){
-									//the clickChunk / clickText / clickLine もこのクリックを指す(フィールドの描画位置で)
-									OField cf = (OField)obj;
-									java.awt.Point view = cf.scrollPane!=null ? cf.scrollPane.getViewport().getViewPosition() : new java.awt.Point(0,0);
-									GUI.noteFieldClick(cf, PCARD.toPhysical(x-cf.left)+view.x, PCARD.toPhysical(y-cf.top)+view.y);
-									GUI.clickByScript = true;
-									//a locked list field (autoSelect) hilites the clicked line, below the text its last line (HC J-2.3
-									//probes D Click List / A List Click: click at selects, select empty keeps it)
-									if(cf.enabled && cf.autoSelect && cf.dontWrap){
-										String text = cf.getText();
-										int lines = OField.textLineCount(text);
-										int[] hit = OField.hitTestClick(cf, PCARD.toPhysical(x-cf.left)+view.x, PCARD.toPhysical(y-cf.top)+view.y);
-										if(lines>0 && hit[0]>=0){
-											int line = 1;
-											for(int k=0; k<hit[0] && k<text.length(); k++) if(text.charAt(k)=='\n') line++;
-											cf.setSelectedLine(Math.min(lines, Math.max(1, line)));
-										}
-									}
-								}
-								if(obj instanceof OField && !((OField)obj).enabled && ((OField)obj).fld!=null){
-									//ロックされていないフィールド: メッセージではなく、その位置に挿入ポイントを置く
-									OField f = (OField)obj;
-									javax.swing.text.JTextComponent tc = f.fld;
-									java.awt.Point local = new java.awt.Point(PCARD.toPhysical(x-f.left), PCARD.toPhysical(y-f.top));
-									int pos = tc.viewToModel2D(local);
-									if(pos<0) pos = tc.getText().length();
-									tc.requestFocusInWindow();
-									tc.setCaretPosition(Math.min(pos, tc.getText().length()));
-									GUI.clickField = f;
-									openFieldNow(f, true);
-									PCARD.runOnEDT(() -> GField.fillToClickedLine(f, local.y));
-								}else if(obj instanceof OButton && ((OButton)obj).popup!=null && !SwingUtilities.isEventDispatchThread()){
-									//a popup button pulls its menu down (HyperCard tracks it): mouseUp only when an item is chosen
-									talk.ReceiveMessage("mouseDown", "", obj, null, false);
-									if(choosePopupItem((OButton)obj)) talk.ReceiveMessage("mouseUp", "", obj, null, false);
-								}else{
-									//a button or shape closes the open field; a locked field or a button without autoHilite keeps it open
-									if(!(obj instanceof OField) && !(obj instanceof OButton && !((OButton)obj).getAutoHilite())) closeOpenField(true, true);
-									//HyperCardは mouseDown, mouseStillDown, mouseUp の順に送る
-									talk.ReceiveMessage("mouseDown", "", obj, null, false);
-									talk.ReceiveMessage("mouseStillDown", "", obj, null, false);
-									if(obj instanceof OButton) clickHilite((OButton)obj);
-									talk.ReceiveMessage("mouseUp", "", obj, null, false);
-								}
-								break;
-							}
-						}
-					}
-					if(obj==null&&x>=0&&y>=0&&x<PCARD.pc.stack.width&&y<PCARD.pc.stack.height){
-						GUI.clickH = x;
-						GUI.clickV = y;
-						GUI.mouseClicked = true; GUI.userClickPending = false;
-						GUI.clickTextField = null; //click at the card: the clickChunk is empty (HC J-2.3 probe D Click BgField)
-						closeOpenField(true, true);
-						talk.ReceiveMessage("mouseDown", "", PCARD.pc.stack.curCard, null, false);
-						talk.ReceiveMessage("mouseStillDown", "", PCARD.pc.stack.curCard, null, false);
-						talk.ReceiveMessage("mouseUp", "", PCARD.pc.stack.curCard, null, false);
-					}
-					}finally{
-						for(int k : modKeys) GUI.key[k] = 0;
-					}
-				}
-				else{
-					//auth or paint tool
-					if(x<0||x>PCARD.pc.getWidth()||y<0||y>PCARD.pc.getHeight()){
-						result.theResult = "Error: out of card window";
-						return result;
-					}
-					if(paintToolDrag(x, y, x, y, modKeys)) return result;
-					//button / field tool: the click selects the part under the point (HyperCard; 夏休み's install button does
-					//choose button tool / click at the loc of button 3 / doMenu コピーボタン). Was a real mouse click via Robot
-					if(AuthTool.tool instanceof ButtonTool || AuthTool.tool instanceof FieldTool){
-						boolean buttons = AuthTool.tool instanceof ButtonTool;
-						OObject hit = authToolPartAt(x, y, buttons);
-						if(buttons){
-							ButtonGUI.gui.tgtOBtn = (OButton)hit;
-							ButtonGUI.gui.target = hit==null ? null : ((OButton)hit).getComponent();
-						}else{
-							FieldGUI.gui.tgtOFld = (OField)hit;
-							FieldGUI.gui.target = hit==null ? null : ((OField)hit).getComponent();
-						}
-						if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.repaint();
-						return result;
-					}
-					int j;
-					for(j=2; j<stringList.size(); j++){
-						if(stringList.get(j).equalsIgnoreCase("with")){
-							break;
-						}
-					}
-					String withKey = modifierKeyWords(clickModifierKeys(stringList, typeAry, j, memData, object, target));
-					Robot rb = null;
-					try {
-						rb = new Robot();
-					} catch (AWTException e) {
-						e.printStackTrace();
-					}
-					java.awt.Point sp = cardToScreen(x, y);
-					x = sp.x; y = sp.y;
-					if(rb!=null){
-						/*BufferedImage bi = new BufferedImage(16,16, BufferedImage.TYPE_INT_ARGB);
-						Toolkit kit = Toolkit.getDefaultToolkit();
-						Cursor cr = kit.createCustomCursor(bi, new Point(0, 0), "none-cursor");
-						PCARD.pc.setCursor(cr);*/
-						
-						if(withKey.contains("control")) rb.keyPress(KeyEvent.VK_CONTROL);
-						if(withKey.contains("shift")) rb.keyPress(KeyEvent.VK_SHIFT);
-						if(withKey.contains("option") || withKey.contains("alt")) rb.keyPress(KeyEvent.VK_ALT);
-						if(withKey.contains("command")||withKey.contains("cmd")) rb.keyPress(KeyEvent.VK_META);
-						if(withKey.length()>0) rb.delay(100);
-						{
-					        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
-							int savex = pointerInfo.getLocation().x;
-							int savey = pointerInfo.getLocation().y;
-							rb.mouseMove(x, y);
-							rb.delay(10);
-							rb.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-							rb.delay(20);
-							rb.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-							rb.delay(20);
-							rb.mouseMove(savex, savey);
-						}
-						if(withKey.contains("control")) rb.keyRelease(KeyEvent.VK_CONTROL);
-						if(withKey.contains("shift")) rb.keyRelease(KeyEvent.VK_SHIFT);
-						if(withKey.contains("option") || withKey.contains("alt")) rb.keyRelease(KeyEvent.VK_ALT);
-						if(withKey.contains("command")||withKey.contains("cmd")) rb.keyRelease(KeyEvent.VK_META);
-						
-						/*PCARD.pc.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));*/
-					}
-				}
-			}
-			else throw new xTalkException("Cannot understand click");
-		}
-		else if(str=="drag"){
-			int next=1;
-			int sx=0, sy=0;
-			int ex=0, ey=0;
-			if(next<stringList.size()&&stringList.get(next).equalsIgnoreCase("from"))
-			{
-				next++;
-				if(next>=stringList.size()) throw new xTalkException("Missing coordinates for drag from");
-				int[] stop = new int[1];
-				String param = evalPointList(stringList, typeAry, next, "to", stop, memData, object, target);
-				next = stop[0];
-				int[] at = commandPoint(param, "Cannot interpret the coordinates for drag from", memData, object, target);
-				sx = at[0];
-				sy = at[1];
-			}
-			else throw new xTalkException("Missing from");
-
-			if(next<stringList.size()&&stringList.get(next).equalsIgnoreCase("to"))
-			{
-				next++;
-				if(next>=stringList.size()) throw new xTalkException("Missing coordinates for drag to");
-				int[] stop = new int[1];
-				String param = evalPointList(stringList, typeAry, next, "with", stop, memData, object, target);
-				next = stop[0];
-				int[] at = commandPoint(param, "Cannot interpret the coordinates for drag to", memData, object, target);
-				ex = at[0];
-				ey = at[1];
-			}
-			else throw new xTalkException("Missing to");
-			//a paint tool takes the drag itself, before the next line runs (らくがきカレンダー: choose tool 4, drag over the
-			//picture, doMenu "Copy Picture"). The OS pointer is not moved: a Robot drag lands wherever the pointer's window is
-			int[] dragKeys = clickModifierKeys(stringList, typeAry, next, memData, object, target);
-			if(paintToolDrag(sx, sy, ex, ey, dragKeys)){
-				//with the option key the select tool closes in on the picture as the lasso does (エンボス加工: only the shapes are copied)
-				for(int key : dragKeys) if(key==12 && PCARD.pc.tool!=null && PCARD.pc.tool.getClass()==SelectTool.class){
-					selectToolWentLasso = PCARD.pc.tool;
-					runOnEventThread(() -> { if(PaintTool.floating()!=null) PaintTool.tightenSelection(); });
-				}
-				return result;
-			}
-			if(authToolDrag(sx, sy, ex, ey, dragKeys, memData)) return result;
-			{
-				int j;
-				for(j=next; j<stringList.size(); j++){
-					if(stringList.get(j).equalsIgnoreCase("with")){
-						break;
-					}
-				}
-				String withKey = modifierKeyWords(clickModifierKeys(stringList, typeAry, j, memData, object, target));
-				Robot rb = null;
-				try {
-					rb = new Robot();
-				} catch (AWTException e) {
-					e.printStackTrace();
-				}
-				//カード座標→スクリーン座標(mainPaneの位置と拡大率を考慮)
-				java.awt.Point p0 = cardToScreen(sx, sy), p1 = cardToScreen(ex, ey);
-				sx = p0.x; sy = p0.y; ex = p1.x; ey = p1.y;
-				if(rb!=null){
-					/*BufferedImage bi = new BufferedImage(16,16, BufferedImage.TYPE_INT_ARGB);
-					Toolkit kit = Toolkit.getDefaultToolkit();
-					Cursor cr = kit.createCustomCursor(bi, new Point(0, 0), "none-cursor");
-					PCARD.pc.setCursor(cr);*/
-					
-					if(withKey.contains("control")) rb.keyPress(KeyEvent.VK_CONTROL);
-					if(withKey.contains("shift")) rb.keyPress(KeyEvent.VK_SHIFT);
-					if(withKey.contains("option") || withKey.contains("alt")) rb.keyPress(KeyEvent.VK_ALT);
-					if(withKey.contains("command")||withKey.contains("cmd")) rb.keyPress(KeyEvent.VK_META);
-					if(withKey.length()>0) rb.delay(100);
-					{
-				        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
-						int savex = pointerInfo.getLocation().x;
-						int savey = pointerInfo.getLocation().y;
-						rb.mouseMove(sx, sy);
-						rb.delay(10);
-						rb.mousePress(InputEvent.BUTTON1_DOWN_MASK);
-						rb.delay(20);
-						if(dragspeed>0){
-							double start = new Date().getTime();
-							double d = Math.sqrt((ex-sx)*(ex-sx)+(ey-sy)*(ey-sy));
-							while(true){
-								double sec = (new Date().getTime()-start)/10.0*3/5/60;
-								double per = sec*dragspeed/(d+0.4);
-								if(per>=1) break;
-								rb.mouseMove((int)(sx*(1-per)+ex*per), (int)(sy*(1-per)+ey*per));
-
-								try {
-									Thread.sleep(10);
-								} catch (InterruptedException e) {
-								}
-							}
-						}
-						rb.mouseMove(ex, ey);
-						rb.delay(20);
-						rb.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
-						rb.delay(20);
-						rb.mouseMove(savex, savey);
-					}
-					if(withKey.contains("control")) rb.keyRelease(KeyEvent.VK_CONTROL);
-					if(withKey.contains("shift")) rb.keyRelease(KeyEvent.VK_SHIFT);
-					if(withKey.contains("option") || withKey.contains("alt")) rb.keyRelease(KeyEvent.VK_ALT);
-					if(withKey.contains("command")||withKey.contains("cmd")) rb.keyRelease(KeyEvent.VK_META);
-					
-					/*PCARD.pc.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));*/
-				}
-			}
-		}
+		if(UiHost.get().clickAndDrag(this, stringList, typeAry, object, target, memData, result, str)){}
 		else if(str=="arrowkey"){
 			//arrowKey left|right|up|down : カレントカード(textArrowsがtrueで挿入ポイントがあればフィールド)へ送り、
 			//捕まえられなければ組み込み動作(カード移動、またはtextArrows時は挿入ポイントの移動)
@@ -10372,9 +9404,9 @@ public class TTalk extends Thread {
 			if(next<stringList.size()){
 				if(stringList.get(next).equalsIgnoreCase("menuBar")){
 					//メニューバーを初期状態に戻す
-					PCARD.pc.menu = new GMenu(PCARD.pc, 0);
+					UiHost.get().resetMenuBar();
 					resetAppleMenu();
-					GMenu.menuUpdate(PCARD.pc.menu.mb);
+					MenuNodes.get().menuBarChanged();
 				}
 				else if(stringList.get(next).equalsIgnoreCase("paint")){
 					//reset paint: the painting properties back to HyperCard's defaults (Graph Maker draws its graphs after it)
@@ -10402,7 +9434,9 @@ public class TTalk extends Thread {
 		if(str=="delete"){
 			if(collectionDeleteCommand(stringList, typeAry, memData, object, target)) return result;
 			int next=1;
-			if(next>=stringList.size()) throw new xTalkException("Cannot understand delete");
+			//delete with nothing after it (also the message delete no handler takes: Sedit3.1's palette passes Delete) -
+			//HC J-2.3: “delete”の引数がわかりません。
+			if(next>=stringList.size()) throw new xTalkException("Cannot understand the arguments of {0}", "delete");
 			if(stringList.size()==2 && (typeAry[1]==wordType.X || typeAry[1]==wordType.VARIABLE || typeAry[1]==wordType.GLOBAL)){
 				//delete MySelectedLine: 変数に入ったチャンク参照("line 3 of card field 1"、the clickLine の値)の
 				//その部分を消す。変数はそのまま(HyperCard 2.4、Power Tools Resource Mover の "Remove")
@@ -10423,7 +9457,7 @@ public class TTalk extends Thread {
 			if(stringList.get(next).equalsIgnoreCase("menu")){
 				//delete menu N / delete menu "名前"
 				String v = Evalution(stringList, typeAry, next+1, stringList.size()-1, memData, object, target);
-				JMenu menu = findMenu(v);
+				MMenu menu = findMenu(v);
 				if(menu==null && v.trim().matches("[0-9]+")){
 					//delete menu 7: HyperCard's Font when the menus number it so (HC J-2.3)
 					java.util.List<String> names = scriptMenuNames();
@@ -10435,7 +9469,7 @@ public class TTalk extends Thread {
 					if(english!=null) v = english;
 					//HyperCardには常にあるがHyperZebraには無いメニュー(Font/Style/Paint/Options/Patterns)の削除は何もしない
 					//(HyperCard J の半角カナ名 "ﾌｫﾝﾄ" も。Memo It 1.8 は the menus の5〜8行目を消す)
-					String vn = java.text.Normalizer.normalize(v.trim(), java.text.Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+					String vn = Platform.get().normalize(v.trim(), UnicodeNorm.Form.NFKC).toLowerCase(Locale.ROOT);
 					if(vn.equals("font") || vn.equals("フォント")) fontMenuDeleted = true;
 					if(vn.equals("style") || vn.equals("スタイル")) styleMenuDeleted = true;
 					//the bar on the screen loses HyperZebra's own Font / Style menu too (FieldTextMenus)
@@ -10446,7 +9480,7 @@ public class TTalk extends Thread {
 					throw new xTalkException("No such menu: {0}", v);
 				}
 				if(menu!=appleMenu){ //アップルメニューは削除できない(HyperCardと同様に何もしない)
-					PCARD.pc.menu.mb.remove(menu);
+					MenuNodes.get().cardMenuBar().remove(menu);
 					menuChanged();
 				}
 			}
@@ -10471,7 +9505,7 @@ public class TTalk extends Thread {
 				if(ofIdx<0) throw new xTalkException("delete menuItem requires of menu");
 				String itemRef = Evalution(stringList, typeAry, next+1, ofIdx-1, memData, object, target);
 				String menuRef = Evalution(stringList, typeAry, ofIdx+2, stringList.size()-1, memData, object, target);
-				JMenu menu = findMenu(menuRef);
+				MMenu menu = findMenu(menuRef);
 				//HyperCard's Style/Font/… menu, which HyperZebra's menu bar does not have: nothing to delete (Edible Landscaping's
 				//menu cleanup deletes items of menu "Style"), as set … of menuItem of it does nothing
 				if(menu==null && isHyperCardOnlyMenuRef(menuRef)) return result;
@@ -10577,15 +9611,23 @@ public class TTalk extends Thread {
 			ArrayList<String> chunkWords = null;
 			wordType[] chunkTypes = null;
 			OObject obj = null;
-			if(chunkContainer){
+			//sort [lines of] the selection (HyperWrite's Sort menu items): the selected text, sorted in place
+			boolean selectionContainer = !chunkContainer && isSelectionDestination(new ArrayList<String>(stringList.subList(0, containerEnd+1)),
+				java.util.Arrays.copyOfRange(typeAry, 0, containerEnd+1), next);
+			if(selectionContainer){}
+			else if(chunkContainer){
 				chunkWords = new ArrayList<String>(stringList.subList(next, containerEnd+1));
 				chunkTypes = java.util.Arrays.copyOfRange(typeAry, next, containerEnd+1);
 			}
-			else if(PCARD.pc!=null && PCARD.pc.stack!=null){
+			else if(Host.get().hasCardWindow() && HZ.stack()!=null){
 				obj = getObject(stringList, typeAry, next, containerEnd, memData, object, target);
 			}
 			String oldValue;
-			if(chunkContainer){
+			if(selectionContainer){
+				oldValue = TUtil.CallSystemFunction("selection", new String[0], target, memData, true).theResult;
+				if(oldValue==null) oldValue = "";
+			}
+			else if(chunkContainer){
 				oldValue = Evalution(new ArrayList<String>(chunkWords), chunkTypes.clone(), 0, chunkWords.size()-1, memData, object, target);
 			}
 			else if(obj != null){
@@ -10643,7 +9685,10 @@ public class TTalk extends Thread {
 			}
 			if(trailingEmpty) newValue.append(delimiter);
 
-			if(chunkContainer){
+			if(selectionContainer){
+				if(!newValue.toString().equals(oldValue)) putIntoSelection(newValue.toString(), "into", object, target, memData);
+			}
+			else if(chunkContainer){
 				Result r = builtinPutInto(newValue.toString(), chunkWords, chunkTypes, object, target, memData);
 				if(r!=null && r.ret==-1) return r;
 			}
@@ -10672,27 +9717,14 @@ public class TTalk extends Thread {
 					filename = Evalution(stringList,typeAry,j+1,stringList.size()-1, memData, object, target);
 				}
 
-				JFileChooser chooser;
-				File stackFolder = PCARD.pc.stack.file!=null ? fileDialogFolder(GMenuBrowse.stackChooserDirectory(PCARD.pc.stack.file)) : null;
-				if(stackFolder!=null){
-					//スタックのあるフォルダ(answer file と同じ)。以前は変換したスタックの .hzb フォルダの中を開いていた
-					chooser = new JFileChooser();
-					File parent = stackFolder;
-					chooser.setCurrentDirectory(parent);
-					chooser.setSelectedFile(new File(parent.getPath()+File.separatorChar+filename));
-				}
-				else{
-					chooser = new JFileChooser(new File(filename));
-				}
-				chooser.setDialogTitle(StackTranslation.dialogText(stackOf(object), answerStr));
-				int ret = PCARD.showFileChooser(chooser, PCARD.pc, true);
-				if(ret != JFileChooser.APPROVE_OPTION){
+				String chosenFile = UiHost.get().askFile(stackOf(object), answerStr, filename);
+				if(chosenFile==null){
 					//保存しない: HyperCardではitが空になり、the resultは"Cancel"
 					setVariable(memData, "it", "");
 					result.theResult = "Cancel";
 					return result;
 				}
-				setVariable(memData, "it", scriptPath(chooser.getSelectedFile()));
+				setVariable(memData, "it", chosenFile);
 			}
 			else{
 				//テキスト入力付きダイアログボックスの表示
@@ -10718,19 +9750,17 @@ public class TTalk extends Thread {
 				answerStr = Evalution(stringList, typeAry, next, i-1, memData, object, target);
 				next=i;
 				String defaultText = "";
-				if(next+1<stringList.size()){
-					defaultText = Evalution(stringList, typeAry, next+1, stringList.size()-1, memData, object, target);
-				}
-				new GDialog(PCARD.pc, new StackTranslation.Dialog(stackOf(object)), answerStr, defaultText, "Cancel", "OK", password);
+				if(next+1<stringList.size()) defaultText = askDefaultText(stringList, typeAry, next+1, memData, object, target);
+				String[] asked = UiHost.get().ask(stackOf(object), answerStr, defaultText, "Cancel", "OK", password);
 				if(TTalk.stop) throw new xTalkException("user abort.");
-				if("Cancel".equals(GDialog.clicked)){
+				if("Cancel".equals(asked[0])){
 					//キャンセル: itは空、the resultは"Cancel"(HyperCard)
 					setVariable(memData, "it", "");
 					result.theResult = "Cancel";
 				}else if(password){
-					setVariable(memData, "it", passwordClear ? askPasswordText(GDialog.inputText) : encryptPassword(GDialog.inputText));
+					setVariable(memData, "it", passwordClear ? askPasswordText(asked[1]) : encryptPassword(asked[1]));
 				}else{
-					setVariable(memData, "it", GDialog.inputText);
+					setVariable(memData, "it", asked[1]);
 				}
 			}
 		}
@@ -10764,7 +9794,7 @@ public class TTalk extends Thread {
 				StringBuilder words = new StringBuilder();
 				for(int k=next; k<(comma>=0 ? comma : end); k++){
 					String w = stringList.get(k);
-					if(!w.matches("[A-Za-z0-9_\\.\\p{IsAlphabetic}]+") || operatorSet.contains(w.toLowerCase())) throw e;
+					if(!w.matches(Platform.get().regex("[A-Za-z0-9_\\.\\p{IsAlphabetic}]+")) || operatorSet.contains(w.toLowerCase())) throw e;
 					if(words.length()>0) words.append(' ');
 					words.append(w);
 				}
@@ -10772,18 +9802,7 @@ public class TTalk extends Thread {
 			}
 			String menuName = comma>=0 && comma+1<end ? Evalution(stringList, typeAry, comma+1, end-1, memData, object, target) : null;
 			int[] modKeys = withPos>=0 ? clickModifierKeys(stringList, typeAry, withPos, memData, object, target) : new int[0];
-			for(int k : modKeys) GUI.key[k] = 1;
-			boolean savedNoDialog = GMenuBrowse.withoutDialog;
-			boolean savedFromScript = GMenuBrowse.fromScript;
-			GMenuBrowse.withoutDialog = withoutDialog;
-			GMenuBrowse.fromScript = true;
-			try{
-				GMenuBrowse.doMenu(itemName, menuName);
-			}finally{
-				GMenuBrowse.withoutDialog = savedNoDialog;
-				GMenuBrowse.fromScript = savedFromScript;
-				for(int k : modKeys) GUI.key[k] = 0;
-			}
+			UiHost.get().doMenuFromScript(itemName, menuName, withoutDialog, modKeys);
 		}
 		else if(str=="print"){
 			result.theResult = printCommand(stringList, typeAry, memData, object, target);
@@ -10803,67 +9822,14 @@ public class TTalk extends Thread {
 			MemoryData memData, Result result, String str)
 	throws xTalkException
 	{
-		if(str=="request"){
-			//request <式> from program <プログラム> / request appleEvent class|id|sender|data [with keyword <k>]
-			//AppleEventは扱えないので、HyperCardの失敗時と同じく it は空、the result にエラーを入れる
-			if(stringList.size()<2) throw new xTalkException("Cannot understand request");
-			setVariable(memData, "it", "");
-			if(stringList.get(1).equalsIgnoreCase("appleevent")){
-				//an Apple event an external sent to HyperCard (SendAEData: AESend to "HyperCard" runs the appleEvent message,
-				//whose handler does request appleEvent data / reply): class, id, sender or data [with keyword k]
-				AppleEvents68k.HyperCardEvent ev = AppleEvents68k.currentHyperCardEvent();
-				if(ev==null) result.theResult = "No current Apple event";
-				else{
-					int with = withKeywordAt(stringList, typeAry, 2);
-					String what = stringList.size()>2 ? stringList.get(2) : "data";
-					String keyword = with>0 ? Evalution(stringList, typeAry, with+2, stringList.size()-1, memData, object, target) : null;
-					String v = ev.request(what, keyword);
-					if(v==null) result.theResult = "No such parameter"; //the event lacks it: it stays empty
-					else{ setVariable(memData, "it", v); result.theResult = ""; }
-				}
-			}else{
-				int fromPos = -1;
-				//request "name of stack" of program remoteHyperCard (AOL HyperNet Communicator): of as from
-				for(int k=2; k+1<stringList.size(); k++){
-					if(typeAry[k]!=wordType.STRING && (stringList.get(k).equalsIgnoreCase("from") || stringList.get(k).equalsIgnoreCase("of")) &&
-							typeAry[k+1]!=wordType.STRING && stringList.get(k+1).equalsIgnoreCase("program")){ fromPos = k; break; }
-				}
-				if(fromPos<0 || fromPos+1>=stringList.size() || !stringList.get(fromPos+1).equalsIgnoreCase("program"))
-					throw new xTalkException("request requires from program");
-				String expr = Evalution(stringList, typeAry, 1, fromPos-1, memData, object, target);
-				if(isThisProgram(stringList, fromPos+1)){
-					//this program = HyperZebra 自身: 式をここで評価して it に入れる
-					setVariable(memData, "it", Evalution(expr, memData, object, target));
-					result.theResult = "";
-				}else{
-					result.theResult = "No such program";
-				}
-			}
-		}
-		else if(str=="reply"){
-			//reply <式> [with keyword <k>] / reply error <式>: the answer to the Apple event an external sent HyperCard
-			AppleEvents68k.HyperCardEvent ev = AppleEvents68k.currentHyperCardEvent();
-			if(ev==null) result.theResult = "No current Apple event";
-			else if(stringList.size()>2 && typeAry[1]!=wordType.STRING && stringList.get(1).equalsIgnoreCase("error")){
-				ev.reply(Evalution(stringList, typeAry, 2, stringList.size()-1, memData, object, target), null, true);
-				result.theResult = "";
-			}
-			else if(stringList.size()>1){
-				int with = withKeywordAt(stringList, typeAry, 1);
-				String text = Evalution(stringList, typeAry, 1, with>0 ? with-1 : stringList.size()-1, memData, object, target);
-				String keyword = with>0 ? Evalution(stringList, typeAry, with+2, stringList.size()-1, memData, object, target) : null;
-				ev.reply(text, keyword, false);
-				result.theResult = "";
-			}
-			else throw new xTalkException("Cannot understand reply");
-		}
+		if(UiHost.get().appleEventCommands(this, stringList, typeAry, object, target, memData, result, str)){}
 		else if(str=="mark" || str=="unmark"){
 			boolean marked = str=="mark";
 			if(stringList.size()<2) throw new xTalkException("Cannot identify the card for {0}", str);
 			if(stringList.get(1).equalsIgnoreCase("all") && stringList.size()>2 &&
 				(stringList.get(2).equalsIgnoreCase("cards") || stringList.get(2).equalsIgnoreCase("cds"))){
-				for(Integer cardId: PCARD.pc.stack.cardIdList){
-					OCard card = PCARD.pc.stack.GetCardbyId(cardId);
+				for(Integer cardId: HZ.stack().cardIdList){
+					OCard card = HZ.stack().GetCardbyId(cardId);
 					if(card!=null){ card.marked = marked; card.changed = true; }
 				}
 			}
@@ -10875,10 +9841,10 @@ public class TTalk extends Thread {
 				}
 				OCard card;
 				if(stringList.size()==2 && isCardWord(stringList.get(1))){
-					card = PCARD.pc.stack.curCard;
+					card = HZ.stack().curCard;
 				} else if(stringList.size()==3 && stringList.get(1).equalsIgnoreCase("this") &&
 					isCardWord(stringList.get(2))){
-					card = PCARD.pc.stack.curCard;
+					card = HZ.stack().curCard;
 				} else {
 					OObject markedObject = getObject(stringList, typeAry, 1,
 						stringList.size()-1, memData, object, target);
@@ -10889,103 +9855,7 @@ public class TTalk extends Thread {
 				card.changed = true;
 			}
 		}
-		else if(str=="save"){
-			//save [this] stack as [stack] <file> / save stack <name> as <file> : スタックのコピーを作る(Save A Copy)。
-			//カレントスタックはそのまま。失敗は the result で知らせる。
-			//HyperZebra拡張: as の無い "save [this] stack" は今のファイルへ書き戻す。
-			int asPos = -1;
-			for(int i=1; i<stringList.size(); i++){
-				if(typeAry[i]!=wordType.STRING && stringList.get(i).equalsIgnoreCase("as")){ asPos = i; break; }
-			}
-			int srcEnd = (asPos>=0 ? asPos : stringList.size()) - 1;
-			OStack stack = PCARD.pc.stack;
-			String sourcePath = null; //開いていないスタックをコピーする場合のパス
-			boolean current = srcEnd<1 ||
-				(srcEnd==2 && stringList.get(1).equalsIgnoreCase("this") && stringList.get(2).equalsIgnoreCase("stack")) ||
-				(srcEnd==1 && stringList.get(1).equalsIgnoreCase("stack"));
-			if(!current){
-				int p = stringList.get(1).equalsIgnoreCase("stack") ? 2 : 1;
-				if(p>srcEnd) throw new xTalkException("Cannot identify the stack to save");
-				String ref = Evalution(stringList, typeAry, p, srcEnd, memData, object, target);
-				String resolved = resolveStackPath(ref);
-				if(resolved==null) throw new xTalkException("No such stack: {0}", ref);
-				if(isCurrentStackPath(resolved)) current = true;
-				else sourcePath = stackIdentityPath(resolved);
-			}
-			if(asPos<0){
-				if(!current) throw new xTalkException("save requires as <filename>");
-				if(stack.saveXML==null) throw new xTalkException("This stack cannot be saved");
-				//書けなかったことを the result で返す(以前は失敗しても空=成功だった)
-				result.theResult = stack.saveXML.saveStackNow() ? "" : "Couldn't save stack: "+stack.saveXML.lastError;
-				return result;
-			}
-			int destStart = asPos+1;
-			if(destStart<stringList.size() && typeAry[destStart]!=wordType.STRING && stringList.get(destStart).equalsIgnoreCase("stack")) destStart++;
-			if(destStart>=stringList.size()) throw new xTalkException("Missing destination for save as");
-			String dest = Evalution(stringList, typeAry, destStart, stringList.size()-1, memData, object, target);
-			File destFile = saveAsDestination(dest);
-			//a HyperCard stack file that is not open is copied as one (HyperCard's save stack as): the copy keeps the name given,
-			//so an external handed that path finds it (UxCompressRsrc's sample: save stack it as it & "@3", then compresses the copy)
-			File rawSource = !current && sourcePath!=null && new File(sourcePath).isFile() && !StackBundle.isPacked(new File(sourcePath)) &&
-				OStack.looksLikeHyperCardStack(sourcePath) ? new File(sourcePath) : null;
-			if(rawSource==null && !destFile.getName().toLowerCase().endsWith(".hzb")) destFile = new File(destFile.getPath()+".hzb");
-			if(destFile.exists()){
-				result.theResult = "Couldn't save stack: a file with that name already exists.";
-				return result;
-			}
-			if(!Sandbox.allowFile(destFile, Sandbox.Access.WRITE, Sandbox.scriptRequester())){
-				result.theResult = "Couldn't save stack: access not allowed.";
-				return result;
-			}
-			if(current && StackSaving.canSaveElsewhere(stack)){
-				//File > Save a Copy… と同じ: 未保存の変更を書いてからフォルダごと写す(自動保存と重ならない・失敗したら残さない)
-				String failure = StackSaving.saveACopy(stack, destFile, Sandbox.scriptRequester());
-				result.theResult = failure==null ? "" : "Couldn't save stack: "+failure;
-				return result;
-			}
-			if(rawSource!=null){
-				try{
-					WorkingCopies.copyFile(rawSource, destFile); //data fork, resource fork and Finder info
-					result.theResult = "";
-				}catch(IOException e){
-					destFile.delete();
-					result.theResult = "Couldn't save stack: "+e.getMessage();
-				}
-				return result;
-			}
-			File srcDir;
-			File packedSource = current ? null : StackBundle.isPacked(new File(sourcePath)) ? new File(sourcePath) : null;
-			if(packedSource!=null){
-				//a stack file (.hzb ZIP) that is not open is copied as it is
-				try{
-					java.nio.file.Files.copy(packedSource.toPath(), destFile.toPath());
-					result.theResult = "";
-				}catch(IOException e){
-					result.theResult = "Couldn't save stack: "+e.getMessage();
-				}
-				return result;
-			}
-			if(current){
-				//現在の内容を書き出してから写す(書けなかったら写さない: 古い内容のコピーを成功扱いにしない)
-				if(stack.saveXML!=null && !stack.saveXML.saveStackNow()){
-					result.theResult = "Couldn't save stack: "+stack.saveXML.lastError;
-					return result;
-				}
-				srcDir = new File(stackIdentityPath(stack.path));
-			}else{
-				srcDir = new File(sourcePath);
-			}
-			if(!srcDir.isDirectory()){
-				result.theResult = "Couldn't save stack.";
-				return result;
-			}
-			try{
-				StackBundle.packFolder(srcDir, destFile); //the copy is a stack file (.hzb ZIP)
-				result.theResult = "";
-			}catch(IOException e){
-				result.theResult = "Couldn't save stack: "+e.getMessage();
-			}
-		}
+		else if(UiHost.get().saveCommand(this, stringList, typeAry, object, target, memData, result, str)){}
 		else if(str=="select"){
 			//select empty | select text of <field> | select [before|after] <chunk> of <field> | select <button|field>
 			int next=1;
@@ -11021,9 +9891,17 @@ public class TTalk extends Thread {
 				//select (bg fld "選択LINE"): 括弧内の値(the selectedLine を保存したもの)をチャンク式として解析し直す(TwinkleSord)
 				chunkVariable = true;
 			}
+			String calledValue = null;
+			if(!chunkVariable && next+1<stringList.size() && (typeAry[next]==wordType.USER_FUNC || typeAry[next]==wordType.XFCN || typeAry[next]==wordType.X) &&
+					isWholeArgumentList(typeAry, next+1, stringList.size()-1)){
+				//select peekGlobal(): a handler's function that returns a saved selectedChunk (HyperWrite's Edit menu)
+				//(evaluated once: the value is used below)
+				String v = Evalution(new ArrayList<String>(stringList), typeAry.clone(), next, stringList.size()-1, memData, object, target);
+				if(isChunkDescriptor(v) || isObjectDescriptor(v)){ chunkVariable = true; calledValue = v; }
+			}
 			if(chunkVariable || isSelectExpressionType(typeAry[next])){
 				//select the foundChunk / select the selectedChunk など、関数が返したチャンク式を解析し直す
-				String newStr = Evalution(stringList, typeAry, next, stringList.size()-1, memData, object, target);
+				String newStr = calledValue!=null ? calledValue : Evalution(stringList, typeAry, next, stringList.size()-1, memData, object, target);
 				if(newStr.length()>0){
 					for(int j=stringList.size()-1; j>=next; j--){
 						stringList.remove(1);
@@ -11046,13 +9924,13 @@ public class TTalk extends Thread {
 				//選択を解除する(どのフィールドの選択でも)。リストフィールド(autoSelect)の選択行は残る
 				//(HyperCard J-2.3 / 2.4: select empty の後も the selectedLine of <リスト> は "line 2 to 2 of card field 2")
 				OField sel = TUtil.findFocusedOrClickedField();
-				if(sel!=null && sel.fld!=null && !sel.autoSelect){ int c = sel.fld.getSelectionEnd(); sel.fld.setSelectionStart(c); sel.fld.setSelectionEnd(c); sel.setSelectedLine(0); }
-				if(PCARD.pc.stack!=null && PCARD.pc.stack.curCard!=null){
-					for(OField f : PCARD.pc.stack.curCard.fldList){ if(f.autoSelect) continue; if(f.fld!=null && f.fld.getSelectionEnd()>f.fld.getSelectionStart()){ int c=f.fld.getSelectionEnd(); f.fld.setSelectionStart(c); f.fld.setSelectionEnd(c);} f.setSelectedLine(0); }
-					if(PCARD.pc.stack.curCard.bg!=null) for(OField f : PCARD.pc.stack.curCard.bg.fldList){ if(f.autoSelect) continue; if(f.fld!=null && f.fld.getSelectionEnd()>f.fld.getSelectionStart()){ int c=f.fld.getSelectionEnd(); f.fld.setSelectionStart(c); f.fld.setSelectionEnd(c);} f.setSelectedLine(0); }
+				if(sel!=null && sel.fld!=null && !sel.autoSelect){ int c = sel.view().getSelectionEnd(); sel.view().setSelectionStart(c); sel.view().setSelectionEnd(c); sel.setSelectedLine(0); }
+				if(HZ.stack()!=null && HZ.stack().curCard!=null){
+					for(OField f : HZ.stack().curCard.fldList){ if(f.autoSelect) continue; if(f.fld!=null && f.view().getSelectionEnd()>f.view().getSelectionStart()){ int c=f.view().getSelectionEnd(); f.view().setSelectionStart(c); f.view().setSelectionEnd(c);} f.setSelectedLine(0); }
+					if(HZ.stack().curCard.bg!=null) for(OField f : HZ.stack().curCard.bg.fldList){ if(f.autoSelect) continue; if(f.fld!=null && f.view().getSelectionEnd()>f.view().getSelectionStart()){ int c=f.view().getSelectionEnd(); f.view().setSelectionStart(c); f.view().setSelectionEnd(c);} f.setSelectedLine(0); }
 				}
 				if(target!=null && target.getClass()==OField.class && !((OField)target).autoSelect) ((OField)target).setSelectedLine(0);
-				GUI.clickField = null;
+				HZ.clickField = null;
 				result.theResult = "";
 				result.ret = 0;
 				return result;
@@ -11071,11 +9949,14 @@ public class TTalk extends Thread {
 				OObject obj = getObject(stringList, typeAry, next+2, stringList.size()-1, memData, object, target);
 				if(obj==OMsg.msg || obj==OWindow.msgwindow){
 					//select text of msg (AOL TheHyperRaffle): the message box's text
-					if(PCARD.pc!=null && PCARD.pc.msg!=null && GMsg.area!=null){
-						GMsg.area.requestFocusInWindow();
-						int len = GMsg.area.getText().length();
-						if(prep==null) GMsg.area.select(0, len); else GMsg.area.setCaretPosition(prep.equals("before") ? 0 : len);
-						GUI.clickField = null; //the selection functions look at the message box now
+					if(UiHost.get().msgInCardWindow()){
+						final String where = prep;
+						runOnEventThread(() -> { //on the EDT (see insertAtCaret)
+							UiHost.get().msgFocus();
+							int len = UiHost.get().msgAreaText().length();
+							if(where==null) UiHost.get().msgSelect(0, len); else UiHost.get().msgSetCaret(where.equals("before") ? 0 : len);
+						});
+						HZ.clickField = null; //the selection functions look at the message box now
 					}
 					result.theResult = "";
 					result.ret = 0;
@@ -11096,13 +9977,13 @@ public class TTalk extends Thread {
 				if(stringList.size()>=3 && typeAry[stringList.size()-1]!=wordType.STRING &&
 					(stringList.get(stringList.size()-1).equalsIgnoreCase("msg") || stringList.get(stringList.size()-1).equalsIgnoreCase("message")) &&
 					stringList.get(stringList.size()-2).equalsIgnoreCase("of") && typeAry[stringList.size()-2]!=wordType.STRING){
-					if(GMsg.area!=null){
-						String text = GMsg.area.getText();
+					if(UiHost.get().msgHasArea()){
+						String text = UiHost.get().msgAreaText();
 						int[] range = chunkCharRange(stringList, typeAry, next, stringList.size()-3, text, memData, object, target, true);
 						int selStart = range[0], selEnd = range[1];
 						if(prep!=null){ if(prep.equals("before")) selEnd = selStart; else selStart = selEnd; }
-						GMsg.area.requestFocusInWindow();
-						GMsg.area.select(Math.max(0,selStart), Math.min(text.length(),selEnd));
+						final int s0 = Math.max(0,selStart), s1 = Math.min(text.length(),selEnd);
+						runOnEventThread(() -> { UiHost.get().msgFocus(); UiHost.get().msgSelect(s0, s1); }); //on the EDT (see insertAtCaret)
 					}
 					result.theResult = "";
 					result.ret = 0;
@@ -11176,73 +10057,13 @@ public class TTalk extends Thread {
 			}
 			//select <button|field|shape>: オーサリング環境での部品の選択
 			OObject obj = getObject(stringList, typeAry, next, stringList.size()-1, memData, object, target);
-			if(obj instanceof OButton){
-				TBButtonListener.ChangeTool("button", null);
-				ButtonGUI.gui.tgtOBtn = (OButton)obj;
-				ButtonGUI.gui.target = ((OButton)obj).getComponent();
-			}
-			else if(obj instanceof OField){
-				TBButtonListener.ChangeTool("field", null);
-				FieldGUI.gui.tgtOFld = (OField)obj;
-				FieldGUI.gui.target = ((OField)obj).getComponent();
-			}
-			else if(obj instanceof OShape shape){
-				PCARD.runOnEDT(()->{TBButtonListener.ChangeTool("Shape",null);ShapeTool.select(shape);});
-			}
-			else throw new xTalkException("select supports only buttons, fields, shapes and text");
-			if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.repaint();
+			if(!(obj instanceof OButton) && !(obj instanceof OField) && !(obj instanceof OShape)) throw new xTalkException("select supports only buttons, fields, shapes and text");
+			UiHost.get().selectPart(obj);
+			UiHost.get().repaintCardPane();
 			result.theResult = "";
 			result.ret = 0;
 		}
-		else if(str=="choose"){
-			if(stringList.size()<2) throw new xTalkException("Cannot understand choose");
-			String toolName;
-			if(stringList.get(1).equalsIgnoreCase("tool")){
-				String numberText = Evalution(stringList, typeAry, 2,
-					stringList.size()-1, memData, object, target);
-				try {
-					double number = Double.valueOf(numberText);
-					if(number != Math.rint(number)) throw new NumberFormatException();
-					toolName = toolNameForNumber((int)number);
-				} catch (NumberFormatException e) {
-					throw new xTalkException("choose tool requires an integer from 1 to 18");
-				}
-			}
-			else if(stringList.get(stringList.size()-1).equalsIgnoreCase("tool")){
-				StringBuilder name = new StringBuilder();
-				//choose the browse tool (Power Tools Palette Maker)
-				int first = stringList.size()>3 && typeAry[1]!=wordType.STRING && stringList.get(1).equalsIgnoreCase("the") ? 2 : 1;
-				for(int i=first; i<stringList.size()-1; i++){
-					if(name.length()>0) name.append(' ');
-					name.append(stringList.get(i));
-				}
-				try{ toolName = normalizeToolName(name.toString()); }
-				catch(xTalkException e){
-					//choose item n of toolList tool: the words before "tool" are an expression (背景用ﾊﾟﾀｰﾝｼﾞｪﾈﾚｰﾀｰ)
-					String v;
-					try{ v = Evalution(stringList, typeAry, first, stringList.size()-2, memData, object, target).trim(); }
-					catch(xTalkException e2){ throw e; }
-					if(v.toLowerCase(Locale.ROOT).endsWith(" tool")) v = v.substring(0, v.length()-5).trim();
-					toolName = v.matches("[0-9]+") ? toolNameForNumber(Integer.parseInt(v)) : normalizeToolName(v);
-				}
-			}
-			else{
-				//choose "Select Tool" / choose theTool: the tool named by an expression (Graph Maker)
-				String v = Evalution(stringList, typeAry, 1, stringList.size()-1, memData, object, target).trim();
-				if(v.toLowerCase(Locale.ROOT).endsWith(" tool")) toolName = normalizeToolName(v.substring(0, v.length()-5).trim());
-				else if(v.matches("[0-9]+")) toolName = toolNameForNumber(Integer.parseInt(v));
-				else throw new xTalkException("Cannot understand choose");
-			}
-
-			if(!isImplementedTool(toolName)){
-				throw new xTalkException("Tool \"{0}\" is not yet supported", toolName);
-			}
-			if(!TBButtonListener.isBrowseTool(toolName)) closeOpenField(true, true); //another tool closes the open field (HC J-2.3)
-			if(!TBButtonListener.ChangeTool(toolName, null)){
-				throw new xTalkException("No such tool: \"{0}\"", toolName);
-			}
-			PCARD.pc.mainPane.repaint();
-		}
+		else if(UiHost.get().chooseCommand(this, stringList, typeAry, object, target, memData, result, str)){}
 		else return CommandExec11(stringList, typeAry, object, target, memData, result, str);
 		return result;
 	}
@@ -11264,12 +10085,12 @@ public class TTalk extends Thread {
 				if(menuName.isEmpty()) throw new xTalkException("Missing menu name");
 				//同じ名前のメニューが既にあればエラー(HyperCard)
 				//"dup " is not "dup" for a menu a script made (HC J-2.3)
-				JMenu sameName = findMenu(menuName);
+				MMenu sameName = findMenu(menuName);
 				if(sameName!=null && (sameName.getClientProperty("hz.scriptMenu")==null || sameName.getText().equalsIgnoreCase(menuName)))
 					throw new xTalkException("Menu already exists: {0}", menuName);
-			    JMenu m=new JMenu(menuName);
+			    MMenu m=MMenu.create(menuName);
 			    m.putClientProperty("hz.scriptMenu", Boolean.TRUE); //スクリプトが付けた名前のまま見せる(scriptMenuName)
-			    PCARD.pc.menu.mb.add(m);
+			    MenuNodes.get().cardMenuBar().add(m);
 			    menuChanged();
 			}
 			else if(stringList.get(next).equalsIgnoreCase("stack")){
@@ -11298,17 +10119,17 @@ public class TTalk extends Thread {
 				String path = name;
 				if(path.indexOf(':')>=0 && !new File(path).getParentFile().exists()) path = convertFromMacPath(path);
 				File f = new File(path);
-				if(!f.isAbsolute() && PCARD.pc.stack!=null && PCARD.pc.stack.path!=null){
-					File stackDir = new File(stackIdentityPath(PCARD.pc.stack.path)).getParentFile();
+				if(!f.isAbsolute() && HZ.stack()!=null && HZ.stack().path!=null){
+					File stackDir = new File(stackIdentityPath(HZ.stack().path)).getParentFile();
 					if(stackDir!=null) f = new File(stackDir, path);
 				}
 				if(!f.getName().toLowerCase().endsWith(".hzb")) f = new File(f.getPath()+".hzb");
 				boolean ok = false;
 				if(!f.exists() && f.getParentFile()!=null && f.getParentFile().isDirectory()
-						&& Sandbox.allowFile(f, Sandbox.Access.WRITE, Sandbox.scriptRequester())){
-					int w = PCARD.pc.stack!=null ? PCARD.pc.stack.width : 512;
-					int h = PCARD.pc.stack!=null ? PCARD.pc.stack.height : 342;
-					ok = GMenuBrowse.createNewStack(f, w, h, template);
+						&& UiHost.get().allowScriptFile(f, "WRITE")){
+					int w = HZ.stack()!=null ? HZ.stack().width : 512;
+					int h = HZ.stack()!=null ? HZ.stack().height : 342;
+					ok = UiHost.get().gMenuBrowseCreateNewStack(f, w, h, template);
 				}
 				if(!ok){
 					result.theResult = "Couldn't create stack.";
@@ -11319,51 +10140,48 @@ public class TTalk extends Thread {
 					result.theResult = "Couldn't create stack.";
 					return result;
 				}
-				if(PCARD.pc.stack.curCard!=null){
-					ReceiveMessage("newStack", new String[0], PCARD.pc.stack.curCard, PCARD.pc.stack.curCard, memData);
+				if(HZ.stack().curCard!=null){
+					ReceiveMessage("newStack", new String[0], HZ.stack().curCard, HZ.stack().curCard, memData);
 				}
 				result.theResult = "";
 			}
 			else if(stringList.get(next).equalsIgnoreCase("panel")){
 				//create panel ["name"]: a new panel on this card (its background while editing it), as create button makes a
 				//button; it gets newPanel. Parts go into it with set the panel of <part> to <its name>
-				OCardBase cdbase = PaintTool.editBackground ? PCARD.pc.stack.curCard.bg : PCARD.pc.stack.curCard;
+				OCardBase cdbase = HZ.editBackground ? HZ.stack().curCard.bg : HZ.stack().curCard;
 				String name = next+1<stringList.size() ? Evalution(stringList, typeAry, next+1, stringList.size()-1, memData, object, target)
-					: PCARD.pc.intl.getDialogText("New Panel");
+					: HZ.intl().getDialogText("New Panel");
 				OPanel panel = cdbase.newPanel(name);
 				if(newPanelFromMenu){
 					newPanelFromMenu = false;
-					OObject part = GMenuBrowse.selectedPart();
+					OObject part = UiHost.get().gMenuBrowseSelectedPart();
 					if(part!=null && part.parent==cdbase) part.setPanel(panel);
-					javax.swing.SwingUtilities.invokeLater(() -> AuthDialog.openAuthDialog(PCARD.pc, "panel", panel));
+					UiHost.get().openPanelInfo(this, stringList, typeAry, object, target, memData, result, str, panel);
 				}
 				ReceiveMessage("newPanel", new String[0], panel, panel, memData);
 			}
 			else if(stringList.get(next).equalsIgnoreCase("button") ||
 					stringList.get(next).equalsIgnoreCase("btn"))
 			{
-	    		OCardBase cdbase = PCARD.pc.stack.curCard;
-				if(PaintTool.editBackground){
-					cdbase = PCARD.pc.stack.curCard.bg;
+	    		OCardBase cdbase = HZ.stack().curCard;
+				if(HZ.editBackground){
+					cdbase = HZ.stack().curCard.bg;
 				}
 	        	int newid = cdbase.newPartId();
 	        	OButton obtn = null;
 	    		obtn = new OButton(cdbase, newid);
 				if(obtn != null){
-					obtn.btn = new MyButton(obtn, "");
+					UiHost.get().newButtonView(this, stringList, typeAry, object, target, memData, result, str, obtn);
 					((OCardBase)obtn.parent).partsList.add(obtn);
 					((OCardBase)obtn.parent).btnList.add(obtn);
 					
-					Point place = newPartPlace(PCARD.pc.stack, obtn, 128, 32);
+					Point place = newPartPlace(HZ.stack(), obtn, 128, 32);
 					obtn.setRect(place.x, place.y, place.x+128, place.y+32);
 					obtn.style = 0;
-					obtn.setName(PCARD.pc.intl.getDialogText("New Button"));
+					obtn.setName(HZ.intl().getDialogText("New Button"));
 					
         			OCard.reloadCurrentCard();
-        			if(AuthTool.tool != null && AuthTool.tool.getClass()==ButtonTool.class){
-        				ButtonGUI.gui.tgtOBtn = obtn;
-        				ButtonGUI.gui.target = obtn.getComponent();
-        			}
+        			UiHost.get().selectNewButton(this, stringList, typeAry, object, target, memData, result, str, obtn);
         			//HyperCardと同様、作られたボタン自身へ newButton を送る(HyperZebra拡張の create button)
         			ReceiveMessage("newButton", new String[0], obtn, obtn, memData);
 				}
@@ -11371,28 +10189,25 @@ public class TTalk extends Thread {
 			else if(stringList.get(next).equalsIgnoreCase("field") ||
 					stringList.get(next).equalsIgnoreCase("fld"))
 			{
-	    		OCardBase cdbase = PCARD.pc.stack.curCard;
-				if(PaintTool.editBackground){
-					cdbase = PCARD.pc.stack.curCard.bg;
+	    		OCardBase cdbase = HZ.stack().curCard;
+				if(HZ.editBackground){
+					cdbase = HZ.stack().curCard.bg;
 				}
 	        	int newid = cdbase.newPartId();
 	        	OField ofld = null;
 	    		ofld = new OField(cdbase, newid);
 				if(ofld != null){
-					ofld.fld = new MyTextArea("");
+					UiHost.get().newFieldView(this, stringList, typeAry, object, target, memData, result, str, ofld);
 					((OCardBase)ofld.parent).partsList.add(ofld);
 					((OCardBase)ofld.parent).fldList.add(ofld);
 					
-					Point place = newPartPlace(PCARD.pc.stack, ofld, 128, 128);
+					Point place = newPartPlace(HZ.stack(), ofld, 128, 128);
 					ofld.setRect(place.x, place.y, place.x+128, place.y+128);
 					ofld.style = 3;
 					ofld.enabled = false;
 					
         			OCard.reloadCurrentCard();
-        			if(AuthTool.tool != null && AuthTool.tool.getClass()==FieldTool.class){
-        				FieldGUI.gui.tgtOFld = ofld;
-        				FieldGUI.gui.target = ofld.getComponent();
-        			}
+        			UiHost.get().selectNewField(this, stringList, typeAry, object, target, memData, result, str, ofld);
         			//作られたフィールド自身へ newField を送る
         			ReceiveMessage("newField", new String[0], ofld, ofld, memData);
 				}
@@ -11405,9 +10220,7 @@ public class TTalk extends Thread {
 			
 			if(stringList.get(next).equalsIgnoreCase("printing") && typeAry[next]!=wordType.STRING){
 				//open printing [with dialog]: これ以降の print を1つの印刷ジョブにまとめる
-				Printing.open = true;
-				Printing.withDialog = stringList.size()>=4 && stringList.get(2).equalsIgnoreCase("with") && stringList.get(3).equalsIgnoreCase("dialog");
-				Printing.pages.clear();
+				UiHost.get().openPrinting(this, stringList, typeAry, object, target, memData, result, str);
 				result.theResult = "";
 			}
 			else if(stringList.get(next).equalsIgnoreCase("report") && typeAry[next]!=wordType.STRING &&
@@ -11442,7 +10255,7 @@ public class TTalk extends Thread {
 			else if(stringList.get(next).equalsIgnoreCase("movie") && typeAry[next]!=wordType.STRING && next+1<stringList.size()){
 				//open movie <file>[,<window style>,<location>,<visible>,<layering>] (HyperCard 2.4) = the Movie XCMD
 				String[] params = commaParams(stringList, typeAry, next+1, stringList.size()-1, memData, object, target);
-				result.theResult = TXcmd.CallExternalCommand("Movie", params, target, memData, false, new Result()).theResult;
+				result.theResult = UiHost.get().tXcmdCallExternalCommand("Movie", params, target, memData, false, new Result()).theResult;
 			}
 			else if(stringList.get(next).equalsIgnoreCase("picture") && typeAry[next]!=wordType.STRING && next+1<stringList.size()){
 				//open picture <file>[,<window style>,<visible>] (HyperCard 2.4) = picture <file>,file,… of the Picture XCMD
@@ -11457,29 +10270,55 @@ public class TTalk extends Thread {
 			else if(stringList.get(next).equals("file")){
 				next++;
 				if(next>=stringList.size()) throw new xTalkException("Cannot understand open file");
+				//open file <name> [for [binary|text] read|write|update|append] (LiveCode's modes; without one, HyperCard's:
+				//read and write, the file cut after the last write when it closes)
+				int nameEnd = stringList.size()-1;
+				String mode = null;
+				boolean binary = false;
+				if(nameEnd>next && typeAry[nameEnd]!=wordType.STRING && OPEN_FILE_MODES.contains(stringList.get(nameEnd).toLowerCase(Locale.ROOT))){
+					int f = nameEnd-1;
+					String kind = stringList.get(f).toLowerCase(Locale.ROOT);
+					if(typeAry[f]!=wordType.STRING && (kind.equals("binary") || kind.equals("text"))){ binary = kind.equals("binary"); f--; }
+					if(f>next && typeAry[f]!=wordType.STRING && stringList.get(f).equalsIgnoreCase("for")){
+						mode = stringList.get(nameEnd).toLowerCase(Locale.ROOT);
+						nameEnd = f-1;
+					}else binary = false;
+				}
 				//A file that can't be opened sets the result (HyperCard 2.2+: "Can't open that file.", "File is already open.",
 				//"Can't create that file.") instead of stopping the script
-				String path = resolveFilePath(Evalution(stringList, typeAry, next, stringList.size()-1, memData, object, target));
+				String path = resolveFilePath(Evalution(stringList, typeAry, next, nameEnd, memData, object, target));
 				File file = new File(path);
 				if(file.isDirectory()){ result.theResult = "Can't open that file."; return result; }
 				if(findOpenFile(path)!=null){ result.theResult = "File is already open."; return result; }
+				boolean readOnly = "read".equals(mode);
+				if(readOnly && !file.exists()){ result.theResult = "Can't open that file."; return result; }
 				if(!file.exists()){
 					File parent = file.getAbsoluteFile().getParentFile();
 					if(parent!=null && !parent.exists()){ result.theResult = "Can't create that file."; return result; }
 				}
-				if(!Sandbox.allowFile(file, Sandbox.Access.READ_WRITE, Sandbox.scriptRequester())){
+				if(!UiHost.get().allowScriptFile(file, readOnly ? "READ" : "write".equals(mode) ? "WRITE" : "READ_WRITE")){
 					result.theResult = "Can't open that file."; return result;
 				}
 				OpenFile ofile = new OpenFile();
 				ofile.path = path;
+				ofile.binary = binary;
+				ofile.readOnly = readOnly;
+				ofile.keepTail = "update".equals(mode) || "append".equals(mode);
 				boolean created = !file.exists();
 				try {
-					ofile.raf = new java.io.RandomAccessFile(file, "rw"); //無ければ作る
+					//(made first: the browser player's RandomAccessFile opens only a file that is there)
+					if(created && !file.createNewFile() && !file.exists()) throw new IOException("not created");
+					//(and its "rw" empties a file that is there: its bytes are put back)
+					byte[] had = !created && !readOnly && !"write".equals(mode) ? Platform.get().readAllBytes(file) : null;
+					ofile.raf = new java.io.RandomAccessFile(file, readOnly ? "r" : "rw"); //無ければ作る
+					if(had!=null && had.length>0 && ofile.raf.length()==0){ ofile.raf.write(had); ofile.raf.seek(0); }
+					if("write".equals(mode)) ofile.raf.setLength(0);
+					if("append".equals(mode)) ofile.writePos = ofile.raf.length();
 				} catch (IOException e) {
 					result.theResult = file.exists() ? "Can't open that file." : "Can't create that file."; return result;
 				}
-				if(created) FinderInfo68k.markNewTextFile(file); //HyperCard makes it a TEXT/ttxt file
-				else ofile.sniff(file);
+				if(created && !binary) UiHost.get().finderInfo68kMarkNewTextFile(file); //HyperCard makes it a TEXT/ttxt file
+				else if(!created && !binary) ofile.sniff(file);
 				openFileList.add(ofile);
 				result.theResult = "";
 			}else{
@@ -11499,8 +10338,7 @@ public class TTalk extends Thread {
 			
 			if(stringList.get(next).equalsIgnoreCase("printing") && typeAry[next]!=wordType.STRING){
 				//close printing: 溜めたページを印刷する
-				Printing.open = false;
-				result.theResult = Printing.flush();
+				UiHost.get().closePrinting(this, stringList, typeAry, object, target, memData, result, str);
 			}
 			else if(stringList.get(next).equalsIgnoreCase("window")){
 				if(next+1>=stringList.size()) throw new xTalkException("Cannot understand close window");
@@ -11606,9 +10444,9 @@ public class TTalk extends Thread {
 			String voice;
 			int last = stringList.size()-1;
 			if(withPos>=0 && last==withPos+2 && typeAry[last]!=wordType.STRING && stringList.get(last).equalsIgnoreCase("voice")
-					&& typeAry[withPos+1]!=wordType.STRING && Speech.isGenderWord(stringList.get(withPos+1))){
+					&& typeAry[withPos+1]!=wordType.STRING && UiHost.get().speechIsGenderWord(stringList.get(withPos+1))){
 				//with male|female|neuter|robotic voice (HyperCard 2.3; HyperTutor2's Voices button)
-				voice = Speech.voiceForGender(stringList.get(withPos+1));
+				voice = UiHost.get().speechVoiceForGender(stringList.get(withPos+1));
 			}
 			else if(withPos>=0 && withPos+1<last && typeAry[withPos+1]==wordType.LFUNC && typeAry[last]==wordType.RFUNC &&
 					isWholeParenthesized(parenthesesOf(typeAry, withPos+1, last), withPos+1, last)){
@@ -11617,9 +10455,9 @@ public class TTalk extends Thread {
 				voice = Evalution(stringList, parenthesesOf(typeAry, withPos+1, last), withPos+1, last, memData, object, target);
 			}
 			else voice = withPos>=0 && withPos+1<stringList.size() ? Evalution(stringList, typeAry, withPos+1, last, memData, object, target) : "";
-			String program = Speech.programName();
-			if(program!=null && !text.trim().isEmpty() && Sandbox.allowOther(Sandbox.scriptRequester(), Sandbox.RUN_PROGRAM, program)) Speech.speak(text, voice);
-			else if(program!=null && text.trim().isEmpty()) Speech.stop();
+			String program = UiHost.get().speechProgramName();
+			if(program!=null && !text.trim().isEmpty() && UiHost.get().sandboxAllowOther(UiHost.get().sandboxScriptRequester(), Sandbox.RUN_PROGRAM, program)) UiHost.get().speechSpeak(text, voice);
+			else if(program!=null && text.trim().isEmpty()) UiHost.get().speechStop();
 			result.theResult = "";
 			return result;
 		}
@@ -11662,18 +10500,21 @@ public class TTalk extends Thread {
 				java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
 				if(forPos>=0){
 					if(forPos+1>=stringList.size()) throw new xTalkException("Cannot understand read from file for");
-					String n = Evalution(stringList, typeAry, forPos+1, stringList.size()-1, memData, object, target);
+					//for <n> bytes|chars|characters (LiveCode): the unit is the file's (bytes in a binary file)
+					int forEnd = stringList.size()-1;
+					if(forEnd>forPos+1 && typeAry[forEnd]!=wordType.STRING && READ_UNITS.contains(stringList.get(forEnd).toLowerCase(Locale.ROOT))) forEnd--;
+					String n = Evalution(stringList, typeAry, forPos+1, forEnd, memData, object, target);
 					long count;
 					try{ count = (long)Math.floor(Double.parseDouble(n.trim())); }
 					catch(NumberFormatException e){ throw new xTalkException("A number is required here: {0}", n); }
 					if(count<0) throw new xTalkException("A nonnegative number is required here: {0}", n);
-					for(long i=0; i<count; i++){
-						int c = ofile.raf.read();
-						if(c<0) break;
-						buf.write(c);
-					}
+					long want = Math.min(count, Math.max(0, len-pos));
+					if(want>TalkBinary.MAX_BYTES) throw new xTalkException("read from file: more than 512 MB at once");
+					byte[] chunk = new byte[(int)want];
+					ofile.raf.readFully(chunk);
+					buf.write(chunk, 0, chunk.length);
 					//a UTF-8 file: the last character is read whole (its continuation bytes)
-					while(ofile.utf8 && buf.size()>0){
+					while(ofile.utf8 && !ofile.binary && buf.size()>0){
 						long p = ofile.raf.getFilePointer();
 						int c = ofile.raf.read();
 						if(c<0) break;
@@ -11686,12 +10527,24 @@ public class TTalk extends Thread {
 					byte[] delim = null;
 					boolean newline = false;
 					if(tmp.equalsIgnoreCase("eof") || tmp.equalsIgnoreCase("end") || tmp.isEmpty()) delim = null;
+					else if(ofile.binary){
+						delim = TalkBinary.bytes(tmp); //binary: the bytes themselves (return is byte 13)
+						if(delim.length!=1) throw new xTalkException("A single character is required here: {0}", tmp);
+					}
 					else if(tmp.equals("\n") || tmp.equals("\r")) newline = true; //return: CR/LF どちらでも区切る
 					else{
 						if(tmp.length()!=1) throw new xTalkException("A single character is required here: {0}", tmp);
 						delim = ofile.encode(tmp);
 					}
-					while(true){
+					if(delim==null && !newline){
+						//until eof: the rest at once (a byte at a time took seconds for a picture file)
+						long want = Math.max(0, len-pos);
+						if(want>TalkBinary.MAX_BYTES) throw new xTalkException("read from file: more than 512 MB at once");
+						byte[] rest = new byte[(int)want];
+						ofile.raf.readFully(rest);
+						buf.write(rest, 0, rest.length);
+					}
+					else while(true){
 						int c = ofile.raf.read();
 						if(c<0) break;
 						buf.write(c);
@@ -11710,7 +10563,7 @@ public class TTalk extends Thread {
 				}
 				ofile.readPos = ofile.raf.getFilePointer();
 				byte[] data = buf.toByteArray();
-				setVariable(memData, "it", ofile.decode(data).replace("\r\n","\n").replace('\r','\n'));
+				setVariable(memData, "it", ofile.binary ? TalkBinary.string(data) : ofile.decode(data).replace("\r\n","\n").replace('\r','\n'));
 				result.theResult = "";
 			} catch (IOException e) {
 				throw new xTalkException("Error reading from file: {0}", e.getMessage());
@@ -11738,6 +10591,7 @@ public class TTalk extends Thread {
 			String path = resolveFilePath(Evalution(stringList, typeAry, nameStart, nameEnd, memData, object, target));
 			OpenFile ofile = findOpenFile(path);
 			if(ofile==null) throw new xTalkException("File is not open: {0}", path);
+			if(ofile.readOnly) throw new xTalkException("The file was opened for read: {0}", path);
 			try {
 				long pos = ofile.writePos;
 				if(atPos>=0){
@@ -11749,7 +10603,7 @@ public class TTalk extends Thread {
 				long len = ofile.raf.length();
 				if(pos>len) pos = len;
 				ofile.raf.seek(pos);
-				byte[] data = ofile.encode(text.replace("\r\n","\n").replace("\n",ofile.utf8 ? ofile.newline : "\r"));
+				byte[] data = ofile.binary ? TalkBinary.bytes(text) : ofile.encode(text.replace("\r\n","\n").replace("\n",ofile.utf8 ? ofile.newline : "\r"));
 				ofile.raf.write(data);
 				ofile.writePos = ofile.raf.getFilePointer();
 				ofile.writeEnd = ofile.writePos;
@@ -11826,7 +10680,7 @@ public class TTalk extends Thread {
 			//convertは指定したコンテナ自身の中身を書き換えるコマンドなので、
 			//Evalutionでトークン列が値に置き換えられてしまう前に書き戻し先を確定しておく。
 			OObject convertContainerObj = null;
-			if(PCARD.pc!=null && PCARD.pc.stack!=null){
+			if(Host.get().hasCardWindow() && HZ.stack()!=null){
 				try{
 					convertContainerObj = getObject(stringList, typeAry, 1, sourceEnd, memData, object, target);
 				}catch(xTalkException e){}
@@ -11955,12 +10809,12 @@ public class TTalk extends Thread {
 				result.theResult = "Not found";
 			}
 			else{
-				if(found.card!=null && PCARD.pc.stack.curCard!=null && found.card.id!=PCARD.pc.stack.curCard.id){
+				if(found.card!=null && HZ.stack().curCard!=null && found.card.id!=HZ.stack().curCard.id){
 					doScriptLine("go card id "+found.card.id, object, target, memData, 0);
 				}
 				//移動後のカードにある実際のフィールドを指す
 				OField target2 = null;
-				OCard cur = PCARD.pc.stack.curCard;
+				OCard cur = HZ.stack().curCard;
 				if(cur!=null){
 					if(found.bgField){
 						if(cur.bg!=null) for(OField f : cur.bg.fldList){ if(f.id==found.fieldId){ target2 = f; break; } }
@@ -11968,10 +10822,12 @@ public class TTalk extends Thread {
 						for(OField f : cur.fldList){ if(f.id==found.fieldId){ target2 = f; break; } }
 					}
 				}
-				PCARD.pc.foundIndex = found.start;
-				PCARD.pc.foundText = found.text.substring(found.start, found.end);
-				PCARD.pc.foundObject = found.fieldRef;
-				findResumeCardId = PCARD.pc.stack.curCard!=null ? PCARD.pc.stack.curCard.id : -1;
+				//a found text ends the selection (HC J-2.3 probe A Kotoba: the selectedChunk is empty after a find)
+				doScriptLine("select empty", object, target, memData, 0);
+				HZ.foundIndex = found.start;
+				HZ.foundText = found.text.substring(found.start, found.end);
+				HZ.foundObject = found.fieldRef;
+				findResumeCardId = HZ.stack().curCard!=null ? HZ.stack().curCard.id : -1;
 				findResumeFieldId = found.fieldId; findResumeBg = found.bgField;
 				findResumeByte = findByteOffset(found.text, found.end);
 				//HyperCardでは見つけた文字列は選択(selection)にはならず、枠で囲まれるだけ
@@ -12007,45 +10863,8 @@ public class TTalk extends Thread {
 			boolean shortcut = false;
 			for(int k : modKeys) if(k==14 || k==13 || k==12) shortcut = true;
 			OField fieldWithCaret = TUtil.findFocusedOrClickedField();
-			final TypeTool paintText = PCARD.pc!=null && PCARD.pc.tool instanceof TypeTool && ((TypeTool)PCARD.pc.tool).area!=null ?
-				(TypeTool)PCARD.pc.tool : null;
-			if(!shortcut && paintText!=null){
-				//the text tool's insertion point that "click at" put on the card: the letters become paint text, committed when
-				//another tool is chosen (Logo 2.1's "text": choose text tool / click at x,y / type y)
-				boolean shift = false;
-				for(int k : modKeys) if(k==11) shift = true;
-				final String typed = shift ? text.toUpperCase() : text;
-				runOnEventThread(() -> { if(paintText.area!=null) paintText.area.replaceSelection(typed); });
-			}
-			else if(!shortcut && fieldWithCaret!=null && fieldWithCaret.fld!=null && !fieldWithCaret.enabled){
-				javax.swing.text.JTextComponent tc = fieldWithCaret.fld;
-				boolean shift = false;
-				for(int k : modKeys) if(k==11) shift = true;
-				String typed = shift ? text.toUpperCase() : text;
-				//a backspace (numToChar(8)) deletes as the Delete key does (HC J-2.3: type "z" then type numToChar(8) leaves the text)
-				int from = 0;
-				for(int i=0; i<=typed.length(); i++){
-					if(i<typed.length() && typed.charAt(i)!='\b') continue;
-					if(i>from){
-						int at = tc.getSelectionStart();
-						tc.replaceSelection(typed.substring(from, i));
-						//テキスト更新でキャレットが戻ることがあるので、入力した直後へ置き直す
-						int after = Math.min(at+i-from, tc.getText().length());
-						tc.setCaretPosition(after);
-					}
-					if(i<typed.length()) deleteBeforeCaret(fieldWithCaret);
-					from = i+1;
-				}
-				fieldWithCaret.setSelectedLine(0);
-				((OCardBase)fieldWithCaret.parent).changed = true;
-			}else if(!shortcut && GMsg.msg!=null && GMsg.msg.isVisible()){
-				//no field open: the message box takes the letters, over the text a put left selected (HC J-2.3: put empty / type "play …",
-				//HyperPiece++ Sound ON / OFF)
-				boolean shift = false;
-				for(int k : modKeys) if(k==11) shift = true;
-				final String typed = shift ? text.toUpperCase() : text;
-				runOnEventThread(() -> GMsg.msg.typeText(typed));
-			}else if(!shortcut){
+			if(!shortcut && UiHost.get().typeIntoViews(text, modKeys, fieldWithCaret)){}
+			else if(!shortcut){
 				//nothing takes them (HC J-2.3: with the message box hidden the letters are lost). Not the OS keyboard: that
 				//types into whatever program is in front
 			}else if(commandKeyOnly(modKeys)){
@@ -12056,36 +10875,7 @@ public class TTalk extends Thread {
 					doScriptLine("commandKeyDown "+(ch.equals("\"") ? "quote" : "\""+ch+"\""), object, target, memData, 0);
 				}
 			}else{
-				Robot rb = null;
-				try {
-					rb = new Robot();
-				} catch (AWTException e) {
-					e.printStackTrace();
-				}
-				if(rb!=null){
-					boolean ctrl=false, shift=false, alt=false, cmd=false;
-					for(int k : modKeys){ if(k==13) ctrl=true; if(k==11) shift=true; if(k==12) alt=true; if(k==14) cmd=true; }
-					if(ctrl) rb.keyPress(KeyEvent.VK_CONTROL);
-					if(shift) rb.keyPress(KeyEvent.VK_SHIFT);
-					if(alt) rb.keyPress(KeyEvent.VK_ALT);
-					if(cmd) rb.keyPress(KeyEvent.VK_META);
-					if(modKeys.length>0) rb.delay(200);
-					for(int i=0; i<text.length(); i++){
-						char c = text.charAt(i);
-						int code = KeyEvent.getExtendedKeyCodeForChar(c);
-						if(code==KeyEvent.VK_UNDEFINED) continue;
-						boolean upper = Character.isUpperCase(c);
-						if(upper && !shift) rb.keyPress(KeyEvent.VK_SHIFT);
-						rb.keyPress(code);
-						rb.delay(40);
-						rb.keyRelease(code);
-						if(upper && !shift) rb.keyRelease(KeyEvent.VK_SHIFT);
-					}
-					if(ctrl) rb.keyRelease(KeyEvent.VK_CONTROL);
-					if(shift) rb.keyRelease(KeyEvent.VK_SHIFT);
-					if(alt) rb.keyRelease(KeyEvent.VK_ALT);
-					if(cmd) rb.keyRelease(KeyEvent.VK_META);
-				}
+				UiHost.get().typeWithKeyboard(text, modKeys);
 			}
 		}
 		else if(str=="start"){
@@ -12122,32 +10912,32 @@ public class TTalk extends Thread {
 			
 			//二重using禁止(HyperCardスタックを変換して使っているときは path が "<名前> N.hzb/_stack.xml" になるので、
 			//同じファイルかどうかは変換元の名前でも比べる。以前は同じスタックを使うたびに変換フォルダが増えていた)
-			if(PCARD.pc.stack.usingStacks!=null){
+			if(HZ.stack().usingStacks!=null){
 				String want = stackIdentityPath(pathStr), wantName = new File(pathStr).getName();
-				for(int i=PCARD.pc.stack.usingStacks.size()-1; i>=0; i--){
-					OStack u = PCARD.pc.stack.usingStacks.get(i);
+				for(int i=HZ.stack().usingStacks.size()-1; i>=0; i--){
+					OStack u = HZ.stack().usingStacks.get(i);
 					boolean same = u.path!=null && (pathStr.equals(u.path) || want.equals(stackIdentityPath(u.path)) ||
 						new File(u.path).getName().equals("_stack.xml") && new File(u.path).getParentFile()!=null &&
 						new File(u.path).getParentFile().getName().replaceFirst("( [0-9]+)?\\.hzb$", "").equals(wantName));
 					if(same || u.scriptList==null){ //読めなかった空のエントリも捨てる
-						PCARD.pc.stack.usingStacks.remove(i);
+						HZ.stack().usingStacks.remove(i);
 					}
 				}
 			}
 			
-			OStack ostack = new OStack(PCARD.pc);
+			OStack ostack = UiHost.get().newStack();
 			//openStackFile(path, true)は"start using stack"をキューに積み直すだけなので、
 			//ここから呼ぶとスクリプトエンジンが同じ命令を永久に繰り返す(CPU 100%)。実際に読む。
 			if(ostack.openStackFileInThread(pathStr, true)){
-				StackVirusScan.stackOpened(ostack);
+				UiHost.get().virusScanOpened(this, stringList, typeAry, object, target, memData, result, str, ostack);
 				//HyperCard のスタックファイルから変換したばかりなら _stack.xml を書いておく(開いたスタックは保存スレッドが書くが、
 				//使うだけのスタックには無いので、変換先の .hzb が中身の無いフォルダのまま残り次回開けなかった)
 				if(ostack.file!=null && ostack.file.getName().equals("_stack.xml") && !ostack.file.exists()){
-					try{ XMLwrite.writeOnce(ostack); }catch(RuntimeException e){ e.printStackTrace(); }
+					UiHost.get().writeStackOnce(this, stringList, typeAry, object, target, memData, result, str, ostack);
 				}
-				addUsingStack(PCARD.pc.stack, ostack);
+				addUsingStack(HZ.stack(), ostack);
 				//起動時・スタックを閉じたときに読み込む Home(./home): 開いたスタックはこれを usingStacks に積む(OStack.finishOpen)
-				if(stackIdentityPath(HomeStack.folder().getPath()).equals(stackIdentityPath(ostack.path!=null ? ostack.path : pathStr))) PCARD.home = ostack;
+				if(stackIdentityPath(HomeStack.folder().getPath()).equals(stackIdentityPath(ostack.path!=null ? ostack.path : pathStr))) HZ.home = ostack;
 			}
 			else result.theResult = "No such stack.";
 		}
@@ -12156,12 +10946,12 @@ public class TTalk extends Thread {
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand stop");
 			if(stringList.get(next).equalsIgnoreCase("sound") && next+1==stringList.size()){
 				//stop sound = play stop (Mono Eye runs it on HyperCard 2.3 and later)
-				sound().PlayStop();
+				UiHost.get().stopSound(this, stringList, typeAry, object, target, memData, result, str);
 				return result;
 			}
 			if(stringList.get(next).equalsIgnoreCase("speech") && next+1==stringList.size()){
 				//stop speech (HyperCard 2.3; AOL Spooky Pictures™: if the version ≥ 2.3 then stop speech): what speak is saying and its queue
-				Speech.stopAll();
+				UiHost.get().stopSpeech(this, stringList, typeAry, object, target, memData, result, str);
 				return result;
 			}
 			if(stringList.get(next)!="using") throw new xTalkException("Cannot understand stop");
@@ -12174,21 +10964,21 @@ public class TTalk extends Thread {
 				//stop using the long name of this stack: a stack descriptor as an expression, like start using
 				pathStr = stackDescriptorName(Evalution(stringList,typeAry,next,stringList.size()-1, memData, object, target));
 				if(pathStr==null) throw new xTalkException("stop using requires a stack");
-				if(isCurrentStackRef(pathStr)){ pathStr = PCARD.pc.stack.path; thisStack = true; }
+				if(isCurrentStackRef(pathStr)){ pathStr = HZ.stack().path; thisStack = true; }
 			}
 			else{
 				next++;
 				if(next>=stringList.size()) throw new xTalkException("Cannot understand stop using stack");
-				pathStr = thisStack ? PCARD.pc.stack.path : Evalution(stringList,typeAry,next,stringList.size()-1, memData, object, target);
+				pathStr = thisStack ? HZ.stack().path : Evalution(stringList,typeAry,next,stringList.size()-1, memData, object, target);
 			}
 			if(pathStr==null) return result;
 			String resolved = thisStack ? pathStr : resolveStackPath(pathStr);
 			String ident = stackIdentityPath(resolved!=null ? resolved : pathStr);
-			for(int i=0; i<PCARD.pc.stack.usingStacks.size();i++){
-				OStack u = PCARD.pc.stack.usingStacks.get(i);
+			for(int i=0; i<HZ.stack().usingStacks.size();i++){
+				OStack u = HZ.stack().usingStacks.get(i);
 				if(u==null || u.path==null) continue;
 				if(pathStr.equals(u.path) || ident.equals(stackIdentityPath(u.path))){
-					PCARD.pc.stack.usingStacks.remove(i);
+					HZ.stack().usingStacks.remove(i);
 					break;
 				}
 			}
@@ -12200,17 +10990,17 @@ public class TTalk extends Thread {
 					next++;
 					if(next<stringList.size()){
 						if(stringList.get(next).equalsIgnoreCase("on")){
-							TSound.use = true;
+							UiHost.get().setSoundOn(true);
 						}
 						else if(stringList.get(next).equalsIgnoreCase("off")){
-							TSound.use = false;
+							UiHost.get().setSoundOn(false);
 						}
 					}
 				}
 				else if(stringList.get(next).equalsIgnoreCase("checkpoint")){
 					//次の文からステップ実行に入る
 					requestTrace();
-					ScriptEditor.setTracemode();
+					UiHost.get().traceMode(this, stringList, typeAry, object, target, memData, result, str);
 				}
 				else if(stringList.get(next).equalsIgnoreCase("wait")){
 					next++;
@@ -12224,8 +11014,7 @@ public class TTalk extends Thread {
 			int next=1;
 			if(next<stringList.size()){
 				if(stringList.get(next).equalsIgnoreCase("this")){
-					new GDialog(null, PCARD.AppName+" "+PCARD.longVersion,
-							null,"OK",null,null);
+					UiHost.get().aboutDialog(this, stringList, typeAry, object, target, memData, result, str);
 				}
 			}
 		}
@@ -12247,8 +11036,8 @@ public class TTalk extends Thread {
 			//the alert sound at the Mac's sound volume (SetSoundVol from an external, XTernal Collection's SetSoundVolume:
 			//0 = silent, full = the host beep), spaced so quiet tones don't run into each other
 			for(int i=0; i<count; i++){
-				SoundMixer68k.beep();
-				if(i<count-1) try { Thread.sleep(180); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+				UiHost.get().beepOnce(this, stringList, typeAry, object, target, memData, result, str);
+				if(i<count-1) try { Platform.get().sleep(180); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
 			}
 		}
 		else if(str=="flash"){
@@ -12266,7 +11055,7 @@ public class TTalk extends Thread {
 				try { cnt = (int)Math.round(Double.parseDouble(value.trim())); }
 				catch (NumberFormatException e) { throw new xTalkException("{0} requires a positive integer", "flash"); }
 			}
-			VEffect.flash(cnt);
+			UiHost.get().flashScreen(this, stringList, typeAry, object, target, memData, result, str, cnt);
 		}
 		return result;
 	}
@@ -12284,7 +11073,7 @@ public class TTalk extends Thread {
 			String w = stringList.get(j).toLowerCase(Locale.ROOT);
 			if(w.equals("of") || w.equals("in")) return false;
 			//(the number of words to x: a chunk word right before "to" is a count's, no range)
-			if(w.matches("char|character|word|item|line")) return j<k-1 && k+1<stringList.size();
+			if(w.equals("char") || w.equals("character") || w.equals("word") || w.equals("item") || w.equals("line")) return j<k-1 && k+1<stringList.size();
 		}
 		return false;
 	}
@@ -12295,6 +11084,21 @@ public class TTalk extends Thread {
 		types[open] = wordType.LBRACKET;
 		types[close] = wordType.RBRACKET;
 		return types;
+	}
+
+	/** The "(" of a function call at start closes at end: "peekGlobal()" or "f(a, (b))" (LFUNC … RFUNC). */
+	static boolean isWholeArgumentList(wordType[] typeAry, int start, int end){
+		if(end<=start || (typeAry[start]!=wordType.LFUNC && typeAry[start]!=wordType.LBRACKET) ||
+			(typeAry[end]!=wordType.RFUNC && typeAry[end]!=wordType.RBRACKET)) return false;
+		int depth = 0;
+		for(int k=start; k<=end; k++){
+			if(typeAry[k]==wordType.LBRACKET || typeAry[k]==wordType.LFUNC) depth++;
+			else if(typeAry[k]==wordType.RBRACKET || typeAry[k]==wordType.RFUNC){
+				depth--;
+				if(depth==0) return k==end;
+			}
+		}
+		return false;
 	}
 
 	static boolean isWholeParenthesized(wordType[] typeAry, int start, int end){
@@ -12345,17 +11149,17 @@ public class TTalk extends Thread {
 
 	/** Only the found box: a later find still goes on after the last match (see {@link #findResumeCardId}) */
 	static void clearFoundMark() {
-		if(PCARD.pc==null) return;
-		PCARD.pc.foundObject = null;
-		PCARD.pc.foundText = "";
-		PCARD.pc.foundIndex = 0;
+		if(!Host.get().hasCardWindow()) return;
+		HZ.foundObject = null;
+		HZ.foundText = "";
+		HZ.foundIndex = 0;
 		OField.clearFoundBox();
 	}
 
 	private static String foldForFind(String text, boolean international) {
-		String t = text.toLowerCase(Locale.ROOT);
+		String t = foldCase(text);
 		if(international){
-			t = java.text.Normalizer.normalize(t, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+			t = Platform.get().normalize(t, UnicodeNorm.Form.NFD).replaceAll("\\p{M}", "");
 		}
 		return t;
 	}
@@ -12388,7 +11192,7 @@ public class TTalk extends Thread {
 	}
 
 	private static StackTextEncoding findEncoding() {
-		OStack st = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack st = Host.get().hasCardWindow() ? HZ.stack() : null;
 		StackTextEncoding enc = st!=null ? st.legacyTextEncoding : null;
 		return enc!=null ? enc : HCData.currentEncoding!=null ? HCData.currentEncoding : StackTextEncoding.JAPANESE;
 	}
@@ -12452,7 +11256,7 @@ public class TTalk extends Thread {
 		String q = foldForFind(query, international).trim();
 		if(q.isEmpty()) return null;
 		//NFDで長さが変わらない前提(合成文字は除去しているので、ずれる場合はfold前の文字列で再計算する)
-		if(t.length()!=text.length()) t = text.toLowerCase(Locale.ROOT);
+		if(t.length()!=text.length()) t = foldCase(text);
 		fromIndex = Math.max(0, fromIndex);
 		if(fromIndex>t.length()) return null;
 		if(mode.equals("string")){
@@ -12487,11 +11291,17 @@ public class TTalk extends Thread {
 			while(true){
 				int i = t.indexOf(q, from);
 				if(i<0) return null;
-				if(i==0 || isFindSpace(t.charAt(i-1))){
-					int e = i+q.length();
-					while(e<t.length() && !isFindSpace(t.charAt(e))) e++;
-					return new int[]{i, e};
+				//HyperCard J-2.3 (probe group A Kotoba Whole): the match starts where a word may start (findWordStart: also inside
+				//a run of kana) and the next character is no one-byte letter ("わた" is found in "わたしは", "ｱｲ" not in "ｱｲｳ");
+				//the box is the matched text only
+				int e = i+q.length();
+				boolean endOk = true;
+				if(e<text.length()){
+					StackTextEncoding enc = findEncoding();
+					char nc = text.charAt(e);
+					endOk = !(findCharBytes(nc, enc)==1 && isFindLetterByte(findLastByte(nc, enc), enc));
 				}
+				if(endOk && findWordStart(text, i)) return new int[]{i, e};
 				from = i+1;
 			}
 		}
@@ -12572,7 +11382,7 @@ public class TTalk extends Thread {
 	}
 
 	FoundText findText(String query, String mode, boolean international, FindFieldSpec only, boolean markedOnly) throws xTalkException {
-		OStack st = PCARD.pc.stack;
+		OStack st = HZ.stack();
 		if(st==null || st.curCard==null) return null;
 		boolean resume = findResumeByte>=0 && findResumeCardId==st.curCard.id;
 		if(only!=null && only.field!=null){
@@ -12718,7 +11528,7 @@ public class TTalk extends Thread {
 				if(w.matches("[0-9]+(\\.[0-9]+)?")) sb.append(w); else sb.append('"').append(w).append('"');
 				continue;
 			}
-			if(!w.matches("[A-Za-z0-9_\\.\\p{IsAlphabetic}]+") || operatorSet.contains(w.toLowerCase())) return null;
+			if(!w.matches(Platform.get().regex("[A-Za-z0-9_\\.\\p{IsAlphabetic}]+")) || operatorSet.contains(w.toLowerCase())) return null;
 			if(sb.length()>0) sb.append(' ');
 			sb.append(literalCase(w)); //as written (HC J-2.3 probe A Syntax Unquoted: set textFont to New York)
 		}
@@ -12726,19 +11536,20 @@ public class TTalk extends Thread {
 	}
 
 	static void selectFieldRange(OField fld, int start, int end) throws xTalkException {
-		if(fld.fld==null) return;
+		if(!UiHost.get().fieldHasView(fld)) return;
 		if(!fld.enabled) openFieldNow(fld, false); //select opens an unlocked field without openField (the one open before closes)
-		int len = fld.fld.getText().length();
+		int len = fld.view().getText().length();
 		if(start<0) start = 0; if(end>len) end = len; if(start>end) start = end;
-		fld.fld.requestFocusInWindow();
+		fld.view().requestFocusInWindow();
 		final int from = start, to = end;
-		fld.fld.keepScrollWhile(() -> {
-			fld.fld.setSelectionStart(from);
-			fld.fld.setSelectionEnd(to);
+		UiHost.get().keepFieldScroll(fld, () -> {
+			fld.view().setSelectionStart(from);
+			fld.view().setSelectionEnd(to);
 		});
-		GUI.clickField = fld;
-		fld.fld.repaint();
+		HZ.clickField = fld;
+		fld.view().repaint();
 		scrollSelectionIntoView(fld, start); //the start of a longer selection shows (HC J-2.3: select text of a long field keeps its scroll)
+		TUtil.partChangedOnScreen(fld); //HyperCard copies the field with its selection into the window (ColorizeHC colours that copy)
 	}
 
 	/**
@@ -12746,39 +11557,11 @@ public class TTalk extends Thread {
 	 * new value (HyperPiece 2「スクロールバー？」: select last char of cd field 2 / put the scroll … into MaxScr). Swing moves the
 	 * view later from the caret, so the script read 0 and the field then scrolled by itself.
 	 */
-	static void scrollSelectionIntoView(OField fld, int offset) {
-		if(fld.scrollPane==null || fld.fld==null || fld.style!=5) return;
-		final javax.swing.text.JTextComponent area = fld.fld;
-		final javax.swing.JScrollBar bar = fld.scrollPane.getVerticalScrollBar();
-		Runnable move = () -> {
-			try{
-				java.awt.geom.Rectangle2D r = area.modelToView2D(Math.min(offset, area.getDocument().getLength()));
-				if(r==null){ scrollByLineHeight(fld, offset); return; }
-				int visible = fld.scrollPane.getViewport().getExtentSize().height;
-				int value = bar.getValue();
-				int top = (int)Math.floor(r.getY()), bottom = (int)Math.ceil(r.getY()+r.getHeight());
-				if(top<value) value = top;
-				else if(bottom>value+visible){
-					value = bottom-visible;
-					//the last line: the field's very end (HC J-2.3: select after last line gives the largest scroll; HyperPiece 2's MaxScr)
-					java.awt.geom.Rectangle2D end = area.modelToView2D(area.getDocument().getLength());
-					if(end!=null && end.getY()==r.getY()) value = bar.getMaximum()-bar.getVisibleAmount();
-				}
-				int wanted = value;
-				value = Math.max(bar.getMinimum(), Math.min(value, bar.getMaximum()-bar.getVisibleAmount()));
-				if(value!=bar.getValue()) bar.setValue(value);
-				fld.scroll = MyScrollPane.toLogicalScroll(bar.getValue());
-				//the scroll bar still has the range of the text before (text just put, not laid out again): the scroll from
-				//the line height (HC J-2.3 probe C Selection, in a full run after other groups used the field)
-				if(value<wanted) scrollByLineHeight(fld, offset);
-			}catch(Exception e){ scrollByLineHeight(fld, offset); } //not laid out yet (style just set to scrolling)
-		};
-		PCARD.runOnEDT(move);
-	}
+	static void scrollSelectionIntoView(OField fld, int offset) { UiHost.get().scrollSelectionIntoView(fld, offset); }
 
 	/** scrollSelectionIntoView for a field Swing has not laid out yet: the scroll from the line height (HC J-2.3 probe
 	 *  C Selection: set the style to scrolling, put 40 lines, select line 40, the scroll is already > 0) */
-	private static void scrollByLineHeight(OField fld, int offset) {
+	static void scrollByLineHeight(OField fld, int offset) {
 		String text = fld.getText();
 		int line = 0;
 		for(int i=0; i<offset && i<text.length(); i++) if(text.charAt(i)=='\n') line++;
@@ -12956,7 +11739,7 @@ public class TTalk extends Thread {
 
 	/** click at on a scrolling field's bar moves the text and sends no message: an arrow a line, above or below the thumb a page,
 	 *  whole lines, the page down one line shorter (HC J-2.3: 96 to 272 and 0 in a field of 12 lines, HyperPiece++ キーボードでスクロール). */
-	private static boolean scrollBarClick(OField f, int x, int y) {
+	static boolean scrollBarClick(OField f, int x, int y) {
 		if(f.style!=5 || x<f.left+f.width-17 || x>=f.left+f.width || y<=f.top || y>=f.top+f.height) return false;
 		int line = Math.max(1, f.lineHeight());
 		int page = (f.height-4)/line*line;
@@ -12983,8 +11766,8 @@ public class TTalk extends Thread {
 
 	/** The card window moved by a script: moveWindow reaches the card before the script's next line (HC J-2.3) */
 	static void cardWindowMoved() throws xTalkException {
-		OCard cd = PCARD.pc.stack==null ? null : PCARD.pc.stack.curCard;
-		if(cd!=null && Thread.currentThread()==talk) talk.ReceiveMessage("moveWindow", "", cd, null, false);
+		OCard cd = HZ.stack()==null ? null : HZ.stack().curCard;
+		if(cd!=null && onScriptThread()) talk.ReceiveMessage("moveWindow", "", cd, null, false);
 	}
 
 	/** カード座標をスクリーン座標へ(Robot用)。mouseWithinCheck の逆変換 */
@@ -12992,7 +11775,7 @@ public class TTalk extends Thread {
 		java.awt.Point origin = PCARD.pc.getLocationOnScreen();
 		int mx = PCARD.pc.mainPane!=null ? PCARD.pc.mainPane.getX() : 0;
 		int my = PCARD.pc.mainPane!=null ? PCARD.pc.mainPane.getY() : 0;
-		return new java.awt.Point(origin.x+mx+PCARD.toPhysical(x), origin.y+my+PCARD.toPhysical(y));
+		return new java.awt.Point(origin.x+mx+Host.get().toPhysical(x), origin.y+my+Host.get().toPhysical(y));
 	}
 
 	/** click/drag/type の "with key1,key2,…" を GUI.key の添字(shift=11, option=12, control=13, command=14)に変換する。
@@ -13035,8 +11818,9 @@ public class TTalk extends Thread {
 	 * second, 0 = at once) paces the steps. False when no paint tool is chosen (the button/field tools keep the old way).
 	 */
 	static boolean paintToolDrag(int sx, int sy, int ex, int ey, int[] modKeys){
-		if(PCARD.pc==null || PCARD.pc.tool==null || AuthTool.tool!=null) return false;
-		for(int k : modKeys) GUI.key[k] = 1;
+		if(!Host.get().hasCardWindow() || !Host.get().paintToolActive() || Host.get().authToolActive()) return false;
+		//held (2): 1 is GUI's "just released", which the shape tools read as up (drag … with shiftKey made no square)
+		for(int k : modKeys) GUI.key[k] = 2;
 		try{
 			double d = Math.hypot(ex-sx, ey-sy);
 			int steps = (int)Math.min(200, Math.max(1, Math.ceil(d/4)));
@@ -13047,7 +11831,8 @@ public class TTalk extends Thread {
 				runOnEventThread(() -> {
 					PaintTool.owner = PCARD.pc;
 					PaintTool.mouseDown(sx, sy);
-					if(!PaintTool.endPointIsEnough()){
+					if(PaintTool.dragIsOneStroke()) PaintTool.mouseStillDown(ex, ey);
+					else if(!PaintTool.endPointIsEnough()){
 						for(int i=1; i<=steps; i++) PaintTool.mouseStillDown(sx+(int)Math.round((ex-sx)*(double)i/steps), sy+(int)Math.round((ey-sy)*(double)i/steps));
 					}
 					PaintTool.mouseUp(ex, ey);
@@ -13058,7 +11843,7 @@ public class TTalk extends Thread {
 			for(int i=1; i<=steps; i++){
 				final int x = sx+(int)Math.round((ex-sx)*(double)i/steps), y = sy+(int)Math.round((ey-sy)*(double)i/steps);
 				runOnEventThread(() -> PaintTool.mouseStillDown(x, y));
-				if(pause>0){ try{ Thread.sleep(Math.min(pause, 200)); }catch(InterruptedException e){ break; } }
+				if(pause>0){ try{ Platform.get().sleep(Math.min(pause, 200)); }catch(InterruptedException e){ break; } }
 			}
 			runOnEventThread(() -> PaintTool.mouseUp(ex, ey));
 		}finally{
@@ -13067,12 +11852,7 @@ public class TTalk extends Thread {
 		return true;
 	}
 
-	private static void runOnEventThread(Runnable r){
-		if(javax.swing.SwingUtilities.isEventDispatchThread()){ r.run(); return; }
-		try{ javax.swing.SwingUtilities.invokeAndWait(r); }
-		catch(InterruptedException e){ Thread.currentThread().interrupt(); }
-		catch(java.lang.reflect.InvocationTargetException e){ e.getCause().printStackTrace(); }
-	}
+	static void runOnEventThread(Runnable r){ UiHost.get().runOnEventThread(r); }
 
 	/**
 	 * drag in the button or field tool, done on the parts themselves (a Robot drag went wherever the OS pointer's window
@@ -13080,57 +11860,7 @@ public class TTalk extends Thread {
 	 * Speech 1.1: choose field tool / drag from 100,150 to 400,250 with commandKey / put the number of card fields into
 	 * fnum); otherwise the part under the start point moves by the drag. False when no such tool is chosen.
 	 */
-	boolean authToolDrag(int sx, int sy, int ex, int ey, int[] modKeys, MemoryData memData) throws xTalkException {
-		if(PCARD.pc==null || PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return false;
-		if(!(AuthTool.tool instanceof ButtonTool || AuthTool.tool instanceof FieldTool)) return false;
-		boolean buttons = AuthTool.tool instanceof ButtonTool;
-		OObject part;
-		if(commandKeyOnly(modKeys)){
-			OCardBase cdbase = PaintTool.editBackground ? PCARD.pc.stack.curCard.bg : PCARD.pc.stack.curCard;
-			int newid = cdbase.newPartId();
-			//the rectangle takes in the end point's pixel: drag from 300,200 to 330,230 makes 300,200,331,231 (HC J-2.3)
-			int l = Math.min(sx, ex), t = Math.min(sy, ey), r = Math.max(sx, ex)+1, b = Math.max(sy, ey)+1;
-			if(buttons){
-				OButton obtn = new OButton(cdbase, newid);
-				obtn.btn = new MyButton(obtn, "");
-				cdbase.partsList.add(obtn);
-				cdbase.btnList.add(obtn);
-				obtn.setRect(l, t, r, b);
-				obtn.style = 1; //transparent, as the command-drag of the mouse makes it
-				part = obtn;
-			}else{
-				OField ofld = new OField(cdbase, newid);
-				ofld.fld = new MyTextArea("");
-				cdbase.partsList.add(ofld);
-				cdbase.fldList.add(ofld);
-				ofld.setRect(l, t, r, b);
-				ofld.style = 1;
-				ofld.enabled = false;
-				part = ofld;
-			}
-			cdbase.changed = true;
-			OCard.reloadCurrentCard();
-			ReceiveMessage(buttons ? "newButton" : "newField", new String[0], part, part, memData);
-		}else{
-			part = authToolPartAt(sx, sy, buttons);
-			if(part!=null){
-				int l = part.left+ex-sx, t = part.top+ey-sy;
-				if(part instanceof OButton) ((OButton)part).setRect(l, t, l+part.width, t+part.height);
-				else ((OField)part).setRect(l, t, l+part.width, t+part.height);
-				if(part.parent instanceof OCardBase) ((OCardBase)part.parent).changed = true;
-				OCard.reloadCurrentCard();
-			}
-		}
-		if(buttons){
-			ButtonGUI.gui.tgtOBtn = (OButton)part;
-			ButtonGUI.gui.target = part==null ? null : ((OButton)part).getComponent();
-		}else{
-			FieldGUI.gui.tgtOFld = (OField)part;
-			FieldGUI.gui.target = part==null ? null : ((OField)part).getComponent();
-		}
-		if(PCARD.pc.mainPane!=null) PCARD.pc.mainPane.repaint();
-		return true;
-	}
+	boolean authToolDrag(int sx, int sy, int ex, int ey, int[] modKeys, MemoryData memData) throws xTalkException { return UiHost.get().authToolDrag(this, sx, sy, ex, ey, modKeys, memData); }
 
 	/**
 	 * Computed numbers passed as arguments keep their precision (HyperCard J-2.3, probes "AR Precision": f(1/3)*3000000 is
@@ -13171,13 +11901,13 @@ public class TTalk extends Thread {
 		try{ return Integer.parseInt(t); }
 		catch(NumberFormatException e){
 			double d = Double.parseDouble(t);
-			if(d!=Math.rint(d) || Double.isInfinite(d)) throw e;
+			if(d!=HzMath.rint(d) || Double.isInfinite(d)) throw e;
 			return (int)Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, d));
 		}
 	}
 
 	/** The keys of "with …" are commandKey, perhaps with shiftKey, and nothing else */
-	private static boolean commandKeyOnly(int[] modKeys){
+	static boolean commandKeyOnly(int[] modKeys){
 		boolean cmd = false;
 		for(int k : modKeys){ if(k==14) cmd = true; else if(k!=11) return false; }
 		return cmd;
@@ -13218,7 +11948,7 @@ public class TTalk extends Thread {
 	}
 
 	/** the keys as words for the Robot paths ("shiftkey commandkey ") */
-	private static String modifierKeyWords(int[] keys){
+	static String modifierKeyWords(int[] keys){
 		StringBuilder sb = new StringBuilder();
 		for(int k : keys) sb.append(k==11 ? "shiftkey " : k==12 ? "optionkey " : k==13 ? "controlkey " : "commandkey ");
 		return sb.toString();
@@ -13247,59 +11977,10 @@ public class TTalk extends Thread {
 	/** show/hide menuBar。Windows/Linuxではメニューバーがフレーム内(カードの上)にあるので、
 	 *  その高さぶんフレームを縮める/伸ばす(そのままだと隠したときにカードの下に余白が出ていた)。
 	 *  macOSの画面メニューバーは高さ0なのでフレームは変わらない */
-	static void setMenuBarVisible(boolean visible) {
-		menuBarShown = visible;
-		if(PCARD.pc==null || PCARD.pc.getJMenuBar()==null) return;
-		PCARD.runOnEDT(() -> {
-			javax.swing.JMenuBar mb = PCARD.pc.getJMenuBar();
-			if(mb==null || mb.isVisible()==visible) return;
-			int before = PCARD.pc.menuBarHeight();
-			mb.setVisible(visible);
-			int delta = PCARD.pc.menuBarHeight()-before;
-			if(delta!=0 && (PCARD.pc.getExtendedState()&java.awt.Frame.MAXIMIZED_BOTH)==0){
-				java.awt.Rectangle r = PCARD.pc.getBounds();
-				PCARD.pc.setBounds(r.x, r.y, r.width, r.height+delta);
-			}
-			PCARD.pc.validate(); //at once, as hide titleBar: the script reads the card window's rect right after
-		});
-	}
+	static void setMenuBarVisible(boolean visible) { UiHost.get().setMenuBarVisible(visible); }
 
 	/** show/hide titleBar: ウィンドウの飾り(タイトルバー)を付け外しする */
-	static void setTitleBarVisible(boolean visible) {
-		if(PCARD.pc==null) return;
-		PCARD.runOnEDT(() -> {
-			if(PCARD.pc.isUndecorated()==!visible) return;
-			//飾りの有無でinsetsが変わるので、フレームではなくコンテンツ領域の画面位置と
-			//サイズを保つ(フレームのboundsをそのまま戻すと、タイトルバーを隠したときに
-			//その高さぶんカードウインドウが縦に伸びていた)。
-			java.awt.Rectangle bounds = PCARD.pc.getBounds();
-			java.awt.Insets before = PCARD.pc.getInsets();
-			java.awt.Rectangle content = new java.awt.Rectangle(bounds.x+before.left, bounds.y+before.top,
-				bounds.width-before.left-before.right, bounds.height-before.top-before.bottom);
-			boolean shown = PCARD.pc.isVisible();
-			//the frame's dispose takes its owned windows (Picture/palette windows) with it: they are no closed windows (no
-			//closePicture: アイビジぺったん quits HyperCard on closePicture after hide titlebar in openStack) and come back
-			java.util.List<java.awt.Window> owned = new ArrayList<java.awt.Window>();
-			for(java.awt.Window w : PCARD.pc.getOwnedWindows()) if(w.isVisible()) owned.add(w);
-			rebuildingCardWindow = true;
-			try{ PCARD.pc.dispose(); }
-			finally{ rebuildingCardWindow = false; }
-			if(visible){ PCARD.pc.setShape(null); CardWindow68k.shapeDropped(); } //a shape an external gave the window (CardWindow68k.applyShape) is only for one without a frame
-			PCARD.pc.setUndecorated(!visible);
-			PCARD.pc.setBounds(bounds);
-			if(shown) PCARD.pc.setVisible(true);
-			else PCARD.pc.addNotify(); //hidden (hide card window first: 天気部予報): the native frame for its insets, still hidden
-			java.awt.Insets after = PCARD.pc.getInsets();
-			//the content keeps its place and size: a hidden window used to keep the frame's bounds, 32 pixels too tall without its title bar
-			PCARD.pc.setBounds(content.x-after.left, content.y-after.top,
-				content.width+after.left+after.right, content.height+after.top+after.bottom);
-			//laid out at once: the script reads the card window's rect right after (GG REMIX hideFinder puts black windows
-			//at its top/bottom; the card pane still had the old frame's height, so the bottom one covered the card)
-			PCARD.pc.validate();
-			for(java.awt.Window w : owned) w.setVisible(true);
-			GStackWindow.cardWindowRebuilt(); //the activation handed to another stack's window meanwhile is no click on it
-		});
-	}
+	static void setTitleBarVisible(boolean visible) { UiHost.get().setTitleBarVisible(visible); }
 
 	/** set while setTitleBarVisible disposes the card frame to change its decoration (GPictWindow: not a closed window) */
 	public static volatile boolean rebuildingCardWindow;
@@ -13320,14 +12001,20 @@ public class TTalk extends Thread {
 		//there is a card pict / a bg picture: the picture of the current card or background, shown or hidden; one erased or cut away
 		//is gone (HC J-2.3). HyperPiece++'s clock only clears its old hands when there is one
 		if((isCardWord(kind) || isBackgroundWord(kind)) && isPictureWord(name) && typeAry[namePos]!=wordType.STRING){
-			OCardBase layer = PCARD.pc.stack==null || PCARD.pc.stack.curCard==null ? null :
-				isCardWord(kind) ? PCARD.pc.stack.curCard : PCARD.pc.stack.curCard.getBg();
+			OCardBase layer = HZ.stack()==null || HZ.stack().curCard==null ? null :
+				isCardWord(kind) ? HZ.stack().curCard : HZ.stack().curCard.getBg();
 			return layer!=null && (layer.pict!=null || layer.bitmapName!=null && !layer.bitmapName.isEmpty());
 		}
 		switch(kind){
 			case "file": case "document": {
 				File f = new File(resolveFilePath(name));
-				return f.isFile();
+				if(f.isFile()) return true;
+				//a stack is a file in HyperCard: stack "CO.Resource" is CO.Resource.hzb here (a single file, or the folder form). The
+				//web export carries the converted stack without the HyperCard file it came from (Cosmic Osmo checks for its CD by
+				//there is a file "Cosmic Osmo CD:Cosmic Osmo Files:CO.Resource")
+				if(f.getName().isEmpty() || f.getName().toLowerCase(Locale.ROOT).endsWith(".hzb")) return false;
+				File hzb = new File(f.getPath()+".hzb");
+				return hzb.isFile() || new File(hzb, "_stack.xml").isFile();
 			}
 			//an empty name is no folder (HC 2.4 / J-2.3 probes Hcde There Is Folder Empty), not the current folder it resolves to
 			//(ExtractIt! for Stacks: else if there is a folder whereGlobal then - with whereGlobal empty)
@@ -13336,9 +12023,9 @@ public class TTalk extends Thread {
 			case "disk": return TUtil.diskFolder(name)!=null;
 			case "application": {
 				File f = new File(resolveFilePath(name));
-				return f.exists() && (f.isFile() ? MacApp68k.isApplication(f) : f.getName().toLowerCase(Locale.ROOT).endsWith(".app"));
+				return f.exists() && (f.isFile() ? UiHost.get().macApp68kIsApplication(f) : f.getName().toLowerCase(Locale.ROOT).endsWith(".app"));
 			}
-			case "program": return name.equalsIgnoreCase("HyperCard") || name.equalsIgnoreCase("WILD") || name.equalsIgnoreCase(PCARD.AppName); //only this program is reachable
+			case "program": return name.equalsIgnoreCase("HyperCard") || name.equalsIgnoreCase("WILD") || name.equalsIgnoreCase(HZ.AppName); //only this program is reachable
 			case "scriptinglanguage": return !"0".equals(componentVersion("scriptingLanguage:"+name, false));
 		}
 		return null;
@@ -13376,13 +12063,13 @@ public class TTalk extends Thread {
 		String n = name.toLowerCase(java.util.Locale.ROOT);
 		if(n.startsWith("scriptinglanguage:")){
 			String lang = n.substring("scriptinglanguage:".length()).trim();
-			if(lang.equals("hypertalk")) return longForm ? PCARD.hcVersionCode(PCARD.longVersion) : PCARD.version;
+			if(lang.equals("hypertalk")) return longForm ? HZ.hcVersionCode(HZ.longVersion) : HZ.version;
 			if(lang.equals("applescript")) n = "applescript";
 			else return "0";
 		}
 		switch(n){
 			case "hypercard":
-				return longForm ? PCARD.hcVersionCode(PCARD.longVersion) : PCARD.version;
+				return longForm ? HZ.hcVersionCode(HZ.longVersion) : HZ.version;
 			case "mac os": {
 				//the emulated System's version, the long form zero-filled to 8 digits (Mac OS 8.1 → 00000810)
 				String v = Toolbox68k.SYSTEM_VERSION_STRING;
@@ -13400,7 +12087,7 @@ public class TTalk extends Thread {
 				return longForm ? "03108000" : "3.1";
 			case "quicktime":
 				//movies play through the installed QuickTime (service VM) or ffmpeg; without either there is no QuickTime
-				if(!TQTMovie.available()) return "0";
+				if(!UiHost.get().tQTMovieAvailable()) return "0";
 				return longForm ? "03008000" : "3.0";
 			case "quicktime vr":
 				return "0";
@@ -13417,15 +12104,8 @@ public class TTalk extends Thread {
 		try{ uri = new java.net.URI(url); }
 		catch(java.net.URISyntaxException e){ return "Could not open the specified URL."; }
 		if(uri.getScheme()==null) return "Could not open the specified URL.";
-		if(!Sandbox.allowOther(Sandbox.scriptRequester(), Sandbox.OPEN_URL, url)) return "Could not open the specified URL: access not allowed.";
-		try{
-			if(!java.awt.Desktop.isDesktopSupported() || !java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE))
-				return "Could not open the specified URL: no web browser.";
-			java.awt.Desktop.getDesktop().browse(uri);
-			return "";
-		}catch(Exception e){
-			return "Could not open the specified URL: "+e.getMessage();
-		}
+		if(!UiHost.get().sandboxAllowOther(UiHost.get().sandboxScriptRequester(), Sandbox.OPEN_URL, url)) return "Could not open the specified URL: access not allowed.";
+		return UiHost.get().browseUrl(uri);
 	}
 
 	/** The comma-separated parameters of a command (open movie <file>,<style>,…), each evaluated */
@@ -13451,188 +12131,13 @@ public class TTalk extends Thread {
 		((OWindow)w).Command(verb);
 	}
 
-	String openApplication(String app, String document) {
-		String appPath = app;
-		if(appPath.indexOf(':')>=0 && !new File(appPath).exists()) appPath = convertFromMacPath(appPath);
-		File appFile = new File(appPath);
-		if(!appFile.isAbsolute() && PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.path!=null){
-			File stackDir = new File(stackIdentityPath(PCARD.pc.stack.path)).getParentFile();
-			if(stackDir!=null && new File(stackDir, appPath).exists()) appFile = new File(stackDir, appPath);
-		}
-		String docPath = document;
-		if(docPath!=null && docPath.indexOf(':')>=0 && !new File(docPath).exists()) docPath = convertFromMacPath(docPath);
-		//68K Macアプリケーション
-		if(appFile.isFile() && MacApp68k.isApplication(appFile)){
-			if(!Sandbox.allowFile(appFile, Sandbox.Access.EXECUTE, Sandbox.scriptRequester())) return "Couldn't open application: access not allowed.";
-			if(docPath!=null && !Sandbox.allowFile(new File(docPath), Sandbox.Access.READ_WRITE, Sandbox.scriptRequester())) return "Couldn't open application: access not allowed.";
-			try{
-				MacApp68k.launch(appFile, docPath!=null ? java.util.Collections.singletonList(new File(docPath)) : null);
-				return "";
-			}catch(IOException e){
-				return "Couldn't open application: "+e.getMessage();
-			}
-		}
-		//OSのアプリケーション: このコンピュータのプログラムの起動はスタックの外の世界なので必ず確認する(Sandbox)
-		if(!Sandbox.allowOther(Sandbox.scriptRequester(), Sandbox.RUN_PROGRAM, docPath!=null ? app+" ← "+docPath : app))
-			return "Couldn't open application: access not allowed.";
-		try{
-			ArrayList<String> cmd = new ArrayList<String>();
-			if(System.getProperty("os.name","").toLowerCase().contains("mac")){
-				cmd.add("open");
-				if(docPath!=null){ cmd.add("-a"); cmd.add(appFile.exists() ? appFile.getPath() : app); cmd.add(docPath); }
-				else if(appFile.exists()) cmd.add(appFile.getPath());
-				else { cmd.add("-a"); cmd.add(app); }
-			}else{
-				//macOSの open -a と同じ結果にする("No such application."ではなく)
-				if(!appFile.exists()) return "Couldn't open application: "+app;
-				cmd.add(appFile.getPath());
-				if(docPath!=null) cmd.add(docPath);
-				//起動したプログラムの終了は待たない(open は起動だけして戻る。待つとそのプログラムを閉じるまでスクリプトが止まっていた)
-				new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
-				return "";
-			}
-			Process proc = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-			int code = proc.waitFor();
-			return code==0 ? "" : "Couldn't open application: "+app;
-		}catch(Exception e){
-			return "Couldn't open application: "+e.getMessage();
-		}
-	}
+	String openApplication(String app, String document) { return UiHost.get().openApplication(this, app, document); }
 
 	//---- print ----
 	//print card | print card from p1 to p2 | print <card> [from p1 to p2] | print all|marked|<n> cards |
 	//print <field|button> | print <file> with <application> | print <式>
 	//失敗は the result で知らせる(No such card. / Cancel / Couldn't open that application.)
-	String printCommand(ArrayList<String> stringList, wordType[] typeAry, MemoryData memData, OObject object, OObject target) throws xTalkException {
-		int next = 1;
-		if(next>=stringList.size()) throw new xTalkException("Missing object to print");
-		int last = stringList.size()-1;
-		String w = stringList.get(next);
-		boolean quoted = typeAry[next]==wordType.STRING && !w.matches("[0-9.]+"); //素の数値もSTRING型
-		//print <file> with <application>
-		int withPos = -1;
-		for(int k=next+1; k<=last; k++){
-			if(typeAry[k]!=wordType.STRING && stringList.get(k).equalsIgnoreCase("with") &&
-				!(k+1<=last && stringList.get(k+1).equalsIgnoreCase("dialog"))){ withPos = k; break; }
-		}
-		if(withPos>=0 && !(isCardWord(w) && !quoted)){
-			String doc = Evalution(stringList, typeAry, next, withPos-1, memData, object, target);
-			String app = Evalution(stringList, typeAry, withPos+1, last, memData, object, target);
-			String r = openApplication(app, doc);
-			return r.isEmpty() ? "" : "Couldn't open that application.";
-		}
-		//print all|marked|<n> cards
-		if(!quoted && (stringList.get(last).equalsIgnoreCase("cards") || stringList.get(last).equalsIgnoreCase("cds")) && last>next){
-			OStack st = PCARD.pc.stack;
-			boolean markedOnly = w.equalsIgnoreCase("marked");
-			int count;
-			if(w.equalsIgnoreCase("all") && last==next+1) count = st.cardIdList.size();
-			else if(markedOnly && last==next+1) count = st.markedCardCount();
-			else{
-				String n = Evalution(stringList, typeAry, next, last-1, memData, object, target);
-				int v = ordinalChunkNumber(n);
-				if(v<=0){
-					try{ v = (int)Math.floor(Double.parseDouble(n.trim())); }
-					catch(NumberFormatException e){ throw new xTalkException("The card count for print … cards is not a number: {0}", n); }
-				}
-				if(v<1) throw new xTalkException("The card count for print … cards must be at least 1: {0}", n);
-				count = Math.min(v, markedOnly ? st.markedCardCount() : st.cardIdList.size());
-			}
-			if(count<=0) return "";
-			boolean wasOpen = Printing.open;
-			Printing.open = true;
-			int startId = st.curCard!=null ? st.curCard.id : -1;
-			boolean saveLock = lockMessages;
-			lockMessages = true;
-			try{
-				if(!PCARD.lockedScreen){ VEffect.setOldOff(); PCARD.lockedScreen = true; }
-				for(int i=0; i<count; i++){
-					if(i>0 || !(w.equalsIgnoreCase("all") || markedOnly)) {}
-					if(i>0) doScriptLine(markedOnly ? "go next marked card" : "go next card", object, target, memData, 0);
-					else if(markedOnly && (st.curCard==null || !st.curCard.marked)) doScriptLine("go next marked card", object, target, memData, 0);
-					java.awt.image.BufferedImage img = Printing.captureCurrentCard(null);
-					if(img!=null) Printing.pages.add(new Printing.ImagePage(img, Printing.pixelsPerPoint()));
-				}
-				if(startId>=0 && st.curCard!=null && st.curCard.id!=startId) doScriptLine("go card id "+startId, object, target, memData, 0);
-			}finally{
-				lockMessages = saveLock;
-				Printing.open = wasOpen;
-			}
-			return wasOpen ? "" : Printing.flush();
-		}
-		//print card [from p1 to p2] / print <card expr> [from p1 to p2]
-		int fromPos = -1;
-		for(int k=next; k<=last; k++){
-			if(typeAry[k]!=wordType.STRING && stringList.get(k).equalsIgnoreCase("from")){ fromPos = k; break; }
-		}
-		boolean cardRef = !quoted && (isCardWord(w) || w.equalsIgnoreCase("this") || w.equalsIgnoreCase("first") || w.equalsIgnoreCase("last") ||
-			w.equalsIgnoreCase("next") || w.equalsIgnoreCase("prev") || w.equalsIgnoreCase("previous") || w.equalsIgnoreCase("marked") ||
-			w.equalsIgnoreCase("middle") || w.equalsIgnoreCase("any") || ordinalChunkNumber(w)>0 || w.equalsIgnoreCase("recent"));
-		if(cardRef && (last==next+0 && isCardWord(w) || (fromPos>=0 || isCardWord(w) || last>next))){
-			int refEnd = (fromPos>=0 ? fromPos : last+1) - 1;
-			OObject cd;
-			if(refEnd==next && isCardWord(w)) cd = PCARD.pc.stack.curCard;
-			else{
-				try{ cd = getObject(new ArrayList<String>(stringList), typeAry.clone(), next, refEnd, memData, object, target); }
-				catch(xTalkException e){ cd = null; }
-			}
-			if(!(cd instanceof OCard)){
-				if(cd instanceof OField) return printText(((OField)cd).getText(), new java.awt.Font(((OField)cd).textFont, ((OField)cd).textStyle & 0x03, ((OField)cd).textSize));
-				if(cd instanceof OButton) return printText(((OButton)cd).getText(), null);
-				if(fromPos<0 && !(refEnd==next && isCardWord(w))){
-					//カードでなければ式として印刷する
-					try{ return printText(Evalution(stringList, typeAry, next, last, memData, object, target), null); }
-					catch(xTalkException e){ return "No such card."; }
-				}
-				return "No such card.";
-			}
-			java.awt.Rectangle rect = null;
-			if(fromPos>=0){
-				int toPos = -1;
-				for(int k=fromPos+1; k<=last; k++){ if(typeAry[k]!=wordType.STRING && stringList.get(k).equalsIgnoreCase("to")){ toPos = k; break; } }
-				if(toPos<0) throw new xTalkException("print card from requires to");
-				String p1 = evaluateCommaList(stringList, typeAry, fromPos+1, toPos-1, memData, object, target);
-				String p2 = evaluateCommaList(stringList, typeAry, toPos+1, last, memData, object, target);
-				String[] a = p1.split(","), b = p2.split(",");
-				if(a.length!=2 || b.length!=2) throw new xTalkException("Cannot understand the coordinates in print card from");
-				try{
-					int x1 = Integer.parseInt(a[0].trim()), y1 = Integer.parseInt(a[1].trim()), x2 = Integer.parseInt(b[0].trim()), y2 = Integer.parseInt(b[1].trim());
-					rect = new java.awt.Rectangle(Math.min(x1,x2), Math.min(y1,y2), Math.abs(x2-x1), Math.abs(y2-y1));
-				}catch(NumberFormatException e){ throw new xTalkException("Cannot understand the coordinates in print card from"); }
-			}
-			OStack st = PCARD.pc.stack;
-			int startId = st.curCard!=null ? st.curCard.id : -1;
-			boolean saveLock = lockMessages;
-			lockMessages = true;
-			java.awt.image.BufferedImage img;
-			try{
-				if(st.curCard==null || cd.id!=st.curCard.id){
-					if(!PCARD.lockedScreen){ VEffect.setOldOff(); PCARD.lockedScreen = true; }
-					doScriptLine("go card id "+cd.id, object, target, memData, 0);
-				}
-				img = Printing.captureCurrentCard(rect);
-				if(startId>=0 && st.curCard!=null && st.curCard.id!=startId) doScriptLine("go card id "+startId, object, target, memData, 0);
-			}finally{
-				lockMessages = saveLock;
-			}
-			if(img==null) return "Couldn't print.";
-			Printing.add(new Printing.ImagePage(img, Printing.pixelsPerPoint()));
-			return Printing.open ? "" : Printing.flush();
-		}
-		//print <field|button>: そのフィールドの書体で印刷。それ以外は式として printText* プロパティで印刷
-		OObject obj = null;
-		if(!quoted){
-			try{ obj = getObject(new ArrayList<String>(stringList), typeAry.clone(), next, last, memData, object, target); }catch(xTalkException e){ obj = null; }
-		}
-		if(obj instanceof OField){
-			OField f = (OField)obj;
-			return printText(f.getText(), new java.awt.Font(f.textFont, f.textStyle & 0x03, f.textSize));
-		}
-		if(obj instanceof OButton){
-			return printText(((OButton)obj).getText(), null);
-		}
-		return printText(Evalution(stringList, typeAry, next, last, memData, object, target), null);
-	}
+	String printCommand(ArrayList<String> stringList, wordType[] typeAry, MemoryData memData, OObject object, OObject target) throws xTalkException { return UiHost.get().printCommand(this, stringList, typeAry, memData, object, target); }
 
 	/** "x,y" や "l,t,r,b" のようにコンマで区切られた式の並びを評価してコンマ区切りで返す */
 	String evaluateCommaList(ArrayList<String> stringList, wordType[] typeAry, int from, int to, MemoryData memData, OObject object, OObject target) throws xTalkException {
@@ -13654,35 +12159,15 @@ public class TTalk extends Thread {
 	}
 
 	/** テキストを印刷する(font が null なら printTextFont/Size/Style/Height/Align/Margins を使う) */
-	String printText(String text, java.awt.Font font) throws xTalkException {
-		int size = Integer.parseInt(TUtil.compatibilityProperty("printTextSize"));
-		int height = Integer.parseInt(TUtil.compatibilityProperty("printTextHeight"));
-		int align = 0;
-		String a = TUtil.compatibilityProperty("printTextAlign");
-		if(a.equalsIgnoreCase("center")) align = 1; else if(a.equalsIgnoreCase("right")) align = 2;
-		int[] margins = new int[]{0,0,0,0};
-		String[] m = TUtil.compatibilityProperty("printMargins").split(",");
-		for(int i=0; i<4 && i<m.length; i++){ try{ margins[i] = Integer.parseInt(m[i].trim()); }catch(NumberFormatException e){} }
-		if(font==null){
-			int style = java.awt.Font.PLAIN;
-			String st = TUtil.compatibilityProperty("printTextStyle").toLowerCase();
-			if(st.contains("bold")) style |= java.awt.Font.BOLD;
-			if(st.contains("italic")) style |= java.awt.Font.ITALIC;
-			font = new java.awt.Font(TUtil.compatibilityProperty("printTextFont"), style, size);
-		}else{
-			height = (int)Math.round(font.getSize()*1.33);
-		}
-		Printing.add(new Printing.TextPage(text, font, height, align, margins));
-		return Printing.open ? "" : Printing.flush();
-	}
+	String printText(String text, java.awt.Font font) throws xTalkException { return UiHost.get().printText(this, text, font); }
 
 	/** "this program" / "program <名前>" が HyperZebra 自身を指すか(pos は program/this の位置) */
-	private boolean isThisProgram(ArrayList<String> stringList, int pos) throws xTalkException {
+	boolean isThisProgram(ArrayList<String> stringList, int pos) throws xTalkException {
 		if(pos>=stringList.size()) return false;
 		if(stringList.get(pos).equalsIgnoreCase("this")) return true;
 		if(pos+1<stringList.size() && !stringList.get(pos+1).equalsIgnoreCase("id")){
 			String name = stringList.get(pos+1);
-			return name.equalsIgnoreCase("HyperCard") || name.equalsIgnoreCase(PCARD.AppName) || name.equalsIgnoreCase("HyperZebra");
+			return name.equalsIgnoreCase("HyperCard") || name.equalsIgnoreCase(HZ.AppName) || name.equalsIgnoreCase("HyperZebra");
 		}
 		return false;
 	}
@@ -13700,20 +12185,7 @@ public class TTalk extends Thread {
 	}
 
 	/** do <式> as AppleScript: osascript で実行し、その結果(またはエラー)を返す */
-	static String runAppleScript(String code) {
-		if(!System.getProperty("os.name","").toLowerCase().contains("mac")) return "AppleScript is not available";
-		//AppleScriptは何でもできるので、スクリプト本文を見せて確認する(Sandbox)
-		if(!Sandbox.allowOther(Sandbox.scriptRequester(), Sandbox.RUN_APPLESCRIPT, code)) return "AppleScript error: access not allowed";
-		try{
-			Process p = new ProcessBuilder("osascript", "-").redirectErrorStream(true).start();
-			try(java.io.OutputStream os = p.getOutputStream()){ os.write(code.getBytes("UTF-8")); }
-			String out = new String(p.getInputStream().readAllBytes(), "UTF-8").trim();
-			p.waitFor();
-			return out;
-		}catch(Exception e){
-			return "AppleScript error: "+e.getMessage();
-		}
-	}
+	static String runAppleScript(String code) { return UiHost.get().runAppleScript(code); }
 
 	/** What HyperCard's ask password dialog keeps of the typed text: its buffer has a one-byte length, so after 255 bytes the
 	 *  length wraps (260 characters come back as the first 4, measured in VM HyperCard J-2.3). */
@@ -13733,8 +12205,45 @@ public class TTalk extends Thread {
 	/** ask password (clearなし)の it: HyperCardのパスワードハッシュ(スタックのパスワードと同じ、大文字小文字・アクセントを無視)を
 	 *  符号なし32ビットの10進数で返す。空なら 'Bill' (1114205292) */
 	static String encryptPassword(String text) {
-		int h = StackProtection.hash(StackProtection.passwordBytes(askPasswordText(text), findEncoding()));
+		int h = UiHost.get().stackProtectionHash(UiHost.get().stackProtectionPasswordBytes(askPasswordText(text), findEncoding()));
 		return Long.toString(h & 0xFFFFFFFFL);
+	}
+
+	/** A card-window component that draws a disabled button (enabled false). */
+	static boolean disabledButtonOf(Component c){
+		OButton b = null;
+		if(c instanceof MyPopup) b = ((MyPopup)c).btnData;
+		else if(c instanceof MyPopupNameLabel) b = ((MyPopupNameLabel)c).btnData;
+		else if(c instanceof MyCheck) b = ((MyCheck)c).btnData;
+		else if(c instanceof MyRadio) b = ((MyRadio)c).btnData;
+		else if(c instanceof RoundButton) b = ((RoundButton)c).btnData;
+		else if(c instanceof RectButton) b = ((RectButton)c).btnData;
+		else if(c instanceof RoundedCornerButton) b = ((RoundedCornerButton)c).btnData;
+		else if(c instanceof MyButton) b = ((MyButton)c).btnData;
+		return b!=null && !b.enabled;
+	}
+
+	/** The default answer of ask ... with <text>. HyperCard 2.4 (measured in the VM) evaluates it like value(): text that is
+	 *  no expression - unquoted words such as Text Style, Card Script, the Card Script, Field (Streamlining HyperCard's
+	 *  abbreviation quiz) - is its own literal text, while a container (Message Box, a variable) gives its contents. */
+	private String askDefaultText(ArrayList<String> stringList, wordType[] typeAry, int from, MemoryData memData, OObject object, OObject target) throws xTalkException {
+		int to = stringList.size()-1;
+		if(from==to && typeAry[from]!=wordType.STRING){
+			// a bare part word is no expression in HyperCard (put Field into x does not compile): ask shows the word
+			String w = stringList.get(from).toLowerCase();
+			if(w.equals("field") || w.equals("fld") || w.equals("button") || w.equals("btn") || w.equals("part")) return literalCase(stringList.get(from));
+		}
+		try{
+			return Evalution(stringList, typeAry, from, to, memData, object, target);
+		}catch(xTalkException e){
+			if(TTalk.stop) throw e;
+			StringBuilder sb = new StringBuilder();
+			for(int k=from; k<=to; k++){
+				if(sb.length()>0) sb.append(' ');
+				sb.append(typeAry[k]==wordType.STRING ? stringList.get(k) : literalCase(stringList.get(k))); //as written (HC 2.4: Card Script)
+			}
+			return sb.toString();
+		}
 	}
 
 	//---- 別スタックへの移動(go stack / go home / pop card) ----
@@ -13750,7 +12259,7 @@ public class TTalk extends Thread {
 	/** スタックのパス表記を正規化する(フォルダ形式スタックの _stack.xml はフォルダで表す) */
 	static String stackIdentityPath(String path) {
 		if(path==null) return null;
-		File f = StackBundle.host(new File(path)); //a stack file (.hzb ZIP) whether named by its file or its working folder
+		File f = UiHost.get().stackBundleHost(new File(path)); //a stack file (.hzb ZIP) whether named by its file or its working folder
 		if(f.getName().equals("_stack.xml") || f.getName().equals("toc.xml")) f = f.getParentFile();
 		try{ return f.getCanonicalPath(); }catch(IOException e){ return f.getAbsolutePath(); }
 	}
@@ -13782,19 +12291,19 @@ public class TTalk extends Thread {
 	 * stack X", "the script of stack X" for any stack file). Null when there is no such stack.
 	 */
 	static OStack resolveStackObject(String ref) {
-		if(isEmptyStackName(ref)) return PCARD.pc.stack;
-		if(ref==null || ref.trim().isEmpty() || PCARD.pc==null) return null;
-		OStack cur = PCARD.pc.stack;
+		if(isEmptyStackName(ref)) return HZ.stack();
+		if(ref==null || ref.trim().isEmpty() || !Host.get().hasCardWindow()) return null;
+		OStack cur = HZ.stack();
 		//"Home" alone is HyperCard's Home stack, also from another stack named Home: HC J-2.3 measured from a "Home" in another
 		//folder (HyperBBS's own Home) - the long name of stack "Home", go to card 2 of stack "Home" and go stack "Home" all
 		//mean HyperCard's Home, as go already did here; the long name named the current stack instead
-		if(ref.trim().equalsIgnoreCase("home") && (cur==null || cur!=PCARD.home)){
+		if(ref.trim().equalsIgnoreCase("home") && (cur==null || cur!=HZ.home)){
 			OStack h = homeStackObject();
 			if(h!=null) return cur!=null && h.path!=null && isCurrentStackPath(h.path) ? cur : h;
 		}
 		if(stackNamed(cur, ref)) return cur;
 		if(cur!=null && cur.usingStacks!=null) for(OStack u : new ArrayList<OStack>(cur.usingStacks)) if(stackNamed(u, ref)) return u;
-		if(stackNamed(PCARD.home, ref)) return PCARD.home;
+		if(stackNamed(HZ.home, ref)) return HZ.home;
 		String path = talk!=null ? talk.resolveStackPath(ref.trim()) : null;
 		if(path==null) return null;
 		if(isCurrentStackPath(path)) return cur;
@@ -13808,7 +12317,7 @@ public class TTalk extends Thread {
 			boolean rawStack = source.isFile() && !source.getName().equals("_stack.xml") && !source.getName().equals("toc.xml");
 			if(known!=null && known.file!=null && known.file.exists() &&
 					(rawStack ? source.lastModified() : known.file.lastModified())==known.referencedModified) return known;
-			OStack s = new OStack(PCARD.pc);
+			OStack s = UiHost.get().newStack();
 			if(!s.openStackFileInThread(path, true)) return null;
 			if(rawStack) s.referencedModified = source.lastModified();
 			else if(s.file!=null) s.referencedModified = s.file.lastModified();
@@ -13824,7 +12333,7 @@ public class TTalk extends Thread {
 
 	/** The Home stack as an object: the one in use, else HyperZebra's Home stack folder read on the side; null without one. */
 	static OStack homeStackObject() {
-		OStack h = PCARD.home;
+		OStack h = HZ.home;
 		if(h==null && HomeStack.exists()) h = resolveStackObject(HomeStack.folder().getAbsolutePath());
 		if(h!=null && (h.name==null || h.name.isEmpty() || h.name.equalsIgnoreCase("home"))) h.name = "Home"; //HyperCard's Home stack
 		return h;
@@ -13900,15 +12409,15 @@ public class TTalk extends Thread {
 
 	/** A stack in use that is the stack on show (the same object, or the same file opened again after going back to it). */
 	static boolean isCurrentStackInUse(OStack using) {
-		OStack cur = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack cur = Host.get().hasCardWindow() ? HZ.stack() : null;
 		if(cur==null || using==null) return false;
 		if(using==cur) return true;
 		return using.path!=null && using.path.equals(cur.path);
 	}
 
 	static boolean isCurrentStackPath(String path) {
-		if(PCARD.pc==null || PCARD.pc.stack==null || PCARD.pc.stack.path==null) return false;
-		String a = stackIdentityPath(PCARD.pc.stack.path), b = stackIdentityPath(path);
+		if(!Host.get().hasCardWindow() || HZ.stack()==null || HZ.stack().path==null) return false;
+		String a = stackIdentityPath(HZ.stack().path), b = stackIdentityPath(path);
 		return a!=null && a.equals(b);
 	}
 
@@ -13943,8 +12452,8 @@ public class TTalk extends Thread {
 	 * file system's root (":xfix:PS2_copy" used to become "/xfix/PS2_copy.hzb").
 	 */
 	static File saveAsDestination(String dest) {
-		File base = PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.path!=null ?
-			new File(stackIdentityPath(PCARD.pc.stack.path)).getParentFile() : null;
+		File base = Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().path!=null ?
+			new File(stackIdentityPath(HZ.stack().path)).getParentFile() : null;
 		if(dest.startsWith(":") && base!=null && !isWindowsHostPath(dest)){
 			File f = base;
 			for(String part : dest.substring(1).split(":")){
@@ -13965,9 +12474,9 @@ public class TTalk extends Thread {
 	}
 
 	/** The folder that holds the current stack (the converted .hzb's folder counts as where the stack is), or null */
-	private static File currentStackFolder() {
-		if(PCARD.pc==null || PCARD.pc.stack==null || PCARD.pc.stack.path==null) return null;
-		return GMenuBrowse.stackChooserDirectory(new File(PCARD.pc.stack.path));
+	static File currentStackFolder() {
+		if(!Host.get().hasCardWindow() || HZ.stack()==null || HZ.stack().path==null) return null;
+		return UiHost.get().gMenuBrowseStackChooserDirectory(new File(HZ.stack().path));
 	}
 
 	/**
@@ -13977,58 +12486,11 @@ public class TTalk extends Thread {
 	 * The dialog leaves the launcher usable: a disk image dropped there meanwhile is mounted and shown in it, as the Standard
 	 * File dialog shows an inserted floppy ({@link #offerMountedDisk}); a disk image chosen in it is mounted the same way.
 	 */
-	String askWhereIsStack(String ref) {
-		if(ref==null || ref.trim().isEmpty() || java.awt.GraphicsEnvironment.isHeadless() || PCARD.pc==null) return null;
-		//unattended runs (tests answer error dialogs themselves) get "No such stack." at once; -Dhz.askwhereis=true asks anyway
-		if(errorDialogForTest!=null && !Boolean.getBoolean("hz.askwhereis")) return null;
-		String name = ref.indexOf(':')>=0 ? ref.substring(ref.lastIndexOf(':')+1) : ref;
-		if(name.trim().isEmpty()) return null;
-		File folder = currentStackFolder();
-		File chosen;
-		while(true){
-			javax.swing.JFileChooser chooser = new javax.swing.JFileChooser(){
-				@Override protected javax.swing.JDialog createDialog(java.awt.Component parent){
-					javax.swing.JDialog d = super.createDialog(parent);
-					//application-modal blocked the launcher, where the next disk's image is dropped (夏休み: disk 2)
-					d.setModalityType(java.awt.Dialog.ModalityType.DOCUMENT_MODAL);
-					return d;
-				}
-			};
-			if(folder!=null) chooser.setCurrentDirectory(folder);
-			chooser.setDialogTitle("Where is "+name+"?");
-			whereIsName = name;
-			whereIsChooser = chooser;
-			int answer;
-			try { answer = PCARD.showFileChooser(chooser, PCARD.pc, false); }
-			finally { whereIsChooser = null; }
-			if(answer!=javax.swing.JFileChooser.APPROVE_OPTION) return null;
-			chosen = chooser.getSelectedFile();
-			if(chosen==null || !chosen.isFile() || DiskImages.mountedFrom(chosen)==null && !DiskImages.recognizes(chosen)) break;
-			//a disk image chosen: mounted, then the stack is looked for on it; not there, the dialog shows the disk
-			File volume;
-			try { volume = DiskImages.mount(chosen, null).folder; }
-			catch(IOException|RuntimeException e){
-				new GDialog(PCARD.pc, PCARD.pc.intl.getDialogText("Can't mount the disk image.")+"\n"+chosen.getName()+"\n"+e.getMessage(), null, "OK", null, null);
-				return null;
-			}
-			File found = stackOnDisk(volume, name);
-			if(found!=null){ Sandbox.chosenByUser(Sandbox.scriptRequester(), found, false); chosen = found; break; }
-			folder = volume;
-		}
-		if(chosen==null || !isStackCandidate(chosen)) return null;
-		File dir = chosen.getAbsoluteFile().getParentFile();
-		if(dir!=null && !searchPathFolders("stacks").contains(dir)){
-			MemoryData g = globalData;
-			String old = "";
-			if(g!=null && g.nameList!=null){ int i = g.indexOfName("stacks"); if(i>=0 && i<g.valueList.size() && g.valueList.get(i)!=null) old = g.valueList.get(i); }
-			setGlobal("stacks", old.isEmpty() ? dir.getPath() : old+"\r"+dir.getPath());
-		}
-		return preferConverted(chosen).getPath();
-	}
+	String askWhereIsStack(String ref) { return UiHost.get().askWhereIsStack(this, ref); }
 
 	/** The "Where is …?" dialog on screen and the stack name it asks for, or null */
-	private static volatile javax.swing.JFileChooser whereIsChooser;
-	private static volatile String whereIsName;
+	static volatile javax.swing.JFileChooser whereIsChooser;
+	static volatile String whereIsName;
 
 	/**
 	 * A disk mounted while "Where is …?" is asked (its image dropped on the launcher): the dialog takes the stack it asks for
@@ -14046,11 +12508,11 @@ public class TTalk extends Thread {
 	}
 
 	/** The stack file named {@code name} on a mounted disk (its top folder and two folder levels down), or null */
-	private static File stackOnDisk(File volume, String name) {
+	static File stackOnDisk(File volume, String name) {
 		if(volume==null || name==null) return null;
 		java.util.Set<String> names = new java.util.HashSet<String>();
 		names.add(stackNameKey(name));
-		for(String r : FileManager68k.otherReadings(name)) names.add(stackNameKey(r));
+		for(String r : UiHost.get().fileManager68kOtherReadings(name)) names.add(stackNameKey(r));
 		ArrayList<File> level = new ArrayList<File>();
 		level.add(volume);
 		for(int depth=0; depth<3 && !level.isEmpty(); depth++){
@@ -14068,7 +12530,7 @@ public class TTalk extends Thread {
 		return null;
 	}
 	private static String stackNameKey(String n) {
-		return java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFC).toLowerCase(java.util.Locale.ROOT);
+		return Platform.get().normalize(n, UnicodeNorm.Form.NFC).toLowerCase(java.util.Locale.ROOT);
 	}
 
 	/** スタック名/パスからスタックのファイルを探す。無ければnull */
@@ -14095,19 +12557,19 @@ public class TTalk extends Thread {
 		ArrayList<String> readings = new ArrayList<String>();
 		for(String c : new ArrayList<String>(candidates)){
 			File cf = new File(c);
-			for(String r : FileManager68k.otherReadings(cf.getName())){
+			for(String r : UiHost.get().fileManager68kOtherReadings(cf.getName())){
 				String alt = cf.getParent()==null ? r : new File(cf.getParent(), r).getPath();
 				if(!candidates.contains(alt) && !readings.contains(alt)) readings.add(alt);
 			}
 		}
 		candidates.addAll(readings);
 		ArrayList<File> dirs = new ArrayList<File>();
-		if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.path!=null){
-			File stackFile = new File(PCARD.pc.stack.path);
+		if(Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().path!=null){
+			File stackFile = new File(HZ.stack().path);
 			File stackDir = stackFile.isDirectory() ? stackFile : stackFile.getParentFile();
 			if(stackDir!=null){
 				dirs.add(stackDir);
-				File around = StackBundle.packedOf(stackDir)!=null ? StackBundle.folderAround(stackDir) //a stack file (.hzb ZIP): beside the file
+				File around = UiHost.get().stackBundlePackedOf(stackDir)!=null ? UiHost.get().stackBundleFolderAround(stackDir) //a stack file (.hzb ZIP): beside the file
 					: stackDir.getName().endsWith(".hzb") ? stackDir.getParentFile() : null;
 				if(around!=null) dirs.add(around);
 			}
@@ -14120,13 +12582,13 @@ public class TTalk extends Thread {
 		//to the stack it deletes by its short name to close it: "No such stack." closed the caller's own stack instead)
 		if(ref.indexOf(':')<0 && ref.indexOf('/')<0 && ref.indexOf(File.separatorChar)<0){
 			java.util.List<String> open = new java.util.ArrayList<String>(windowStackPaths());
-			if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.usingStacks!=null)
-				for(OStack u : PCARD.pc.stack.usingStacks) if(u!=null && u!=PCARD.home && u.path!=null) open.add(u.path);
+			if(Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().usingStacks!=null)
+				for(OStack u : HZ.stack().usingStacks) if(u!=null && u!=HZ.home && u.path!=null) open.add(u.path);
 			for(String p : open){
-				File f = StackBundle.host(new File(p));
+				File f = UiHost.get().stackBundleHost(new File(p));
 				if((f.getName().equals("_stack.xml") || f.getName().equals("toc.xml")) && f.getParentFile()!=null) f = f.getParentFile();
 				String n = f.getName().replaceFirst("(?i)\\.(hzb|stack)$", "");
-				if(n.equalsIgnoreCase(ref) || java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFC).equalsIgnoreCase(java.text.Normalizer.normalize(ref, java.text.Normalizer.Form.NFC))) return p;
+				if(n.equalsIgnoreCase(ref) || Platform.get().normalize(n, UnicodeNorm.Form.NFC).equalsIgnoreCase(Platform.get().normalize(ref, UnicodeNorm.Form.NFC))) return p;
 			}
 		}
 		for(String c : candidates){
@@ -14159,9 +12621,9 @@ public class TTalk extends Thread {
 			line = line.trim();
 			if(line.isEmpty()) continue;
 			File f;
-			if(line.startsWith(":") && PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.file!=null){
+			if(line.startsWith(":") && Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().file!=null){
 				//a partial path starts at the stack's folder (A-OK!: ":" and ":A-OK! Graphics:" in the global documents)
-				f = StackBundle.folderAround(PCARD.pc.stack.file);
+				f = UiHost.get().stackBundleFolderAround(HZ.stack().file);
 				for(String part : line.split(":")) if(!part.isEmpty()) f = new File(f, part.replace('/',':'));
 			}
 			else{
@@ -14187,7 +12649,7 @@ public class TTalk extends Thread {
 	}
 
 	/** A file (a HyperCard stack or anything the opener recognises), or a folder that holds a converted stack. */
-	private static boolean isStackCandidate(File f) {
+	static boolean isStackCandidate(File f) {
 		if(f.isFile()) return true;
 		return f.isDirectory() && (new File(f, "_stack.xml").isFile() || new File(f, "toc.xml").isFile());
 	}
@@ -14200,12 +12662,12 @@ public class TTalk extends Thread {
 	static File preferConverted(File stackFile) {
 		if(stackFile==null || !stackFile.isFile()) return stackFile;
 		File converted = new File(stackFile.getPath()+".hzb");
-		if(new File(converted, "_stack.xml").isFile() || StackBundle.isPacked(converted)) return converted;
+		if(new File(converted, "_stack.xml").isFile() || UiHost.get().stackBundleIsPacked(converted)) return converted;
 		//今開いているスタックの変換先(_stack.xml は保存スレッドが少し後で書く): 開いた直後の openStack から
 		//go to stack "音频帮助" と自分自身を指すと、元のファイルをもう一度変換していた
-		OStack current = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack current = Host.get().hasCardWindow() ? HZ.stack() : null;
 		if(current!=null && current.path!=null){
-			File folder = StackBundle.host(new File(current.path).getAbsoluteFile().getParentFile()); //a stack file before its first write
+			File folder = UiHost.get().stackBundleHost(new File(current.path).getAbsoluteFile().getParentFile()); //a stack file before its first write
 			if(folder!=null && folder.equals(converted.getAbsoluteFile())) return converted;
 		}
 		return stackFile;
@@ -14379,9 +12841,25 @@ public class TTalk extends Thread {
 			serializeWords(stringList, typeAry, p+2, size-1);
 	}
 
+	/** True when cardSpec (card id N / card "name" / card N) names a card the stack at stackPath does not have. */
+	private static boolean missingCardOfStack(String stackPath, String cardSpec){
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?is)\\s*(?:card|cd)\\s+(id\\s+)?(?:\"(.*)\"|(\\d+))\\s*").matcher(cardSpec);
+		if(!m.matches()) return false;
+		OStack s = resolveStackObject(stackPath);
+		if(s==null || s.cardIdList==null) return false;
+		//numbers come as STRING tokens, so the spec has card id "99" / card "2" for unquoted numbers
+		String num = m.group(3)!=null ? m.group(3) : m.group(2).matches("\\d{1,9}") ? m.group(2) : null;
+		if(m.group(1)!=null) return num!=null && !s.cardIdList.contains(Integer.parseInt(num));
+		if(num!=null){ int n = Integer.parseInt(num); return (n<1 || n>s.cardIdList.size()) && s.GetCard(num)==null; }
+		return s.GetCard(m.group(2))==null;
+	}
+
 	/** go [cardSpec of] stack: to the card in another stack, or in this one (its first card without cardSpec); the result */
 	private String goCardOfStack(String stackPath, String cardSpec, MemoryData memData, OObject object, OObject target) throws xTalkException {
 		if(!isCurrentStackPath(stackPath)){
+			//a card the other stack does not have: HyperCard stays where it is (HC 2.4 probe A29 Go Missing Card; Regions
+			//Package's go to card id 5541 of stack "Regions" stayed in "Start Here")
+			if(cardSpec!=null && missingCardOfStack(stackPath, cardSpec)) return "No such card";
 			return goToStack(stackPath, cardSpec, memData, object, target) ? "" : "No such stack.";
 		}
 		//同じスタックなら中のカードへ
@@ -14402,7 +12880,7 @@ public class TTalk extends Thread {
 
 	/** closeCard/closeBackground/closeStack をカレントカードから送る(システムメッセージの最初の受信者はカード) */
 	void sendCloseStackMessages(MemoryData memData) throws xTalkException {
-		OCard cur = PCARD.pc.stack.curCard;
+		OCard cur = HZ.stack().curCard;
 		if(cur==null) return;
 		closeOpenField(true, true);
 		ReceiveMessage("closeCard", new String[0], cur, cur, memData);
@@ -14444,7 +12922,7 @@ public class TTalk extends Thread {
 	 *  "<volume>:<folder>:…:<name>" (FileSystem68k.macPathOf). The host's path came back before: Home's NewLink cuts the file name
 	 *  off at the last colon and named the link button with the whole path. */
 	static String scriptPath(File chosen) {
-		String mac = programMacPath(FileSystem68k.macPathOf(chosen));
+		String mac = programMacPath(UiHost.get().fileSystem68kMacPathOf(chosen));
 		return mac!=null ? mac : chosen.getPath();
 	}
 
@@ -14455,14 +12933,14 @@ public class TTalk extends Thread {
 	 * scripts may take folders off it up to the volume. The host path with colons (":Users:me:…") is still understood.
 	 */
 	static String macStackPath(String hostPath) {
-		File file = StackBundle.host(new File(hostPath));
+		File file = UiHost.get().stackBundleHost(new File(hostPath));
 		String name = file.getName();
 		if((name.equals("_stack.xml") || name.equals("toc.xml")) && file.getParentFile()!=null) file = file.getParentFile();
-		String path = file.toPath().toAbsolutePath().normalize().toString().replaceFirst("(?i)\\.hzb$", "");
-		String mac = programMacPath(FileSystem68k.macPathOf(new File(path)));
+		String path = Platform.get().normalPath(file).replaceFirst("(?i)\\.hzb$", "");
+		String mac = programMacPath(UiHost.get().fileSystem68kMacPathOf(new File(path)));
 		if(mac!=null) return mac;
 		if(File.separatorChar=='\\' && path.matches("(?s)[A-Za-z]:\\\\.*")) path = path.substring(0,2)+path.substring(3);
-		return java.text.Normalizer.normalize(path.replace(File.separatorChar, ':'), java.text.Normalizer.Form.NFC);
+		return Platform.get().normalize(path.replace(File.separatorChar, ':'), UnicodeNorm.Form.NFC);
 	}
 
 	boolean goToStack(String stackPath, String cardSpec, MemoryData memData, OObject object, OObject target) throws xTalkException {
@@ -14585,7 +13063,7 @@ public class TTalk extends Thread {
 			boolean ok = false;
 			try{
 				if(w==null){ GStackWindow.discard(key); return; }
-				OCard card = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+				OCard card = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
 				ok = talk.goToStack(w.path, null, menuMemory(), card, card);
 			}catch(xTalkException e){
 				//the stack on show could not be saved and stays
@@ -14602,8 +13080,8 @@ public class TTalk extends Thread {
 	static boolean closeToOtherWindow(){ return closeToOtherWindow(false); }
 	/** The same; {@code silently} (a force quit): the stack closing gets no closeCard/closeBackground/closeStack. */
 	static boolean closeToOtherWindow(boolean silently){
-		if(Thread.currentThread()!=talk || !hasWindowStacks()) return false;
-		OCard card = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+		if(!onScriptThread() || !hasWindowStacks()) return false;
+		OCard card = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
 		if(card==null) return false;
 		leavingSilently = silently;
 		try{ return talk.closeToFrontWindowStack(menuMemory(), card, card); }
@@ -14620,10 +13098,10 @@ public class TTalk extends Thread {
 	 * new window, comes back with Next Window and goes on with go card. Script thread only; false when there is none.
 	 */
 	static boolean nextWindowStack(){
-		if(Thread.currentThread()!=talk || !hasWindowStacks()) return false;
+		if(!onScriptThread() || !hasWindowStacks()) return false;
 		WindowStack front = null;
 		synchronized(windowStacks){ for(WindowStack w : windowStacks.values()) front = w; }
-		OCard card = PCARD.pc!=null && PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+		OCard card = Host.get().hasCardWindow() && HZ.stack()!=null ? HZ.stack().curCard : null;
 		if(front==null || card==null) return false;
 		try{ return talk.goToStack(front.path, null, menuMemory(), card, card); }
 		catch(xTalkException e){ return false; }
@@ -14633,19 +13111,19 @@ public class TTalk extends Thread {
 		MemoryData memData = new MemoryData();
 		memData.treeset = new TreeSet<String>();
 		memData.nameList = new ArrayList<String>();
-		memData.valueList = new ArrayList<String>();
+		memData.valueList = new ValueList();
 		memData.allGlobal = true;
 		return memData;
 	}
 
 	private boolean goToStack2(String stackPath, String cardSpec, MemoryData memData, OObject object, OObject target) throws xTalkException {
-		boolean suppress = lockMessages || PCARD.pc.tool!=null || AuthTool.tool!=null;
+		boolean suppress = lockMessages || Host.get().paintToolActive() || Host.get().authToolActive();
 		boolean newWindow = goInNewWindow;
 		goInNewWindow = false;
 		String targetKey = windowStackKey(stackPath);
 		WindowStack resumed;
 		synchronized(windowStacks){ resumed = targetKey==null ? null : windowStacks.get(targetKey); }
-		OStack leaving = PCARD.pc.stack;
+		OStack leaving = HZ.stack();
 		//the stack being left keeps its window when the destination gets a new one or already has one
 		boolean closing = closingCardWindow;
 		closingCardWindow = false;
@@ -14653,19 +13131,14 @@ public class TTalk extends Thread {
 		leavingSilently = false;
 		boolean keepWindow = !closing && (newWindow || resumed!=null) && leaving!=null && leaving.path!=null && leaving.curCard!=null
 			&& !windowStackKey(leaving.path).equals(targetKey);
-		if(PCARD.pc.tool!=null){
-			PaintTool.endCardTool();
-			PCARD.pc.tool = null;
-			PaintTool.saveCdPictures();
-			PCARD.pc.releasePaintBuffers();
-		}
+		UiHost.get().endPaintBeforeStack(this, stackPath, cardSpec, memData, object, target);
 		if(!suppress && !silentLeave){
 			if(keepWindow){ OCard cur = leaving.curCard; ReceiveMessage("suspendStack", new String[0], cur, cur, memData); }
 			else sendCloseStackMessages(memData);
 		}
-		java.awt.Point leftLocation = PCARD.pc.isShowing() ? PCARD.pc.getLocation() : null;
-		boolean leftTitleBarHidden = PCARD.pc.isUndecorated();
-		OStack saveStack = PCARD.pc.stack;
+		java.awt.Point leftLocation = UiHost.get().cardWindowLocation();
+		boolean leftTitleBarHidden = UiHost.get().cardWindowUndecorated();
+		OStack saveStack = HZ.stack();
 		if(saveStack.curCard!=null) saveStack.recordRecentCard(saveStack.curCard);
 		PushedCard left = null;
 		if(saveStack.curCard!=null && saveStack.path!=null){ left = new PushedCard(); left.stackPath = saveStack.path; left.cardId = saveStack.curCard.id; }
@@ -14673,8 +13146,8 @@ public class TTalk extends Thread {
 		//スクリプトから続けて go stack すると変更が失われることがあった)
 		//書けなかったら尋ねる(再試行・別の場所に保存・移動をやめる)。やめたらこのスタックに留まる
 		//スクリプトエディタの未保存のスクリプトも、ここで保存するか尋ねる(エディタはスタックと一緒に閉じる)。キャンセルなら留まる
-		boolean scriptsKept = !ScriptEditor.stackLeaving(saveStack);
-		if(scriptsKept || !StackSaving.ensureSaved(saveStack, StackSaving.Purpose.LEAVE)){
+		boolean scriptsKept = UiHost.get().scriptsKeptOnLeave(saveStack);
+		if(scriptsKept || !UiHost.get().savedBeforeLeave(saveStack)){
 			if(!suppress && saveStack.curCard!=null){
 				OCard cur = saveStack.curCard;
 				ReceiveMessage("openStack", new String[0], cur, cur, memData);
@@ -14685,23 +13158,22 @@ public class TTalk extends Thread {
 		}
 		//the stack left keeps a window of its own, showing its card as it is now, where the card window is
 		String leftKey = keepWindow && left!=null ? windowStackKey(left.stackPath) : null;
-		if(leftKey!=null) GStackWindow.leave(leftKey, saveStack.getTitleName());
-		PCARD.pc.stack = new OStack(PCARD.pc);
-		boolean res = PCARD.pc.stack.openStackFileInThread(stackPath, false);
-		if(res) StackVirusScan.stackOpened(PCARD.pc.stack);
+		UiHost.get().leaveStackWindow(this, stackPath, cardSpec, memData, object, target, leftKey, saveStack);
+		HZ.setStack(UiHost.get().newStack());
+		boolean res = HZ.stack().openStackFileInThread(stackPath, false);
+		UiHost.get().virusScanStack(this, stackPath, cardSpec, memData, object, target, res);
 		if(!res){
-			PCARD.pc.stack = saveStack;
-			GStackWindow.discard(leftKey);
-			if(resumed!=null && !new File(resumed.path).exists()){ forgetWindowStack(targetKey); GStackWindow.discard(targetKey); } //gone (moved or deleted)
+			HZ.setStack(saveStack);
+			UiHost.get().discardStackWindows(this, stackPath, cardSpec, memData, object, target, leftKey, resumed, targetKey);
 			return false;
 		}
-		int openingId = PCARD.pc.stack.curCard!=null ? PCARD.pc.stack.curCard.id : -1;
+		int openingId = HZ.stack().curCard!=null ? HZ.stack().curCard.id : -1;
 		//start using したスタックは別のスタックへ移っても使用中のまま(HyperCard の stacksInUse は HyperCard 全体のもの)。
 		//以前は移った先のスタックの一覧が Home だけになり、ライブラリのハンドラが届かなくなっていた
-		if(saveStack.usingStacks!=null && PCARD.pc.stack.usingStacks!=null){
+		if(saveStack.usingStacks!=null && HZ.stack().usingStacks!=null){
 			for(OStack u : new ArrayList<OStack>(saveStack.usingStacks)){
-				if(u==null || u==PCARD.home || PCARD.pc.stack.usingStacks.contains(u)) continue;
-				addUsingStack(PCARD.pc.stack, u);
+				if(u==null || u==HZ.home || HZ.stack().usingStacks.contains(u)) continue;
+				addUsingStack(HZ.stack(), u);
 			}
 		}
 		if(keepWindow && left!=null){
@@ -14731,26 +13203,24 @@ public class TTalk extends Thread {
 		//another window takes the card window's place: a new one has a title bar, one brought back has it as it was left
 		//(秘密結社ゲーム's openStack hides it; closing that stack took the title bar of the window behind it away too)
 		if(keepWindow || resumed!=null) setTitleBarVisible(resumed==null || !resumed.titleBarHidden);
-		if(resumed!=null && PCARD.pc.stack.curCard!=null){
+		if(resumed!=null && HZ.stack().curCard!=null){
 			//the window brought back shows the card it was left on, where it was (where its window was dragged to)
 			boolean saveLock = lockMessages;
 			lockMessages = true;
-			try{ if(PCARD.pc.stack.curCard.id!=resumed.cardId && cardSpec==null) doScriptLine("go card id "+resumed.cardId, object, target, memData, 0); }
+			try{ if(HZ.stack().curCard.id!=resumed.cardId && cardSpec==null) doScriptLine("go card id "+resumed.cardId, object, target, memData, 0); }
 			catch(xTalkException e){ /* the card is gone */ }
 			finally{ lockMessages = saveLock; }
-			java.awt.Point place = GStackWindow.cardWindowPlace(targetKey);
-			restoreWindowLocation(place!=null ? place : resumed.location);
+			UiHost.get().restoreStackWindow(this, stackPath, cardSpec, memData, object, target, targetKey, resumed);
 		}
-		if(resumed!=null) GStackWindow.broughtBack(targetKey);
-		else if(leftKey!=null) GStackWindow.cascade(); //a new window: not exactly on top of the one left
-		if(cardSpec!=null && PCARD.pc.stack.curCard!=null){
+		UiHost.get().placeStackWindow(this, stackPath, cardSpec, memData, object, target, targetKey, resumed, leftKey);
+		if(cardSpec!=null && HZ.stack().curCard!=null){
 			boolean saveLock = lockMessages;
 			lockMessages = true; //最初のカードの closeCard/openCard は出さない
 			try{ doScriptLine("go "+cardSpec, object, target, memData, 0); }
 			finally{ lockMessages = saveLock; }
 		}
-		PCARD.pc.stack.forgetOpeningCard(openingId);
-		OCard cur = PCARD.pc.stack.curCard;
+		HZ.stack().forgetOpeningCard(openingId);
+		OCard cur = HZ.stack().curCard;
 		if(resumed!=null){
 			if(!suppress && cur!=null) ReceiveMessage("resumeStack", new String[0], cur, cur, memData);
 			return true;
@@ -14761,7 +13231,7 @@ public class TTalk extends Thread {
 			String[] open = startUpPending ? new String[]{"startUp", "openStack", "openBackground", "openCard"} : new String[]{"openStack", "openBackground", "openCard"};
 			if(startUpPending) startUpSent = true;
 			for(String m : open){
-				cur = PCARD.pc.stack!=null ? PCARD.pc.stack.curCard : null;
+				cur = HZ.stack()!=null ? HZ.stack().curCard : null;
 				//an openStack handler that locks messages leaves openBackground/openCard unsent (HC J-2.3: S, not SBC;
 				//HyperStripPoker's openStack locks them, its background's openCard read globals saved only later)
 				if(cur==null || lockMessages) break;
@@ -14772,8 +13242,8 @@ public class TTalk extends Thread {
 	}
 
 	/** Puts the card window back where the stack's window was, unless that place is off every screen ("set loc of the card window to 100,-500") */
-	private static void restoreWindowLocation(java.awt.Point p){
-		if(p==null || PCARD.pc==null) return;
+	static void restoreWindowLocation(java.awt.Point p){
+		if(p==null || !Host.get().hasCardWindow()) return;
 		boolean onScreen = false;
 		for(java.awt.GraphicsDevice d : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices()){
 			java.awt.Rectangle b = d.getDefaultConfiguration().getBounds();
@@ -14795,6 +13265,14 @@ public class TTalk extends Thread {
 		return false;
 	}
 
+	/** The files scripts have open with "open file", in the order they were opened: HyperCard's own open forks, which a 68K
+	 *  external walking the FCB table sees (FileManager68k: indexed PBGetFCBInfo) */
+	static java.util.List<File> openFilePaths() {
+		java.util.ArrayList<File> out = new java.util.ArrayList<File>();
+		synchronized(openFileList){ for(OpenFile f : openFileList) if(f.path!=null && f.raf!=null) out.add(new File(f.path)); }
+		return out;
+	}
+
 	static OpenFile findOpenFile(String path) {
 		for(OpenFile f : openFileList){
 			if(f.path!=null && f.path.equals(path)) return f;
@@ -14805,7 +13283,7 @@ public class TTalk extends Thread {
 	static void closeOpenFile(OpenFile ofile) throws xTalkException {
 		try{
 			if(ofile.raf!=null){
-				if(ofile.wrote) ofile.raf.setLength(ofile.writeEnd); //最後に書いた位置で切り詰める
+				if(ofile.wrote && !ofile.keepTail) ofile.raf.setLength(ofile.writeEnd); //最後に書いた位置で切り詰める
 				ofile.raf.close();
 			}
 		}catch(IOException e){
@@ -14813,6 +13291,8 @@ public class TTalk extends Thread {
 		}finally{
 			ofile.raf = null;
 			openFileList.remove(ofile);
+			//a file the script wrote: the browser player keeps it for the page's next visit
+			if(ofile.wrote) UiHost.get().scriptFileWritten(new File(ofile.path));
 		}
 	}
 
@@ -14834,7 +13314,7 @@ public class TTalk extends Thread {
 		String path = name;
 		File given = new File(path);
 		if(given.isAbsolute() && given.exists()) return path;
-		File stackFolder = PCARD.pc==null || PCARD.pc.stack==null ? null : FileSystem68k.externalsVolume(PCARD.pc.stack);
+		File stackFolder = !Host.get().hasCardWindow() || HZ.stack()==null ? null : UiHost.get().fileSystem68kExternalsVolume(HZ.stack());
 		if(path.startsWith(":") && stackFolder!=null){
 			//":fix:plain.txt" = fix:plain.txt in the stack's folder, "::x" one folder up (Rinaldi's stacks, HFS partial paths)
 			String rest = path.substring(1);
@@ -14884,48 +13364,7 @@ public class TTalk extends Thread {
 	 * The last component may be a file still to be made ("open file" of the path NewFileName chose). Null when nothing was
 	 * replaced or the result's folder does not exist.
 	 */
-	static File expandShortHfsNames(File path) {
-		java.util.List<String> parts = new java.util.ArrayList<String>();
-		File root = path;
-		while(root.getParentFile()!=null){ parts.add(0, root.getName()); root = root.getParentFile(); }
-		File f = root; boolean replaced = false;
-		FileManager68k namer = null;
-		for(int i=0; i<parts.size(); i++){
-			String part = parts.get(i);
-			File next = new File(f, part);
-			if(!next.exists() && f.isDirectory()){
-				File other = FileManager68k.existingOrUnarchived(f, part); //the other encoding's reading of the same bytes
-				int hash = part.lastIndexOf('#');
-				if(other==null && hash>0){
-					String rest = part.substring(hash+1); int dot = rest.indexOf('.');
-					String id = dot>=0 ? rest.substring(0, dot) : rest, extension = dot>=0 ? rest.substring(dot) : "";
-					String prefix = part.substring(0, hash);
-					File[] entries = id.matches("[0-9A-F]+") ? f.listFiles() : null;
-					if(entries!=null){
-						//a folder's ID is kept across VMs (FileManager68k.CatalogIds), so its short name is the same here: exact first
-						if(namer==null){
-							java.util.List<File> volumes = new java.util.ArrayList<File>(); java.util.List<String> names = new java.util.ArrayList<String>();
-							FileSystem68k.namingVolumes(volumes, names);
-							namer = new FileManager68k(null, fileEncoding(), volumes, names);
-						}
-						for(File e : entries){
-							try{ if(e.getName().length()>prefix.length() && e.isDirectory() && namer.macNameOf(e).equalsIgnoreCase(part)){ other = e; break; } }
-							catch(IOException | RuntimeException ex){ /* not this one */ }
-						}
-						//a file's number is the VM's own: the entry whose name starts so
-						if(other==null) for(File e : entries){
-							String n = FileManager68k.programName(fileEncoding(), e.getName());
-							if(n.length()>prefix.length() && (n.startsWith(prefix) || e.getName().startsWith(prefix)) && n.endsWith(extension)){ other = e; break; }
-						}
-					}
-				}
-				if(other!=null){ next = other; replaced = true; }
-			}
-			f = next;
-		}
-		if(!replaced) return null;
-		return f.exists() || f.getParentFile()!=null && f.getParentFile().isDirectory() ? f : null;
-	}
+	static File expandShortHfsNames(File path) { return UiHost.get().expandShortHfsNames(path); }
 
 	/**
 	 * A classic full path ("<volume>:<folder>:…:<name>", FileSystem68k.macPathOf) with each name after the volume as the 68K
@@ -14946,9 +13385,9 @@ public class TTalk extends Thread {
 		StringBuilder out = new StringBuilder(mac.substring(0, colon));
 		for(String part : mac.substring(colon+1).split(":", -1)){
 			out.append(':');
-			out.append(part.isEmpty() ? part : FileManager68k.programName(encoding, part));
+			out.append(part.isEmpty() ? part : UiHost.get().fileManager68kProgramName(encoding, part));
 		}
-		return java.text.Normalizer.normalize(out.toString(), java.text.Normalizer.Form.NFC);
+		return Platform.get().normalize(out.toString(), UnicodeNorm.Form.NFC);
 	}
 
 	/** read/write の at <pos>: 1始まりの文字位置、負数は末尾からの位置。0以下は先頭 */
@@ -14968,7 +13407,7 @@ public class TTalk extends Thread {
 
 	/** ファイルの文字コード: スタックのレガシーエンコーディング(Mac Roman / Shift-JIS) */
 	static StackTextEncoding fileEncoding() {
-		if(PCARD.pc!=null && PCARD.pc.stack!=null && PCARD.pc.stack.legacyTextEncoding!=null) return PCARD.pc.stack.legacyTextEncoding;
+		if(Host.get().hasCardWindow() && HZ.stack()!=null && HZ.stack().legacyTextEncoding!=null) return HZ.stack().legacyTextEncoding;
 		return HCData.currentEncoding;
 	}
 
@@ -15008,7 +13447,7 @@ public class TTalk extends Thread {
 		// 外部コマンドが作ったパスのボリューム名(FindFolder の "HyperZebra HD:System Folder:Preferences:"、"Home:"、Mac の "Macintosh HD:")
 		int volumeEnd = path.indexOf(':');
 		if(volumeEnd>0){
-			File volume = FileSystem68k.hostVolumeNamed(path.substring(0, volumeEnd));
+			File volume = UiHost.get().fileSystem68kHostVolumeNamed(path.substring(0, volumeEnd));
 			if(volume!=null){
 				String rest = path.substring(volumeEnd+1);
 				return rest.isEmpty() ? volume.getPath() : new File(volume, rest.replace(':', File.separatorChar)).getPath();
@@ -15061,7 +13500,7 @@ public class TTalk extends Thread {
 		}
 	}
 	
-	final private static String Evalution(
+	final static String Evalution(
 			ArrayList<String> stringList, wordType[] typeAry, int start, int end,
 			MemoryData memData, OObject object, OObject target)
 	throws xTalkException 
@@ -15131,6 +13570,42 @@ public class TTalk extends Thread {
 	 * panel" without a key is an ordinary property (TUtil.getProperty). Only after "the": a bare data is a HyperCard
 	 * script's variable (EXTENSION_PROPERTIES).
 	 */
+	/**
+	 * URL <address> as a value (LiveCode): imageToArray(URL "binfile:photo.png"), put URL ("file:" & f) & return after x.
+	 * The address is the next word or the expression in parentheses; get URL and put URL … into are their own commands.
+	 */
+	/** char|character|word|item|line: a variable of that name before a chunk number is the chunk (evalConstantsAndVariables) */
+	private static final java.util.Set<String> VARIABLE_CHUNK_WORDS = java.util.Set.of("char", "character", "word", "item", "line");
+
+	private static void reduceUrls(ArrayList<String> words, wordType[] types, int start, int end,
+			MemoryData memData, OObject object, OObject target) throws xTalkException {
+		for(int i=end-1; i>=start; i--) {
+			wordType t=types[i];
+			if(t==wordType.STRING || t==wordType.NOP || words.get(i).length()!=3 || !words.get(i).equalsIgnoreCase("url")) continue;
+			int a=i+1;
+			while(a<=end && types[a]==wordType.NOP) a++;
+			if(a>end) continue;
+			wordType at=types[a];
+			int last;
+			if(at==wordType.LBRACKET || at==wordType.LFUNC) {
+				int depth=0;
+				last=-1;
+				for(int k=a; k<=end; k++) {
+					if(types[k]==wordType.LBRACKET || types[k]==wordType.LFUNC) depth++;
+					else if((types[k]==wordType.RBRACKET || types[k]==wordType.RFUNC) && --depth==0) { last=k; break; }
+				}
+				if(last<0) continue;
+			}
+			else if(at==wordType.STRING || ((at==wordType.X || at==wordType.VARIABLE) && getVariable(memData, words.get(a))!=null)) last=a;
+			else continue;
+			String address=at==wordType.STRING ? words.get(a) : Evalution(words, types, at==wordType.LBRACKET || at==wordType.LFUNC ? a+1 : a,
+				at==wordType.LBRACKET || at==wordType.LFUNC ? last-1 : last, memData, object, target);
+			words.set(i, UiHost.get().scriptWebFetch(address));
+			types[i]=wordType.STRING;
+			for(int k=i+1; k<=last; k++) types[k]=wordType.NOP;
+		}
+	}
+
 	private static void reducePanelData(ArrayList<String> words, wordType[] types, int start, int end,
 			MemoryData memData, OObject object, OObject target) throws xTalkException {
 		for(int i=start+1; i<end; i++) {
@@ -15171,6 +13646,30 @@ public class TTalk extends Thread {
 				(types[previous]==wordType.X || types[previous]==wordType.VARIABLE ||
 				 types[previous]==wordType.STRING || types[previous]==wordType.RCOLLECTION ||
 				 types[previous]==wordType.RDICTIONARY);
+			if(access && previous==i-1 && (types[previous]==wordType.X || types[previous]==wordType.VARIABLE)) {
+				//v[k1][k2]…: the elements of a variable's collection without decoding it again (LiveNode)
+				LiveNode node=liveCollection(memData, words.get(previous));
+				if(node!=null) {
+					int last=close;
+					String value=null;
+					int open=i;
+					while(true) {
+						String key=Evalution(words, types, open+1, last-1, memData, object, target);
+						boolean more=last+1<=end && types[last+1]==wordType.LCOLLECTION;
+						if(!more){ value=node.get(key); break; }
+						LiveNode child=node.child(key);
+						if(child==null){ value=node.get(key); break; }//the next [ ] reports "requires an array"
+						node=child;
+						open=last+1;
+						last=collectionClose(types, open, end);
+					}
+					words.set(previous, value);
+					types[previous]=wordType.STRING;
+					for(int k=i; k<=last; k++) types[k]=wordType.NOP;
+					i=previous;
+					continue;
+				}
+			}
 			if(access) {
 				String base=Evalution(words, types, previous, previous, memData, object, target);
 				if(!TalkCollection.isCollection(base)) throw new xTalkException("Index access requires an array or a dictionary");
@@ -15199,6 +13698,34 @@ public class TTalk extends Thread {
 			words.set(i, collection.encode());
 			types[i]=wordType.STRING;
 			for(int k=i+1; k<=close; k++) types[k]=wordType.NOP;
+		}
+		// the number of items|elements of|in v: how many elements the collection in v has (LiveCode: elements)
+		for(int i=start; i+3<=end; i++) {
+			if(types[i]==wordType.STRING || types[i]==wordType.NOP || !words.get(i).equalsIgnoreCase("number")) continue;
+			if(types[i+1]==wordType.STRING || !words.get(i+1).equalsIgnoreCase("of")) continue;
+			String unit=words.get(i+2);
+			if(types[i+2]==wordType.STRING || !(unit.equalsIgnoreCase("items") || unit.equalsIgnoreCase("elements"))) continue;
+			if(types[i+3]==wordType.STRING || !(words.get(i+3).equalsIgnoreCase("of") || words.get(i+3).equalsIgnoreCase("in"))) continue;
+			int base=i+4;
+			if(base>end) continue;
+			int after=base+1;
+			while(after<=end && types[after]==wordType.NOP) after++;
+			if(after<=end && !(types[after]==wordType.OPERATOR || types[after]==wordType.RBRACKET ||
+					types[after]==wordType.RFUNC || types[after]==wordType.COMMA || types[after]==wordType.COMMA_FUNC)) continue;
+			int count;
+			if(types[base]==wordType.STRING){
+				//the number of items of px[1]: the element, already a value
+				if(!TalkCollection.isCollection(words.get(base))) continue;
+				count=collectionSize(TalkCollection.decode(words.get(base)));
+			}else{
+				if(!TalkCollection.isCollection(peekVariable(memData, words.get(base)))) continue;
+				LiveNode node=liveCollection(memData, words.get(base));
+				count=node!=null ? node.size() : collectionSize(TalkCollection.decode(getVariable(memData, words.get(base))));
+			}
+			int first=i>start && types[i-1]!=wordType.STRING && words.get(i-1).equalsIgnoreCase("the") ? i-1 : i;
+			words.set(first, Integer.toString(count));
+			types[first]=wordType.STRING;
+			for(int k=first+1; k<after; k++) types[k]=wordType.NOP;
 		}
 		// Natural-language access: the name of person; item 1 of colors.
 		for(int i=end-2; i>=start; i--) {
@@ -15261,6 +13788,7 @@ public class TTalk extends Thread {
 			else break;
 		}
 		if(xTalkException.TRACE!=null){ StringBuilder sb=new StringBuilder("EVAL"); for(int q=start;q<=end;q++) sb.append(' ').append(stringList.get(q)).append('/').append(typeAry[q]); System.err.println(sb); }
+		reduceUrls(stringList, typeAry, start, end, memData, object, target);
 		reducePanelData(stringList, typeAry, start, end, memData, object, target);
 		reduceCollections(stringList, typeAry, start, end, memData, object, target);
 		boolean literalNumbers = numFormat!=DEFAULT_NUMBER_FORMAT_INSTANCE;
@@ -15364,6 +13892,13 @@ public class TTalk extends Thread {
 		}
 	}
 
+    /** The numeric statement compiler uses the interpreter's own formatting and variable storage rules. */
+    static void putNativeNumber(MemoryData memory, String name, String raw) throws xTalkException {
+        lastEvalNumeric = true;
+        lastEvalRaw = raw;
+        putComputedValue(memory, name, applyNumberFormat(raw));
+    }
+
 	/** Stores a number (a repeat with counter) into a variable: it is formatted with the numberFormat when used as text,
 	 *  as HyperCard keeps it as a number (HC J-2.3 probe JP NumFmt Repeat: set numberFormat to "000" / repeat with y=1 to 2
 	 *  gives "001", "002"; Guiterist names its fields "001 001" and reads them with fld (x&&y)) */
@@ -15437,7 +13972,7 @@ public class TTalk extends Thread {
 		return isRawNumberVariable(memData, name.toLowerCase(Locale.ROOT)) ? applyNumberFormat(v) : v;
 	}
 
-	private static boolean isRawNumberVariable(MemoryData memData, String lowerName) {
+	static boolean isRawNumberVariable(MemoryData memData, String lowerName) {
 		if(memData==null) return false;
 		boolean local = memData.rawNumbers!=null && !memData.rawNumbers.isEmpty();
 		boolean global = globalData.rawNumbers!=null && !globalData.rawNumbers.isEmpty();
@@ -16094,7 +14629,7 @@ public class TTalk extends Thread {
 		String v = value.trim();
 		if(v.isEmpty()) return 0;
 		double d = isNumberString(v) ? Double.parseDouble(v) : Double.NaN;
-		if(d != Math.rint(d)) throw new xTalkException("An integer is required here");
+		if(d != HzMath.rint(d)) throw new xTalkException("An integer is required here");
 		return (short)(long)d;
 	}
 
@@ -16517,7 +15052,7 @@ public class TTalk extends Thread {
 				if(stringList.get(i)=="message" && !(i+1<=end && typeAry[i+1]!=wordType.STRING &&
 						(stringList.get(i+1).equalsIgnoreCase("box") || stringList.get(i+1).equalsIgnoreCase("window") || stringList.get(i+1).equalsIgnoreCase("of")))){
 					//message alone is the message box's text (HC J-2.3 probe Aol Message Alone; AOL LaserDisk Drivers: if message = empty)
-					stringList.set(i, (PCARD.pc!=null && PCARD.pc.msg!=null && GMsg.area!=null) ? GMsg.area.getText() : "");
+					stringList.set(i, (UiHost.get().msgInCardWindow()) ? UiHost.get().msgAreaText() : "");
 					typeAry[i] = wordType.STRING;
 					continue;
 				}
@@ -16545,10 +15080,10 @@ public class TTalk extends Thread {
 						//menu "Font"は項目名を行で並べた値。HyperCard 2.4: どの項目の後にも return が付く
 						//("Alpha<CR>Beta<CR>-<CR>Gamma<CR>")
 						StringBuilder items = new StringBuilder();
-						JMenu m = ((OMenu)objres.obj).menu;
+						MMenu m = ((OMenu)objres.obj).menu;
 						for(int k=0; k<m.getPopupMenu().getComponentCount(); k++){
-							Component c = m.getPopupMenu().getComponent(k);
-							items.append(c instanceof JMenuItem ? scriptMenuItemText(m, (JMenuItem)c) : "-").append("\n");
+							MComponent c = m.getPopupMenu().getComponent(k);
+							items.append(c instanceof MMenuItem ? scriptMenuItemText(m, (MMenuItem)c) : "-").append("\n");
 						}
 						stringList.set(i, items.toString());
 						typeAry[i] = wordType.STRING;
@@ -16558,7 +15093,7 @@ public class TTalk extends Thread {
 					}
 					else if(objres.obj==OWindow.msgwindow || objres.obj==OMsg.msg) {
 						//msgはメッセージボックスの内容
-						stringList.set(i, (PCARD.pc!=null && PCARD.pc.msg!=null && GMsg.area!=null) ? GMsg.area.getText() : "");
+						stringList.set(i, (UiHost.get().msgInCardWindow()) ? UiHost.get().msgAreaText() : "");
 						typeAry[i] = wordType.STRING;
 						for(int j=i+1; j<i+objres.cnt && j<=end; j++){
 							typeAry[j] = wordType.NOP;
@@ -16959,7 +15494,7 @@ public class TTalk extends Thread {
 						if(!stringList.get(next).equalsIgnoreCase("of") && !stringList.get(next).equalsIgnoreCase("in")) next++;
 						objres2 = getObjectfromList(stringList, typeAry, next+1, object, target);
 						if(objres2.obj==null){
-							objres2.obj = PCARD.pc.stack.curCard;
+							objres2.obj = HZ.stack().curCard;
 							objres2.cnt = 0;
 							next = i+2;
 						}
@@ -16967,7 +15502,7 @@ public class TTalk extends Thread {
 					if(stringList.get(i+2).equalsIgnoreCase("cds") || stringList.get(i+2).equalsIgnoreCase("cards")) {
 						//親を省略した「the number of cards」はカレントカードのスタックの枚数
 						if(objres2!=null && objres2.obj!=null && "card".equals(objres2.obj.objectType) && objres2.cnt==0){
-							objres2.obj = ((OCard)objres2.obj).stack!=null ? ((OCard)objres2.obj).stack : PCARD.pc.stack;
+							objres2.obj = ((OCard)objres2.obj).stack!=null ? ((OCard)objres2.obj).stack : HZ.stack();
 						}
 						if(objres2!=null && "stack".equals(objres2.obj.objectType)){
 							OStack st = (OStack)objres2.obj;
@@ -16991,7 +15526,7 @@ public class TTalk extends Thread {
 						stringList.get(i+3).equalsIgnoreCase("btns") || stringList.get(i+3).equalsIgnoreCase("buttons")) {
 						if(objres2==null || objres2.obj.objectType.equals("card") || objres2.obj.objectType.equals("background")){
 							OCardBase cdbs;
-							if(objres2==null) cdbs = (OCardBase)PCARD.pc.stack.curCard;
+							if(objres2==null) cdbs = (OCardBase)HZ.stack().curCard;
 							else cdbs = (OCardBase)objres2.obj;
 							stringList.set(i,Integer.toString(cdbs.btnList.size()));
 							typeAry[i] = wordType.STRING;
@@ -17005,7 +15540,7 @@ public class TTalk extends Thread {
 							stringList.get(i+3).equalsIgnoreCase("flds") || stringList.get(i+3).equalsIgnoreCase("fields")) {
 						if(objres2==null || objres2.obj.objectType.equals("card") || objres2.obj.objectType.equals("background")){
 							OCardBase cdbs;
-							if(objres2==null) cdbs = (OCardBase)PCARD.pc.stack.curCard;
+							if(objres2==null) cdbs = (OCardBase)HZ.stack().curCard;
 							else cdbs = (OCardBase)objres2.obj;
 							stringList.set(i,Integer.toString(cdbs.fldList.size()));
 							typeAry[i] = wordType.STRING;
@@ -17019,7 +15554,7 @@ public class TTalk extends Thread {
 							stringList.get(i+3).equalsIgnoreCase("parts") ) {
 						if(objres2==null || objres2.obj.objectType.equals("card") || objres2.obj.objectType.equals("background")){
 							OCardBase cdbs;
-							if(objres2==null) cdbs = (OCardBase)PCARD.pc.stack.curCard;
+							if(objres2==null) cdbs = (OCardBase)HZ.stack().curCard;
 							else cdbs = (OCardBase)objres2.obj;
 							stringList.set(i,Integer.toString(cdbs.btnList.size()+cdbs.fldList.size()));
 							typeAry[i] = wordType.STRING;
@@ -17186,7 +15721,7 @@ public class TTalk extends Thread {
 								if(!stringList.get(next).equalsIgnoreCase("of")) next++;
 								objres2 = getObjectfromList(stringList, typeAry, next+1, object, target);
 								if(objres2.obj==null){
-									objres2.obj = PCARD.pc.stack.curCard;
+									objres2.obj = HZ.stack().curCard;
 									objres2.cnt = 0;
 									next = i+2;
 								}
@@ -17214,7 +15749,7 @@ public class TTalk extends Thread {
 								stringList.get(i+3).equalsIgnoreCase("btns") || stringList.get(i+3).equalsIgnoreCase("buttons")) {
 								if(objres2==null || objres2.obj.objectType.equals("card") || objres2.obj.objectType.equals("background")){
 									OCardBase cdbs;
-									if(objres2==null) cdbs = (OCardBase)PCARD.pc.stack.curCard;
+									if(objres2==null) cdbs = (OCardBase)HZ.stack().curCard;
 									else cdbs = (OCardBase)objres2.obj;
 									stringList.set(i,Integer.toString(cdbs.btnList.size()));
 									typeAry[i] = wordType.STRING;
@@ -17225,7 +15760,7 @@ public class TTalk extends Thread {
 									stringList.get(i+3).equalsIgnoreCase("flds") || stringList.get(i+3).equalsIgnoreCase("fields")) {
 								if(objres2==null || objres2.obj.objectType.equals("card") || objres2.obj.objectType.equals("background")){
 									OCardBase cdbs;
-									if(objres2==null) cdbs = (OCardBase)PCARD.pc.stack.curCard;
+									if(objres2==null) cdbs = (OCardBase)HZ.stack().curCard;
 									else cdbs = (OCardBase)objres2.obj;
 									stringList.set(i,Integer.toString(cdbs.fldList.size()));
 									typeAry[i] = wordType.STRING;
@@ -17236,7 +15771,7 @@ public class TTalk extends Thread {
 									stringList.get(i+3).equalsIgnoreCase("parts") ) {
 								if(objres2==null || objres2.obj.objectType.equals("card") || objres2.obj.objectType.equals("background")){
 									OCardBase cdbs;
-									if(objres2==null) cdbs = (OCardBase)PCARD.pc.stack.curCard;
+									if(objres2==null) cdbs = (OCardBase)HZ.stack().curCard;
 									else cdbs = (OCardBase)objres2.obj;
 									stringList.set(i,Integer.toString(cdbs.btnList.size()+cdbs.fldList.size()));
 									typeAry[i] = wordType.STRING;
@@ -17283,19 +15818,34 @@ public class TTalk extends Thread {
 		boolean message = w.equalsIgnoreCase("message") || w.equalsIgnoreCase("msg");
 		if(!message && !w.equalsIgnoreCase("variable")) return null;
 		for(OWindow win : OWindow.list){
-			if(message ? win.dlog instanceof MessageWatcher : win.dlog instanceof VariableWatcher) return win;
+			if(message ? UiHost.get().isMessageWatcher(win.dlog) : UiHost.get().isVariableWatcher(win.dlog)) return win;
 		}
 		return null;
+	}
+
+	/** msg window / the message window: the message box's window; the message box itself where it has none (the browser
+	 *  player: LUTIA2's hide message window) */
+	static OObject msgWindowObject() { return OWindow.msgwindow != null ? OWindow.msgwindow : OMsg.msg; }
+
+	/** show/hide [the] variable|message|msg watcher where there is no such window (the browser player has none): nothing to do
+	 *  (即席RPG's 環境チェック: hide variable watcher) */
+	private static boolean watcherWithoutWindow(ArrayList<String> words, wordType[] types, int next) {
+		int end = words.size()-1, at = next;
+		if(at<=end && types[at]!=wordType.STRING && words.get(at).equalsIgnoreCase("the")) at++;
+		if(at+1!=end || types[at]==wordType.STRING || types[at+1]==wordType.STRING || !words.get(at+1).equalsIgnoreCase("watcher")) return false;
+		String w = words.get(at);
+		if(!(w.equalsIgnoreCase("message") || w.equalsIgnoreCase("msg") || w.equalsIgnoreCase("variable"))) return false;
+		return watcherWindowAt(words, types, at, end)==null;
 	}
 
 	/** A window name as a script writes it; the watchers also answer to their English names ("Variable Watcher") */
 	static boolean windowNameMatches(OWindow w, String name) {
 		if(w.name==null || name==null) return false;
 		if(w.name.equalsIgnoreCase(name)) return true;
-		if(w.dlog instanceof MessageWatcher && (name.equals("メッセージ表示") || name.equalsIgnoreCase("Message Watcher"))) return true;
-		if(w.dlog instanceof VariableWatcher && (name.equals("変数表示") || name.equalsIgnoreCase("Variable Watcher"))) return true;
-		return PCARD.pc!=null && PCARD.pc.intl!=null && (w.dlog instanceof VariableWatcher || w.dlog instanceof MessageWatcher) &&
-			w.name.equalsIgnoreCase(PCARD.pc.intl.getDialogText(name));
+		if(UiHost.get().isMessageWatcher(w.dlog) && (name.equals("メッセージ表示") || name.equalsIgnoreCase("Message Watcher"))) return true;
+		if(UiHost.get().isVariableWatcher(w.dlog) && (name.equals("変数表示") || name.equalsIgnoreCase("Variable Watcher"))) return true;
+		return Host.get().hasCardWindow() && HZ.intl()!=null && (UiHost.get().isVariableWatcher(w.dlog) || UiHost.get().isMessageWatcher(w.dlog)) &&
+			w.name.equalsIgnoreCase(HZ.intl().getDialogText(name));
 	}
 
 	/** The object when the words start..end are exactly one object reference as an expression reads it, else null */
@@ -17343,7 +15893,7 @@ public class TTalk extends Thread {
 	}
 
 	/** Where "with keyword" starts (outside brackets) from {@code from} on, or -1 (request appleEvent / reply) */
-	private static int withKeywordAt(ArrayList<String> words, wordType[] types, int from) {
+	static int withKeywordAt(ArrayList<String> words, wordType[] types, int from) {
 		int depth = 0;
 		for(int k=from; k+1<words.size(); k++){
 			if(types[k]==wordType.LBRACKET || types[k]==wordType.LFUNC) depth++;
@@ -17356,7 +15906,7 @@ public class TTalk extends Thread {
 
 	/** start using this stack: the current stack itself stays in the message path after going to another stack */
 	private static void startUsingCurrentStack() {
-		OStack self = PCARD.pc.stack;
+		OStack self = HZ.stack();
 		if(self!=null && self.usingStacks!=null && !self.usingStacks.contains(self)){
 			for(int i=self.usingStacks.size()-1; i>=0; i--){
 				OStack u = self.usingStacks.get(i);
@@ -17378,7 +15928,7 @@ public class TTalk extends Thread {
 
 	/** A stack name or path that is the current stack's own file */
 	private boolean isCurrentStackRef(String ref) {
-		OStack cur = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack cur = Host.get().hasCardWindow() ? HZ.stack() : null;
 		if(cur==null || cur.path==null) return false;
 		if(ref.equalsIgnoreCase(cur.name) || ref.equalsIgnoreCase(stackDescriptorName(cur.getLongName()))) return true;
 		String resolved = resolveStackPath(ref);
@@ -17424,13 +15974,15 @@ public class TTalk extends Thread {
 		return at==words.size()-1 && types[at]!=wordType.STRING && words.get(at).equalsIgnoreCase("selection");
 	}
 
-	/** "the selectedLine|selectedChunk|selectedField [of <field>]" or "the foundLine|foundChunk" as the whole destination of put
+	/** "the selectedLine|selectedChunk|selectedField [of <field>]", "the foundLine|foundChunk" or "the clickLine|clickChunk" as the whole destination of put
 	 *  (HC J-2.3 probes Jhug Put FoundLine/FoundChunk: put "X" before the foundLine, put "Z" into the foundChunk) */
 	private static boolean isSelectionFunctionDestination(ArrayList<String> words, wordType[] types, int at) {
 		if(at<words.size() && types[at]!=wordType.STRING && words.get(at).equalsIgnoreCase("the")) at++;
 		if(at>=words.size() || types[at]==wordType.STRING) return false;
 		String w = words.get(at);
-		if(w.equalsIgnoreCase("foundLine") || w.equalsIgnoreCase("foundChunk")) return at==words.size()-1;
+		//the clickLine / clickChunk too (Import/Export Tools: put item 2 of it into the clickline, the pop-up's choice into the
+		//line clicked; the line came out empty)
+		if(w.equalsIgnoreCase("foundLine") || w.equalsIgnoreCase("foundChunk") || w.equalsIgnoreCase("clickLine") || w.equalsIgnoreCase("clickChunk")) return at==words.size()-1;
 		if(!(w.equalsIgnoreCase("selectedLine") || w.equalsIgnoreCase("selectedChunk") || w.equalsIgnoreCase("selectedField"))) return false;
 		return at==words.size()-1 || (words.get(at+1).equalsIgnoreCase("of") && at+2<words.size());
 	}
@@ -17467,8 +16019,9 @@ public class TTalk extends Thread {
 	/** put … into|before|after the selection: the field that holds the selection or the insertion point */
 	private void putIntoSelection(String value, String prep, OObject object, OObject target, MemoryData memData) throws xTalkException {
 		OField field = TUtil.findFocusedOrClickedField();
-		if(field==null || field.fld==null) throw new xTalkException("No selection");
-		int start = field.fld.getSelectionStart(), end = field.fld.getSelectionEnd();
+		//(the browser player's fields have no Swing text area: their view keeps the selection)
+		if(field==null || !UiHost.get().fieldHasView(field)) throw new xTalkException("No selection");
+		int start = field.view().getSelectionStart(), end = field.view().getSelectionEnd();
 		String ref = TUtil.fieldNumberRef(field);
 		String dest;
 		if(end>start && prep.equals("into")) dest = "into char "+(start+1)+" to "+end+" of "+ref;
@@ -17813,7 +16366,7 @@ public class TTalk extends Thread {
 						stringList.get(i-2-offset).equalsIgnoreCase("number"))
 					{
 						//parent
-						OObject parent = PCARD.pc.stack.curCard;
+						OObject parent = HZ.stack().curCard;
 						int endoff = 0;
 						//if(object.objectType.equals("card")) parent = object;
 						//else if(object.parent!=null && object.parent.objectType.equals("card")) parent = object.parent;
@@ -17858,7 +16411,7 @@ public class TTalk extends Thread {
 								//parentに入っているので、スタック(またはbg)に読み替えて数える
 								if(bg_flag || parent.objectType.equals("background")) {
 									if(!parent.objectType.equals("background")) parent = ((OCard)parent).getBg();
-									OStack st = ((OCardBase)parent).stack!=null ? ((OCardBase)parent).stack : PCARD.pc.stack;
+									OStack st = ((OCardBase)parent).stack!=null ? ((OCardBase)parent).stack : HZ.stack();
 									number = 0;
 									for(int k=0; k<st.cardIdList.size(); k++){
 										OCard cd = OCard.getOCard(st, st.cardIdList.get(k), true);
@@ -17868,13 +16421,13 @@ public class TTalk extends Thread {
 									}
 								}else{
 									OStack st = parent.objectType.equals("stack") ? (OStack)parent :
-										(parent instanceof OCardBase && ((OCardBase)parent).stack!=null ? ((OCardBase)parent).stack : PCARD.pc.stack);
+										(parent instanceof OCardBase && ((OCardBase)parent).stack!=null ? ((OCardBase)parent).stack : HZ.stack());
 									number = st.cardIdList.size();
 								}
 							}
 							else if( 0==str.compareTo("bgs") || 0==str.compareTo("bkgnds") || 0==str.compareTo("backgrounds") ){
 								OStack st = parent.objectType.equals("stack") ? (OStack)parent :
-									(parent instanceof OCardBase && ((OCardBase)parent).stack!=null ? ((OCardBase)parent).stack : PCARD.pc.stack);
+									(parent instanceof OCardBase && ((OCardBase)parent).stack!=null ? ((OCardBase)parent).stack : HZ.stack());
 								ArrayList<Integer> list = new ArrayList<Integer>();
 								for(int k=0; k<st.cardIdList.size(); k++){
 									OCard cd = OCard.getOCard(st, st.cardIdList.get(k), true);
@@ -17935,7 +16488,7 @@ public class TTalk extends Thread {
 						!(i+2<=end && (stringList.get(i+2).equalsIgnoreCase("of") || stringList.get(i+2).equalsIgnoreCase("window"))) &&
 						!(i>start && typeAry[i-1]!=wordType.STRING && (stringList.get(i-1).equalsIgnoreCase("of") || stringList.get(i-1).equalsIgnoreCase("in")))){
 					//the msg / the message box: メッセージボックスの内容
-					stringList.set(i, (PCARD.pc!=null && PCARD.pc.msg!=null && GMsg.area!=null) ? GMsg.area.getText() : "");
+					stringList.set(i, (UiHost.get().msgInCardWindow()) ? UiHost.get().msgAreaText() : "");
 					typeAry[i] = wordType.STRING;
 					typeAry[i+1] = wordType.NOP;
 					if(i+2<=end && typeAry[i+2]!=wordType.STRING && stringList.get(i+2).equalsIgnoreCase("box")) typeAry[i+2] = wordType.NOP;
@@ -18076,7 +16629,7 @@ public class TTalk extends Thread {
 						(stringList.get(i+3).equalsIgnoreCase("cards") || stringList.get(i+3).equalsIgnoreCase("cds"))){
 						//the number of marked cards
 						int cnt=0;
-						OStack st = PCARD.pc.stack;
+						OStack st = HZ.stack();
 						for(int j=0; j<st.cardIdList.size(); j++){
 							OCard cd = OCard.getOCard(st, st.cardIdList.get(j), true);
 							if(cd!=null && cd.marked) cnt++;
@@ -18469,7 +17022,7 @@ public class TTalk extends Thread {
 				//(HC J-2.3 probe Pan Variable Line2: line line of v = line 2 of v)
 				int n1 = i+1; while(n1<=end && typeAry[n1]==wordType.NOP) n1++;
 				int n2 = n1+1; while(n2<=end && typeAry[n2]==wordType.NOP) n2++;
-				if(n2<=end && stringList.get(i).toLowerCase(Locale.ROOT).matches("char|character|word|item|line") &&
+				if(n2<=end && VARIABLE_CHUNK_WORDS.contains(stringList.get(i).toLowerCase(Locale.ROOT)) &&
 						(typeAry[n1]==wordType.X || typeAry[n1]==wordType.VARIABLE || typeAry[n1]==wordType.STRING) &&
 						typeAry[n2]!=wordType.STRING && (stringList.get(n2).equalsIgnoreCase("of") || stringList.get(n2).equalsIgnoreCase("to"))){
 					stringList.set(i, stringList.get(i).toLowerCase(Locale.ROOT).intern()); //evalChunks compares interned words
@@ -18619,7 +17172,8 @@ public class TTalk extends Thread {
 								String[] rawArgAry = null;
 								//matchText(text, pattern, var1, …) / matchChunk(…): 3つ目からの引数は結果を受け取る変数名
 								boolean regexVars = o>2 && typeAry[i-1]!=wordType.STRING &&
-									(stringList.get(i-1).equalsIgnoreCase("matchtext") || stringList.get(i-1).equalsIgnoreCase("matchchunk"));
+									(stringList.get(i-1).equalsIgnoreCase("matchtext") || stringList.get(i-1).equalsIgnoreCase("matchchunk") ||
+									 stringList.get(i-1).equalsIgnoreCase("binarydecode"));
 								int n=i+1;
 								o=0;
 								argNest=0;
@@ -18733,6 +17287,16 @@ public class TTalk extends Thread {
 	 * positions. Variables left over (more than the pattern has groups) are emptied, as are all of them when nothing matches.
 	 */
 	private static Result regexCall(String funcName, String[] params, MemoryData memData) throws xTalkException {
+		if(funcName.equalsIgnoreCase("binarydecode")){
+			//binaryDecode(formats, data, var1, …) (LiveCode): the values into the variables, how many into the function's value
+			int[] converted = new int[1];
+			String[] values = TalkBinary.binaryDecode(params[0], params[1], params.length-2, converted);
+			for(int k=0; k<values.length; k++) if(values[k]!=null) setVariable(memData, params[k+2], values[k]);
+			Result result = new Result();
+			result.theResult = Integer.toString(converted[0]);
+			result.ret = 0;
+			return result;
+		}
 		boolean text = funcName.equalsIgnoreCase("matchtext");
 		String[] found = text ? TalkRegex.matchText(params[0], params[1]) : TalkRegex.matchChunk(params[0], params[1]);
 		int from = text ? 1 : 0;//matchText: group 0 is the whole match, the variables start at group 1
@@ -18854,7 +17418,7 @@ public class TTalk extends Thread {
 
 	/** A parameter name on an "on"/"function" line, without the quotes HyperCard J-2.3 ignores there (probe Oth25 Quoted Param:
 	 *  on oth25Quoted "DMikel" runs with DMikel as its parameter - HyperCard 10th Anniversary: on closeCard "DMikel") */
-	private static final java.util.regex.Pattern VARIABLE_NAME = java.util.regex.Pattern.compile("[\\p{IsLatin}0-9_]*");
+	private static final java.util.regex.Pattern VARIABLE_NAME = java.util.regex.Pattern.compile(Platform.get().regex("[\\p{IsLatin}0-9_]*"));
 
 	/** Every local variable of every call comes here: plain names without a regular expression */
 	private static boolean isVariableName(String name) {
@@ -18929,8 +17493,8 @@ public class TTalk extends Thread {
 		if(ordinal<=0 && !last && !middle && !any) return false;
 		//first/last/middle/any/second… marked card → marked card N
 		if(i+2<stringList.size() && stringList.get(i+1).equalsIgnoreCase("marked") && isCardWord(stringList.get(i+2))){
-			if(PCARD.pc==null || PCARD.pc.stack==null) return false;
-			int count = PCARD.pc.stack.markedCardCount();
+			if(!Host.get().hasCardWindow() || HZ.stack()==null) return false;
+			int count = HZ.stack().markedCardCount();
 			int number;
 			if(ordinal>0) number = ordinal;
 			else{
@@ -18976,8 +17540,8 @@ public class TTalk extends Thread {
 		if(ordinal>0) number = ordinal;
 		else{
 			int count;
-			if(PCARD.pc==null || PCARD.pc.stack==null) return false;
-			OStack st = PCARD.pc.stack;
+			if(!Host.get().hasCardWindow() || HZ.stack()==null) return false;
+			OStack st = HZ.stack();
 			//"of <card|bg>" が続く場合はその中で数える("last cd in this bg" も同じ: ParliDEX)
 			OCardBase owner = null;
 			int ofPos = typePos+1;
@@ -19033,21 +17597,21 @@ public class TTalk extends Thread {
 
 	/** The open stack, a stack in use or Home, named by {@code ref} (a name with or without ".hzb", or a path); else null. */
 	OStack stackNamed(String ref) {
-		if(isEmptyStackName(ref)) return PCARD.pc.stack;
-		if(ref==null || ref.trim().isEmpty() || PCARD.pc==null || PCARD.pc.stack==null) return null;
-		if(isCardWindowName(ref)) return PCARD.pc.stack;
+		if(isEmptyStackName(ref)) return HZ.stack();
+		if(ref==null || ref.trim().isEmpty() || !Host.get().hasCardWindow() || HZ.stack()==null) return null;
+		if(isCardWindowName(ref)) return HZ.stack();
 		String resolved = resolveStackPath(ref);
 		String want = resolved!=null ? stackIdentityPath(resolved) : null;
-		String wantName = java.text.Normalizer.normalize(new File(ref.replace(':', File.separatorChar)).getName(), java.text.Normalizer.Form.NFC).replaceFirst("(?i)\\.hzb$", "");
+		String wantName = Platform.get().normalize(new File(ref.replace(':', File.separatorChar)).getName(), UnicodeNorm.Form.NFC).replaceFirst("(?i)\\.hzb$", "");
 		ArrayList<OStack> candidates = new ArrayList<OStack>();
-		candidates.add(PCARD.pc.stack);
-		if(PCARD.pc.stack.usingStacks!=null) candidates.addAll(PCARD.pc.stack.usingStacks);
-		if(PCARD.home!=null) candidates.add(PCARD.home);
+		candidates.add(HZ.stack());
+		if(HZ.stack().usingStacks!=null) candidates.addAll(HZ.stack().usingStacks);
+		if(HZ.home!=null) candidates.add(HZ.home);
 		for(int pass=0; pass<3; pass++){
 			for(OStack s : candidates){
 				if(s==null || s.path==null) continue;
 				String id = stackIdentityPath(s.path);
-				String name = java.text.Normalizer.normalize(new File(id).getName(), java.text.Normalizer.Form.NFC);
+				String name = Platform.get().normalize(new File(id).getName(), UnicodeNorm.Form.NFC);
 				if(pass==0 && want!=null && want.equals(id)) return s;
 				if(pass==1 && name.replaceFirst("(?i)\\.hzb$", "").equalsIgnoreCase(wantName)) return s;
 				if(pass==2 && name.replaceFirst("(?i) [0-9]+\\.hzb$", "").equalsIgnoreCase(wantName)) return s; //"Usha Items 2.hzb": a second conversion of the file
@@ -19068,19 +17632,19 @@ public class TTalk extends Thread {
 	 * which is empty. A name of spaces is not: stack " " asks where the stack is.
 	 */
 	static boolean isEmptyStackName(String ref) {
-		return ref!=null && ref.isEmpty() && PCARD.pc!=null && PCARD.pc.stack!=null;
+		return ref!=null && ref.isEmpty() && Host.get().hasCardWindow() && HZ.stack()!=null;
 	}
 
 	static boolean isCardWindowName(String name) {
-		if(name==null || name.isEmpty() || PCARD.pc==null || PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return false;
-		if(PCARD.pc.stack.cardWindowTitle!=null && name.equalsIgnoreCase(PCARD.pc.stack.cardWindowTitle)) return true; //WindName's title
+		if(name==null || name.isEmpty() || !Host.get().hasCardWindow() || HZ.stack()==null || HZ.stack().curCard==null) return false;
+		if(HZ.stack().cardWindowTitle!=null && name.equalsIgnoreCase(HZ.stack().cardWindowTitle)) return true; //WindName's title
 		//file names on macOS are decomposed (NFD: カレンダー表示's ダ), script text is not
-		String title = java.text.Normalizer.normalize(PCARD.pc.stack.getTitleName(), java.text.Normalizer.Form.NFC);
-		name = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFC);
+		String title = Platform.get().normalize(HZ.stack().getTitleName(), UnicodeNorm.Form.NFC);
+		name = Platform.get().normalize(name, UnicodeNorm.Form.NFC);
 		if(name.equalsIgnoreCase(title)) return true;
 		if(title.toLowerCase(Locale.ROOT).endsWith(".hzb") && name.equalsIgnoreCase(title.substring(0, title.length()-4))) return true;
 		if(name.toLowerCase(Locale.ROOT).endsWith(".hzb") && title.equalsIgnoreCase(name.substring(0, name.length()-4))) return true; //window "Main.hzb"
-		return PCARD.pc.stack.path!=null && name.equalsIgnoreCase(stackIdentityPath(PCARD.pc.stack.path));
+		return HZ.stack().path!=null && name.equalsIgnoreCase(stackIdentityPath(HZ.stack().path));
 	}
 
 	/** オブジェクト指定が番号(正の整数)か */
@@ -19197,7 +17761,7 @@ public class TTalk extends Thread {
 		MemoryData md = new MemoryData();
 		md.treeset = new TreeSet<String>();
 		md.nameList = new ArrayList<String>();
-		md.valueList = new ArrayList<String>();
+		md.valueList = new ValueList();
 		String name = Evalution(words, types.toArray(new wordType[0]), 0, words.size()-1, md, object, target);
 		stringList.set(at, name);
 		typeAry[at] = wordType.STRING;
@@ -19224,7 +17788,7 @@ public class TTalk extends Thread {
 		MemoryData md = new MemoryData();
 		md.treeset = new TreeSet<String>();
 		md.nameList = new ArrayList<String>();
-		md.valueList = new ArrayList<String>();
+		md.valueList = new ValueList();
 		String name = Evalution(words, types, 0, words.size()-1, md, object, target);
 		stringList.set(at, name);
 		typeAry[at] = wordType.STRING;
@@ -19288,7 +17852,7 @@ public class TTalk extends Thread {
 		MemoryData md = new MemoryData();
 		md.treeset = new TreeSet<String>();
 		md.nameList = new ArrayList<String>();
-		md.valueList = new ArrayList<String>();
+		md.valueList = new ValueList();
 		String value = Evalution(words, types.toArray(new wordType[0]), 0, words.size()-1, md, object, target);
 		stringList.set(name, value);
 		typeAry[name] = wordType.STRING;
@@ -19334,7 +17898,7 @@ public class TTalk extends Thread {
 	 * of bg 3, next bg and prev bg are both bg 3). With every card on one background it is that background.
 	 */
 	private static OBackground relativeBackground(boolean forward) {
-		OStack st = PCARD.pc.stack;
+		OStack st = HZ.stack();
 		if(st.curCard==null){ ArrayList<OBackground> list = st.backgroundsInOrder(); return list.isEmpty() ? null : list.get(0); }
 		java.util.List<Integer> ids = st.cardIdList;
 		int here = ids.indexOf(st.curCard.id);
@@ -19436,8 +18000,8 @@ public class TTalk extends Thread {
 			//the width of cd). HyperCard J-2.3 reads anything after it as the card's name: "put the width of cd into x",
 			//"(the width of cd)" and "the width of cd + 1" are errors there
 			objres.cnt = 1;
-			if(PCARD.pc.stack==null || PCARD.pc.stack.curCard==null) return null;
-			objres.obj = isCardWord(str) ? PCARD.pc.stack.curCard : isBackgroundWord(str) ? PCARD.pc.stack.curCard.getBg() : PCARD.pc.stack;
+			if(HZ.stack()==null || HZ.stack().curCard==null) return null;
+			objres.obj = isCardWord(str) ? HZ.stack().curCard : isBackgroundWord(str) ? HZ.stack().curCard.getBg() : HZ.stack();
 			return objres;
 		}
 		if(next>=stringList.size()) return null;//throw new xTalkException("Cannot understand an object");
@@ -19453,7 +18017,7 @@ public class TTalk extends Thread {
 			int refAt=p+(byId?2:1);
 			String ref=stringList.get(refAt);
 			boolean quoted=isQuotedNumberLiteral(ref); //panel "2" is the panel named 2, panel 2 the second
-			OCardBase owner=PCARD.pc.stack.curCard;
+			OCardBase owner=HZ.stack().curCard;
 			if(!str.equalsIgnoreCase("panel") && isBackgroundWord(str)) owner=owner.getBg();
 			boolean explicit=false;
 			if(q<stringList.size() && typeAry[q]!=wordType.STRING &&
@@ -19478,7 +18042,7 @@ public class TTalk extends Thread {
 			boolean byId=typeAry[p+1]!=wordType.STRING&&stringList.get(p+1).equalsIgnoreCase("id");
 			int q=p+(byId?3:2);if(q>stringList.size())throw new xTalkException("Shape requires an id");
 			String ref=stringList.get(p+(byId?2:1));
-			OCardBase owner=PCARD.pc.stack.curCard;
+			OCardBase owner=HZ.stack().curCard;
 			if(!str.equalsIgnoreCase("shape")&&isBackgroundWord(str))owner=owner.getBg();
 			boolean explicit=false;
 			if(q<stringList.size()&&typeAry[q]!=wordType.STRING&&
@@ -19500,7 +18064,7 @@ public class TTalk extends Thread {
 			if(str2.equalsIgnoreCase("cd") || str2.equalsIgnoreCase("card"))
 			{
 				objres.cnt = 2;
-				objres.obj = PCARD.pc.stack.curCard;
+				objres.obj = HZ.stack().curCard;
 				//"this cd of this bg" / "… of this stack" only says where the card is: DiskLibrary's
 				//put (number of this cd of this bg)-2 into fld "CardNum" (the number is still the card's place in the stack)
 				int q = start+2;
@@ -19529,12 +18093,12 @@ public class TTalk extends Thread {
 			if(str2.equalsIgnoreCase("bg") || str2.equalsIgnoreCase("bkgnd") || str2.equalsIgnoreCase("background"))
 			{
 				objres.cnt = 2;
-				objres.obj = PCARD.pc.stack.curCard.bg;
+				objres.obj = HZ.stack().curCard.bg;
 				return objres;
 			}
 			if(str2.equalsIgnoreCase("stack")) {
 				objres.cnt = 2;
-				objres.obj = PCARD.pc.stack;
+				objres.obj = HZ.stack();
 				return objres;
 			}
 		}
@@ -19542,7 +18106,7 @@ public class TTalk extends Thread {
 				str2.equalsIgnoreCase("marked") && next+1<stringList.size() && isCardWord(stringList.get(next+1))){
 			//next/previous marked card
 			objres.cnt = 3;
-			objres.obj = PCARD.pc.stack.relativeMarkedCard(str.equalsIgnoreCase("next"));
+			objres.obj = HZ.stack().relativeMarkedCard(str.equalsIgnoreCase("next"));
 			if(objres.obj==null) throw new xTalkException("No marked cards");
 			return objres;
 		}
@@ -19564,7 +18128,7 @@ public class TTalk extends Thread {
 			ObjResult bgres = null;
 			try{ bgres = getObjectfromList(stringList, typeAry, cardOf+1, object, target); }catch(xTalkException e){}
 			if(bgres!=null && bgres.obj instanceof OBackground){
-				OStack st = PCARD.pc.stack;
+				OStack st = HZ.stack();
 				int n = st.cardIdList.size(), cur = st.curCard==null ? -1 : st.cardIdList.indexOf(st.curCard.id);
 				boolean forward = str.equalsIgnoreCase("next");
 				for(int k=1; k<=n; k++){
@@ -19582,8 +18146,8 @@ public class TTalk extends Thread {
 		if(str.equalsIgnoreCase("recent") && isCardWord(str2)){
 			//recent card: go back で戻るカード(履歴が無ければ今のカード)。Passing Notes: get id of recent cd
 			objres.cnt = 2;
-			int id = PCARD.pc.stack.recentCardId();
-			objres.obj = id<0 ? PCARD.pc.stack.curCard : PCARD.pc.stack.GetCardbyId(id);
+			int id = HZ.stack().recentCardId();
+			objres.obj = id<0 ? HZ.stack().curCard : HZ.stack().GetCardbyId(id);
 			if(objres.obj==null) throw new xTalkException("No such card");
 			return objres;
 		}
@@ -19593,17 +18157,17 @@ public class TTalk extends Thread {
 				objres.cnt = 2;
 				int id;
 				int i;
-				for(i=0; i<PCARD.pc.stack.cardIdList.size();i++){
-					if(PCARD.pc.stack.curCard!=null && PCARD.pc.stack.curCard.id == PCARD.pc.stack.cardIdList.get(i))
+				for(i=0; i<HZ.stack().cardIdList.size();i++){
+					if(HZ.stack().curCard!=null && HZ.stack().curCard.id == HZ.stack().cardIdList.get(i))
 						break;
 				}
-				if(i==PCARD.pc.stack.cardIdList.size()) i=0;
+				if(i==HZ.stack().cardIdList.size()) i=0;
 				else{
 					i++;
-					if(i>=PCARD.pc.stack.cardIdList.size()) i=0;
+					if(i>=HZ.stack().cardIdList.size()) i=0;
 				}
-				id = PCARD.pc.stack.cardIdList.get(i);
-				objres.obj = PCARD.pc.stack.GetCardbyId(id);
+				id = HZ.stack().cardIdList.get(i);
+				objres.obj = HZ.stack().GetCardbyId(id);
 				return objres;
 			}
 		}
@@ -19613,16 +18177,16 @@ public class TTalk extends Thread {
 				objres.cnt = 2;
 				int id;
 				int i;
-				for(i=0; i<PCARD.pc.stack.cardIdList.size();i++){
-					if(PCARD.pc.stack.curCard!=null && PCARD.pc.stack.curCard.id == PCARD.pc.stack.cardIdList.get(i))
+				for(i=0; i<HZ.stack().cardIdList.size();i++){
+					if(HZ.stack().curCard!=null && HZ.stack().curCard.id == HZ.stack().cardIdList.get(i))
 						break;
 				}
-				if(i==0) i=PCARD.pc.stack.cardIdList.size()-1;
+				if(i==0) i=HZ.stack().cardIdList.size()-1;
 				else{
 					i--;
 				}
-				id = PCARD.pc.stack.cardIdList.get(i);
-				objres.obj = PCARD.pc.stack.GetCardbyId(id);
+				id = HZ.stack().cardIdList.get(i);
+				objres.obj = HZ.stack().GetCardbyId(id);
 				return objres;
 			}
 		}
@@ -19689,7 +18253,7 @@ public class TTalk extends Thread {
 				objres.obj = OWindow.cdwindow;
 			}else if(str.equalsIgnoreCase("msg") || str.equalsIgnoreCase("message")){
 				objres.cnt = 2;
-				objres.obj = OWindow.msgwindow;
+				objres.obj = msgWindowObject();
 			}
 			return objres;
 		}
@@ -19697,7 +18261,7 @@ public class TTalk extends Thread {
 				(str2.equalsIgnoreCase("card") || str2.equalsIgnoreCase("cd") || str2.equalsIgnoreCase("msg") || str2.equalsIgnoreCase("message"))) {
 			//the card window / the message window(the zoomed of the card window)
 			objres.cnt = 3;
-			objres.obj = (str2.equalsIgnoreCase("card") || str2.equalsIgnoreCase("cd")) ? OWindow.cdwindow : OWindow.msgwindow;
+			objres.obj = (str2.equalsIgnoreCase("card") || str2.equalsIgnoreCase("cd")) ? OWindow.cdwindow : msgWindowObject();
 			return objres;
 		}
 		else if(str.equalsIgnoreCase("menuitem")) {
@@ -19716,14 +18280,14 @@ public class TTalk extends Thread {
 		else if(str2.equalsIgnoreCase("menu") && (isRelativeChunkSpecifier(str) || ordinalChunkNumber(str)>0)) {
 			//last menu / second menu
 			if(rewriteOrdinalObject(stringList, typeAry, start, object, target)){
-				JMenu menu = findMenu(stringList.get(start+1));
+				MMenu menu = findMenu(stringList.get(start+1));
 				if(menu!=null){ objres.cnt = 2; objres.obj = new OMenu(menu); }
 			}
 			return objres;
 		}
 		else if(str.equalsIgnoreCase("menu")) {
 			//menu N は1始まり(以前はJavaの0始まりの添字をそのまま使っていた)
-			JMenu menu = findMenu(str2);
+			MMenu menu = findMenu(str2);
 			//HyperCard の Font/Style メニュー(フォント名の一覧、書式名と大きさ)。ここにはそのメニューが無い
 			if(menu==null) menu = virtualHyperCardMenu(str2);
 			if(menu==null && str2.trim().matches("[0-9]+")){
@@ -19731,7 +18295,7 @@ public class TTalk extends Thread {
 				java.util.List<String> names = scriptMenuNames();
 				int n = Integer.parseInt(str2.trim());
 				if(n>=1 && n<=names.size()){
-					String vn = java.text.Normalizer.normalize(names.get(n-1), java.text.Normalizer.Form.NFKC);
+					String vn = Platform.get().normalize(names.get(n-1), UnicodeNorm.Form.NFKC);
 					if(vn.equalsIgnoreCase("font") || vn.equals("フォント")) menu = fontMenu();
 					else if(vn.equalsIgnoreCase("style") || vn.equals("スタイル")) menu = styleMenu();
 				}
@@ -19790,7 +18354,7 @@ public class TTalk extends Thread {
 				q++;
 			}
 			while(q<stringList.size() && typeAry[q]==wordType.NOP) q++;
-			OCardBase base = PCARD.pc.stack.curCard;
+			OCardBase base = HZ.stack().curCard;
 			if(q<stringList.size() && stringList.get(q).equalsIgnoreCase("of")){
 				ObjResult r = getObjectfromList(stringList, typeAry, q+1, object, target);
 				if(r==null || !(r.obj instanceof OCardBase)) throw new xTalkException("A card or a background is required here");
@@ -19831,17 +18395,17 @@ public class TTalk extends Thread {
 			else if(object.objectType.equals("background")) cdbase=((OBackground)object).viewCard;
 			else if(object.objectType.equals("button")) cdbase=((OButton)object).card;
 			else if(object.objectType.equals("field")) cdbase=((OField)object).card;
-			else*/ cdbase=PCARD.pc.stack.curCard;
+			else*/ cdbase=HZ.stack().curCard;
 			if(str.equalsIgnoreCase("cd") || str.equalsIgnoreCase("card")) {
-				//cdbase=PCARD.pc.stack.curCard;
+				//cdbase=HZ.stack().curCard;
 				next++;
 			}
 			else if(str.equalsIgnoreCase("bg") || str.equalsIgnoreCase("bkgnd") || str.equalsIgnoreCase("background")) {
 				bg=true;
 				//カードの背景オブジェクトがまだ無いときはスタックから探す(以前は null のまま進み NullPointerException で
 				//ハンドラが黙って止まっていた: 音频帮助の resetAPMenus)
-				cdbase=PCARD.pc.stack.curCard.getBg();
-				//cdbase=PCARD.pc.stack.curCard;
+				cdbase=HZ.stack().curCard.getBg();
+				//cdbase=HZ.stack().curCard;
 				next++;
 			}
 			if(cdbase==null) throw new xTalkException("No such background");
@@ -19996,16 +18560,16 @@ public class TTalk extends Thread {
 			//バックグラウンドフィールドを指す(button は逆にカードボタン)。ここでは
 			//バックグラウンド階層を先に探し、見つからなければカード階層にフォールバックする
 			//(下のフィールド検索を参照)。
-			OCardBase cdbase=PCARD.pc.stack.curCard;
+			OCardBase cdbase=HZ.stack().curCard;
 			if(str.equalsIgnoreCase("cd") || str.equalsIgnoreCase("card")) {
-				cdbase=PCARD.pc.stack.curCard;
+				cdbase=HZ.stack().curCard;
 				cdSpecified=true;
 				next++;
 			}
 			else if(str.equalsIgnoreCase("bg") || str.equalsIgnoreCase("bkgnd") || str.equalsIgnoreCase("background")) {
 				bg=true;
-				//cdbase=PCARD.pc.stack.curCard.bg;
-				cdbase=PCARD.pc.stack.curCard;
+				//cdbase=HZ.stack().curCard.bg;
+				cdbase=HZ.stack().curCard;
 				next++;
 			}
 			if(next>=stringList.size()) throw new xTalkException("Cannot understand a field");
@@ -20164,7 +18728,7 @@ public class TTalk extends Thread {
 		//bg (bg id N / bg "name" / bg N)。bg btn/bg fldは上で処理済み
 		if(str.equalsIgnoreCase("bg") || str.equalsIgnoreCase("bkgnd") || str.equalsIgnoreCase("background"))
 		{
-			OStack st = PCARD.pc.stack;
+			OStack st = HZ.stack();
 			if(typeAry[start+1]!=wordType.STRING && str2.equalsIgnoreCase("id")) {
 				next++;
 				if(next>=stringList.size()) throw new xTalkException("Missing background id");
@@ -20233,7 +18797,7 @@ public class TTalk extends Thread {
 					int nameEnd = joinOwnerCardName(trialWords, trialTypes, next-1, object, target);
 					if(nameEnd>next){
 						String whole = objectNumberText(trialWords.get(next));
-						OStack st0 = PCARD.pc.stack;
+						OStack st0 = HZ.stack();
 						OCard found = ordinalFirst(whole) ? st0.GetCardbyNum(Integer.parseInt(whole.trim())) : st0.GetCard(whole);
 						if(found!=null){
 							for(int k=next; k<=nameEnd; k++){ stringList.set(k, trialWords.get(k)); typeAry[k] = trialTypes[k]; }
@@ -20250,7 +18814,7 @@ public class TTalk extends Thread {
 				try{
 					int number = Integer.parseInt(name);
 					objres.cnt = next-start+1;
-					objres.obj = PCARD.pc.stack.GetMarkedCardbyNum(number);
+					objres.obj = HZ.stack().GetMarkedCardbyNum(number);
 					if(objres.obj==null) throw new xTalkException("No marked card at position {0}", number);
 					return objres;
 				}catch(NumberFormatException e){
@@ -20259,7 +18823,7 @@ public class TTalk extends Thread {
 			}
 			else if(id!=0) {
 				objres.cnt = next-start+1;
-				objres.obj = PCARD.pc.stack.GetCardbyId(id);
+				objres.obj = HZ.stack().GetCardbyId(id);
 				if(objres.obj==null) throw new xTalkException("No card with id {0}", id);
 				//card id N of|in this bg: the card, when it is on that background (HyperCard J-2.3: there is (not) a cd id it in this bg;
 				//HyperBib) - otherwise there is no such card
@@ -20300,17 +18864,17 @@ public class TTalk extends Thread {
 				//引用符付きのリテラル(card "28")は名前が先(あわて床屋)
 				boolean ordinalOnly = ordinalFirst(name);
 				if(ordinalOnly){
-					int number = objectOrdinalCode(Integer.parseInt(name.trim()), PCARD.pc.stack.cardIdList.size());
-					objres.obj = ofBg!=null ? PCARD.pc.stack.GetCardofBgbyNum(ofBg, number) : PCARD.pc.stack.GetCardbyNum(number);
+					int number = objectOrdinalCode(Integer.parseInt(name.trim()), HZ.stack().cardIdList.size());
+					objres.obj = ofBg!=null ? HZ.stack().GetCardofBgbyNum(ofBg, number) : HZ.stack().GetCardbyNum(number);
 				}
 				//a bare or computed number is the card's number only, never a name (HC J-2.3 probes C Err Card 28 / C Quoted
 				//Cards: card 28 and card ("2"&"8") in a stack of 6 cards with one named "28" are no such card)
 				if(objres.obj==null && !ordinalOnly){
-					objres.obj = ofBg!=null ? PCARD.pc.stack.GetCardofBg(ofBg, name) : PCARD.pc.stack.GetCard(name);
+					objres.obj = ofBg!=null ? HZ.stack().GetCardofBg(ofBg, name) : HZ.stack().GetCard(name);
 				}
 				if(objres.obj==null && isQuotedNumberLiteral(name)){
 					int number = Integer.parseInt(name.trim());
-					objres.obj = ofBg!=null ? PCARD.pc.stack.GetCardofBgbyNum(ofBg, number) : PCARD.pc.stack.GetCardbyNum(number);
+					objres.obj = ofBg!=null ? HZ.stack().GetCardofBgbyNum(ofBg, number) : HZ.stack().GetCardbyNum(number);
 				}
 				if(objres.obj==null) throw new xTalkException("No card named {0}", name);
 				objres.cnt += stackQualifierLength(stringList, typeAry, start+objres.cnt, object, target);
@@ -20335,7 +18899,7 @@ public class TTalk extends Thread {
 	private static void sortCards(ArrayList<String> stringList, wordType[] typeAry, int next,
 			MemoryData memData, OObject object, OObject target) throws xTalkException
 	{
-		OStack stack = PCARD.pc.stack;
+		OStack stack = HZ.stack();
 		boolean marked = false;
 		if(stringList.get(next).equalsIgnoreCase("marked")){ marked = true; next++; }
 		if(next<stringList.size() && (stringList.get(next).equalsIgnoreCase("cards") || stringList.get(next).equalsIgnoreCase("cds"))) next++;
@@ -20453,7 +19017,7 @@ public class TTalk extends Thread {
 	private void markCards(boolean marked, ArrayList<String> stringList, wordType[] typeAry,
 			MemoryData memData, OObject object, OObject target) throws xTalkException
 	{
-		OStack stack = PCARD.pc.stack;
+		OStack stack = HZ.stack();
 		boolean byFinding = stringList.get(2).equalsIgnoreCase("by");
 		int next = 3;
 		String mode = "normal";
@@ -20589,8 +19153,7 @@ public class TTalk extends Thread {
 			//HyperCard J-2.3: 数値でないキーが混じる numeric sort は並びを変えない
 			for(int i=0; i<keys.length; i++) if(numKeys[i]==null) return order;
 		}
-		final java.text.Collator collator = type.equals("international") ? java.text.Collator.getInstance() : null;
-		if(collator!=null) collator.setStrength(java.text.Collator.SECONDARY);
+		final java.util.Comparator<String> collator = type.equals("international") ? Platform.get().internationalOrder() : null;
 		java.util.Arrays.sort(order, (a, b) -> {
 			int cmp;
 			if(type.equals("numeric")){
@@ -20661,7 +19224,7 @@ public class TTalk extends Thread {
 
 	/** Japanese stacks: HyperCard J also cuts words where single-byte and double-byte text meet. */
 	private static boolean japaneseWords() {
-		OStack st = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack st = Host.get().hasCardWindow() ? HZ.stack() : null;
 		return st!=null && st.legacyTextEncoding==StackTextEncoding.JAPANESE;
 	}
 
@@ -20672,7 +19235,7 @@ public class TTalk extends Thread {
 	 * here counts characters.
 	 */
 	static int textLength(String text) {
-		OStack st = PCARD.pc!=null ? PCARD.pc.stack : null;
+		OStack st = Host.get().hasCardWindow() ? HZ.stack() : null;
 		if(st==null || st.legacyTextEncoding!=StackTextEncoding.JAPANESE || !madeByHyperCard(st)) return text.length();
 		int n = text.length();
 		for(int i=0; i<text.length(); i++) if(isDoubleByteChar(text.charAt(i))) n++;
@@ -20682,10 +19245,20 @@ public class TTalk extends Thread {
 	/** The stack came from HyperCard (created by 1.x/2.x), not made in HyperZebra (created by its own 3.x version). */
 	static boolean madeByHyperCard(OStack st) {
 		String v = st.createdByVersion;
-		if(v==null || v.trim().isEmpty()) return false;
-		try { return Integer.parseInt(PCARD.hcVersionCode(v).substring(0,2)) < 3; }
-		catch(NumberFormatException e) { return false; }
+		if(v==null) return false;
+		//asked for every length(): the answer of the last version string (hcVersionCode's regular expression is slow, in the browser most)
+		if(v==madeByVersion) return madeByAnswer;
+		boolean made;
+		if(v.trim().isEmpty()) made = false;
+		else {
+			try { made = Integer.parseInt(HZ.hcVersionCode(v).substring(0,2)) < 3; }
+			catch(NumberFormatException e) { made = false; }
+		}
+		madeByAnswer = made; madeByVersion = v;
+		return made;
 	}
+	private static volatile String madeByVersion;
+	private static volatile boolean madeByAnswer;
 
 	/** A character that is two bytes in Shift-JIS (everything but ASCII, half-width katakana and Mac's one-byte extras). */
 	static boolean isDoubleByteChar(char c) {
@@ -20759,6 +19332,34 @@ public class TTalk extends Thread {
 		return ranges;
 	}
 
+	private static final int CHUNK_OTHER = 0, CHUNK_CHAR = 1, CHUNK_WORD = 2, CHUNK_ITEM = 3, CHUNK_LINE = 4;
+
+	/** Which chunk a mode word names, as isChunkMode tells it: the usual spellings without comparing, others as before */
+	private static int chunkKind(String mode) {
+		if(mode==null) return CHUNK_OTHER;
+		switch(mode){
+		case "char": case "chars": case "character": case "characters": return CHUNK_CHAR;
+		case "word": case "words": return CHUNK_WORD;
+		case "item": case "items": return CHUNK_ITEM;
+		case "line": case "lines": return CHUNK_LINE;
+		default:
+			if(isChunkMode(mode,"line")) return CHUNK_LINE;
+			if(isChunkMode(mode,"item")) return CHUNK_ITEM;
+			if(isChunkMode(mode,"char")) return CHUNK_CHAR;
+			if(isChunkMode(mode,"word")) return CHUNK_WORD;
+			return CHUNK_OTHER;
+		}
+	}
+
+	private static String chunkDelimiter(int kind) {
+		switch(kind){
+		case CHUNK_LINE: return "\n";
+		case CHUNK_WORD: return " ";
+		case CHUNK_ITEM: return (itemDelimiter==null||itemDelimiter.length()==0) ? "," : itemDelimiter;
+		default: return "";
+		}
+	}
+
 	private static String chunkDelimiter(String mode) {
 		if(isChunkMode(mode,"line")) return "\n";
 		if(isChunkMode(mode,"word")) return " ";
@@ -20775,6 +19376,13 @@ public class TTalk extends Thread {
 
 	private static int parseChunkIndex(String str, int defaultValue) {
 		if(str==null) return defaultValue;
+		int n = str.length();
+		if(n>=1 && n<=9){
+			//a plain whole number (the usual case): no parsing as a real
+			int v = 0, k = 0;
+			for(; k<n; k++){ char c = str.charAt(k); if(c<'0' || c>'9') break; v = v*10 + c - '0'; }
+			if(k==n) return v;
+		}
 		try{
 			return (int)Math.floor(Double.parseDouble(str.trim()));
 		}catch(NumberFormatException e){
@@ -20889,21 +19497,22 @@ public class TTalk extends Thread {
 		if(start<1) start=1;
 		if(end<start) end = reverseRangeEnd(mode, start, end);
 		if(end<start) return "";
-		boolean line = isChunkMode(mode,"line");
-		if((line || isChunkMode(mode,"item")) && source.length()>=CHUNK_INDEX_MIN_LENGTH){
+		int kind = chunkKind(mode);
+		boolean line = kind==CHUNK_LINE;
+		if((line || kind==CHUNK_ITEM) && source.length()>=CHUNK_INDEX_MIN_LENGTH){
 			//長いテキストの line i of t を繰り返すループ(1行ずつ処理する定番の書き方)が毎回先頭から数えないよう、区切り位置の索引を使う
-			return chunkIndex(source, line, chunkDelimiter(mode)).chunk(start, end);
+			return chunkIndex(source, line, chunkDelimiter(kind)).chunk(start, end);
 		}
 		if(line) source = normalizeLineBreaks(source);
 		//chunkRanges で全チャンクの一覧を作ると長いテキストの line 3 of ... でも全体を分割するので、必要なところまでだけ走査する
-		if(isChunkMode(mode,"char")){
+		if(kind==CHUNK_CHAR){
 			if(start>source.length()) return "";
 			return source.substring(start-1, Math.min(end, source.length()));
 		}
-		if(isChunkMode(mode,"word")) return wordChunk(source, start, end);
-		if(isChunkMode(mode,"item") || isChunkMode(mode,"line")){
+		if(kind==CHUNK_WORD) return wordChunk(source, start, end);
+		if(kind==CHUNK_ITEM || line){
 			if(source.length()==0) return "";
-			return delimitedChunk(source, chunkDelimiter(mode), start, end);
+			return delimitedChunk(source, chunkDelimiter(kind), start, end);
 		}
 		ArrayList<int[]> ranges = chunkRanges(mode, source);
 		if(source.length()==0) return "";
@@ -20980,6 +19589,7 @@ public class TTalk extends Thread {
 
 	//item/line の start〜end 番目(1以上、start<=end)。chunkRanges と同じく、末尾の区切り文字は空のチャンクを作らない
 	private static String delimitedChunk(String source, String delimiter, int start, int end) {
+		if(delimiter.length()==1) return delimitedChunk(source, delimiter.charAt(0), start, end);
 		int length = source.length();
 		int delimiterLength = delimiter.length();
 		int from = 0;
@@ -20999,6 +19609,31 @@ public class TTalk extends Thread {
 			if(position==length){
 				//次は末尾の区切り文字の後ろなので、ここが最後のチャンク。範囲がその先まであれば区切り文字も含む
 				//(HC J-2.3: line 2 to 9 of "a"&return&"b"&return は "b"&return)
+				if(k<end) to = length;
+				break;
+			}
+		}
+		return source.substring(from, to);
+	}
+
+	/** delimitedChunk with a delimiter of one character (comma, return): the same, scanning for a char */
+	static String delimitedChunk(String source, char delimiter, int start, int end) {
+		int length = source.length();
+		int from = 0;
+		for(int k=1; k<start; k++){
+			int index = source.indexOf(delimiter, from);
+			if(index<0) return "";
+			from = index + 1;
+		}
+		if(from==length && start>1) return "";
+		int to = length;
+		int position = from;
+		for(int k=start; k<=end; k++){
+			int index = source.indexOf(delimiter, position);
+			if(index<0){ to = length; break; }
+			to = index;
+			position = index + 1;
+			if(position==length){
 				if(k<end) to = length;
 				break;
 			}
@@ -21153,7 +19788,25 @@ public class TTalk extends Thread {
 	static boolean containsText(String text, String needle) {
 		if(needle.isEmpty()) return false;
 		if(marksIgnored()) return withoutMarks(text).toLowerCase().contains(withoutMarks(needle).toLowerCase());
-		return text.toLowerCase().contains(needle.toLowerCase());
+		return foldCase(text).contains(foldCase(needle));
+	}
+
+	/**
+	 * The text as HyperTalk compares it without case (=, is in, contains, offset, find). A Japanese stack folds only the
+	 * one-byte letters A-Z: HyperCard J-2.3 keeps full-width, Greek and Cyrillic letters apart ("ａｂｃ" = "ＡＢＣ" is false,
+	 * offset("ａｂｃ", "ＸＡＢＣ") = 0, "α" = "Α" false, find string "ａｂｃ" finds no "ＡＢＣ"; "abc" = "ABC" true; probe
+	 * "A Sedit Case", Nov 13 2026 - Sedit3.1's text). Other stacks: every letter. Character for character: offsets stay.
+	 */
+	static String foldCase(String text) {
+		if(findEncoding()!=StackTextEncoding.JAPANESE) return text.toLowerCase(Locale.ROOT);
+		char[] out = null;
+		for(int i=0; i<text.length(); i++){
+			char c = text.charAt(i);
+			if(c<'A' || c>'Z') continue;
+			if(out==null) out = text.toCharArray();
+			out[i] = (char)(c+32);
+		}
+		return out==null ? text : new String(out);
 	}
 
 	/**
@@ -21173,7 +19826,7 @@ public class TTalk extends Thread {
 			char c = s.charAt(i);
 			if(c<0x80) continue;
 			char base = BASE_LETTERS.computeIfAbsent(c, k -> {
-				String d = java.text.Normalizer.normalize(String.valueOf(k), java.text.Normalizer.Form.NFD);
+				String d = Platform.get().normalize(String.valueOf(k), UnicodeNorm.Form.NFD);
 				if(d.length()<2) return k;
 				for(int j=1; j<d.length(); j++) if(Character.getType(d.charAt(j))!=Character.NON_SPACING_MARK) return k;
 				return d.charAt(0);
@@ -21186,18 +19839,33 @@ public class TTalk extends Thread {
 	}
 	/** = / is / ≠ of two texts (when one is no number): case-insensitive, and without marks in a Roman stack */
 	static boolean sameText(String a, String b) {
+		if(findEncoding()==StackTextEncoding.JAPANESE) return a.length()==b.length() && foldCase(a).equals(foldCase(b));
 		if(a.equalsIgnoreCase(b)) return true;
 		return marksIgnored() && withoutMarks(a).equalsIgnoreCase(withoutMarks(b));
 	}
 	/** < / > of two texts: by the letters first, then the marks ("ü" < "v" and "ü" > "u" in HyperCard 2.4 on a Roman system) */
 	static int compareText(String a, String b) {
 		int c = a.compareToIgnoreCase(b);
-		if(c==0) return c;
+		if(c==0) return findEncoding()==StackTextEncoding.JAPANESE ? wideCaseOrder(a, b) : 0;
 		int base;
 		if(marksIgnored()) base = withoutMarks(a).compareToIgnoreCase(withoutMarks(b));
-		else if(findEncoding()==StackTextEncoding.JAPANESE) base = withoutVoicedMarks(a).compareToIgnoreCase(withoutVoicedMarks(b));
+		else if(findEncoding()==StackTextEncoding.JAPANESE){
+			base = withoutVoicedMarks(a).compareToIgnoreCase(withoutVoicedMarks(b));
+		}
 		else return c;
 		return base!=0 ? base : c;
+	}
+
+	/** Two texts that differ only in the case of letters: a Japanese stack puts a full-width (two-byte) lower-case letter
+	 *  first ("ａ" < "Ａ" true, sort gives ａａ ＡＡ ｂｂ ＢＢ: HyperCard J-2.3 probe "A Sedit Case"); one-byte letters stay equal */
+	private static int wideCaseOrder(String a, String b) {
+		for(int i=0; i<Math.min(a.length(), b.length()); i++){
+			char x = a.charAt(i), y = b.charAt(i);
+			if(x==y || x<0x80 && y<0x80) continue;
+			if(Character.isLowerCase(x) && Character.isUpperCase(y)) return -1;
+			if(Character.isUpperCase(x) && Character.isLowerCase(y)) return 1;
+		}
+		return 0;
 	}
 
 	/** か for が, は for ば and ぱ: a Japanese stack's sort and < look at the voiced marks only between otherwise equal texts
@@ -21205,7 +19873,7 @@ public class TTalk extends Thread {
 	private static final char[] UNVOICED_KANA = new char[0x60];
 	static {
 		for(int i=0; i<UNVOICED_KANA.length; i++)
-			UNVOICED_KANA[i] = java.text.Normalizer.normalize(String.valueOf((char)(0x30A0+i)), java.text.Normalizer.Form.NFD).charAt(0);
+			UNVOICED_KANA[i] = Platform.get().normalize(String.valueOf((char)(0x30A0+i)), UnicodeNorm.Form.NFD).charAt(0);
 	}
 	static String withoutVoicedMarks(String text) {
 		StringBuilder out = null;
@@ -21228,7 +19896,7 @@ public class TTalk extends Thread {
 		if(0==obj.objectType.compareTo("field")) return ((OField)obj).getText();
 		if(obj instanceof OPanel) return obj.getText();
 		//put x into word 1 of msg (HC J-2.3 probe A Msg Container: "abc def!" becomes "x def!")
-		if(obj==OMsg.msg || obj==OWindow.msgwindow) return (GMsg.msg!=null && GMsg.area!=null) ? GMsg.area.getText() : "";
+		if(obj==OMsg.msg || obj==OWindow.msgwindow) return (UiHost.get().msgExists() && UiHost.get().msgHasArea()) ? UiHost.get().msgAreaText() : "";
 		return null;
 	}
 
@@ -21239,7 +19907,7 @@ public class TTalk extends Thread {
 			((OField)obj).setText(value);
 		}
 		else if(obj instanceof OPanel) obj.setText(value);
-		else if((obj==OMsg.msg || obj==OWindow.msgwindow) && GMsg.msg!=null) GMsg.msg.setText(value);
+		else if((obj==OMsg.msg || obj==OWindow.msgwindow) && UiHost.get().msgExists()) UiHost.get().setMsgText(value);
 		TUtil.partChangedOnScreen(obj); //an external that colours the card window (ColorizeHC) gets HyperCard's copy of the part
 	}
 
@@ -21359,7 +20027,34 @@ public class TTalk extends Thread {
 	}
 
 	private static boolean collectionVariable(String name, wordType type, MemoryData memory) {
-		return type!=wordType.STRING && TalkCollection.isCollection(getVariable(memory, name));
+		return type!=wordType.STRING && TalkCollection.isCollection(peekVariable(memory, name));
+	}
+
+	/** getVariable without bringing a collection's text up to date (ValueList.peek): to tell what kind of value it is */
+	static String peekVariable(MemoryData memData, String name) {
+		if(memData==null || name==null || memData.treeset==null) return null;
+		String str = name.toLowerCase(Locale.ROOT);
+		boolean seesGlobal = memData.seesGlobal(str) && globalData.treeset.contains(str);
+		if(!memData.treeset.contains(str) && !seesGlobal) return null;
+		int local = memData.indexOfName(str);
+		if(local>=0) return memData.valueList instanceof ValueList ? ((ValueList)memData.valueList).peek(local) : memData.valueList.get(local);
+		if(!seesGlobal) return null;
+		int global = globalData.indexOfName(str);
+		if(global<0) return null;
+		return globalData.valueList instanceof ValueList ? ((ValueList)globalData.valueList).peek(global) : globalData.valueList.get(global);
+	}
+
+	/** The collection in the variable, decoded to be read or changed in place (see LiveNode); null when it holds none */
+	static LiveNode liveCollection(MemoryData memData, String name) throws xTalkException {
+		if(memData==null || name==null || memData.treeset==null) return null;
+		String str = name.toLowerCase(Locale.ROOT);
+		boolean seesGlobal = memData.seesGlobal(str) && globalData.treeset.contains(str);
+		if(!memData.treeset.contains(str) && !seesGlobal) return null;
+		int local = memData.indexOfName(str);
+		if(local>=0) return memData.valueList instanceof ValueList ? ((ValueList)memData.valueList).live(local) : null;
+		if(!seesGlobal) return null;
+		int global = globalData.indexOfName(str);
+		return global>=0 && globalData.valueList instanceof ValueList ? ((ValueList)globalData.valueList).live(global) : null;
 	}
 
 	private static boolean collectionPutCommand(ArrayList<String> words, wordType[] types,
@@ -21368,36 +20063,62 @@ public class TTalk extends Thread {
 		if(direction<2 || direction+1>=words.size()) return false;
 		int dest=direction+1;
 		if(!collectionVariable(words.get(dest), types[dest], memory)) return false;
-		TalkCollection root=TalkCollection.decodeForUpdate(getVariable(memory, words.get(dest)));
 		String mode=words.get(direction).toLowerCase(Locale.ROOT);
-		String value=Evalution(words, types, 1, direction-1, memory, object, target);
-		if(dest==words.size()-1){
-			if(mode.equals("after") && root.isArray()) root.items.add(value);
-			else if(mode.equals("before") && root.isArray()) root.items.add(0, value);
-			else return false;
-			setVariable(memory, words.get(dest), root.encode());
-			return true;
-		}
-		if(!mode.equals("into")) throw new xTalkException("Use into to add an indexed element");
+		if(dest==words.size()-1 && !(isArrayVariable(memory, words.get(dest)) && (mode.equals("after") || mode.equals("before")))) return false;
+		if(dest!=words.size()-1 && !mode.equals("into")) throw new xTalkException("Use into to add an indexed element");
 		ArrayList<String> keys=new ArrayList<>();
 		int pos=dest+1;
 		while(pos<words.size() && types[pos]==wordType.LCOLLECTION){
 			int close=collectionClose(types, pos, words.size()-1);
+			pos=close+1;
+		}
+		if(pos!=words.size() || (dest!=words.size()-1 && pos==dest+1)) return false;
+		String value=Evalution(words, types, 1, direction-1, memory, object, target);
+		pos=dest+1;
+		while(pos<words.size()){
+			int close=collectionClose(types, pos, words.size()-1);
 			keys.add(Evalution(words, types, pos+1, close-1, memory, object, target));
 			pos=close+1;
 		}
-		if(pos!=words.size() || keys.isEmpty()) return false;
-		ArrayList<TalkCollection> parents=new ArrayList<>();
-		parents.add(root);
-		for(int i=0; i<keys.size()-1; i++){
-			String child=parents.get(i).get(keys.get(i));
-			parents.add(TalkCollection.decodeForUpdate(child));
+		//the value and the keys first: they may read the variable (its text is brought up to date then)
+		LiveNode root=liveCollection(memory, words.get(dest));
+		if(root==null){
+			//a list that does not keep nodes (MemoryData made by a test or an external): decoded and encoded whole
+			TalkCollection whole=TalkCollection.decodeForUpdate(getVariable(memory, words.get(dest)));
+			if(keys.isEmpty()){
+				if(mode.equals("after")) whole.items.add(value); else whole.items.add(0, value);
+				setVariable(memory, words.get(dest), whole.encode());
+				return true;
+			}
+			ArrayList<TalkCollection> parents=new ArrayList<>();
+			parents.add(whole);
+			for(int i=0; i<keys.size()-1; i++) parents.add(TalkCollection.decodeForUpdate(parents.get(i).get(keys.get(i))));
+			parents.get(parents.size()-1).put(keys.get(keys.size()-1), value);
+			for(int i=parents.size()-2; i>=0; i--) parents.get(i).put(keys.get(i), parents.get(i+1).encode());
+			setVariable(memory, words.get(dest), whole.encode());
+			return true;
 		}
-		parents.get(parents.size()-1).put(keys.get(keys.size()-1), value);
-		for(int i=parents.size()-2; i>=0; i--)
-			parents.get(i).put(keys.get(i), parents.get(i+1).encode());
-		setVariable(memory, words.get(dest), root.encode());
+		if(keys.isEmpty()){
+			if(mode.equals("after")) root.add(value); else root.addFirst(value);
+			return true;
+		}
+		LiveNode node=root;
+		ArrayList<LiveNode> path=new ArrayList<>();
+		for(int i=0; i<keys.size()-1; i++){
+			path.add(node);
+			node=node.child(keys.get(i));
+			if(node==null) throw new xTalkException("An array or a dictionary is required");
+		}
+		node.put(keys.get(keys.size()-1), value);
+		for(LiveNode parent : path) parent.touch();
 		return true;
+	}
+
+	private static int collectionSize(TalkCollection c) { return c.isArray() ? c.items.size() : c.entries.size(); }
+
+	private static boolean isArrayVariable(MemoryData memory, String name) throws xTalkException {
+		LiveNode node = liveCollection(memory, name);
+		return node!=null ? node.isArray() : TalkCollection.decode(getVariable(memory, name)).isArray();
 	}
 
 	private static boolean collectionSetCommand(ArrayList<String> words, wordType[] types,
@@ -21495,7 +20216,7 @@ public class TTalk extends Thread {
 		String w = stringList.get(p);
 		boolean panelWord = w.equalsIgnoreCase("panel") ||
 			(isCardWord(w) || isBackgroundWord(w)) && p+1<stringList.size() && stringList.get(p+1).equalsIgnoreCase("panel");
-		if(!panelWord || PCARD.pc==null || PCARD.pc.stack==null) return false;
+		if(!panelWord || !Host.get().hasCardWindow() || HZ.stack()==null) return false;
 		ObjResult r = getObjectfromList(stringList, typeAry, p, object, target);
 		if(r==null || !(r.obj instanceof OPanel)) throw new xTalkException("No such panel");
 		OPanel panel = (OPanel)r.obj;
@@ -21526,7 +20247,7 @@ public class TTalk extends Thread {
 				w2.equalsIgnoreCase("field") || w2.equalsIgnoreCase("fld") || w2.equalsIgnoreCase("part");
 		}
 		if(!partWord) return false;
-		if(PCARD.pc==null || PCARD.pc.stack==null) return false;
+		if(!Host.get().hasCardWindow() || HZ.stack()==null) return false;
 		OObject part = null;
 		try{
 			//with the variables: delete cd btn n / delete cd btn it (HC J-2.3 deletes that button)
@@ -21547,16 +20268,13 @@ public class TTalk extends Thread {
 		owner.partsList.removeIf(o -> o.id==partId && o.getClass()==partClass);
 		if(part instanceof OButton) owner.btnList.removeIf(o -> o.id==partId);
 		else owner.fldList.removeIf(o -> o.id==partId);
-		GMenuBrowse.removeCardDataForBgPart(part);
+		UiHost.get().gMenuBrowseRemoveCardDataForBgPart(part);
 		owner.changed = true;
 		//表示中のカードにある部品なら画面からも外す
-		OCard cur = PCARD.pc.stack.curCard;
+		OCard cur = HZ.stack().curCard;
 		if(cur!=null && (owner==cur || owner==cur.bg || (owner instanceof OBackground && cur.bgid==owner.id))){
 			javax.swing.JComponent comp = part instanceof OButton ? ((OButton)part).getComponent() : ((OField)part).getComponent();
-			if(PCARD.pc.mainPane!=null){
-				if(comp!=null) PCARD.pc.mainPane.remove(comp);
-				OCard.reloadCurrentCard();
-			}
+			UiHost.get().removeFromCardPane(this, stringList, typeAry, memData, object, target, comp);
 		}
 		return true;
 	}
@@ -21651,20 +20369,20 @@ public class TTalk extends Thread {
 		String name = text.trim();
 		String stackPath = resolveStackPath(name);
 		if(stackPath==null) stackPath = askWhereIsStack(name);
-		if(stackPath==null){ PCARD.pc.stack.endBackNavigation(); return "No such stack."; }
+		if(stackPath==null){ HZ.stack().endBackNavigation(); return "No such stack."; }
 		return goCardOfStack(stackPath, null, memData, object, target);
 	}
 
 	/** The card a container's text names for go: a card descriptor ("card id 9234", "card \"Index\""), a number or a name */
 	private static OObject cardNamedByText(String text, MemoryData memData, OObject target){
 		String v = text==null ? "" : text.trim();
-		if(v.isEmpty() || PCARD.pc==null || PCARD.pc.stack==null) return null;
+		if(v.isEmpty() || !Host.get().hasCardWindow() || HZ.stack()==null) return null;
 		if(isObjectDescriptor(v)){
 			try{ OObject o = getObject(v, memData, target); if(o instanceof OCard) return o; }
 			catch(xTalkException | RuntimeException e){ /* not a card here */ }
 		}
-		if(isOrdinalNumber(v)) return PCARD.pc.stack.GetCardbyNum(Integer.parseInt(v));
-		return PCARD.pc.stack.GetCard(v);
+		if(isOrdinalNumber(v)) return HZ.stack().GetCardbyNum(Integer.parseInt(v));
+		return HZ.stack().GetCard(v);
 	}
 
 	/** A button/field/part reference starts at k ("cd fld", "card button", "bg part", "field"): it cannot own a part, so an
@@ -21687,7 +20405,7 @@ public class TTalk extends Thread {
 			typeAry[k+1]!=wordType.STRING && stringList.get(k+1).equalsIgnoreCase("of");
 	}
 
-	private static OObject getObject(ArrayList<String> stringList, wordType[] typeAry, int start, int end, MemoryData memData, OObject object, OObject target)
+	static OObject getObject(ArrayList<String> stringList, wordType[] typeAry, int start, int end, MemoryData memData, OObject object, OObject target)
 	throws xTalkException {
 	    //long timestart = System.currentTimeMillis();
 		OObject obj=null;
@@ -21732,7 +20450,7 @@ public class TTalk extends Thread {
 				OObject viaLiteral = getObject(v, memData, target);
 				if(viaLiteral!=null) return viaLiteral;
 			}
-			OObject named = PCARD.pc!=null && PCARD.pc.stack!=null && stackNamed(PCARD.pc.stack, v) ? PCARD.pc.stack : null;
+			OObject named = Host.get().hasCardWindow() && HZ.stack()!=null && stackNamed(HZ.stack(), v) ? HZ.stack() : null;
 			if(named==null && v.equalsIgnoreCase("home")) named = homeStackObject();
 			if(named==null) named = resolveStackObject(v);
 			if(named!=null) return named;
@@ -21864,7 +20582,7 @@ public class TTalk extends Thread {
 		}
 		else if((stringList.get(next).equalsIgnoreCase("msg") || stringList.get(next).equalsIgnoreCase("message")) &&
 				next+1<=end && stringList.get(next+1).equalsIgnoreCase("window")){
-			obj=OWindow.msgwindow; //also from a variable: put "msg window" into w; the height of w (HyperPiece 2 モニターのまん中)
+			obj=msgWindowObject(); //also from a variable: put "msg window" into w; the height of w (HyperPiece 2 モニターのまん中)
 		}
 		else if(watcherWindowAt(stringList, typeAry, next, end)!=null){
 			//show message watcher / show variable watcher (HyperCard 2.x Home's mw, vw)
@@ -21974,17 +20692,17 @@ public class TTalk extends Thread {
 			}
 			j--;
 			String str = objectNumberText(Evalution(stringList, typeAry, next+1, j, memData, object, target));
-			JMenu menu = findMenu(str); //menu N(1始まり) / menu "名前"
+			MMenu menu = findMenu(str); //menu N(1始まり) / menu "名前"
 			if(menu!=null) obj = new OMenu(menu);
 		}
 		else if((stringList.get(next).equalsIgnoreCase("cd") || stringList.get(next).equalsIgnoreCase("card")) &&
 				next+1<=end && typeAry[next+1]!=wordType.STRING && isPictureWord(stringList.get(next+1))){ //card "PICTURE" is a card's name (Color XCMD)
-			obj=PCARD.pc.stack.curCard.picture;
+			obj=HZ.stack().curCard.picture;
 			next++;//next+=2;
 		}
 		else if((stringList.get(next).equalsIgnoreCase("bg") || stringList.get(next).equalsIgnoreCase("bkgnd") || stringList.get(next).equalsIgnoreCase("background")) &&
 				next+1<=end && typeAry[next+1]!=wordType.STRING && isPictureWord(stringList.get(next+1))){
-			obj=PCARD.pc.stack.curCard.bg.picture;
+			obj=HZ.stack().curCard.bg.picture;
 			next++;//next+=2;
 		}
 		else if(isPictureWord(stringList.get(next)) &&
@@ -22002,9 +20720,9 @@ public class TTalk extends Thread {
 		else if(stringList.get(next).equalsIgnoreCase("this")){
 			next++;
 			if(next>end) throw new xTalkException("Cannot identify object {0}", errStr);
-			OStack thisStack = PCARD.pc.stack;
+			OStack thisStack = HZ.stack();
 			if(thisStack.curCard==null){
-				//the stack is closing (PCARD.pc.stack is empty already) and an external's xCloseEvt runs a statement: the closing
+				//the stack is closing (HZ.stack() is empty already) and an external's xCloseEvt runs a statement: the closing
 				//stack's card, as for part references (OneShot's UxMovie sends "send "CloseMovie …" to this card" from its window's close)
 				OStack own = stackOf(object);
 				if(own!=null && own.curCard!=null) thisStack = own;
@@ -22035,7 +20753,7 @@ public class TTalk extends Thread {
 		else if((stringList.get(next).equalsIgnoreCase("next") || stringList.get(next).equalsIgnoreCase("prev") ||
 				stringList.get(next).equalsIgnoreCase("previous")) && next+2<=end && stringList.get(next+1).equalsIgnoreCase("marked") &&
 				isCardWord(stringList.get(next+2))){
-			obj = PCARD.pc.stack.relativeMarkedCard(stringList.get(next).equalsIgnoreCase("next"));
+			obj = HZ.stack().relativeMarkedCard(stringList.get(next).equalsIgnoreCase("next"));
 			if(obj==null) throw new xTalkException("No marked cards");
 			next+=3;
 		}
@@ -22053,17 +20771,17 @@ public class TTalk extends Thread {
 			if(stringList.get(next).equalsIgnoreCase("card") || stringList.get(next).equalsIgnoreCase("cd")){
 				int id;
 				int i;
-				for(i=0; i<PCARD.pc.stack.cardIdList.size();i++){
-					if(PCARD.pc.stack.curCard!=null && PCARD.pc.stack.curCard.id == PCARD.pc.stack.cardIdList.get(i))
+				for(i=0; i<HZ.stack().cardIdList.size();i++){
+					if(HZ.stack().curCard!=null && HZ.stack().curCard.id == HZ.stack().cardIdList.get(i))
 						break;
 				}
-				if(i==PCARD.pc.stack.cardIdList.size()) i=0;
+				if(i==HZ.stack().cardIdList.size()) i=0;
 				else{
 					i++;
-					if(i>=PCARD.pc.stack.cardIdList.size()) i=0;
+					if(i>=HZ.stack().cardIdList.size()) i=0;
 				}
-				id = PCARD.pc.stack.cardIdList.get(i);
-				obj = PCARD.pc.stack.GetCardbyId(id);
+				id = HZ.stack().cardIdList.get(i);
+				obj = HZ.stack().GetCardbyId(id);
 				next++;
 			}
 		}
@@ -22071,7 +20789,7 @@ public class TTalk extends Thread {
 			next++;
 			if(next>end) throw new xTalkException("Cannot identify object {0}", errStr);
 			if(stringList.get(next).equalsIgnoreCase("card") || stringList.get(next).equalsIgnoreCase("cd")){
-				obj = PCARD.pc.stack.GetCardbyNum(PCARD.pc.stack.cardIdList.size());
+				obj = HZ.stack().GetCardbyNum(HZ.stack().cardIdList.size());
 				next++;
 			}
 		}
@@ -22086,13 +20804,13 @@ public class TTalk extends Thread {
 					for(j=next; j<end; j++){if(stringList.get(j).equalsIgnoreCase("of")) {j--;break;}}
 					String str = objectNumberText(Evalution(stringList, typeAry, next, j, memData, object, target));
 					try{
-						obj = PCARD.pc.stack.GetMarkedCardbyNum(Integer.valueOf(str));
+						obj = HZ.stack().GetMarkedCardbyNum(Integer.valueOf(str));
 					}catch(Exception err){ throw new xTalkException("Cannot identify object {0}", errStr);};
 					next = j+1;
 				}
 				else{
 					//番号省略時は最初にマークされているカード
-					obj = PCARD.pc.stack.GetMarkedCardbyNum(1);
+					obj = HZ.stack().GetMarkedCardbyNum(1);
 				}
 				if(obj==null) throw new xTalkException("Cannot identify object {0}", errStr);
 			}
@@ -22131,9 +20849,9 @@ public class TTalk extends Thread {
 			// Part references without an explicit "of card" use the current card.
 			// This is separate from handler lookup: ReceiveMessage follows the
 			// handler's static hierarchy first and then adds the dynamic path.
-			OCardBase cdbase = PCARD.pc.stack.curCard;
+			OCardBase cdbase = HZ.stack().curCard;
 			if(cdbase==null){
-				//the stack is closing (PCARD.pc.stack is empty already) and an external's xCloseEvt callback runs its scripts:
+				//the stack is closing (HZ.stack() is empty already) and an external's xCloseEvt callback runs its scripts:
 				//CalendarPallete's closeCalendar sends to cd btn 2 of the closing stack's card
 				OStack own = stackOf(object);
 				if(own!=null) cdbase = own.curCard;
@@ -22196,20 +20914,20 @@ public class TTalk extends Thread {
 						{
 							String relative = stringList.get(i+1).toLowerCase(Locale.ROOT);
 							int cardIndex = 0;
-							for(; cardIndex<PCARD.pc.stack.cardIdList.size(); cardIndex++){
-								if(PCARD.pc.stack.curCard!=null &&
-									PCARD.pc.stack.curCard.id==PCARD.pc.stack.cardIdList.get(cardIndex)) break;
+							for(; cardIndex<HZ.stack().cardIdList.size(); cardIndex++){
+								if(HZ.stack().curCard!=null &&
+									HZ.stack().curCard.id==HZ.stack().cardIdList.get(cardIndex)) break;
 							}
-							if(cardIndex>=PCARD.pc.stack.cardIdList.size()) cardIndex=0;
+							if(cardIndex>=HZ.stack().cardIdList.size()) cardIndex=0;
 							if(relative.equals("next")){
-								cardIndex=(cardIndex+1)%PCARD.pc.stack.cardIdList.size();
+								cardIndex=(cardIndex+1)%HZ.stack().cardIdList.size();
 							}
 							else if(relative.equals("prev") || relative.equals("previous")){
-								cardIndex=(cardIndex+PCARD.pc.stack.cardIdList.size()-1)%PCARD.pc.stack.cardIdList.size();
+								cardIndex=(cardIndex+HZ.stack().cardIdList.size()-1)%HZ.stack().cardIdList.size();
 							}
 							else if(relative.equals("first")) cardIndex=0;
-							else if(relative.equals("last")) cardIndex=PCARD.pc.stack.cardIdList.size()-1;
-							cdbase=PCARD.pc.stack.GetCardbyId(PCARD.pc.stack.cardIdList.get(cardIndex));
+							else if(relative.equals("last")) cardIndex=HZ.stack().cardIdList.size()-1;
+							cdbase=HZ.stack().GetCardbyId(HZ.stack().cardIdList.get(cardIndex));
 							if(!relative.equals("this") && i+4<=end && typeAry[skipNops(typeAry, i+3, end)]!=wordType.STRING &&
 									stringList.get(skipNops(typeAry, i+3, end)).equalsIgnoreCase("of")){
 								//… of next card of this bg (ばな３): the next card that has that background. first/last too: HyperBucks9's
@@ -22231,7 +20949,7 @@ public class TTalk extends Thread {
 								for(j=i+3; j<end; j++){if(stringList.get(j).equalsIgnoreCase("of")) {j--;break;}}
 								String str = objectNumberText(Evalution(stringList, typeAry, i+3, j, memData, object, target));
 								try{
-									cdbase=PCARD.pc.stack.GetCardbyId(Integer.valueOf(str));
+									cdbase=HZ.stack().GetCardbyId(Integer.valueOf(str));
 								}catch(Exception err){ throw new xTalkException("Cannot identify object {0}", errStr);};
 							}
 							else {
@@ -22244,12 +20962,12 @@ public class TTalk extends Thread {
 									try{ inBg = getObjectfromList(stringList, typeAry, i+1, object, target); }catch(xTalkException e){ inBg = null; }
 								}
 								String str = inBg!=null && inBg.obj instanceof OCardBase ? null : objectNumberText(Evalution(stringList, typeAry, i+2, j, memData, object, target));
-								OCardBase named = inBg!=null && inBg.obj instanceof OCardBase ? (OCardBase)inBg.obj : literal ? PCARD.pc.stack.GetCard(str) : null;
+								OCardBase named = inBg!=null && inBg.obj instanceof OCardBase ? (OCardBase)inBg.obj : literal ? HZ.stack().GetCard(str) : null;
 								if(named!=null) cdbase=named;
 								else try{
-									cdbase=PCARD.pc.stack.GetCardbyNum(Integer.valueOf(str));
+									cdbase=HZ.stack().GetCardbyNum(Integer.valueOf(str));
 								}catch(Exception err){
-									cdbase=PCARD.pc.stack.GetCard(str);
+									cdbase=HZ.stack().GetCard(str);
 								}
 							}
 							if(cdbase!=null) {
@@ -22265,7 +20983,7 @@ public class TTalk extends Thread {
 								for(j=i+3; j<end; j++){if(stringList.get(j).equalsIgnoreCase("of")) {j--;break;}}
 								String str = objectNumberText(Evalution(stringList, typeAry, i+3, j, memData, object, target));
 								try{
-									cdbase=PCARD.pc.stack.GetBackgroundbyId(Integer.valueOf(str));
+									cdbase=HZ.stack().GetBackgroundbyId(Integer.valueOf(str));
 								}catch(Exception err){ throw new xTalkException("Cannot identify object {0}", errStr);};
 							}
 							else {
@@ -22273,12 +20991,12 @@ public class TTalk extends Thread {
 								for(j=i+2; j<end; j++){if(stringList.get(j).equalsIgnoreCase("of")) {j--;break;}}
 								boolean literal = isQuotedNumberRange(stringList, typeAry, i+2, j);
 								String str = objectNumberText(Evalution(stringList, typeAry, i+2, j, memData, object, target));
-								OCardBase named = literal ? PCARD.pc.stack.GetBackground(str) : null;
+								OCardBase named = literal ? HZ.stack().GetBackground(str) : null;
 								if(named!=null) cdbase=named;
 								else try{
-									cdbase=PCARD.pc.stack.GetBackgroundbyNum(Integer.valueOf(str));
+									cdbase=HZ.stack().GetBackgroundbyNum(Integer.valueOf(str));
 								}catch(Exception err){
-									cdbase=PCARD.pc.stack.GetBackground(str);
+									cdbase=HZ.stack().GetBackground(str);
 								}
 							}
 							if(cdbase!=null) {
@@ -22293,9 +21011,9 @@ public class TTalk extends Thread {
 							//pushしたカード記述が別スタックを指していても、そのスタックの部品は参照できない
 							if(stringList.get(i+1).equalsIgnoreCase("stack") && i+2<=end){
 								String which = Evalution(stringList, typeAry, i+2, end, memData, object, target);
-								String shortName = PCARD.pc.stack.name==null ? "" : PCARD.pc.stack.name.replaceAll("(?i)\\.hzb$", "");
-								if(!isCurrentStackPath(which) && !which.equalsIgnoreCase(shortName) && !which.equalsIgnoreCase(PCARD.pc.stack.name==null?"":PCARD.pc.stack.name) &&
-										!stackNamed(PCARD.pc.stack, which))
+								String shortName = HZ.stack().name==null ? "" : HZ.stack().name.replaceAll("(?i)\\.hzb$", "");
+								if(!isCurrentStackPath(which) && !which.equalsIgnoreCase(shortName) && !which.equalsIgnoreCase(HZ.stack().name==null?"":HZ.stack().name) &&
+										!stackNamed(HZ.stack(), which))
 									throw new xTalkException("Cannot identify object {0} (in another stack)", errStr);
 							}
 							end = i-1;
@@ -22342,7 +21060,7 @@ public class TTalk extends Thread {
 							!chunkOfAt(stringList, typeAry, j)) break;}
 					String str = objectNumberText(Evalution(stringList, typeAry, next, j, memData, object, target));
 					try{
-						obj=PCARD.pc.stack.GetCardbyId(Integer.valueOf(str));
+						obj=HZ.stack().GetCardbyId(Integer.valueOf(str));
 					}catch(Exception err){ throw new xTalkException("Cannot identify object {0}", errStr);};
 					}
 					else {
@@ -22362,20 +21080,20 @@ public class TTalk extends Thread {
 						
 						//数字の指定は番号として先に解釈し、範囲外なら名前として探す
 						if(ordinalFirst(str) && !literal){
-							if(cdbase!=null&&cdbase.objectType.equals("background")) obj=PCARD.pc.stack.GetCardofBgbyNum(cdbase, Integer.valueOf(str.trim()));
-							else obj=PCARD.pc.stack.GetCardbyNum(objectOrdinalCode(Integer.valueOf(str.trim()), PCARD.pc.stack.cardIdList.size()));
+							if(cdbase!=null&&cdbase.objectType.equals("background")) obj=HZ.stack().GetCardofBgbyNum(cdbase, Integer.valueOf(str.trim()));
+							else obj=HZ.stack().GetCardbyNum(objectOrdinalCode(Integer.valueOf(str.trim()), HZ.stack().cardIdList.size()));
 						}
 						if(obj==null){
-							if(cdbase!=null&&cdbase.objectType.equals("background")) obj=PCARD.pc.stack.GetCardofBg(cdbase, str);
-							else obj=PCARD.pc.stack.GetCard(str);
+							if(cdbase!=null&&cdbase.objectType.equals("background")) obj=HZ.stack().GetCardofBg(cdbase, str);
+							else obj=HZ.stack().GetCard(str);
 						}
 						//名前で見つからなかった引用符付きの数字は番号で探す(int に収まらない数字 card "3875990400" は番号ではない: 見つからない)
 						if(obj==null && literal){
 							long ordinal;
 							try{ordinal=Long.parseLong(str.trim());}catch(NumberFormatException e){ordinal=-1;}
 							if(ordinal>=0 && ordinal<=Integer.MAX_VALUE){
-								if(cdbase!=null&&cdbase.objectType.equals("background")) obj=PCARD.pc.stack.GetCardofBgbyNum(cdbase, (int)ordinal);
-								else obj=PCARD.pc.stack.GetCardbyNum((int)ordinal);
+								if(cdbase!=null&&cdbase.objectType.equals("background")) obj=HZ.stack().GetCardofBgbyNum(cdbase, (int)ordinal);
+								else obj=HZ.stack().GetCardbyNum((int)ordinal);
 							}
 						}
 					}
@@ -22388,12 +21106,12 @@ public class TTalk extends Thread {
 				if(next>end) throw new xTalkException("Cannot identify object {0}", errStr);
 				if(stringList.get(next).equalsIgnoreCase("button")||stringList.get(next).equalsIgnoreCase("btn")){
 					flag=1;
-					//cdbase = PCARD.pc.stack.curCard.bg;
+					//cdbase = HZ.stack().curCard.bg;
 					next++;
 				}
 				else if(stringList.get(next).equalsIgnoreCase("field")||stringList.get(next).equalsIgnoreCase("fld")){
 					flag=2;
-					//cdbase = PCARD.pc.stack.curCard.bg;
+					//cdbase = HZ.stack().curCard.bg;
 					next++;
 				}
 				else {
@@ -22406,7 +21124,7 @@ public class TTalk extends Thread {
 								!chunkOfAt(stringList, typeAry, j)) break;}
 						String str = objectNumberText(Evalution(stringList, typeAry, next, j, memData, object, target));
 						try{
-							obj=PCARD.pc.stack.GetBackgroundbyId(Integer.valueOf(str));
+							obj=HZ.stack().GetBackgroundbyId(Integer.valueOf(str));
 						}catch(Exception err){ throw new xTalkException("Cannot identify object {0}", errStr);};
 					}
 					else {
@@ -22415,12 +21133,12 @@ public class TTalk extends Thread {
 								!chunkOfAt(stringList, typeAry, j)) break;}
 						boolean literal = isQuotedNumberRange(stringList, typeAry, next, j);
 						String str = objectNumberText(Evalution(stringList, typeAry, next, j, memData, object, target));
-						OBackground named = literal ? PCARD.pc.stack.GetBackground(str) : null;
+						OBackground named = literal ? HZ.stack().GetBackground(str) : null;
 						if(named!=null) obj=named;
 						else try{
-							obj=PCARD.pc.stack.GetBackgroundbyNum(Integer.valueOf(str));
+							obj=HZ.stack().GetBackgroundbyNum(Integer.valueOf(str));
 						}catch(Exception err){
-							obj=PCARD.pc.stack.GetBackground(str);
+							obj=HZ.stack().GetBackground(str);
 						}
 					}
 				}
@@ -22461,7 +21179,7 @@ public class TTalk extends Thread {
 						if(!bg_flag) {
 							obj=cdbase.GetBtn(str);
 							/*if(obj==null && cdbg_flag){
-								cdbase=PCARD.pc.stack.GetBackgroundbyId(((OCard)cdbase).bgid);
+								cdbase=HZ.stack().GetBackgroundbyId(((OCard)cdbase).bgid);
 								obj=cdbase.GetBtn(str);
 							}*/
 						}
@@ -22598,7 +21316,7 @@ public class TTalk extends Thread {
 				(stringList.get(i).equalsIgnoreCase("of")||stringList.get(i).equalsIgnoreCase("in"))){scope=i;break;}
 			boolean byId=typeAry[sp+1]!=wordType.STRING&&stringList.get(sp+1).equalsIgnoreCase("id");
 			String ref=Evalution(stringList,typeAry,sp+(byId?2:1),scope<0?end:scope-1,memData,object,target);
-			OCardBase owner=PCARD.pc.stack.curCard;
+			OCardBase owner=HZ.stack().curCard;
 			if(sp!=next&&isBackgroundWord(first))owner=owner.getBg();
 			if(scope>=0){OObject scoped=getObject(stringList,typeAry,scope+1,end,memData,object,target);if(!(scoped instanceof OCardBase))throw new xTalkException("A Shape's owner must be a card or background");owner=(OCardBase)scoped;}
 			OShape found=owner==null?null:owner.getShape(ref,byId);
@@ -22616,7 +21334,7 @@ public class TTalk extends Thread {
 			int from=p+(byId?2:1), to=scope<0 ? end : scope-1;
 			boolean quoted=from==to && isQuotedNumberLiteral(stringList.get(from));
 			String ref=Evalution(stringList,typeAry,from,to,memData,object,target);
-			OCardBase owner=PCARD.pc.stack.curCard;
+			OCardBase owner=HZ.stack().curCard;
 			if(p!=next && isBackgroundWord(first)) owner=owner.getBg();
 			if(scope>=0){
 				OObject scopeObject=getObject(stringList,typeAry,scope+1,end,memData,object,target);

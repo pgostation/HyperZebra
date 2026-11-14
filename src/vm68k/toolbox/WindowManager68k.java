@@ -12,7 +12,7 @@ import java.util.Map;
  * their effects are reported back to the application through the classic
  * FindWindow / GrowWindow / TrackGoAway protocol.
  */
-final class WindowManager68k {
+class WindowManager68k {
 	static final int WINDOW_SIZE=156;
 	static final int IN_DESK=0,IN_MENU_BAR=1,IN_SYS_WINDOW=2,IN_CONTENT=3,IN_DRAG=4,IN_GROW=5,IN_GO_AWAY=6,IN_ZOOM_IN=7,IN_ZOOM_OUT=8;
 
@@ -600,7 +600,11 @@ final class WindowManager68k {
 	}
 
 	void select(int w) throws M68kCpuException {
-		Window win=windows.get(w);if(win==null)return;
+		Window win=windows.get(w);
+		// HyperCard's card window, which is not one of this VM's windows (an external's VM): the host hears of it, so the external's
+		// windows go behind the card (The Haunted House's BasicCover selects the card over its 640x480 desktop cover). MacAppHost
+		// knows no window of that record and does nothing
+		if(win==null){if(tb.hosted()&&(w==Xcmd68k.CARD_WINDOW_RECORD||tb.cardWindow!=null&&w==tb.cardWindow.record))tb.host().selectWindow(w);return;}
 		// The ROM keeps one pending activation (CurActivate) and SelectWindow overwrites it: an activate event still queued for
 		// the window selected before is never delivered. Classic Gin Rummy selects its table, then its shareware dialog; the
 		// table's late activate event made its handler select the table again, over the dialog it was waiting on.
@@ -621,7 +625,7 @@ final class WindowManager68k {
 			// and its deactivate event for the window that was in front comes first (CurDeactive before CurActivate): the host would
 			// post it only when the new window is shown, after this activate - Nisus Writer takes that order as "no active document"
 			// and never draws the update of the document window it opens beside another one (it came up blank).
-			if(previous!=null&&previous!=win&&previous.visible&&!previous.service&&tb.hosted()){MacAppHost h=tb.host();var ph=h.window(previous.record);if(ph!=null)h.deactivateHost(ph);}
+			if(previous!=null&&previous!=win&&previous.visible&&!previous.service&&tb.hosted()){VmHost h=tb.host();var ph=h.window(previous.record);if(ph!=null)h.deactivateHost(ph);}
 			tb.events.postActivate(w,true);
 		}
 	}
@@ -868,7 +872,7 @@ final class WindowManager68k {
 		if(width>4000||height>4000){
 			// A window far larger than any screen is a backdrop (WaterRace: MoveWindow -16000,-16000 then SizeWindow 32000 x 32000,
 			// to cover every screen): it keeps the part on the screen, as only that can be seen, rather than a buffer of 4000 x 4000.
-			java.awt.Rectangle screen=MacAppHost.screenBounds();
+			java.awt.Rectangle screen=UiHost.get().macAppHostScreenBounds();
 			int left=Math.max(win.left,screen.x),top=Math.max(win.top,screen.y),right=(int)Math.min((long)win.left+width,screen.x+screen.width),bottom=(int)Math.min((long)win.top+height,screen.y+screen.height);
 			if(right>left&&bottom>top){if(left!=win.left||top!=win.top)move(w,left,top);width=right-left;height=bottom-top;}
 		}
@@ -1149,7 +1153,7 @@ final class WindowManager68k {
 				final int sx=c[1]-l.outsets[1],sy=c[0]-l.outsets[0];
 				paintFrame(win,new int[]{sy,sx,sy+l.height,sx+l.width},g->g.drawImage(img,sx,sy,null));
 				tb.host().setOverlay(win.record,img); // the buffer has the screen's depth: the host shows the scheme's colours over it
-				tb.host().setTitleBand(win.record,l.outsets[0]); // an in-window menu bar goes under the title bar (Windows, Linux)
+				tb.host().setTitleBand(win.record,l.outsets[0],l.outsets[1],l.outsets[3]); // an in-window menu bar goes under the title bar (Windows, Linux)
 				return 0;}
 			case 1:{ // wHit
 				int pv=(short)(param>>16),ph=(short)param;
@@ -1297,7 +1301,7 @@ final class WindowManager68k {
 	 * the Window Manager port with the grey XOR pen the ROM sets up). Result: new height in the high word, width in the low, 0 when unchanged.
 	 */
 	private int growWindow(Window win,int start,int sizeRect) throws M68kCpuException {
-		MacAppHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);
+		VmHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);
 		int[] limit=sizeRect==0?new int[]{16,16,4000,4000}:readRect(sizeRect);
 		int minH=Math.max(1,limit[0]),minW=Math.max(1,limit[1]),maxH=Math.max(minH,Math.min(4000,limit[2])),maxW=Math.max(minW,Math.min(4000,limit[3]));
 		int width=win.width,height=win.height,drawnW=-1,drawnH=-1;int rect=memory.allocate(8,2);
@@ -1314,7 +1318,7 @@ final class WindowManager68k {
 					if(win.custom)growImage(win,rect);drawnW=width;drawnH=height;
 					host.setDragOutline(win.left+win.frameLeft,win.top+win.frameTop,width-win.frameLeft+frameRight,height-win.frameTop+frameBottom);
 				}
-				try{Thread.sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+				try{Platform.get().sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			}
 			if(win.custom&&drawnW>0){writeRect(rect,win.top,win.left,win.top+drawnH,win.left+drawnW);growImage(win,rect);}
 		}finally{host.hideDragOutline();memory.free(rect);}
@@ -1417,7 +1421,7 @@ final class WindowManager68k {
 	 * without a title bar by its content, UxGrowCard sizes it from a button: both did nothing.
 	 */
 	private void dragCardWindow(int start,int bounds) throws M68kCpuException {
-		MacAppHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);
+		VmHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);
 		java.awt.Rectangle r=host.toGuestRect(TUtil.cardWindowRect());int[] limit=bounds==0?null:readRect(bounds);
 		host.showDragOutline(new int[]{r.x,r.y,r.width,r.height});
 		int dh=0,dv=0;long deadline=System.currentTimeMillis()+120_000;
@@ -1426,14 +1430,14 @@ final class WindowManager68k {
 				java.awt.Point p=host.mouseLocation();int h=p.x,v=p.y; // the pointer is pinned to boundsRect, as by DragGrayRgn
 				if(limit!=null){h=Math.max(limit[1],Math.min(limit[3]-1,h));v=Math.max(limit[0],Math.min(limit[2]-1,v));}
 				if(h-startH!=dh||v-startV!=dv){dh=h-startH;dv=v-startV;host.moveDragOutline(r.x+dh,r.y+dv);}
-				try{Thread.sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+				try{Platform.get().sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			}
 		}finally{host.hideDragOutline();}
 		if(Mac68kApi.TRACE)System.err.println("[68K] DragWindow of the card window from "+startH+","+startV+" by "+dh+","+dv);
 		if(dh!=0||dv!=0)tb.cardWindow.moveWindow(r.x+dh,r.y+dv);
 	}
 	private int growCardWindow(int start,int sizeRect) throws M68kCpuException {
-		MacAppHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);
+		VmHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);
 		java.awt.Rectangle r=host.toGuestRect(TUtil.cardWindowRect());
 		int[] limit=sizeRect==0?new int[]{16,16,4000,4000}:readRect(sizeRect);
 		int minH=Math.max(1,limit[0]),minW=Math.max(1,limit[1]),maxH=Math.max(minH,Math.min(4000,limit[2])),maxW=Math.max(minW,Math.min(4000,limit[3]));
@@ -1444,14 +1448,14 @@ final class WindowManager68k {
 				java.awt.Point p=host.mouseLocation();
 				int w=Math.max(minW,Math.min(maxW,r.width+p.x-startH)),h=Math.max(minH,Math.min(maxH,r.height+p.y-startV));
 				if(w!=width||h!=height){width=w;height=h;host.setDragOutline(r.x,r.y,width,height);}
-				try{Thread.sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+				try{Platform.get().sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			}
 		}finally{host.hideDragOutline();}
 		if(Mac68kApi.TRACE)System.err.println("[68K] GrowWindow of the card window "+r.width+"x"+r.height+" -> "+width+"x"+height);
 		return width==r.width&&height==r.height?0:(height<<16)|(width&0xffff);
 	}
 	private void dragCustom(Window win,int start,int bounds) throws M68kCpuException {
-		MacAppHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);int left0=win.left,top0=win.top,lastLeft=left0,lastTop=top0;
+		VmHost host=tb.host();int startH=(short)(start&0xffff),startV=(short)(start>>16);int left0=win.left,top0=win.top,lastLeft=left0,lastTop=top0;
 		long deadline=System.currentTimeMillis()+60_000;
 		while(host.isMouseDown()&&System.currentTimeMillis()<deadline){
 			java.awt.Point p=host.unpinnedMouseLocation();int left=left0+p.x-startH,top=top0+p.y-startV;
@@ -1461,7 +1465,7 @@ final class WindowManager68k {
 			if(area!=null){int sl=left+win.frameLeft,st=top+win.frameTop;sl=Math.max(area[1]-win.frameWidth+16,Math.min(area[3]-16,sl));st=Math.max(area[0],Math.min(area[2]-16,st));left=sl-win.frameLeft;top=st-win.frameTop;}
 			else if(bounds!=0){int[] b=readRect(bounds);left=Math.max(b[1]-win.width+16,Math.min(b[3]-16,left));top=Math.max(b[0],Math.min(b[2]-16,top));}
 			if(left!=lastLeft||top!=lastTop){move(win.record,left,top,true);lastLeft=left;lastTop=top;}
-			try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+			try{Platform.get().sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 		}
 		if(frontWindow()!=win.record&&(host.modifiers()&0x100)==0)select(win.record);
 	}
@@ -1500,7 +1504,7 @@ final class WindowManager68k {
 	}
 	int dragRegion(int region,int start,int limitRect,int slopRect,int axis,int action) throws M68kException {
 		int startH=(short)(start&0xffff),startV=(short)(start>>16);int[] limit=limitRect==0?null:readRect(limitRect),slop=slopRect==0?null:readRect(slopRect);
-		int[] bounds=regionBounds(region);MacAppHost host=tb.host();
+		int[] bounds=regionBounds(region);VmHost host=tb.host();
 		// startPt, limitRect, slopRect and the region are in the current port's local coordinates (THINK C 5 drags project
 		// window rows in its window's port); the mouse and the on-screen outline are global
 		int[] origin=globalToLocal(0,0);int toGlobalH=-origin[0],toGlobalV=-origin[1];
@@ -1527,7 +1531,7 @@ final class WindowManager68k {
 				if(bounds!=null)host.moveDragOutline(bounds[1]+toGlobalH+shownH+dh,bounds[0]+toGlobalV+shownV+dv);
 				if(action!=0)tb.callRoutine(action);
 				if(dragTheRgn){int hook=memory.readLong(0x9f6);if(hook!=0)tb.callRoutine(hook);}
-				try{Thread.sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+				try{Platform.get().sleep(15);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
 			}
 		}finally{host.hideDragOutline();}
 		if(area!=null)userDragUntil=System.currentTimeMillis()+2000; // the MoveWindow comes right after
@@ -1536,9 +1540,9 @@ final class WindowManager68k {
 	}
 	/** TrackGoAway/TrackBox for a custom-framed window: true when the mouse goes up in the same part (wHit code {@code part}). */
 	private boolean trackCustom(Window win,int part) throws M68kCpuException {
-		MacAppHost host=tb.host();long deadline=System.currentTimeMillis()+60_000;boolean native_=floaterDef(win.procId>>4)||win.theme!=null;
+		VmHost host=tb.host();long deadline=System.currentTimeMillis()+60_000;boolean native_=floaterDef(win.procId>>4)||win.theme!=null;
 		if(native_)callWdef(win,0,part); // the box goes down as the mouse presses it
-		try{while(host.isMouseDown()&&System.currentTimeMillis()<deadline)try{Thread.sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}}
+		try{while(host.isMouseDown()&&System.currentTimeMillis()<deadline)try{Platform.get().sleep(10);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}}
 		finally{if(native_&&win.pressedPart!=0)callWdef(win,0,win.pressedPart);}
 		java.awt.Point p=host.mouseLocation();return callWdef(win,1,p.y<<16|p.x&0xffff)==part;
 	}
@@ -1743,7 +1747,7 @@ final class WindowManager68k {
 			found=pendingDragWindow;part=IN_DRAG;
 		}else{
 			int[] hit=hitTest(h,v,false);found=hit[0];if(found!=0)part=hit[1];
-			if(found==0&&v<MacAppHost.MENU_BAR_HEIGHT&&!GMenu.isMacOSX())part=IN_DESK;
+			if(found==0&&v<MacAppHost.MENU_BAR_HEIGHT&&!HostXattr68k.macOS())part=IN_DESK;
 		}
 		if(dst!=0)memory.writeLong(dst,found);
 		if(Mac68kApi.TRACE)System.err.println("[68K] FindWindow "+h+","+v+" -> part "+part+" window $"+Integer.toHexString(found));

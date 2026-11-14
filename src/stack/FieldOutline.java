@@ -59,7 +59,7 @@ final class FieldOutline extends MyScrollPane {
 	final JTree tree;
 	private final DefaultTreeModel model;
 	/** The outline as last read from the text. */
-	Data.Tree data = new Data.Tree(new Data.Node("", "", 0, "", null, -1), false);
+	FieldOutlineData.Tree data = new FieldOutlineData.Tree(new FieldOutlineData.Node("", "", 0, "", null, -1), false);
 	/** Set while the view itself changes the selection (not the user). */
 	private boolean syncing;
 	private boolean reloadPending;
@@ -101,7 +101,7 @@ final class FieldOutline extends MyScrollPane {
 				super.processKeyEvent(e);
 			}
 			@Override public void paint(Graphics g){
-				if(PCARD.lockedScreen && !PCARD.capturingEffect) return;
+				if(HZ.lockedScreen && !HZ.capturingEffect) return;
 				super.paint(g);
 			}
 		};
@@ -139,7 +139,7 @@ final class FieldOutline extends MyScrollPane {
 	}
 
 	private static boolean browsing(){
-		return PCARD.editMode==0 && AuthTool.tool==null && (PCARD.pc==null || PCARD.pc.tool==null);
+		return HZ.editMode==0 && !Host.get().authToolActive() && (!Host.get().hasCardWindow() || !Host.get().paintToolActive());
 	}
 
 	/** Labels of an indented outline are edited like the field's text: only with the browse tool and while lockText is false. */
@@ -154,23 +154,23 @@ final class FieldOutline extends MyScrollPane {
 	}
 
 	/** Line widths and insets: the card magnification rounded to whole pixels (fonts and sizes use the exact one). */
-	private int scale(){ return Math.max(1, (int)Math.round(PCARD.scale())); }
+	private int scale(){ return Math.max(1, (int)Math.round(Host.get().scale())); }
 
-	private static Data.Node node(TreePath path){
+	private static FieldOutlineData.Node node(TreePath path){
 		if(path==null) return null;
 		Object last = path.getLastPathComponent();
 		if(!(last instanceof DefaultMutableTreeNode)) return null;
 		Object user = ((DefaultMutableTreeNode)last).getUserObject();
-		return user instanceof Data.Node ? (Data.Node)user : null;
+		return user instanceof FieldOutlineData.Node ? (FieldOutlineData.Node)user : null;
 	}
 
 	/** The font, colours, border and selection mode from the field's properties. */
 	void applyAppearance(){
 		OField f = fldData;
 		int scale = scale();
-		Font font = OObject.stackFont(f.textFont, f.textStyle&0x03, f.textSize*PCARD.scale());
+		Font font = OObject.stackFont(f.textFont, f.textStyle&0x03, f.textSize*Host.get().scale());
 		tree.setFont(font);
-		tree.setRowHeight(PCARD.toPhysical(Math.max(f.textHeight, f.textSize+2)));
+		tree.setRowHeight(Host.get().toPhysical(Math.max(f.textHeight, f.textSize+2)));
 		tree.setForeground(f.color);
 		tree.setBackground(f.bgColor);
 		getViewport().setBackground(f.bgColor);
@@ -208,10 +208,10 @@ final class FieldOutline extends MyScrollPane {
 		if(tree.isEditing()) stopOwnEdit();
 		Set<String> open = loaded ? openNodes() : null;
 		Point view = getViewport().getViewPosition();
-		Data.Tree old = data;
-		data = Data.parse(fldData.getText());
+		FieldOutlineData.Tree old = data;
+		data = FieldOutlineData.parse(fldData.getText());
 		//other text altogether (no node in common, JSON instead of indented text): open it to the outlineLevel like a new one
-		if(open!=null && (old.json!=data.json || !Data.sharesNode(old.root, Data.ids(data.root)))) open = null;
+		if(open!=null && (old.json!=data.json || !FieldOutlineData.sharesNode(old.root, FieldOutlineData.ids(data.root)))) open = null;
 		DefaultMutableTreeNode root = treeNode(data.root);
 		syncing = true;
 		try{
@@ -233,9 +233,9 @@ final class FieldOutline extends MyScrollPane {
 		}finally{ syncing = false; }
 	}
 
-	private static DefaultMutableTreeNode treeNode(Data.Node node){
+	private static DefaultMutableTreeNode treeNode(FieldOutlineData.Node node){
 		DefaultMutableTreeNode t = new DefaultMutableTreeNode(node);
-		for(Data.Node child : node.children) t.add(treeNode(child));
+		for(FieldOutlineData.Node child : node.children) t.add(treeNode(child));
 		return t;
 	}
 
@@ -246,7 +246,7 @@ final class FieldOutline extends MyScrollPane {
 		while(nodes.hasMoreElements()){
 			DefaultMutableTreeNode t = (DefaultMutableTreeNode)nodes.nextElement();
 			if(t==root || t.isLeaf()) continue;
-			Data.Node n = (Data.Node)t.getUserObject();
+			FieldOutlineData.Node n = (FieldOutlineData.Node)t.getUserObject();
 			boolean expand = open!=null ? open.contains(n.id) : n.level<level;
 			if(expand) tree.expandPath(new TreePath(t.getPath()));
 		}
@@ -259,8 +259,8 @@ final class FieldOutline extends MyScrollPane {
 		Enumeration<javax.swing.tree.TreeNode> nodes = root.preorderEnumeration();
 		while(nodes.hasMoreElements()){
 			DefaultMutableTreeNode t = (DefaultMutableTreeNode)nodes.nextElement();
-			if(t==root || t.isLeaf() || !(t.getUserObject() instanceof Data.Node)) continue;
-			if(tree.isExpanded(new TreePath(t.getPath()))) open.add(((Data.Node)t.getUserObject()).id);
+			if(t==root || t.isLeaf() || !(t.getUserObject() instanceof FieldOutlineData.Node)) continue;
+			if(tree.isExpanded(new TreePath(t.getPath()))) open.add(((FieldOutlineData.Node)t.getUserObject()).id);
 		}
 		return open;
 	}
@@ -277,8 +277,8 @@ final class FieldOutline extends MyScrollPane {
 			TreePath first = null;
 			while(nodes.hasMoreElements()){
 				DefaultMutableTreeNode t = (DefaultMutableTreeNode)nodes.nextElement();
-				if(t==root || !(t.getUserObject() instanceof Data.Node)) continue;
-				Data.Node n = (Data.Node)t.getUserObject();
+				if(t==root || !(t.getUserObject() instanceof FieldOutlineData.Node)) continue;
+				FieldOutlineData.Node n = (FieldOutlineData.Node)t.getUserObject();
 				boolean selected = data.json ? !f.selectedPath.isEmpty() && n.path.equals(f.selectedPath)
 					: n.line>0 && Arrays.binarySearch(f.selectedRows, n.line)>=0;
 				if(!selected) continue;
@@ -298,7 +298,7 @@ final class FieldOutline extends MyScrollPane {
 		ArrayList<Integer> lines = new ArrayList<Integer>();
 		String path = "";
 		if(paths!=null) for(TreePath p : paths){
-			Data.Node n = node(p);
+			FieldOutlineData.Node n = node(p);
 			if(n==null) continue;
 			if(n.line>0 && !lines.contains(n.line)) lines.add(n.line);
 			if(p==tree.getLeadSelectionPath() || path.isEmpty()) path = n.path;
@@ -330,23 +330,23 @@ final class FieldOutline extends MyScrollPane {
 
 	/** A label edited in place (the edit ended by a click elsewhere): that line of the text gets the new label after its tabs. */
 	private void labelEdited(TreePath path, Object value){
-		Data.Node n = node(path);
+		FieldOutlineData.Node n = node(path);
 		if(n==null || n.line<1 || data.json) return;
 		String label = value==null ? "" : value.toString();
 		//the outline is rebuilt after the editor has gone (not while the tree is still finishing the edit)
 		if(isPending(n)){
 			if(label.trim().isEmpty()){ SwingUtilities.invokeLater(this::dropPending); return; }
-			String text = Data.setLabel(pendingText, n.line, label);
+			String text = FieldOutlineData.setLabel(pendingText, n.line, label);
 			SwingUtilities.invokeLater(() -> change(text, false, l -> l, n.line));
 			return;
 		}
 		if(label.equals(n.label)) return;
-		String text = Data.setLabel(fldData.getText(), n.line, label);
+		String text = FieldOutlineData.setLabel(fldData.getText(), n.line, label);
 		writeText(text);
 		SwingUtilities.invokeLater(() -> change(text, false, l -> l, n.line));
 	}
 
-	private boolean isPending(Data.Node n){
+	private boolean isPending(FieldOutlineData.Node n){
 		return n!=null && pendingText!=null && n.line==pendingLine;
 	}
 
@@ -382,7 +382,7 @@ final class FieldOutline extends MyScrollPane {
 		fldData.selectedLine = Math.max(0, select);
 		fldData.selectedPath = "";
 		Point view = getViewport().getViewPosition();
-		data = Data.parse(text);
+		data = FieldOutlineData.parse(text);
 		DefaultMutableTreeNode root = treeNode(data.root);
 		syncing = true;
 		try{
@@ -390,7 +390,7 @@ final class FieldOutline extends MyScrollPane {
 			Enumeration<javax.swing.tree.TreeNode> nodes = root.preorderEnumeration();
 			while(nodes.hasMoreElements()){
 				DefaultMutableTreeNode t = (DefaultMutableTreeNode)nodes.nextElement();
-				if(t!=root && !t.isLeaf() && open.contains(((Data.Node)t.getUserObject()).line)) tree.expandPath(new TreePath(t.getPath()));
+				if(t!=root && !t.isLeaf() && open.contains(((FieldOutlineData.Node)t.getUserObject()).line)) tree.expandPath(new TreePath(t.getPath()));
 			}
 			tree.expandPath(new TreePath(root));
 		}finally{ syncing = false; }
@@ -405,8 +405,8 @@ final class FieldOutline extends MyScrollPane {
 		Enumeration<javax.swing.tree.TreeNode> nodes = root.preorderEnumeration();
 		while(nodes.hasMoreElements()){
 			DefaultMutableTreeNode t = (DefaultMutableTreeNode)nodes.nextElement();
-			if(t==root || t.isLeaf() || !(t.getUserObject() instanceof Data.Node)) continue;
-			if(tree.isExpanded(new TreePath(t.getPath()))) open.add(((Data.Node)t.getUserObject()).line);
+			if(t==root || t.isLeaf() || !(t.getUserObject() instanceof FieldOutlineData.Node)) continue;
+			if(tree.isExpanded(new TreePath(t.getPath()))) open.add(((FieldOutlineData.Node)t.getUserObject()).line);
 		}
 		return open;
 	}
@@ -416,7 +416,7 @@ final class FieldOutline extends MyScrollPane {
 		Enumeration<javax.swing.tree.TreeNode> nodes = root.preorderEnumeration();
 		while(nodes.hasMoreElements()){
 			DefaultMutableTreeNode t = (DefaultMutableTreeNode)nodes.nextElement();
-			if(t!=root && t.getUserObject() instanceof Data.Node && ((Data.Node)t.getUserObject()).line==line) return new TreePath(t.getPath());
+			if(t!=root && t.getUserObject() instanceof FieldOutlineData.Node && ((FieldOutlineData.Node)t.getUserObject()).line==line) return new TreePath(t.getPath());
 		}
 		return null;
 	}
@@ -435,28 +435,28 @@ final class FieldOutline extends MyScrollPane {
 	}
 
 	/** The selected node, or null. */
-	private Data.Node selectedNode(){
+	private FieldOutlineData.Node selectedNode(){
 		return node(tree.getLeadSelectionPath()!=null ? tree.getLeadSelectionPath() : tree.getSelectionPath());
 	}
 
 	/** A new empty node to type: the first child of an open node, else the next one after the node and its children (none: last). */
-	void newNodeAfter(Data.Node n, String typed){
+	void newNodeAfter(FieldOutlineData.Node n, String typed){
 		String text = fldData.getText();
 		int at, depth;
 		if(n==null){
-			at = text.isEmpty() ? 1 : FieldTable.Data.lines(text).length+1;
+			at = text.isEmpty() ? 1 : FieldTableData.lines(text).length+1;
 			depth = 0;
 		}
 		else if(!n.children.isEmpty() && tree.isExpanded(pathOfLine(n.line))){
 			at = n.line+1;
-			depth = Data.depth(text, n.children.get(0).line);
+			depth = FieldOutlineData.depth(text, n.children.get(0).line);
 		}
 		else{
-			at = Data.lastLine(n)+1;
-			depth = Data.depth(text, n.line);
+			at = FieldOutlineData.lastLine(n)+1;
+			depth = FieldOutlineData.depth(text, n.line);
 		}
 		final int line = at;
-		change(Data.insertLine(text, line, depth, Data.NEW_NODE), true, l -> l>=line ? l+1 : l, line);
+		change(FieldOutlineData.insertLine(text, line, depth, FieldOutlineData.NEW_NODE), true, l -> l>=line ? l+1 : l, line);
 		pendingLine = line;
 		editLine(line, typed);
 	}
@@ -465,33 +465,33 @@ final class FieldOutline extends MyScrollPane {
 	private void dropPending(){
 		if(pendingText==null) return;
 		int line = pendingLine;
-		Data.Node above = null;
+		FieldOutlineData.Node above = null;
 		for(int l=line-1; l>=1 && above==null; l--) above = data.atLine(l);
 		change(fldData.getText(), false, l -> l==line ? 0 : l>line ? l-1 : l, above!=null ? above.line : 0);
 	}
 
 	/** Return while editing: keeps the label, then a new node below (Return on an empty new node only ends the edit). */
 	private void editorReturn(){
-		Data.Node n = node(tree.getEditingPath());
+		FieldOutlineData.Node n = node(tree.getEditingPath());
 		String label = editor.getText();
 		stopOwnEdit();
 		if(n==null) return;
 		if(isPending(n) && label.trim().isEmpty()){ dropPending(); return; }
-		change(Data.setLabel(shownText(), n.line, label), false, l -> l, n.line);
-		Data.Node now = data.atLine(n.line);
+		change(FieldOutlineData.setLabel(shownText(), n.line, label), false, l -> l, n.line);
+		FieldOutlineData.Node now = data.atLine(n.line);
 		if(now!=null) newNodeAfter(now, null);
 	}
 
 	/** Tab or Shift-Tab while editing: keeps the label (an empty new node stays new) and goes on editing the moved node. */
 	private void editorIndent(boolean in){
-		Data.Node n = node(tree.getEditingPath());
+		FieldOutlineData.Node n = node(tree.getEditingPath());
 		String label = editor.getText();
 		int caret = editor.getCaretPosition();
 		stopOwnEdit();
 		if(n==null) return;
 		boolean pending = isPending(n) && label.trim().isEmpty();
-		if(!pending) change(Data.setLabel(shownText(), n.line, label), false, l -> l, n.line);
-		Data.Node now = data.atLine(n.line);
+		if(!pending) change(FieldOutlineData.setLabel(shownText(), n.line, label), false, l -> l, n.line);
+		FieldOutlineData.Node now = data.atLine(n.line);
 		if(now!=null) indent(now, in, pending);
 		editLine(n.line, null);
 		if(tree.isEditing()) editor.setCaretPosition(Math.min(caret, editor.getText().length()));
@@ -501,23 +501,23 @@ final class FieldOutline extends MyScrollPane {
 	 * Tab: the node (with its children) goes under the node above it at the same level. Shift-Tab: it goes up a level, after its
 	 * parent (the nodes after it under that parent become its children, as the lines say).
 	 */
-	private void indent(Data.Node n, boolean in, boolean pending){
+	private void indent(FieldOutlineData.Node n, boolean in, boolean pending){
 		String text = shownText();
-		Data.Node parent = parentOf(data.root, n);
+		FieldOutlineData.Node parent = parentOf(data.root, n);
 		if(parent==null) return;
-		int depth = Data.depth(text, n.line), to;
+		int depth = FieldOutlineData.depth(text, n.line), to;
 		if(in){
 			int index = parent.children.indexOf(n);
 			if(index<1){ Toolkit.getDefaultToolkit().beep(); return; }
-			Data.Node above = parent.children.get(index-1);
-			to = Data.depth(text, above.line)+1;
+			FieldOutlineData.Node above = parent.children.get(index-1);
+			to = FieldOutlineData.depth(text, above.line)+1;
 		}
 		else{
 			if(parent==data.root){ Toolkit.getDefaultToolkit().beep(); return; }
-			to = Data.depth(text, parent.line);
+			to = FieldOutlineData.depth(text, parent.line);
 		}
 		int delta = to-depth;
-		String moved = Data.shift(text, n.line, Data.lastLine(n), delta);
+		String moved = FieldOutlineData.shift(text, n.line, FieldOutlineData.lastLine(n), delta);
 		Set<Integer> opened = new HashSet<Integer>();
 		if(in) opened.add(parent.children.get(parent.children.indexOf(n)-1).line); //shows the node under its new parent
 		change(moved, pending, l -> l, n.line);
@@ -525,10 +525,10 @@ final class FieldOutline extends MyScrollPane {
 		showSelection();
 	}
 
-	private static Data.Node parentOf(Data.Node node, Data.Node child){
-		for(Data.Node c : node.children){
+	private static FieldOutlineData.Node parentOf(FieldOutlineData.Node node, FieldOutlineData.Node child){
+		for(FieldOutlineData.Node c : node.children){
 			if(c==child) return node;
-			Data.Node p = parentOf(c, child);
+			FieldOutlineData.Node p = parentOf(c, child);
 			if(p!=null) return p;
 		}
 		return null;
@@ -536,14 +536,14 @@ final class FieldOutline extends MyScrollPane {
 
 	/** Delete: removes the selected node's line (its children go under the node above, as the lines say). */
 	private void deleteNode(){
-		Data.Node n = selectedNode();
+		FieldOutlineData.Node n = selectedNode();
 		if(n==null || n.line<1){ Toolkit.getDefaultToolkit().beep(); return; }
 		int line = n.line;
 		int row = tree.getRowForPath(pathOfLine(line));
-		Data.Node next = row>=0 && row+1<tree.getRowCount() ? node(tree.getPathForRow(row+1)) : null;
-		Data.Node prev = row>0 ? node(tree.getPathForRow(row-1)) : null;
+		FieldOutlineData.Node next = row>=0 && row+1<tree.getRowCount() ? node(tree.getPathForRow(row+1)) : null;
+		FieldOutlineData.Node prev = row>0 ? node(tree.getPathForRow(row-1)) : null;
 		int select = next!=null ? next.line-1 : prev!=null ? prev.line : 0;
-		change(Data.deleteLine(fldData.getText(), line), false, l -> l==line ? 0 : l>line ? l-1 : l, select);
+		change(FieldOutlineData.deleteLine(fldData.getText(), line), false, l -> l==line ? 0 : l>line ? l-1 : l, select);
 	}
 
 	/** A character typed on the outline (not in the editor): replaces the selected node's label, or starts a new last node. */
@@ -552,7 +552,7 @@ final class FieldOutline extends MyScrollPane {
 		if(!labelsEditable() || c<0x20 || c==0x7f || c==KeyEvent.CHAR_UNDEFINED || e.isMetaDown() || e.isControlDown()) return false;
 		//typed before the editor has the keyboard: goes into it too
 		if(tree.isEditing()){ editor.replaceSelection(String.valueOf(c)); return true; }
-		Data.Node n = selectedNode();
+		FieldOutlineData.Node n = selectedNode();
 		if(n!=null && n.line>0) editLine(n.line, String.valueOf(c));
 		else newNodeAfter(null, String.valueOf(c));
 		return true;
@@ -563,12 +563,12 @@ final class FieldOutline extends MyScrollPane {
 		tree.setFocusTraversalKeysEnabled(false);
 		editor.setFocusTraversalKeysEnabled(false);
 		bind(tree, "ENTER", "hzEditNode", () -> {
-			Data.Node n = selectedNode();
+			FieldOutlineData.Node n = selectedNode();
 			if(n!=null && n.line>0) editLine(n.line, null);
 			else newNodeAfter(null, null);
 		});
-		bind(tree, "TAB", "hzIndent", () -> { Data.Node n = selectedNode(); if(n!=null && n.line>0) indent(n, true, false); });
-		bind(tree, "shift TAB", "hzOutdent", () -> { Data.Node n = selectedNode(); if(n!=null && n.line>0) indent(n, false, false); });
+		bind(tree, "TAB", "hzIndent", () -> { FieldOutlineData.Node n = selectedNode(); if(n!=null && n.line>0) indent(n, true, false); });
+		bind(tree, "shift TAB", "hzOutdent", () -> { FieldOutlineData.Node n = selectedNode(); if(n!=null && n.line>0) indent(n, false, false); });
 		bind(tree, "BACK_SPACE", "hzDeleteNode", this::deleteNode);
 		bind(tree, "DELETE", "hzDeleteNode", this::deleteNode);
 		bind(editor, "ENTER", "hzNextNode", this::editorReturn);
@@ -635,26 +635,26 @@ final class FieldOutline extends MyScrollPane {
 			GUI.mouseDowned();
 			OField f = fldData;
 			if(f==null) return;
-			if(PCARD.editMode!=0){
+			if(HZ.editMode!=0){
 				//Command-Option-Shift shows the field outlines: a click opens the script
 				//(key[]に Command-Option が残っていただけの普通のクリックならピークを終える)
 				if(!GUI.isPeekClick(e)) GUI.endPeek();
-				else if(GUI.stroke_frag==2 && PCARD.pc!=null && PCARD.pc.stack!=null){
-					ScriptEditor.openScriptEditor(PCARD.pc.stack.pcard, f);
+				else if(GUI.stroke_frag==2 && Host.get().hasCardWindow() && HZ.stack()!=null){
+					ScriptEditor.openScriptEditor(HZ.stack().pcard, f);
 					GUI.endPeek();
 				}
 				return;
 			}
 			if(!browsing()) return;
 			Point p = toPane(e);
-			GUI.clickH = f.left + PCARD.toLogical(p.x);
-			GUI.clickV = f.top + PCARD.toLogical(p.y);
+			GUI.clickH = f.left + Host.get().toLogical(p.x);
+			GUI.clickV = f.top + Host.get().toLogical(p.y);
 			GUI.noteFieldClick(f, p.x, p.y);
-			GUI.clickField = f;
+			HZ.clickField = f;
 			f.clickNode = null;
 			if(e.getSource()==tree){
 				TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-				Data.Node n = node(path);
+				FieldOutlineData.Node n = node(path);
 				f.clickNode = n;
 				f.clickRow = n!=null ? n.line : 0;
 				if(n!=null && n.line>0) GUI.clickLine = "line "+n.line+" of "+f.getShortName();
@@ -702,243 +702,4 @@ final class FieldOutline extends MyScrollPane {
 		}
 	}
 
-	/** The field's text as an outline (no Swing: also used by the HyperTalk properties and the tests). */
-	static final class Data {
-		private Data(){}
-
-		static final class Node {
-			/** What the outline shows. */
-			final String label;
-			/** Stays the same while the text changes around the node (the open nodes are found again by it). */
-			final String id;
-			/** The node's line in the text (1-based); 0 for JSON. */
-			final int line;
-			/** The JSON path ("weather.days.2"); empty for indented text. */
-			final String path;
-			/** The JSON value (Map, List, a HyperTalk text or null); null for indented text. */
-			final Object value;
-			/** 0 for the top level. */
-			final int level;
-			final List<Node> children = new ArrayList<Node>();
-			Node(String label, String id, int line, String path, Object value, int level){
-				this.label = label; this.id = id; this.line = line; this.path = path; this.value = value; this.level = level;
-			}
-			@Override public String toString(){ return label; }
-			/** What the selectedText and the clickText give: the label, or for JSON the value (objects and arrays as collections). */
-			String text() throws xTalkException {
-				if(line>0) return label;
-				if(value==null) return "";
-				return TalkJson.result(value);
-			}
-		}
-
-		static final class Tree {
-			final Node root;
-			final boolean json;
-			Tree(Node root, boolean json){ this.root = root; this.json = json; }
-			/** The node at a JSON path or null. */
-			Node find(String path){ return find(root, path); }
-			private static Node find(Node node, String path){
-				for(Node child : node.children){
-					if(child.path.equals(path)) return child;
-					if(path.startsWith(child.path+".")){ Node n = find(child, path); if(n!=null) return n; }
-				}
-				return null;
-			}
-			/** The node of a line (indented text) or null. */
-			Node atLine(int line){ return atLine(root, line); }
-			private static Node atLine(Node node, int line){
-				for(Node child : node.children){
-					if(child.line==line) return child;
-					Node n = atLine(child, line);
-					if(n!=null) return n;
-				}
-				return null;
-			}
-		}
-
-		/** JSON when the text is a JSON object or array (or a HyperTalk collection), else indented text. */
-		static Tree parse(String text){
-			if(text==null) text = "";
-			if(TalkCollection.isCollection(text)){
-				try{ return json(fromCollection(text)); }catch(xTalkException e){ /* show it as text */ }
-			}
-			String t = text.trim();
-			if(t.startsWith("{") || t.startsWith("[")){
-				try{
-					Object root = TalkJson.parse(t);
-					if(root instanceof Map<?,?> || root instanceof List<?>) return json(root);
-				}catch(xTalkException e){ /* not JSON: an indented outline that starts with a bracket */ }
-			}
-			return indented(text);
-		}
-
-		private static Object fromCollection(String value) throws xTalkException {
-			if(!TalkCollection.isCollection(value)) return value;
-			TalkCollection c = TalkCollection.decode(value);
-			if(c.isArray()){
-				ArrayList<Object> list = new ArrayList<Object>();
-				for(String item : c.items) list.add(fromCollection(item));
-				return list;
-			}
-			LinkedHashMap<String,Object> map = new LinkedHashMap<String,Object>();
-			for(Map.Entry<String,String> e : c.entries.entrySet()) map.put(e.getKey(), fromCollection(e.getValue()));
-			return map;
-		}
-
-		private static Tree json(Object root){
-			Node top = new Node("", "", 0, "", root, -1);
-			members(top, root);
-			return new Tree(top, true);
-		}
-
-		private static void members(Node parent, Object value){
-			if(value instanceof Map<?,?>){
-				for(Map.Entry<?,?> e : ((Map<?,?>)value).entrySet()) member(parent, String.valueOf(e.getKey()), e.getValue());
-			}
-			else if(value instanceof List<?>){
-				List<?> list = (List<?>)value;
-				for(int i=0; i<list.size(); i++) member(parent, Integer.toString(i+1), list.get(i));
-			}
-		}
-
-		private static void member(Node parent, String key, Object value){
-			String path = parent.path.isEmpty() ? key : parent.path+"."+key;
-			Node n = new Node(key+describe(value), path, 0, path, value, parent.level+1);
-			parent.children.add(n);
-			members(n, value);
-		}
-
-		/** ": value" for a scalar, " {3}" for an object of three members, " [2]" for an array of two. */
-		private static String describe(Object value){
-			if(value instanceof Map<?,?>) return " {"+((Map<?,?>)value).size()+"}";
-			if(value instanceof List<?>) return " ["+((List<?>)value).size()+"]";
-			if(value==null) return ": null";
-			String text;
-			try{ text = TalkJson.result(value); }catch(xTalkException e){ text = String.valueOf(value); }
-			return ": "+text.replace("\r\n", "\n").replace('\r', '\n').replace('\n', '⏎');
-		}
-
-		/** Each non-empty line a node; its leading tabs give its level under the nearest line above with fewer tabs. */
-		static Tree indented(String text){
-			Node root = new Node("", "", 0, "", null, -1);
-			if(text.isEmpty()) return new Tree(root, false);
-			String[] lines = FieldTable.Data.lines(text);
-			ArrayList<Node> parents = new ArrayList<Node>();
-			ArrayList<Integer> tabs = new ArrayList<Integer>();
-			parents.add(root);
-			tabs.add(-1);
-			for(int i=0; i<lines.length; i++){
-				String line = lines[i];
-				if(line.trim().isEmpty()) continue;
-				int depth = 0;
-				while(depth<line.length() && line.charAt(depth)=='\t') depth++;
-				while(tabs.size()>1 && tabs.get(tabs.size()-1)>=depth){ parents.remove(parents.size()-1); tabs.remove(tabs.size()-1); }
-				Node parent = parents.get(parents.size()-1);
-				String label = line.substring(depth);
-				if(label.equals(NEW_NODE)) label = "";
-				//the id: the labels from the top (a repeated label under the same parent gets its count)
-				String base = parent.id+"\u0001"+label;
-				String id = base;
-				for(int k=2; hasChildId(parent, id); k++) id = base+"\u0002"+k;
-				Node n = new Node(label, id, i+1, "", null, parent.level+1);
-				parent.children.add(n);
-				parents.add(n);
-				tabs.add(depth);
-			}
-			return new Tree(root, false);
-		}
-
-		static Set<String> ids(Node node){
-			Set<String> ids = new HashSet<String>();
-			addIds(node, ids);
-			return ids;
-		}
-		private static void addIds(Node node, Set<String> ids){
-			for(Node c : node.children){ ids.add(c.id); addIds(c, ids); }
-		}
-		static boolean sharesNode(Node node, Set<String> ids){
-			for(Node c : node.children) if(ids.contains(c.id) || sharesNode(c, ids)) return true;
-			return false;
-		}
-
-		private static boolean hasChildId(Node parent, String id){
-			for(Node c : parent.children) if(c.id.equals(id)) return true;
-			return false;
-		}
-
-		/** The label of a new node's line while it is being typed (not empty, so the line is a node; shown as nothing). */
-		static final String NEW_NODE = "\u200B";
-
-		/** The leading tabs of a line (1-based). */
-		static int depth(String text, int line){
-			String[] lines = FieldTable.Data.lines(text);
-			if(line<1 || line>lines.length) return 0;
-			int depth = 0;
-			while(depth<lines[line-1].length() && lines[line-1].charAt(depth)=='\t') depth++;
-			return depth;
-		}
-
-		/** The last line of a node and its children. */
-		static int lastLine(Node n){
-			int last = n.line;
-			for(Node c : n.children) last = Math.max(last, lastLine(c));
-			return last;
-		}
-
-		/** The text with a new line (1-based; one past the last adds it at the end) of depth tabs and a label. */
-		static String insertLine(String text, int line, int depth, String label){
-			String v = label.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			List<String> lines = new ArrayList<String>(text.isEmpty() ? new ArrayList<String>() : Arrays.asList(FieldTable.Data.lines(text)));
-			StringBuilder sb = new StringBuilder();
-			for(int i=0; i<depth; i++) sb.append('\t');
-			lines.add(Math.max(0, Math.min(line-1, lines.size())), sb.append(v).toString());
-			return String.join("\n", lines)+(finalReturn ? "\n" : "");
-		}
-
-		/** The text without one line (1-based). */
-		static String deleteLine(String text, int line){
-			String[] lines = FieldTable.Data.lines(text);
-			if(text.isEmpty() || line<1 || line>lines.length) return text;
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			List<String> rest = new ArrayList<String>(Arrays.asList(lines));
-			rest.remove(line-1);
-			if(rest.isEmpty()) return "";
-			return String.join("\n", rest)+(finalReturn ? "\n" : "");
-		}
-
-		/** Lines first to last (1-based) with delta tabs more (fewer, when negative, as far as they have tabs). */
-		static String shift(String text, int first, int last, int delta){
-			String[] lines = FieldTable.Data.lines(text);
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			for(int i=Math.max(1, first); i<=Math.min(last, lines.length); i++){
-				String line = lines[i-1];
-				if(delta>0){
-					StringBuilder sb = new StringBuilder();
-					for(int k=0; k<delta; k++) sb.append('\t');
-					lines[i-1] = sb.append(line).toString();
-				}
-				else{
-					int cut = 0;
-					while(cut<-delta && cut<line.length() && line.charAt(cut)=='\t') cut++;
-					lines[i-1] = line.substring(cut);
-				}
-			}
-			return String.join("\n", lines)+(finalReturn ? "\n" : "");
-		}
-
-		/** The text with the label of one line (1-based) replaced, keeping its tabs; returns and tabs in the label become spaces. */
-		static String setLabel(String text, int line, String label){
-			String v = label.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
-			String[] lines = FieldTable.Data.lines(text);
-			if(line<1 || line>lines.length) return text;
-			boolean finalReturn = text.endsWith("\n") || text.endsWith("\r");
-			String old = lines[line-1];
-			int depth = 0;
-			while(depth<old.length() && old.charAt(depth)=='\t') depth++;
-			lines[line-1] = old.substring(0, depth)+v;
-			return String.join("\n", lines)+(finalReturn ? "\n" : "");
-		}
-	}
 }

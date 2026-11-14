@@ -199,7 +199,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
 		//修飾キーはこのクリックに合わせる(離したのが別のウインドウで key[] に残っていることがある)。
 		//key[]に残っていただけの Command-Option なら、ピークを終えてこのクリックはそのまま扱う。
 		GUI.syncModifiers(e);
-		if(PCARD.editMode!=0){
+		if(HZ.editMode!=0){
 			if(GUI.isPeekClick(e)) return;
 			GUI.endPeek();
 		}
@@ -220,7 +220,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
     	if((e.getModifiersEx()&InputEvent.META_DOWN_MASK)>0 ||
     			(e.getModifiersEx()&InputEvent.CTRL_DOWN_MASK)>0){ //新規透明ボタン
     		OCardBase cdbase = PCARDFrame.pc.stack.curCard;
-			if(PaintTool.editBackground){
+			if(HZ.editBackground){
 				cdbase = PCARDFrame.pc.stack.curCard.bg;
 			}
         	newButton = true;
@@ -250,7 +250,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
     	}
     	else if((e.getModifiersEx()&InputEvent.ALT_DOWN_MASK)>0){
     		OCardBase cdbase = PCARDFrame.pc.stack.curCard;
-			if(PaintTool.editBackground){
+			if(HZ.editBackground){
 				cdbase = PCARDFrame.pc.stack.curCard.bg;
 			}
         	newButton = true;
@@ -411,7 +411,7 @@ class ButtonGUI implements MouseListener, MouseMotionListener
         			OCard.reloadCurrentCard();
 
             		OCardBase cdbase = PCARDFrame.pc.stack.curCard;
-        			if(PaintTool.editBackground){
+        			if(HZ.editBackground){
         				cdbase = PCARDFrame.pc.stack.curCard.bg;
         			}
         			OButton newbtn = cdbase.GetBtnbyNum(cdbase.btnList.size());
@@ -784,7 +784,7 @@ class MyButtonDropListener extends DropTargetAdapter {
 						/*Component component = ((DropTarget)e.getSource()).getComponent();
 						OButton obtn = ((MyButton)component).btnData;*/
 						OCardBase cdbase = PCARDFrame.pc.stack.curCard;
-						if(PaintTool.editBackground){
+						if(HZ.editBackground){
 							 cdbase = PCARDFrame.pc.stack.curCard.bg;
 						}
 						OButton obtn = new OButton(cdbase, cdbase.newPartId()); //a part id of its own (was the icon's id)
@@ -947,7 +947,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
 		//修飾キーはこのクリックに合わせる(離したのが別のウインドウで key[] に残っていることがある)。
 		//key[]に残っていただけの Command-Option なら、ピークを終えてこのクリックはそのまま扱う。
 		GUI.syncModifiers(e);
-		if(PCARD.editMode!=0){
+		if(HZ.editMode!=0){
 			if(GUI.isPeekClick(e)) return;
 			GUI.endPeek();
 		}
@@ -968,7 +968,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
     	if((e.getModifiersEx()&InputEvent.META_DOWN_MASK)>0 ||
     			(e.getModifiersEx()&InputEvent.CTRL_DOWN_MASK)>0){ //新規フィールド
     		OCardBase cdbase = PCARD.pc.stack.curCard;
-			if(PaintTool.editBackground){
+			if(HZ.editBackground){
 				cdbase = PCARD.pc.stack.curCard.bg;
 			}
 			newField = true;
@@ -998,7 +998,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
     	}
     	else if((e.getModifiersEx()&InputEvent.ALT_DOWN_MASK)>0){
     		OCardBase cdbase = PCARD.pc.stack.curCard;
-			if(PaintTool.editBackground){
+			if(HZ.editBackground){
 				cdbase = PCARD.pc.stack.curCard.bg;
 			}
 			newField = true;
@@ -1152,7 +1152,7 @@ class FieldGUI implements MouseListener, MouseMotionListener
         			OCard.reloadCurrentCard();
 
             		OCardBase cdbase = PCARD.pc.stack.curCard;
-        			if(PaintTool.editBackground){
+        			if(HZ.editBackground){
         				cdbase = PCARD.pc.stack.curCard.bg;
         			}
         			OField newfld = cdbase.GetFldbyNum(cdbase.fldList.size());

@@ -16,7 +16,7 @@ import javax.swing.SwingUtilities;
  * operating system calls are served natively by {@link Toolbox68k} and
  * friends.
  */
-final class MacApp68k implements Runnable {
+class MacApp68k implements Runnable {
 	static final int TYPE_APPL=0x4150504c;
 	private static final List<MacApp68k> running=Collections.synchronizedList(new ArrayList<MacApp68k>());
 	private static int nextSerial=1;
@@ -36,7 +36,9 @@ final class MacApp68k implements Runnable {
 	boolean powerPC;
 	Mac68kApi api;
 	Toolbox68k toolbox;
-	MacAppHost host;
+	VmHost host;
+	/** The host as the desktop's MacAppHost (tests and desktop-only code), or null */
+	MacAppHost desktopHost(){return (MacAppHost)host;}
 	Thread thread;
 	int a5,jumpTableOffset,jumpTableSize,belowA5,aboveA5,stackTop,stackBottom,appParms;
 	/** A PowerPC program's stack: the bottom {@code ppcStackSize} bytes of the stack area, from stackBottom (ApplLimit) up. */
@@ -108,7 +110,7 @@ final class MacApp68k implements Runnable {
 	 * elapsed time) is not taken for the font's doing.
 	 */
 	void fixGarbledText(final int window,final int x,final int y){
-		final Toolbox68k tb=toolbox;final MacAppHost h=host;if(tb==null||h==null||finished)return;
+		final Toolbox68k tb=toolbox;final VmHost h=host;if(tb==null||h==null||finished)return;
 		Thread search=new Thread(()->{
 			final List<String> before=fontSubstitution.pairs();final boolean japanese=fontSubstitution.japaneseSystem();
 			int[] box={x-10,y-6,21,13};
@@ -139,7 +141,7 @@ final class MacApp68k implements Runnable {
 		search.setDaemon(true);search.start();
 	}
 	/** The program's windows drawn again (update events), then the pixels of {@code box} {x,y,w,h} of the window's image once the update is done and they stay still. */
-	private static int[] redrawnPixels(Toolbox68k tb,MacAppHost h,int window,int[] box) throws InterruptedException {
+	private static int[] redrawnPixels(Toolbox68k tb,VmHost h,int window,int[] box) throws InterruptedException {
 		final java.util.concurrent.CountDownLatch asked=new java.util.concurrent.CountDownLatch(1);
 		tb.laterAtEvent(()->{try{tb.windows.redrawAll();}catch(M68kCpuException e){}finally{asked.countDown();}});
 		asked.await(3,java.util.concurrent.TimeUnit.SECONDS);
@@ -237,7 +239,7 @@ final class MacApp68k implements Runnable {
 		languageOverride=settings!=null&&settings.language!=null?settings.language:translatedResources!=null?translatedResources.systemLanguage():null; // before the name: it is decoded in the System's script
 		// The name the program sees (CurApName, GetAppParms) is the Mac name: a Shift-JIS name unpacked on the host as Mac OS Roman
 		// mojibake such as "Ç«Å[Ç±Çæ..." must not become "???[?±..." because a projector-style application may look up its own file by it.
-		String n=FileManager68k.programName(Toolbox68k.applicationEncoding(resources,languageOverride),file.getName());
+		String n=UiHost.get().fileManager68kProgramName(Toolbox68k.applicationEncoding(resources,languageOverride),file.getName());
 		ResourceFile68k.MacBinary mb=null;
 		try{mb=ResourceFile68k.MacBinary.read(file);}catch(IOException ignored){}
 		if(mb!=null&&mb.nameBytes.length>0)n=Toolbox68k.applicationEncoding(null,languageOverride).decode(mb.nameBytes);
@@ -254,17 +256,17 @@ final class MacApp68k implements Runnable {
 			if(tb!=null)tb.laterAtEvent(()->{try{tb.windows.schemeChanged();}catch(M68kCpuException e){if(Mac68kApi.TRACE)System.err.println("[68K] scheme change: "+e);}});}
 	}
 	/** The zoom setting changed: every running program shows its screen magnified by the new choice at once. */
-	static void zoomChangedAll(){for(MacApp68k app:runningApplications()){MacAppHost h=app.host;if(h!=null)h.rezoom(app);}}
+	static void zoomChangedAll(){for(MacApp68k app:runningApplications()){VmHost h=app.host;if(h!=null)h.rezoom(app);}}
 	/** This program's own zoom setting changed ({@code own}: null follows the preference). */
-	void zoomChanged(Integer own){screenScaleOverride=own!=null?own:compactScreen?Integer.valueOf(2):null;MacAppHost h=host;if(h!=null)h.rezoom(this);}
+	void zoomChanged(Integer own){screenScaleOverride=own!=null?own:compactScreen?Integer.valueOf(2):null;VmHost h=host;if(h!=null)h.rezoom(this);}
 	/** The game screen place preference (centre or top left) changed: every running program's game screen moves there at once. */
-	static void screenPlaceChangedAll(){for(MacApp68k app:runningApplications()){MacAppHost h=app.host;if(h!=null)h.reposition(app);}}
+	static void screenPlaceChangedAll(){for(MacApp68k app:runningApplications()){VmHost h=app.host;if(h!=null)h.reposition(app);}}
 	/** This program's own game screen place changed ({@code own}: true = top left, null follows the preference). */
-	void screenPlaceChanged(Boolean own){screenTopLeftOverride=own;MacAppHost h=host;if(h!=null)h.reposition(this);}
+	void screenPlaceChanged(Boolean own){screenTopLeftOverride=own;VmHost h=host;if(h!=null)h.reposition(this);}
 	/** The smooth zoom preference changed: every running program that follows it draws into planes of the new kind at once. */
-	static void smoothChangedAll(){for(MacApp68k app:runningApplications()){MacAppHost h=app.host;if(h!=null)h.resmooth();}}
+	static void smoothChangedAll(){for(MacApp68k app:runningApplications()){VmHost h=app.host;if(h!=null)h.resmooth();}}
 	/** This program's own smooth zoom setting changed ({@code own}: null follows the preference). */
-	void smoothChanged(Integer own){smoothZoomOverride=own;MacAppHost h=host;if(h!=null)h.resmooth();}
+	void smoothChanged(Integer own){smoothZoomOverride=own;VmHost h=host;if(h!=null)h.resmooth();}
 	static List<MacApp68k> runningApplications(){synchronized(running){return new ArrayList<MacApp68k>(running);}}
 	/** The program whose window the host activated last (MacAppHost), or null. */
 	static volatile MacApp68k activeApplication;
@@ -285,15 +287,15 @@ final class MacApp68k implements Runnable {
 	static MacApp68k forCurrentThread(){Thread t=Thread.currentThread();synchronized(running){for(MacApp68k app:running)if(app.thread==t||app.toolbox!=null&&app.toolbox.threads.isCarrier(t))return app;}return null;} // a Thread Manager coroutine thread runs the program too
 	/** The running, unfinished program launched from this file (the launcher brings it to the front instead of launching it again), or null. */
 	static MacApp68k runningFrom(File file){
-		String id=LauncherStore.identity(file);if(id==null)return null;
-		for(MacApp68k app:runningApplications())if(!app.finished&&id.equals(LauncherStore.identity(app.file)))return app;
+		String id=UiHost.get().launcherStoreIdentity(file);if(id==null)return null;
+		for(MacApp68k app:runningApplications())if(!app.finished&&id.equals(UiHost.get().launcherStoreIdentity(app.file)))return app;
 		return null;
 	}
 
 	/** The running program that owns this host window (its own controller mapping applies while it is active), or null. */
 	static MacApp68k applicationOf(java.awt.Window w){
 		if(w==null)return null;
-		for(MacApp68k app:runningApplications()){MacAppHost h=app.host;if(h!=null&&!app.finished&&h.ownsWindow(w))return app;}
+		for(MacApp68k app:runningApplications()){VmHost h=app.host;if(h!=null&&!app.finished&&h.ownsWindow(w))return app;}
 		return null;
 	}
 
@@ -585,8 +587,8 @@ final class MacApp68k implements Runnable {
 			try{DiskImages.Mounted m=DiskImages.mount(new File(path),null);System.err.println("[68K] mounted "+m.name+" ("+m.description+")");}
 			catch(IOException|RuntimeException e){System.err.println("[68K] can't mount "+path+": "+e);}
 		}
-		Sandbox.programLaunched(app.name,file,app.documents); // its folder to read, its own file and its documents to change; anything else it asks for (Sandbox)
-		Sandbox.runsUnattended(app.name,app.unattended);
+		Sandbox68k.programLaunched(app.name,file,app.documents); // its folder to read, its own file and its documents to change; anything else it asks for (Sandbox)
+		Sandbox68k.runsUnattended(app.name,app.unattended);
 		app.fontSubstitution.set(null,app.japaneseSystem()); // its System's script also without settings: garbled-looking text is counted on a Japanese System
 		if(LauncherStore.enabled){
 			LauncherStore.AppSettings s=LauncherStore.get().settingsFor(file);
@@ -700,7 +702,7 @@ final class MacApp68k implements Runnable {
 		if(powerPC)while(memorySize<PPC_MIN_MEMORY)memorySize*=2;
 		// The main device PixMap and a full-screen window both live in guest memory: at full colour on a
 		// large display that is tens of megabytes, so keep the base 32 MB free of them.
-		java.awt.Rectangle screen=MacAppHost.screenBounds();
+		java.awt.Rectangle screen=UiHost.get().macAppHostScreenBounds();
 		long screenBytes=(long)Math.min(screen.width,QuickDraw68k.maxScreenWidth(depth,powerPC))*screen.height*Math.max(1,depth/8); // the screen programs see stops where rowBytes would overflow
 		while(memorySize<256*1024*1024&&memorySize<M68kMemory.SIZE*2+2*screenBytes)memorySize*=2;
 		return memorySize;
@@ -710,7 +712,7 @@ final class MacApp68k implements Runnable {
 	private void setUp() throws IOException,M68kException {
 		int depth=plannedDepth();
 		int memorySize=sharedMemory!=null?sharedMemory.partitionSize():plannedMemorySize(depth);
-		java.awt.Rectangle screen=MacAppHost.screenBounds();
+		java.awt.Rectangle screen=UiHost.get().macAppHostScreenBounds();
 		addressing24=sharedMemory==null&&addressing24();
 		if(addressing24){
 			// the 24-bit world of the Macs these programs were written for: 16 MB, so the top address byte is ignored as the
@@ -769,7 +771,7 @@ final class MacApp68k implements Runnable {
 		if(hosted!=null)installHostStub();
 		if(powerPC){memory.setBlockAlignment(16);ppc=new PpcRuntime(this);ppc.setUpStack(stackBottom,ppcStackSize);installPowerPcStub();} // heap blocks 16-byte aligned, as the PowerPC Memory Manager makes them
 		host=toolbox.host();
-		host.encoding=toolbox.encoding();
+		((MacAppHost)host).encoding=toolbox.encoding();
 		toolbox.initializeLowMemory();
 		cpu.a[5]=a5;cpu.a[7]=stackTop;cpu.a[6]=stackTop;
 		cpu.sr=0x2000;
@@ -784,8 +786,8 @@ final class MacApp68k implements Runnable {
 		// WWExist/QDExist: $FF until the program's own InitWindows/InitGraf (0 = initialized). THINK C's console initializes the
 		// Toolbox - and marks itself ready to read the keyboard - only when WWExist says the Window Manager is not up yet; with 0
 		// its input saw end-of-file at once (wumpus repeated its prompt forever). Hosted desk accessories and control panels
-		// run in a world their host has set up.
-		if(hosted==null){memory.writeByte(0x8f2,0xff);memory.writeByte(0x8f3,0xff);}
+		// run in a world their host has set up. MenuList likewise is NIL until the program's InitMenus (see MenuManager68k.launched).
+		if(hosted==null){memory.writeByte(0x8f2,0xff);memory.writeByte(0x8f3,0xff);toolbox.menus.launched();}
 		// a control panel's INIT runs in its process before the panel opens; so it does when the panel file is launched as a program:
 		// ATM Deluxe 4.0's panel launches itself (the ATM Deluxe program in its data fork), which says "ATM Deluxe was not loaded
 		// when you last restarted" without the INIT's driver and patches
@@ -1453,9 +1455,9 @@ final class MacApp68k implements Runnable {
 	 * but runs on a 1024x768 or 640x480 screen chosen in the program's own settings.
 	 */
 	private String wideScreenHint(){
-		if(!cpuCrash||host==null||host.screenRect==null||screenSizeOverride!=null||MacAppHost.virtualScreen!=null)return "";
-		if(host.screenWidth<=1280)return "";
-		return String.format(dialogText("The screen (%d pixels wide) is wider than any Mac of the time, which may be the cause. Setting this program's resolution to 640×480 or 1024×768 in its settings in the launcher may make it work."),host.screenWidth);
+		if(!cpuCrash||host==null||((MacAppHost)host).screenRect==null||screenSizeOverride!=null||MacAppHost.virtualScreen!=null)return "";
+		if(((MacAppHost)host).screenWidth<=1280)return "";
+		return String.format(dialogText("The screen (%d pixels wide) is wider than any Mac of the time, which may be the cause. Setting this program's resolution to 640×480 or 1024×768 in its settings in the launcher may make it work."),((MacAppHost)host).screenWidth);
 	}
 
 	/** Requests termination from another thread (Quit menu of the host, HyperZebra shutdown). */
@@ -1537,11 +1539,11 @@ final class MacApp68k implements Runnable {
 		Toolbox68k tb=toolbox;
 		if(tb==null||!tb.hosted()||tb.windows==null||MacAppHost.screenSizeFixed())return false;
 		if(java.util.Objects.equals(size,screenSizeOverride))return true;
-		if(baseScreen==null){java.awt.Rectangle now=MacAppHost.screenBounds();baseScreen=new int[]{now.width,now.height};baseScreenSetting=screenSizeOverride;}
+		if(baseScreen==null){java.awt.Rectangle now=UiHost.get().macAppHostScreenBounds();baseScreen=new int[]{now.width,now.height};baseScreenSetting=screenSizeOverride;}
 		screenSizeOverride=size;
 		tb.api.quickDraw().screenResized();
 		tb.windows.screenResized();
-		tb.host().screenResized(this,MacAppHost.screenBounds());
+		tb.host().screenResized(this,UiHost.get().macAppHostScreenBounds());
 		return true;
 	}
 
@@ -1550,7 +1552,7 @@ final class MacApp68k implements Runnable {
 	/** The size {width, height} of the program's own full screen, from which the display modes it can switch to are made. Called on the program's thread. */
 	int[] fullScreen(){
 		if(baseScreen!=null)return baseScreen.clone();
-		java.awt.Rectangle now=MacAppHost.screenBounds();return new int[]{now.width,now.height};
+		java.awt.Rectangle now=UiHost.get().macAppHostScreenBounds();return new int[]{now.width,now.height};
 	}
 	/** Switches the screen to {@code width} x {@code height} (the display mode a game asked the Display Manager for); the full screen's size brings back the setting it had. */
 	boolean setScreenMode(int width,int height) throws M68kCpuException {
@@ -1567,7 +1569,7 @@ final class MacApp68k implements Runnable {
 	/** Opens documents in this running application (host drop / open-with). */
 	void openDocuments(List<File> files){
 		if(toolbox==null)return;
-		for(File d:files)Sandbox.chosenByUser(name,d,false); // the user handed them to this program: its to change (or to read, opened read-only)
+		for(File d:files)Sandbox68k.chosenByUser(name,d,false); // the user handed them to this program: its to change (or to read, opened read-only)
 		toolbox.hostListener().postOpenDocuments(files);
 		if(LauncherStore.enabled)for(File d:files)LauncherStore.get().recordDocument(file,d);
 	}

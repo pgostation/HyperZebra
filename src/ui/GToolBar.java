@@ -432,9 +432,16 @@ class TBButtonListener implements ActionListener, MouseListener {
 		PaintTool.owner = PCARD.pc;
 		PaintTool.toolBeforeSelect = null;
 		//前のツールの終了処理
-		if(PCARD.pc.tool!=null){
+		boolean hadTool = PCARD.pc.tool!=null;
+		if(hadTool){
 			PCARD.pc.tool.end();
-			
+		}
+		//a tool chosen: what was painted before it is no longer "the last thing painted" the Paint menu's Select closes in on
+		//(HC J-2.3/2.4: Select after choose … tool lassoes all of the picture). After the old tool's end(): the type tool
+		//stamps its text there (and a selection drops), so that belongs to the pending step; flushed before it, the step
+		//was closed as unchanged and the text could not be undone
+		PaintUndo.flush(PCARD.pc);
+		if(hadTool){
 			if(isNonPaintTool(cmd)){
 				//ペイントモードを抜けるときだけファイルへ保存する(変わった絵だけ、別スレッドで)
 				PaintTool.saveCdPicturesLater();
@@ -599,7 +606,7 @@ class TBButtonListener implements ActionListener, MouseListener {
 
 			//バックグラウンド編集モードを解除
 			{
-				PaintTool.editBackground = false;
+				HZ.editBackground = false;
 				PCARD.pc.setTitle(PCARD.pc.stack.getWindowTitle());
 			}
 

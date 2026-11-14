@@ -69,27 +69,27 @@ msgctxt "menu"
 msgid "Print…"
 msgstr "列印…"
 
-#: GMenu.java GPreferencesDialog.java LlmTranslation.java VMTranslation.java
+#: GMenu.java GPreferencesDialog.java JapaneseMenuNames.java LlmTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Preferences…"
 msgstr "偏好設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Stack Settings…"
 msgstr "堆疊設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Settings…"
 msgstr "設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "VM Settings…"
 msgstr "虛擬機設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Mac Application Settings…"
 msgstr "Mac 應用程式設定…"
@@ -99,7 +99,7 @@ msgctxt "menu"
 msgid "Show Launcher"
 msgstr "顯示啟動器"
 
-#: BuiltinCommandMessage.java GMenu.java HyperZebra.java TTalk.java
+#: BuiltinCommandMessage.java ExternalMenusUI.java GMenu.java HyperZebra.java JapaneseMenuNames.java TTalk.java
 msgctxt "menu"
 msgid "Quit HyperCard"
 msgstr "結束 HyperCard"
@@ -184,7 +184,7 @@ msgctxt "menu"
 msgid "Copy Card"
 msgstr "拷貝卡片"
 
-#: CardClipboard.java GMenu.java
+#: CardClipboard.java GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Card"
 msgstr "貼上卡片"
@@ -209,117 +209,117 @@ msgctxt "menu"
 msgid "Resource…"
 msgstr "資源…"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Sound Editor"
 msgstr "音訊編輯器"
 
-#: FileManager68k.java GAppInfoWindow.java ResEdit.java ShapeInfoPanel.java SoundEditor.java StandardFile68k.java StrEditor.java TTalk.java VariableWatcher.java
+#: FileManager68k.java GAppInfoWindow.java JapaneseMenuNames.java ResEdit.java ShapeInfoPanel.java SoundEditor.java StandardFile68k.java StrEditor.java TTalk.java VariableWatcher.java
 msgctxt "menu"
 msgid "Name"
 msgstr "名稱"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Duration"
 msgstr "持續時間"
 
-#: SoundEditor.java VMTranslation.java
+#: JapaneseMenuNames.java SoundEditor.java VMTranslation.java
 msgctxt "menu"
 msgid "Format"
 msgstr "格式"
 
-#: GVisualEffectWindow.java OObject.java SoundEditor.java
+#: GVisualEffectWindow.java JapaneseMenuNames.java SoundEditor.java WindowUI.java
 msgctxt "menu"
 msgid "Play"
 msgstr "播放"
 
-#: GTranslateAheadDialog.java GVisualEffectWindow.java SoundEditor.java SoundInput68k.java VMTranslation.java
+#: GTranslateAheadDialog.java GVisualEffectWindow.java JapaneseMenuNames.java SoundEditor.java Toolbox68kDesktopParts.java Toolbox68kParts.java VMTranslation.java
 msgctxt "menu"
 msgid "Stop"
 msgstr "停止"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "New Sound"
 msgstr "新增聲音"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Cut Selection"
 msgstr "剪下選取範圍"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "Volume"
 msgstr "音量"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Pitch"
 msgstr "音高"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "semitones"
 msgstr "半音"
 
-#: GLlmTranslationDialog.java SoundEditor.java VMTranslation.java
+#: GLlmTranslationDialog.java JapaneseMenuNames.java SoundEditor.java VMTranslation.java
 msgctxt "menu"
 msgid "Apply"
 msgstr "套用"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Copy Selection"
 msgstr "拷貝選取範圍"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Insert Silence"
 msgstr "插入靜音"
 
-#: SoundEditor.java TTalk.java
+#: JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "menu"
 msgid "sec"
 msgstr "秒"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Button"
 msgstr "剪下按鈕"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Button"
 msgstr "複製按鈕"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Button"
 msgstr "貼上按鈕"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Button"
 msgstr "刪除按鈕"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Field"
 msgstr "剪下欄位"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Field"
 msgstr "複製欄位"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Field"
 msgstr "貼上欄位"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Field"
 msgstr "刪除欄位"
@@ -414,12 +414,12 @@ msgctxt "menu"
 msgid "Show Balloons"
 msgstr "顯示氣球說明"
 
-#: GMenu.java
+#: GMenu.java GPaintMenu.java
 msgctxt "menu"
 msgid "Tool"
 msgstr "工具"
 
-#: GMenu.java GToolBar.java
+#: GMenu.java GToolBar.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Hide ToolBar"
 msgstr "隱藏工具列"
@@ -449,7 +449,7 @@ msgctxt "menu"
 msgid "Objects"
 msgstr "物件"
 
-#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: ExternalMenusUI.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java ShapeInfoPanel.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Font"
 msgstr "字體"
@@ -494,38 +494,47 @@ msgctxt "menu"
 msgid "Zoom"
 msgstr "縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 25%"
 msgstr "25% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 50%"
 msgstr "50% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 100%"
 msgstr "100% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 200%"
 msgstr "200% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 300%"
 msgstr "300% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 400%"
 msgstr "400% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 800%"
 msgstr "800% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 1600%"
 msgstr "1600% 縮放"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Zoom 3200%"
 msgstr "3200% 縮放"
@@ -574,26 +583,32 @@ msgctxt "menu"
 msgid "Drawing Grid Size"
 msgstr "繪圖格線大小"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 2"
 msgstr "繪圖格線大小 2"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 4"
 msgstr "繪圖格線大小 4"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 8"
 msgstr "繪圖格線大小 8"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 16"
 msgstr "繪圖格線大小 16"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 32"
 msgstr "繪圖格線大小 32"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Drawing Grid Size 64"
 msgstr "繪圖格線大小 64"
@@ -622,38 +637,47 @@ msgctxt "menu"
 msgid "Multiple Space"
 msgstr "圖形間距"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 1"
 msgstr "圖形間距 1"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 2"
 msgstr "圖形間距 2"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 3"
 msgstr "圖形間距 3"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 4"
 msgstr "圖形間距 4"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 5"
 msgstr "圖形間距 5"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 6"
 msgstr "圖形間距 6"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 7"
 msgstr "圖形間距 7"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 8"
 msgstr "圖形間距 8"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Multiple Space 9"
 msgstr "圖形間距 9"
@@ -668,27 +692,27 @@ msgctxt "menu"
 msgid "Show Layers"
 msgstr "顯示圖層"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "New Layer"
 msgstr "新增圖層"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Duplicate Layer"
 msgstr "複製圖層"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Layer"
 msgstr "刪除圖層"
 
-#: GLayerPalette.java GMenu.java GPaintMenu.java
+#: GLayerPalette.java GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Merge Down"
 msgstr "向下合併"
 
-#: GMenu.java GPaintMenu.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Flatten Layers"
 msgstr "合併所有圖層"
@@ -708,42 +732,42 @@ msgctxt "menu"
 msgid "Rename Layer…"
 msgstr "重新命名圖層…"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Card Layers"
 msgstr "卡片圖層"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Background Layers"
 msgstr "背景圖層"
 
-#: PaintLayer.java
+#: JapaneseMenuNames.java PaintLayers.java
 msgctxt "menu"
 msgid "Card Paint"
 msgstr "卡片繪圖"
 
-#: PaintLayer.java
+#: JapaneseMenuNames.java PaintLayers.java
 msgctxt "menu"
 msgid "Background Paint"
 msgstr "背景繪圖"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Alpha Lock"
 msgstr "鎖定透明度"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Clip to Below"
 msgstr "剪裁至下方圖層"
 
-#: GLayerPalette.java
+#: GLayerPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Blend Mode"
 msgstr "混合模式"
 
-#: PaintLayer.java Q3Metafile.java TUtil.java VMTranslation.java
+#: HeadlessProps.java PaintLayer.java Q3Metafile.java ToolsUI.java VMTranslation.java
 msgid "Normal"
 msgstr "正常"
 
@@ -756,27 +780,27 @@ msgctxt "menu"
 msgid "Symmetry"
 msgstr "對稱性"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Symmetry Off"
 msgstr "關閉對稱"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Vertical Symmetry"
 msgstr "垂直對稱性"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Horizontal Symmetry"
 msgstr "水平對稱性"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Quadrant Symmetry"
 msgstr "四象限對稱性"
 
-#: GMenu.java GPaintMenu.java PaintTool.java
+#: GMenu.java GPaintMenu.java JapaneseMenuNames.java PaintTool.java
 msgctxt "menu"
 msgid "Radial Symmetry…"
 msgstr "徑向對稱性…"
@@ -824,22 +848,22 @@ msgctxt "menu"
 msgid "Color"
 msgstr "顏色"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Left"
 msgstr "向左移動"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Right"
 msgstr "向右移動"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Up"
 msgstr "向上移動"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Shift Down"
 msgstr "向下移動"
@@ -1011,7 +1035,7 @@ msgstr "擴大量（像素）："
 msgid "Shrink by (pixels):"
 msgstr "縮小量（像素）："
 
-#: GPaintMenu.java TTalk.java
+#: EditorsUI.java GPaintMenu.java TTalk.java
 msgid "No selection"
 msgstr "未選取"
 
@@ -1129,7 +1153,7 @@ msgctxt "menu"
 msgid "Stamp"
 msgstr "仿製印章"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Strength"
 msgstr "強度"
@@ -1139,16 +1163,17 @@ msgctxt "menu"
 msgid "Transparency"
 msgstr "透明度"
 
-#: GPaintDialog.java GPaintPalette.java
+#: GPaintDialog.java GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Gradation"
 msgstr "漸層"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Angle"
 msgstr "角度"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Don't Fill"
 msgstr "不填滿"
@@ -1173,17 +1198,17 @@ msgctxt "menu"
 msgid "New Shape"
 msgstr "新增形狀"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Cut Shape"
 msgstr "剪下形狀"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Copy Shape"
 msgstr "複製形狀"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Paste Shape"
 msgstr "貼上形狀"
@@ -1193,7 +1218,7 @@ msgctxt "menu"
 msgid "Shape Info…"
 msgstr "形狀資訊…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Edit Shapes"
 msgstr "編輯形狀"
@@ -1208,11 +1233,12 @@ msgctxt "menu"
 msgid "Export Card Image…"
 msgstr "匯出卡片影像…"
 
-#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
+#: GLauncher.java GMenu.java GTranslateAheadDialog.java GTranslationForm.java GTranslationSettingsDialog.java JapaneseMenuNames.java LauncherStore.java LlmTranslation.java MacAppHost.java PictureTranslation.java ResourceTranslation.java StackTranslation.java VMTranslation.java
 msgctxt "menu"
 msgid "Resource Translation…"
 msgstr "資源翻譯…"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Show Translation"
 msgstr "顯示翻譯"
@@ -1252,12 +1278,12 @@ msgctxt "menu"
 msgid "New Field"
 msgstr "新增欄位"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "New Shape…"
 msgstr "新增形狀…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Delete Shape"
 msgstr "刪除形狀"
@@ -1402,7 +1428,7 @@ msgctxt "menu"
 msgid "HyperTalk Reference"
 msgstr "HyperTalk 參考"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "New Item"
 msgstr "新增項目"
@@ -1417,22 +1443,22 @@ msgctxt "menu"
 msgid "Create New Resource"
 msgstr "建立新資源"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "Get Resource Info…"
 msgstr "取得資源資訊…"
 
-#: ResEdit.java VMTranslation.java
+#: JapaneseMenuNames.java ResEdit.java VMTranslation.java
 msgctxt "menu"
 msgid "Duplicate"
 msgstr "複製"
 
-#: SoundEditor.java StrEditor.java
+#: JapaneseMenuNames.java SoundEditor.java StrEditor.java
 msgctxt "menu"
 msgid "Apply to Resource"
 msgstr "套用至資源"
 
-#: SoundEditor.java
+#: JapaneseMenuNames.java SoundEditor.java
 msgctxt "menu"
 msgid "Applied"
 msgstr "已套用"
@@ -1447,7 +1473,7 @@ msgctxt "menu"
 msgid "Image Size…"
 msgstr "圖片大小…"
 
-#: ResEdit.java
+#: JapaneseMenuNames.java ResEdit.java
 msgctxt "menu"
 msgid "View File"
 msgstr "查看檔案"
@@ -1473,7 +1499,7 @@ msgstr "堆疊設定"
 msgid "Settings"
 msgstr "設定"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "Settings…"
 msgstr "設定…"
 
@@ -1518,11 +1544,11 @@ msgstr "虛擬機設定"
 msgid "Mac Application Settings"
 msgstr "Mac 應用程式設定"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "Stack Settings…"
 msgstr "堆疊設定…"
 
-#: GMenu.java
+#: GMenu.java JapaneseMenuNames.java
 msgid "VM Settings…"
 msgstr "虛擬機設定…"
 
@@ -1654,9 +1680,11 @@ msgstr "以68040 Mac / iMac G3的速度執行。關閉：一些遊戲執行太�
 msgid "HyperTalk JIT compiler"
 msgstr "HyperTalk JIT 編譯器"
 
+#: GPreferencesDialog.java
 msgid "Runs scripts faster. Off: the interpreter only."
 msgstr "讓指令碼執行得更快。關閉：僅使用直譯器。"
 
+#: GPreferencesDialog.java
 msgid "PowerPC JIT compiler"
 msgstr "PowerPC JIT 編譯器"
 
@@ -2176,7 +2204,7 @@ msgstr "手把控制"
 msgid "Types"
 msgstr "類型"
 
-#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java OButton.java PanelChooser.java PpcCarbon.java PpcGameSprockets.java TTalk.java
+#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java JapaneseMenuNames.java OButton.java PanelChooser.java PlayerLoop.java PpcCarbon.java PpcGameSprockets.java StandardMenus.java TTalk.java
 msgid "Button"
 msgstr "按鈕"
 
@@ -2260,7 +2288,7 @@ msgstr "Shift"
 msgid "Control"
 msgstr "Control"
 
-#: DiskImages.java FileManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperCard68kCallbacks.java ResEdit.java ResEditIndex.java TTalk.java VMTranslation.java
+#: DiskImages.java ExternalMenusUI.java FileManager68k.java GMenu.java GToolBar.java GamepadHost.java HeadlessMenus.java HyperCard68kCallbacks.java JapaneseMenuNames.java ResEdit.java ResEditIndex.java StandardMenus.java VMTranslation.java
 msgid "Delete"
 msgstr "刪除"
 
@@ -2352,7 +2380,7 @@ msgstr "HyperCard和Macintosh是蘋果公司的商標。 本項目與蘋果公�
 msgid "Launcher"
 msgstr "啟動器"
 
-#: GLauncher.java GMenu.java
+#: GLauncher.java GMenu.java JapaneseMenuNames.java
 msgid "Show Launcher"
 msgstr "顯示啟動器"
 
@@ -2360,7 +2388,7 @@ msgstr "顯示啟動器"
 msgid "Window"
 msgstr "視窗"
 
-#: GLauncher.java GMenu.java HyperCardResources68k.java TTalk.java TUtil.java VMTranslation.java
+#: ExternalMenusUI.java GLauncher.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java WindowUI.java
 msgid "Tools"
 msgstr "工具"
 
@@ -2408,7 +2436,7 @@ msgstr "失敗"
 msgid "cannot list the folder"
 msgstr "無法列出資料夾"
 
-#: GLauncher.java Q3.java TUtil.java VMTranslation.java
+#: GLauncher.java Q3.java VMTranslation.java WindowUI.java
 msgid "View"
 msgstr "檢視"
 
@@ -2508,7 +2536,7 @@ msgstr "24位元"
 msgid "32-bit"
 msgstr "32位元"
 
-#: BuiltinCommandMessage.java DeskAccessoryHost68k.java GAppInfoWindow.java GLauncher.java GMenu.java HyperCardResources68k.java IconEditor.java LlmTranslation.java MenuManager68k.java PCARD.java Q3.java ResEdit.java ResEditIndex.java ScriptEditor.java TTalk.java VMTranslation.java
+#: BuiltinCommandMessage.java DeskAccessoryHost68k.java ExternalMenusUI.java GAppInfoWindow.java GLauncher.java GMenu.java HyperCardResources68k.java IconEditor.java JapaneseMenuNames.java LlmTranslation.java MenuManager68k.java PCARD.java Q3.java ResEdit.java ResEditIndex.java ScriptEditor.java StandardMenus.java TTalk.java VMTranslation.java
 msgid "File"
 msgstr "檔案"
 
@@ -2584,7 +2612,7 @@ msgstr "SIZE 資源"
 msgid "preferred"
 msgstr "偏好"
 
-#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HyperCard68kCallbacks.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TXcmd.java Toolbox68k.java VMTranslation.java
+#: AppleEvents68k.java FileSystem68k.java GAppInfoWindow.java HeadlessProps.java HyperCard68kCallbacks.java HzCursors.java MacApp68k.java MacAppHost.java MenuManager68k.java MidiHost68k.java OShape.java PCARD.java PaintTexture.java PaintTool.java PictureOcr.java PpcCarbonToolbox.java PpcRave.java PpcTextServices.java ShapeSvg.java SmoothZoom.java SoundManager68k.java TQTMovie.java TUtil.java TalkImage.java Toolbox68k.java ToolsUI.java VMTranslation.java
 msgid "none"
 msgstr "無"
 
@@ -2656,7 +2684,7 @@ msgstr "位置"
 msgid "Home Folder"
 msgstr "主資料夾"
 
-#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java StandardFile68k.java VMTranslation.java WorkingCopies.java
+#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java StandardFile68k.java VMTranslation.java VirusScan68k.java WorkingCopies.java
 msgid "Desktop"
 msgstr "桌面"
 
@@ -2707,7 +2735,7 @@ msgstr "堆疊"
 msgid "Mac program"
 msgstr "Mac 程式"
 
-#: GLauncher.java HyperTalkReference.java
+#: GLauncher.java HyperTalkReference.java PlayerSaving.java
 msgid "Stack"
 msgstr "堆疊"
 
@@ -2715,11 +2743,11 @@ msgstr "堆疊"
 msgid "running"
 msgstr "執行中"
 
-#: BuiltinCommandMessage.java GLauncher.java IconServices68k.java MacApp68k.java MidiHost68k.java MiscManagers68k.java OStack.java PpcStdio.java ResEdit.java ScriptEditor.java ScriptLint.java TTalk.java TUtil.java
+#: BuiltinCommandMessage.java GLauncher.java IconServices68k.java MacApp68k.java MidiHost68k.java MiscManagers68k.java OStack.java PpcStdio.java ProgramsUI.java ResEdit.java ScriptLint.java TTalk.java TUtil.java TalkWords.java
 msgid "open"
 msgstr "已開啟"
 
-#: EventManager68k.java GLauncher.java GMenu.java GStackWindow.java PCARD.java TTalk.java
+#: EventManager68k.java ExternalMenusUI.java GLauncher.java GMenu.java GStackWindow.java HeadlessMenus.java JapaneseMenuNames.java PCARD.java StandardMenus.java
 msgid "Close Stack"
 msgstr "關閉堆疊"
 
@@ -2755,7 +2783,7 @@ msgstr "開啟HyperZebra HD"
 msgid "Home stack not found"
 msgstr "找不到首頁堆疊"
 
-#: FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
+#: AppPaths.java FileChooserPlaces.java FileManager68k.java FileSystem68k.java GLauncher.java StandardFile68k.java TUtil.java
 msgid "HyperZebra HD"
 msgstr "HyperZebra HD"
 
@@ -2763,7 +2791,7 @@ msgstr "HyperZebra HD"
 msgid "Drop programs or stacks here to open them."
 msgstr "將程式或堆疊拖放到這裡以開啟。"
 
-#: CommToolbox68k.java FileManager68k.java GLauncher.java HyperCardResources68k.java PpcNavServices.java ResEdit.java ResEditIndex.java StandardFile68k.java VMTranslation.java
+#: PlayerUiHost.java
 msgid "Open"
 msgstr "開啟"
 
@@ -2795,7 +2823,7 @@ msgstr "「{0}」的設定…"
 msgid "Colors, screen size and speed for one program"
 msgstr "一個程式的顏色、螢幕尺寸和速度"
 
-#: FieldTextMenus.java GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java JapaneseMenuNames.java TTalk.java
 msgid "Other…"
 msgstr "其他…"
 
@@ -2835,7 +2863,7 @@ msgstr "從歷史記錄中移除 {0} 項"
 msgid "Clear History"
 msgstr "清除歷史記錄"
 
-#: AppleEvents68k.java GAppInfoWindow.java GLauncher.java GMenu.java LlmTranslation.java MenuManager68k.java TTalk.java VMTranslation.java
+#: AppleEvents68k.java ExternalMenusUI.java GAppInfoWindow.java GLauncher.java GMenu.java JapaneseMenuNames.java LlmTranslation.java MenuManager68k.java TTalk.java VMTranslation.java
 msgid "Quit"
 msgstr "結束"
 
@@ -3089,7 +3117,7 @@ msgstr "Mac 程式的寬版檔案對話框（日期、大小、種類和排序�
 msgid "Save PICT files that Mac programs create as PNG, and show them PNG files as PICT"
 msgstr "將 Mac 程式建立的 PICT 檔案儲存為 PNG，並讓程式把 PNG 檔案當作 PICT"
 
-#: OStack.java PCARD.java
+#: PCARD.java ProgramsUI.java
 msgid "Can't launch the Mac application."
 msgstr "無法啟動Mac應用程式。"
 
@@ -3153,19 +3181,19 @@ msgstr "想要列出資料夾："
 msgid "wants to run the program:"
 msgstr "想要執行程式："
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to open a TCP connection to:"
 msgstr "想要建立 TCP 連線至："
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to accept TCP connections on:"
 msgstr "想要在下列位置接受 TCP 連線："
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to send and receive UDP packets on:"
 msgstr "想要在以下位置傳送和接收UDP封包："
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to look up the host name:"
 msgstr "想要查詢主機名稱："
 
@@ -3177,7 +3205,7 @@ msgstr "想要在這台電腦上執行一個程式："
 msgid "wants to run an AppleScript:"
 msgstr "想要執行 AppleScript："
 
-#: Sandbox.java
+#: Sandbox.java Sandbox68k.java
 msgid "wants to record from the microphone."
 msgstr "想用麥克風錄音。"
 
@@ -3324,7 +3352,7 @@ msgstr "全彩"
 msgid "Thousands of colors"
 msgstr "數千種顏色"
 
-#: GAppInfoWindow.java GPreferencesDialog.java
+#: GAppInfoWindow.java GPreferencesDialog.java IndexedScreenText.java
 msgid "256 colors"
 msgstr "256種顏色"
 
@@ -3352,7 +3380,7 @@ msgstr "腳本編輯器"
 msgid "Script is not saved."
 msgstr "指令碼未儲存。"
 
-#: ScriptEditor.java
+#: PlayerUiHost.java ScriptEditor.java StationeryPads.java
 msgid "Save"
 msgstr "儲存"
 
@@ -3384,7 +3412,7 @@ msgstr "在關閉之前儲存「%1」腳本的更改嗎？"
 msgid "The resources could not be saved."
 msgstr "無法儲存資源。"
 
-#: DiskImages.java GMenu.java PpcUrlAccess.java ResSession.java VMTranslation.java
+#: DiskImages.java GMenu.java PpcUrlAccess.java ResSession.java VMTranslation.java WebExport.java
 msgid "Untitled"
 msgstr "未命名"
 
@@ -3412,7 +3440,7 @@ msgstr "貼上的資源中有 %1 個與此堆疊中已有資源的 ID 或名稱�
 msgid "Unique ID"
 msgstr "使用其他 ID"
 
-#: ResClipboard.java ScriptEditor.java
+#: PlayerUiHost.java
 msgid "Replace"
 msgstr "取代"
 
@@ -3511,7 +3539,7 @@ msgstr "寬度："
 msgid "Height:"
 msgstr "高度："
 
-#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java TTalk.java
+#: EditionDialogs.java GColorDialog.java GMenu.java GPaintDialog.java GTesseractLanguagesDialog.java OklabColorChooserPanel.java PaintFilter.java PanelDataDialog.java PlayerUiHost.java QuickTimeMusic68k.java ResEditIndex.java ScriptEditor.java StationeryPads.java TTalk.java WebExport.java
 msgid "Cancel"
 msgstr "取消"
 
@@ -3523,11 +3551,11 @@ msgstr "指令碼"
 msgid "Debug"
 msgstr "除錯"
 
-#: HyperCardResources68k.java ScriptEditor.java TTalk.java TUtil.java VariableWatcher.java
+#: HyperCardResources68k.java JapaneseMenuNames.java ScriptEditor.java TTalk.java VariableWatcher.java WindowUI.java
 msgid "Variable Watcher"
 msgstr "變數監視器"
 
-#: HyperCardResources68k.java MessageWatcher.java ScriptEditor.java TTalk.java TUtil.java
+#: HyperCardResources68k.java JapaneseMenuNames.java MessageWatcher.java ScriptEditor.java TTalk.java WindowUI.java
 msgid "Message Watcher"
 msgstr "訊息監視器"
 
@@ -3543,7 +3571,7 @@ msgstr "名稱"
 msgid "Value"
 msgstr "值"
 
-#: CardWindow68k.java GMenu.java GMsg.java MessageWatcher.java TTalk.java TUtil.java
+#: CardWindow68k.java ExternalMenusUI.java GMenu.java GMsg.java JapaneseMenuNames.java MessageWatcher.java PlayerUiHost.java StandardMenus.java TUtil.java WindowUI.java
 msgid "Message"
 msgstr "訊息"
 
@@ -3598,6 +3626,7 @@ msgstr "暫停指令碼後才能更改值。"
 msgid "globals"
 msgstr "全域"
 
+#: TalkJit.java
 msgid "locals"
 msgstr "區域"
 
@@ -3941,7 +3970,7 @@ msgstr "新顏色"
 msgid "Original color (click to restore)"
 msgstr "原顏色（按一下還原）"
 
-#: Q3.java StrEditor.java TXcmd.java
+#: Q3.java StrEditor.java
 msgid "String"
 msgstr "字串"
 
@@ -3985,11 +4014,11 @@ msgstr "新增"
 msgid "unreadable"
 msgstr "無法讀取"
 
-#: PpcCoreFoundation.java StrEditor.java
+#: PpcCoreFoundation.java StrEditor.java TalkJit.java
 msgid "strings"
 msgstr "個字串"
 
-#: StrEditor.java
+#: StrEditor.java TTalk.java TalkWords.java
 msgid "bytes"
 msgstr "位元組"
 
@@ -4090,16 +4119,17 @@ msgctxt "menu"
 msgid "Other Colors…"
 msgstr "其他顏色…"
 
-#: GPaintPalette.java
+#: GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Foreground Color"
 msgstr "前景顏色"
 
+#: JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Brush Size"
 msgstr "筆刷大小"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Hardness"
 msgstr "硬度"
@@ -4109,27 +4139,27 @@ msgctxt "menu"
 msgid "Opacity"
 msgstr "不透明度"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Spacing"
 msgstr "間距"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Stabilizer"
 msgstr "抖動修正"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Pen Pressure"
 msgstr "壓感"
 
-#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java JapaneseMenuNames.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgctxt "menu"
 msgid "Size"
 msgstr "大小"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Line Size"
 msgstr "線寬"
@@ -4139,27 +4169,27 @@ msgctxt "menu"
 msgid "Draw Filled"
 msgstr "填滿繪製"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Spray Size"
 msgstr "噴霧大小"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Polygon Sides"
 msgstr "多邊形邊數"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Color Tolerance"
 msgstr "顏色容許度"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Fill Tolerance"
 msgstr "填滿容許度"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Eraser Size"
 msgstr "橡皮擦尺寸"
@@ -4179,17 +4209,17 @@ msgctxt "menu"
 msgid "Fill Style"
 msgstr "填滿樣式"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Color / Pattern"
 msgstr "顏色/圖案"
 
-#: GToolOptions.java Q3Metafile.java
+#: GToolOptions.java JapaneseMenuNames.java Q3Metafile.java
 msgctxt "menu"
 msgid "Linear"
 msgstr "線性"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Radial"
 msgstr "放射狀"
@@ -4199,7 +4229,7 @@ msgctxt "menu"
 msgid "Texture"
 msgstr "紋理"
 
-#: GToolOptions.java
+#: GToolOptions.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Custom Texture"
 msgstr "自訂紋理"
@@ -4214,42 +4244,42 @@ msgctxt "menu"
 msgid "Texture from Selection"
 msgstr "從選取範圍建立紋理"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Wood"
 msgstr "木頭"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Marble"
 msgstr "大理石"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Clouds"
 msgstr "雲朵"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Sand"
 msgstr "沙子"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Granite"
 msgstr "花崗岩"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Brick"
 msgstr "磚塊"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Canvas"
 msgstr "畫布"
 
-#: PaintTexture.java
+#: JapaneseMenuNames.java PaintTexture.java
 msgctxt "menu"
 msgid "Water"
 msgstr "水"
@@ -4289,67 +4319,67 @@ msgctxt "menu"
 msgid "Export All Patterns…"
 msgstr "匯出所有圖案…"
 
-#: AuthDialog.java GPaintPalette.java
+#: AuthDialog.java GPaintPalette.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Background Color"
 msgstr "背景顏色"
 
-#: AuthDialog.java
+#: AuthDialog.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Text Color"
 msgstr "文字顏色"
 
-#: FieldTextMenus.java GMenu.java HyperCardResources68k.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GMenu.java HyperCardResources68k.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Plain"
 msgstr "一般"
 
-#: FieldTextMenus.java GFontDialog.java PpcAtsui.java ShapeInfoPanel.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java GMenu.java HeadlessMenus.java JapaneseMenuNames.java PpcAtsui.java ShapeInfoPanel.java TTalk.java TUtil.java VMTranslation.java
 msgctxt "menu"
 msgid "Bold"
 msgstr "粗體"
 
-#: FieldTextMenus.java GFontDialog.java PpcAtsui.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java PpcAtsui.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Italic"
 msgstr "斜體"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Underline"
 msgstr "底線"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Outline"
 msgstr "外框"
 
-#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java TTalk.java VMTranslation.java
+#: AuthDialog.java FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java PartInfo.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Shadow"
 msgstr "陰影"
 
-#: FieldTextMenus.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Condense"
 msgstr "緊縮"
 
-#: FieldTextMenus.java GFontDialog.java TTalk.java VMTranslation.java
+#: FieldTextMenus.java GFontDialog.java JapaneseMenuNames.java TTalk.java VMTranslation.java
 msgctxt "menu"
 msgid "Extend"
 msgstr "延伸"
 
-#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java Q3.java TTalk.java
+#: FieldTextMenus.java GFontDialog.java HyperCardResources68k.java JapaneseMenuNames.java Q3.java TTalk.java
 msgctxt "menu"
 msgid "Group"
 msgstr "群組"
 
-#: FieldTextMenus.java GLauncher.java TTalk.java
+#: FieldTextMenus.java GLauncher.java JapaneseMenuNames.java TTalk.java
 msgctxt "menu"
 msgid "Other…"
 msgstr "其他…"
 
-#: FieldTextMenus.java
+#: FieldTextMenus.java JapaneseMenuNames.java
 msgctxt "menu"
 msgid "Text Color…"
 msgstr "文字顏色…"
@@ -4525,11 +4555,11 @@ msgstr "Alpha通道"
 msgid "Font"
 msgstr "字體"
 
-#: GToolOptions.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
+#: GToolOptions.java JapaneseMenuNames.java ResEdit.java ShapeFilterPanel.java ShapeInfoPanel.java StandardFile68k.java VMTranslation.java
 msgid "Size"
 msgstr "大小"
 
-#: FieldTextMenus.java GMenu.java HyperCardResources68k.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
+#: ExternalMenusUI.java FieldTextMenus.java GMenu.java HyperCardResources68k.java JapaneseMenuNames.java MacAppHost.java Q3.java TTalk.java TextEditor.java VMTranslation.java
 msgid "Style"
 msgstr "樣式"
 
@@ -4612,7 +4642,7 @@ msgstr "在讀取MacBinaryHyperCard堆疊資料時發生錯誤。"
 msgid "Resource data is not found."
 msgstr "未找到資源資料。"
 
-#: OStack.java
+#: StacksUI.java
 msgid "This version of Java Runtime is not supported streaming API for XML."
 msgstr "此版本的Java執行時不支援XML的流API。"
 
@@ -4624,7 +4654,7 @@ msgstr "讀取XML檔案時發生錯誤。"
 msgid "XML end tag is not found."
 msgstr "未找到XML結束標籤。"
 
-#: XMLRead.java
+#: SwingUiHost.java
 msgid "The stack is opened read-only."
 msgstr "堆疊以唯讀方式開啟。"
 
@@ -4772,7 +4802,7 @@ msgstr "這種磁碟影像還無法開啟。"
 msgid "Mounting the disk image"
 msgstr "正在掛載磁碟影像"
 
-#: TTalk.java
+#: WindowUI.java
 msgid "Can't mount the disk image."
 msgstr "無法掛載磁碟影像。"
 
@@ -6061,17 +6091,17 @@ msgctxt "reference"
 msgid "Properties"
 msgstr "屬性"
 
-#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java OButton.java PanelChooser.java PpcCarbon.java PpcGameSprockets.java TTalk.java
+#: ClassicToolBitmaps.java ControlManager68k.java EventManager68k.java GMenu.java GToolBar.java GamepadHost.java HyperTalkReference.java JapaneseMenuNames.java OButton.java PanelChooser.java PlayerLoop.java PpcCarbon.java PpcGameSprockets.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Button"
 msgstr "按鈕"
 
-#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GScriptReference.java GToolBar.java HyperTalkReference.java PanelChooser.java TTalk.java
+#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GScriptReference.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PanelChooser.java PlayerLoop.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Field"
 msgstr "欄位"
 
-#: ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GToolBar.java HyperTalkReference.java PanelChooser.java Q3.java ShapeEditor.java ShapeInfoPanel.java TTalk.java
+#: CardUI.java ClassicToolArt.java ClassicToolBitmaps.java GMenu.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PanelChooser.java PlayerLoop.java Q3.java ShapeEditor.java ShapeInfoPanel.java SwingUiHost.java TTalk.java
 msgctxt "reference"
 msgid "Shape"
 msgstr "形狀"
@@ -6081,12 +6111,12 @@ msgctxt "reference"
 msgid "Card"
 msgstr "卡片"
 
-#: GMenu.java GPaintMenu.java GToolBar.java HyperTalkReference.java ShapeInfoPanel.java TTalk.java TUtil.java
+#: ExternalMenusUI.java GMenu.java GPaintMenu.java GToolBar.java HyperTalkReference.java JapaneseMenuNames.java PlayerLoop.java ProgramsUI.java ShapeInfoPanel.java StandardMenus.java TUtil.java
 msgctxt "reference"
 msgid "Background"
 msgstr "背景"
 
-#: GLauncher.java HyperTalkReference.java
+#: GLauncher.java HyperTalkReference.java PlayerSaving.java
 msgctxt "reference"
 msgid "Stack"
 msgstr "堆疊"
@@ -6106,7 +6136,7 @@ msgctxt "reference"
 msgid "Menu"
 msgstr "選單"
 
-#: CommToolbox68k.java GLayerPalette.java GMenu.java GPaintMenu.java HyperCardResources68k.java HyperTalkReference.java IconEditor.java PaintFile.java PaintTool.java PpcRuntime.java TTalk.java
+#: CommToolbox68k.java GLayerPalette.java GMenu.java GPaintMenu.java HyperCardResources68k.java HyperTalkReference.java IconEditor.java JapaneseMenuNames.java PaintFile.java PaintTool.java PpcRuntime.java StandardMenus.java TTalk.java
 msgctxt "reference"
 msgid "Paint"
 msgstr "繪圖"
@@ -7294,12 +7324,12 @@ msgctxt "reference"
 msgid "A list allowing several lines"
 msgstr "允許多行的列表"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgctxt "reference"
 msgid "Wide margins"
 msgstr "寬邊距"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgctxt "reference"
 msgid "Fixed line height"
 msgstr "固定行高"
@@ -7488,7 +7518,7 @@ msgctxt "reference"
 msgid "Loops"
 msgstr "迴圈"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgctxt "reference"
 msgid "Volume"
 msgstr "音量"
@@ -8675,12 +8705,12 @@ msgctxt "shape"
 msgid "Contrast"
 msgstr "對比"
 
-#: GMenu.java GPaintMenu.java GPaintPalette.java HyperCardResources68k.java IconEditor.java PaintTool.java PpcRuntime.java ShapeFilterPanel.java
+#: GMenu.java GPaintMenu.java GPaintPalette.java HyperCardResources68k.java IconEditor.java JapaneseMenuNames.java PaintTool.java PpcRuntime.java ShapeFilterPanel.java StandardMenus.java
 msgctxt "shape"
 msgid "Invert"
 msgstr "反相"
 
-#: CompactColorChooserPanel.java GLayerPalette.java GToolOptions.java ShapeFilterPanel.java
+#: CompactColorChooserPanel.java GLayerPalette.java GToolOptions.java JapaneseMenuNames.java ShapeFilterPanel.java
 msgctxt "shape"
 msgid "Opacity"
 msgstr "不透明度"
@@ -8789,7 +8819,7 @@ msgstr "使用其選單，或將您想要開啟的文件放在這裡。"
 msgid "Closing this window quits the application."
 msgstr "關閉此視窗將結束應用程式。"
 
-#: TalkCollection.java
+#: TTalk.java TalkCollection.java
 msgid "An array or a dictionary is required"
 msgstr "需要陣列或字典"
 
@@ -8797,11 +8827,10 @@ msgstr "需要陣列或字典"
 msgid "Invalid collection data"
 msgstr "集合資料無效"
 
-#: TalkCollection.java
 msgid "Collection is too large"
 msgstr "集合太大"
 
-#: TalkCollection.java
+#: TalkCollection.java TalkLive.java
 msgid "Array index is too large"
 msgstr "陣列索引太大"
 
@@ -8821,7 +8850,7 @@ msgstr "{0}的條件需要true或false：{1}"
 msgid "The wait duration is not a number: {0}"
 msgstr "等待時間不是數字：{0}"
 
-#: TTalk.java TXcmd.java
+#: PlayerExternals68k.java TTalk.java TXcmd.java
 msgid "Too much handler recursion: {0} [{1}]"
 msgstr "處理程式遞迴過多：{0} [{1}]"
 
@@ -8841,6 +8870,7 @@ msgstr "找不到end repeat"
 msgid "Cannot understand the arguments to repeat with"
 msgstr "無法理解 repeat with 的引數"
 
+#: TTalk.java
 msgid "Cannot understand the arguments of {0}"
 msgstr "無法理解 {0} 的引數"
 
@@ -8852,11 +8882,11 @@ msgstr "repeat with需要start值和to"
 msgid "repeat with requires an end value"
 msgstr "repeat with需要一個end值"
 
-#: TTalk.java
+#: TTalk.java TalkJit.java
 msgid "repeat with requires integer bounds"
 msgstr "repeat with需要整數邊界"
 
-#: TTalk.java
+#: TTalk.java TalkJit.java
 msgid "The repeat count is not a number: {0}"
 msgstr "重複計數不是數字：{0}"
 
@@ -8876,11 +8906,11 @@ msgstr "無法理解pass"
 msgid "Misplaced end"
 msgstr "end 位置錯誤"
 
-#: TTalk.java
+#: TTalk.java ToolsUI.java
 msgid "choose tool requires an integer from 1 to 18"
 msgstr "choose tool需要一個整數from 1 to 18"
 
-#: TTalk.java
+#: TTalk.java ToolsUI.java
 msgid "No such tool: \"{0}\""
 msgstr "沒有這樣的工具：「{0}」"
 
@@ -8908,7 +8938,7 @@ msgstr "無法識別含有圖片的卡片或背景"
 msgid "menuItem requires of menu"
 msgstr "menuItem需要of menu"
 
-#: GMenu.java TTalk.java
+#: GMenu.java HeadlessMenus.java TTalk.java
 msgid "No such menu: {0}"
 msgstr "沒有這樣的選單：{0}"
 
@@ -9056,7 +9086,7 @@ msgstr "send需要to"
 msgid "Cannot understand send to"
 msgstr "無法理解 send to"
 
-#: TTalk.java
+#: FilesUI.java TTalk.java
 msgid "No such stack: {0}"
 msgstr "沒有這樣的堆疊：{0}"
 
@@ -9068,83 +9098,83 @@ msgstr "無法開啟堆疊：{0}"
 msgid "Cannot identify the object to send the message to"
 msgstr "無法識別要傳送訊息的物件"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand edit"
 msgstr "無法理解edit"
 
-#: TTalk.java
+#: EditorsUI.java ScriptWeb.java
 msgid "File access was denied: {0}"
 msgstr "檔案存取被拒絕：{0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "edit requires of"
 msgstr "edit 需要 of"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand edit of"
 msgstr "無法理解 edit of"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot identify the object to edit"
 msgstr "無法識別要編輯的物件"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "This stack's scripts cannot be viewed (cantPeek)"
 msgstr "無法檢視此堆疊的指令碼（cantPeek）"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot edit {0}"
 msgstr "無法編輯{0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand export"
 msgstr "無法理解export"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "export paint requires to file"
 msgstr "export paint 需要 to file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand export paint to file"
 msgstr "無法理解 export paint to file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "No image to export"
 msgstr "沒有要匯出的影像"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not export to file: {0}"
 msgstr "無法匯出到檔案：{0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "{0} requires a width in pixels"
 msgstr "{0}需要以像素為單位的寬度"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "The width for {0} must be a number: {1}"
 msgstr "{0}的寬度必須是數字：{1}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "The width for {0} must be at least 0"
 msgstr "{0}的寬度必須至少為0"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand import"
 msgstr "無法理解import"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "import paint requires from file"
 msgstr "import paint 需要 from file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Cannot understand import paint from file"
 msgstr "無法理解 import paint from file"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not read file: {0}"
 msgstr "無法讀取檔案：{0}"
 
-#: TTalk.java
+#: EditorsUI.java
 msgid "Could not read the file as an image"
 msgstr "無法將檔案讀取為影像"
 
@@ -9192,39 +9222,39 @@ msgstr "無法理解pop：{0}"
 msgid "Missing container for pop card {0}"
 msgstr "pop card {0} 缺少容器"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for click at"
 msgstr "缺少click at的座標"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for click at"
 msgstr "無法解釋click at的座標"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot understand click"
 msgstr "無法理解click"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for drag from"
 msgstr "缺少drag from的座標"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for drag from"
 msgstr "無法解釋drag from的座標"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing from"
 msgstr "缺少 from"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing coordinates for drag to"
 msgstr "缺少drag to的座標"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Cannot interpret the coordinates for drag to"
 msgstr "無法解釋drag to的座標"
 
-#: TTalk.java
+#: HeadlessPointer.java PointerUI.java
 msgid "Missing to"
 msgstr "缺少 to"
 
@@ -9264,7 +9294,6 @@ msgstr "controlKey 需要有效的字元代碼"
 msgid "Cannot understand reset"
 msgstr "無法理解reset"
 
-#: TTalk.java
 msgid "Cannot understand delete"
 msgstr "無法理解delete"
 
@@ -9300,11 +9329,11 @@ msgstr "無法理解domenu"
 msgid "Cannot understand copy (only copy template is supported)"
 msgstr "無法理解 copy（僅支援 copy template）"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand request"
 msgstr "無法理解request"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "request requires from program"
 msgstr "request 需要 from program"
 
@@ -9312,19 +9341,19 @@ msgstr "request 需要 from program"
 msgid "Cannot identify the card for {0}"
 msgstr "無法識別{0}的卡"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "Cannot identify the stack to save"
 msgstr "無法識別要儲存的堆疊"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "save requires as <filename>"
 msgstr "save 需要 as <檔名>"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "This stack cannot be saved"
 msgstr "此堆疊無法儲存"
 
-#: TTalk.java
+#: FilesUI.java
 msgid "Missing destination for save as"
 msgstr "save as 缺少目的地"
 
@@ -9356,11 +9385,11 @@ msgstr "只能在欄位和彈出按鈕中選擇文字"
 msgid "select supports only buttons, fields, shapes and text"
 msgstr "select 僅支援按鈕、欄位、形狀和文字"
 
-#: TTalk.java
+#: ToolsUI.java
 msgid "Cannot understand choose"
 msgstr "無法理解choose"
 
-#: TTalk.java
+#: ToolsUI.java
 msgid "Tool \"{0}\" is not yet supported"
 msgstr "工具「{0}」尚未受支援"
 
@@ -9448,7 +9477,7 @@ msgstr "read 需要 until 或 for"
 msgid "Cannot understand read from file for"
 msgstr "無法理解 read from file for"
 
-#: TTalk.java
+#: TTalk.java TUtil.java TalkBinary.java
 msgid "A number is required here: {0}"
 msgstr "這裡需要數字：{0}"
 
@@ -9616,23 +9645,23 @@ msgstr "with需要shiftKey/optionKey/commandKey/controlKey：{0}"
 msgid "Movie does not exist: {0}"
 msgstr "影片不存在：{0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Missing object to print"
 msgstr "缺少要列印的物件"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "The card count for print … cards is not a number: {0}"
 msgstr "print … cards 的卡片數不是數字：{0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "The card count for print … cards must be at least 1: {0}"
 msgstr "print … cards 的卡片數必須至少為 1：{0}"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "print card from requires to"
 msgstr "print card from 需要 to"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand the coordinates in print card from"
 msgstr "無法理解print card from中的座標"
 
@@ -9700,7 +9729,7 @@ msgstr "or需要布林值（true/false）"
 msgid "Cannot interpret {0} {1}"
 msgstr "無法解譯 {0} {1}"
 
-#: OsaScript.java TTalk.java
+#: OsaScript.java TTalk.java TalkJit.java UiHost.java
 msgid "Cannot interpret {0}"
 msgstr "無法解譯 {0}"
 
@@ -10079,15 +10108,15 @@ msgstr "正規表示式太複雜"
 msgid "Unimplemented XCMD/XFCN: {0}"
 msgstr "未實作的 XCMD/XFCN：{0}"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Called an unsupported Mac API ({1})"
 msgstr "{0}：呼叫了不受支援的 Mac API（{1}）"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Aborted"
 msgstr "{0}：中止"
 
-#: TXcmd.java
+#: PlayerExternals68k.java TXcmd.java
 msgid "{0}: Cannot read the XCMD/XFCN resource ({1})"
 msgstr "{0}：無法讀取XCMD/XFCN資源（{1}）"
 
@@ -10095,7 +10124,7 @@ msgstr "{0}：無法讀取XCMD/XFCN資源（{1}）"
 msgid "No card to copy"
 msgstr "沒有要拷貝的卡片"
 
-#: CardClipboard.java
+#: CardClipboard.java HeadlessMenus.java
 msgid "Cannot copy card: {0}"
 msgstr "無法複製卡片：{0}"
 
@@ -10107,7 +10136,7 @@ msgstr "沒有要貼上的卡片"
 msgid "No destination to paste into"
 msgstr "沒有可以貼上的目的地"
 
-#: CardClipboard.java
+#: CardClipboard.java HeadlessMenus.java
 msgid "Cannot paste card: {0}"
 msgstr "無法貼上卡片：{0}"
 
@@ -10127,11 +10156,11 @@ msgstr "需要一個JSON物件"
 msgid "Invalid JSON (position {0}): {1}"
 msgstr "無效的 JSON（位置 {0}）：{1}"
 
-#: ScriptEditor.java
+#: TalkWords.java
 msgid "there is not requires a/an"
 msgstr "there is not 需要 a/an"
 
-#: ScriptEditor.java
+#: TalkWords.java
 msgid "there is requires a/an"
 msgstr "there is 需要 a/an"
 
@@ -10162,15 +10191,19 @@ msgstr "不能除以零：x mod 0"
 msgid "Division by zero: x div 0"
 msgstr "不能除以零：x div 0"
 
-#: TTalk.java TUtil.java
+#: PlayerUiHost.java TTalk.java TUtil.java ToolsUI.java WindowUI.java
 msgid "A number is required here"
 msgstr "這裡需要數字"
 
 #: TUtil.java
+msgid "Not a scrolling field."
+msgstr "這不是可捲動欄位。"
+
+#: TUtil.java WindowUI.java
 msgid "A rectangle is required here"
 msgstr "這裡需要一個矩形"
 
-#: TUtil.java
+#: TUtil.java WindowUI.java
 msgid "Coordinates are required here"
 msgstr "這裡需要座標"
 
@@ -10230,7 +10263,7 @@ msgstr "family 編號不是數字：{0}"
 msgid "family must be between 1 and 15: {0}"
 msgstr "family必須在1到15之間：{0}"
 
-#: TUtil.java
+#: PlayerUiHost.java UiHost.java WindowUI.java
 msgid "palette requires a palette name"
 msgstr "palette需要一個palette名稱"
 
@@ -10238,19 +10271,19 @@ msgstr "palette需要一個palette名稱"
 msgid "rect requires four coordinates"
 msgstr "rect 需要四個座標"
 
-#: TUtil.java
+#: ToolsUI.java UiHost.java
 msgid "No such pattern"
 msgstr "沒有這樣的圖案"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} requires 8, 16, 32 or 64 (ppat format)"
 msgstr "{0}需要8、16、32或64（ppat格式）"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "Incorrect imageData length ({0} bytes required)"
 msgstr "ImageData長度不正確（需要{0}位元組）"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "pattern has no property {0}"
 msgstr "pattern 沒有屬性 {0}"
 
@@ -10502,110 +10535,110 @@ msgstr "userLevel需要一個整數from 1 to 5"
 msgid "A boolean is required here"
 msgstr "這裡需要布林值"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "editBkgnd requires userLevel 3 or higher"
 msgstr "editBkgnd需要userLevel3或更高"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "multiSpace must be between 1 and {0}"
 msgstr "multiSpace必須在1和{0}之間"
 
 msgid "polySides must be between 3 and 50"
 msgstr "polySides必須在3到50之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "gradient requires off, linear, radial or texture"
 msgstr "gradient 需要 off、linear、radial 或 texture"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "fillTexture requires a built-in texture name or an image file: {0}"
 msgstr "fillTexture需要內建紋理名稱或影像檔案：{0}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "fillTolerance must be between 0 and 100"
 msgstr "fillTolerance必須在0到100之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushSize must be between 1 and 256"
 msgstr "brushSize必須在1到256之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushHardness must be between 0 and 100"
 msgstr "brushHardness必須在0到100之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "smudgeStrength must be between 1 and 100"
 msgstr "smudgeStrength必須在1到100之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "stampSource requires \"x,y\""
 msgstr "stampSource需要\"x,y\""
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushOpacity must be between 1 and 100"
 msgstr "brushOpacity必須在1到100之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushSpacing must be between 1 and 200"
 msgstr "brushSpacing必須在1到200之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "brushPressure must be size, opacity, both or none"
 msgstr "brushPressure 必須是 size、opacity、both 或 none"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "Can't set the penPressure"
 msgstr "無法設定 penPressure"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} must be between 0 and 98"
 msgstr "{0}必須在0到98之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoom requires a number (%)"
 msgstr "zoom 需要數字（%）"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoom must be between {0} and {1}"
 msgstr "zoom 必須在 {0} 和 {1} 之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "zoomOrigin requires a point (x,y)"
 msgstr "zoomOrigin需要一個點（x，y）"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "gridSize must be between 1 and {0}"
 msgstr "gridSize必須在1和{0}之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "No such layer: {0}"
 msgstr "沒有這樣的圖層：{0}"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "layerOpacity must be between 0 and 100"
 msgstr "layerOpacity必須在0到100之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "layerBlend requires a blend mode name (Normal, Multiply, etc.)"
 msgstr "layerBlend 需要混合模式名稱（Normal、Multiply 等）"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetry requires none, vertical, horizontal, quadrant or radial"
 msgstr "symmetry 需要 none、vertical、horizontal、quadrant 或 radial"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetryAxes must be between {0} and {1}"
 msgstr "symmetryAxes必須在{0}和{1}之間"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "symmetryCenter requires \"x,y\""
 msgstr "symmetryCenter需要\"x,y\""
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "lineSize requires a number"
 msgstr "lineSize 需要數字"
 
-#: TUtil.java
+#: ToolsUI.java
 msgid "{0} must be between 1 and 40"
 msgstr "{0}必須在1到40之間"
 
@@ -10796,7 +10829,7 @@ msgstr "不支援聲音「{0}」的音訊檔案"
 msgid "Cannot open sound \"{0}\""
 msgstr "無法開啟聲音「{0}」"
 
-#: FieldTable.java
+#: FieldTableData.java
 msgid "columnWidths requires comma-separated widths such as \"120,80,200\""
 msgstr "columnWidths需要逗號分隔的寬度，例如\"120,80,200\""
 
@@ -10852,7 +10885,7 @@ msgstr "無法更改為文字形狀"
 msgid "{0} requires {1} numbers"
 msgstr "{0} 需要 {1} 個數字"
 
-#: OObject.java
+#: UiHost.java WindowUI.java
 msgid "Cannot set zoomed on this window"
 msgstr "無法在此視窗上設定 zoomed"
 
@@ -10896,19 +10929,19 @@ msgstr "matchText需要一個字串、一個正規表示式和可選的結果變
 msgid "matchChunk requires a string, a regular expression and optional position variables"
 msgstr "matchChunk需要一個字串、一個正規表示式和可選的位置變數"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set visible on this object?"
 msgstr "無法在此物件上設定 visible？"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set left on this object?"
 msgstr "無法在此物件上設定 left？"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set top on this object?"
 msgstr "無法在此物件上設定 top？"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set topleft on this object?"
 msgstr "無法在此物件上設定 topleft？"
 
@@ -10916,7 +10949,7 @@ msgstr "無法在此物件上設定 topleft？"
 msgid "Cannot set loc on this object?"
 msgstr "無法在此物件上設定loc？"
 
-#: TUtil.java
+#: WindowUI.java
 msgid "Cannot set rect on this object?"
 msgstr "無法在此物件上設定 rect？"
 
@@ -11086,7 +11119,7 @@ msgstr "HyperCard選單在HyperZebra中不可用：{0}"
 msgid "line {0} of {1}"
 msgstr "{1} 的第 {0} 行"
 
-#: ScriptDebugger.java TTalk.java TXcmd.java
+#: EditorsUI.java PlayerExternals68k.java ScriptDebugger.java TTalk.java TXcmd.java
 msgid "user abort."
 msgstr "使用者中止。"
 
@@ -11110,7 +11143,7 @@ msgstr "關閉：與 HyperCard 相同，反白時將按鈕反相"
 msgid "Translation Settings"
 msgstr "翻譯設定"
 
-#: GAppSettingsDialog.java GLauncher.java GMenu.java
+#: GAppSettingsDialog.java GLauncher.java GMenu.java JapaneseMenuNames.java
 msgid "Translation Settings…"
 msgstr "翻譯設定…"
 
@@ -11119,7 +11152,7 @@ msgctxt "menu"
 msgid "Translation Settings…"
 msgstr "翻譯設定…"
 
-#: GLauncher.java PpcRuntime.java
+#: GLauncher.java PpcLibraries.java PpcRuntime.java
 msgid "Translation"
 msgstr "翻譯"
 
@@ -11271,7 +11304,7 @@ msgctxt "menu"
 msgid "Individual Stack Settings…"
 msgstr "堆疊個別設定…"
 
-#: GAppSettingsDialog.java GLauncher.java GMenu.java StackSettings.java
+#: GAppSettingsDialog.java GLauncher.java GMenu.java JapaneseMenuNames.java StackSettings.java
 msgid "Individual Stack Settings…"
 msgstr "堆疊個別設定…"
 
@@ -11319,7 +11352,7 @@ msgstr "按堆疊變更縮放、按鍵、遊戲控制器和存取確認"
 msgid "Not a HyperZebra stack"
 msgstr "不是 HyperZebra 堆疊"
 
-#: GAppSettingsDialog.java GMenu.java
+#: GAppSettingsDialog.java GMenu.java JapaneseMenuNames.java
 msgid "Zoom"
 msgstr "縮放"
 
@@ -11355,11 +11388,11 @@ msgstr "若要使用，請將 Kaleidoscope 控制面板放入 Control Panels 資
 msgid "Lets more than one line be selected in a list field (Auto select, table or outline). It does not limit typing."
 msgstr "允許在清單欄位（自動選取、表格或大綱）中選取多行。與可輸入的行數無關。"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgid "Button Info"
 msgstr "按鈕資訊"
 
-#: AuthDialog.java
+#: AuthDialog.java PartInfo.java
 msgid "Field Info"
 msgstr "欄位資訊"
 
@@ -11619,7 +11652,7 @@ msgstr "移出面板"
 msgid "Panel “{0}” · {1} parts"
 msgstr "面板「{0}」· {1} 個"
 
-#: GLauncher.java GLlmTranslationDialog.java GTranslationSettingsDialog.java MacAppHost.java
+#: GLauncher.java GLlmTranslationDialog.java GTranslationSettingsDialog.java JapaneseMenuNames.java MacAppHost.java
 msgctxt "menu"
 msgid "Resource Translation with AI Chat…"
 msgstr "用 AI 聊天進行資源翻譯…"
@@ -11860,7 +11893,7 @@ msgstr "沒有這個物件"
 msgid "set without to"
 msgstr "set 缺少 to"
 
-#: TTalk.java
+#: ProgramsUI.java
 msgid "Cannot understand reply"
 msgstr "無法理解 reply"
 
@@ -11979,7 +12012,7 @@ msgstr "正在尋找 Tesseract 安裝程式…"
 msgid "The Tesseract installer was not found."
 msgstr "找不到 Tesseract 安裝程式。"
 
-#: TesseractInstall.java
+#: TesseractInstall.java WebAotBuild.java
 msgid "Cancelled."
 msgstr "已取消。"
 
@@ -11991,7 +12024,7 @@ msgstr "Tesseract 安裝程式已開啟：安裝完成後請回到這裡。"
 msgid "Install the tesseract-ocr packages of your system."
 msgstr "請安裝系統的 tesseract-ocr 套件。"
 
-#: TesseractInstall.java
+#: TesseractInstall.java WebAotBuild.java
 msgid "Downloading failed: {0}"
 msgstr "下載失敗：{0}"
 
@@ -12131,7 +12164,7 @@ msgstr "這不是聲音或影片檔案。"
 msgid "Loop"
 msgstr "重複播放"
 
-#: GMediaPlayerWindow.java SoundEditor.java TTalk.java
+#: GMediaPlayerWindow.java JapaneseMenuNames.java SoundEditor.java TTalk.java
 msgid "Volume"
 msgstr "音量"
 
@@ -12431,107 +12464,805 @@ msgstr "要取消此發佈嗎？文件將不再傳送版本。"
 msgid "Cancel this subscriber? The document stops getting editions."
 msgstr "要取消此訂閱嗎？文件將不再取得版本。"
 
+#: StationeryPads.java
 msgid "Stationery Pad"
 msgstr "樣板"
 
+#: StationeryPads.java
 msgid "\"{0}\" is a stationery pad: a new document is made from it and opened."
 msgstr "「{0}」是樣板:將由它建立並打開新文件。"
 
+#: StationeryPads.java
 msgid "Name of the new document:"
 msgstr "新文件的名稱:"
 
+#: StationeryPads.java
 msgid "{0} copy"
 msgstr "{0} 拷貝"
 
+#: StationeryPads.java
 msgid "\"{0}\" already exists. Choose another name."
 msgstr "「{0}」已存在。請選擇其他名稱。"
 
+#: StationeryPads.java
 msgid "The new document could not be made: {0}"
 msgstr "無法建立新文件:{0}"
 
+#: HomeGuard.java
 msgid "Home Stack Changed"
 msgstr "Home 堆疊已變更"
 
+#: HomeGuard.java
 msgid "Something outside HyperZebra changed the Home stack's file while it was open. HyperZebra's own copy has been saved over that change."
 msgstr "HyperZebra 以外的程式在 Home 堆疊開啟時變更了它的檔案。已用 HyperZebra 自己的內容覆寫儲存。"
 
+#: HomeGuard.java
 msgid "The Home stack's scripts were changed outside HyperZebra. Scripts in Home run in every stack."
 msgstr "Home 堆疊的指令碼在 HyperZebra 以外被變更。Home 中的指令碼會在每個堆疊中執行。"
 
+#: HomeGuard.java
 msgid "Keep Home As It Is"
 msgstr "保持 Home 不變"
 
+#: HomeGuard.java
 msgid "Restore the Last Copy"
 msgstr "還原最後的副本"
 
+#: StackGuard.java
 msgid "Handlers added or changed: {0}"
 msgstr "新增或變更的處理常式:{0}"
 
+#: StackVirusScan.java
 msgid "Virus Found"
 msgstr "發現病毒"
 
+#: StackVirusScan.java
 msgid "The stack \"{0}\" carries the MerryXmas virus, which copies itself into the Home stack and into every stack you open."
 msgstr "堆疊「{0}」帶有 MerryXmas 病毒,它會把自身複製到 Home 堆疊和您開啟的每個堆疊中。"
 
+#: StackVirusScan.java
 msgid "Remove the Virus"
 msgstr "移除病毒"
 
+#: StackVirusScan.java
 msgid "Open As Is"
 msgstr "依原樣開啟"
 
+#: Sandbox.java
 msgid "wants to change the scripts of the stack:"
 msgstr "想要變更堆疊的指令碼:"
 
+#: Sandbox.java
 msgid "wants to change the protection of the stack:"
 msgstr "想要變更堆疊的保護設定:"
 
+#: Sandbox.java
 msgid "wants to paste into the stack:"
 msgstr "想要貼上到堆疊:"
 
+#: Sandbox.java
 msgid "The Home stack's scripts run in every stack. Old stacks spread viruses this way: allow this only for an installation you started yourself."
 msgstr "Home 堆疊的指令碼會在每個堆疊中執行。舊堆疊中的病毒就是這樣傳播的:僅在您自己啟動安裝時才允許。"
 
+#: Sandbox.java
 msgid "Old stacks spread viruses by writing into other stacks: allow this only for an installation you started yourself."
 msgstr "舊堆疊中的病毒透過寫入其他堆疊傳播:僅在您自己啟動安裝時才允許。"
 
+#: Sandbox.java
 msgid "wants to change the program code of:"
 msgstr "想要變更程式碼："
 
+#: Sandbox.java
 msgid "would load extensions that are new or have changed:"
 msgstr "將載入新的或已變更的延伸功能："
 
+#: Sandbox.java
 msgid "is an extension infected with the virus:"
 msgstr "是感染了以下病毒的延伸功能："
 
+#: Sandbox.java
 msgid "Viruses of the classic Mac spread by adding their code to programs. Allow this only for an installation or update you started yourself."
 msgstr "經典 Mac 的病毒透過把自身程式碼加入程式來傳播。請僅在您自己啟動的安裝或更新時允許。"
 
+#: Sandbox.java
 msgid "An extension runs inside every program, and viruses of the classic Mac stayed resident this way. Allow this if you installed them yourself; otherwise they stay out for now."
 msgstr "延伸功能在每個程式內執行，經典 Mac 的病毒就是這樣常駐的。如果是您自己安裝的，請允許；否則暫不載入。"
 
+#: Sandbox.java
 msgid "It stays out unless you allow it."
 msgstr "除非您允許，否則不會載入。"
 
+#: VirusScan68k.java
 msgid "It holds a virus and was not opened."
 msgstr "其中含有病毒，未開啟。"
 
+#: VirusScan68k.java
 msgid "\"{0}\" is infected with the virus {1}."
 msgstr "「{0}」感染了病毒 {1}。"
 
+#: VirusScan68k.java
 msgid "Repairing puts the program back as it was; the infected file is kept in Deleted Files."
 msgstr "修復後程式將恢復原狀；受感染的檔案保留在 Deleted Files 中。"
 
+#: VirusScan68k.java
 msgid "HyperZebra cannot repair this file. If you open it anyway, changes it tries to make to other programs are still refused."
 msgstr "HyperZebra 無法修復此檔案。如果仍要開啟，它嘗試變更其他程式時仍會詢問您。"
 
+#: VirusScan68k.java
 msgid "Don't Open"
 msgstr "不開啟"
 
+#: VirusScan68k.java
 msgid "Repair and Open"
 msgstr "修復並開啟"
 
+#: VirusScan68k.java
 msgid "Open Anyway"
 msgstr "仍要開啟"
 
-msgid "Not a scrolling field."
-msgstr "這不是可捲動欄位。"
+#: ScriptWeb.java
+msgid "No such file: {0}"
+msgstr "沒有該檔案：{0}"
+
+#: ScriptWeb.java
+msgid "The file is too large: {0}"
+msgstr "檔案太大：{0}"
+
+#: ScriptWeb.java
+msgid "Cannot read the file: {0}"
+msgstr "無法讀取檔案：{0}"
+
+#: ScriptWeb.java
+msgid "put into URL writes only file: and binfile: URLs"
+msgstr "put into URL 只能寫入 file: 和 binfile: URL"
+
+#: ScriptWeb.java
+msgid "Can't create that file."
+msgstr "無法建立該檔案。"
+
+#: ScriptWeb.java
+msgid "Cannot write the file: {0}"
+msgstr "無法寫入檔案：{0}"
+
+#: TTalk.java
+msgid "read from file: more than 512 MB at once"
+msgstr "read from file：一次超過 512 MB"
+
+#: TTalk.java
+msgid "The file was opened for read: {0}"
+msgstr "該檔案以唯讀方式 (for read) 開啟：{0}"
+
+#: TUtil.java TalkBinary.java TalkImage.java
+msgid "Wrong number of arguments for {0}: {1}"
+msgstr "{0} 的引數個數不對：{1}"
+
+#: TalkBinary.java
+msgid "binaryEncode: unknown data type {0}"
+msgstr "binaryEncode：未知的資料類型 {0}"
+
+#: TalkBinary.java
+msgid "binaryEncode: not enough values for the format"
+msgstr "binaryEncode：值不夠格式使用"
+
+#: TalkBinary.java
+msgid "binaryEncode: not a hexadecimal digit: {0}"
+msgstr "binaryEncode：不是十六進位數字：{0}"
+
+#: TalkBinary.java
+msgid "binaryEncode: a number is required here: {0}"
+msgstr "binaryEncode：此處需要數字：{0}"
+
+#: TalkBinary.java
+msgid "binaryDecode: unknown data type {0}"
+msgstr "binaryDecode：未知的資料類型 {0}"
+
+#: TalkBinary.java
+msgid "base64Decode: not base 64 data"
+msgstr "base64Decode：不是 Base64 資料"
+
+#: TalkBinary.java
+msgid "decompress: not compressed data"
+msgstr "decompress：不是壓縮資料"
+
+#: TalkBinary.java
+msgid "messageDigest: unknown digest {0}"
+msgstr "messageDigest：未知的摘要演算法 {0}"
+
+#: TalkBinary.java
+msgid "Unknown text encoding: {0}"
+msgstr "未知的文字編碼：{0}"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "imageToArray: the image is too large"
+msgstr "imageToArray：影像太大"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage requires an array of rows of pixels"
+msgstr "arrayToImage 需要由像素列組成的陣列"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the array has no pixels"
+msgstr "arrayToImage：陣列中沒有像素"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the image is too large"
+msgstr "arrayToImage：影像太大"
+
+#: EditorsUI.java PlayerUiHost.java
+msgid "arrayToImage: the format must be png, jpeg, gif or bmp: {0}"
+msgstr "arrayToImage：格式必須是 png、jpeg、gif 或 bmp：{0}"
+
+#: EditorsUI.java PlayerUiHost.java TalkImage.java
+msgid "arrayToImage: cannot write {0}"
+msgstr "arrayToImage：無法寫出 {0}"
+
+#: TalkBinary.java
+msgid "arrayToImage: a pixel needs numbers like 255,0,0,255: {0}"
+msgstr "arrayToImage：像素需要類似 255,0,0,255 的數字：{0}"
+
+msgctxt "reference"
+msgid "How many elements an array or a dictionary has"
+msgstr "陣列或字典的元素個數"
+
+msgctxt "reference"
+msgid "Opens a file read-only, emptied for writing, for reading and writing, or to add to its end; binary reads and writes the bytes as they are"
+msgstr "開啟檔案：唯讀、清空後寫入、讀寫或附加到結尾；binary 照原樣讀寫位元組"
+
+msgctxt "reference"
+msgid "Reads n bytes (into it); in a binary file each byte is one character"
+msgstr "讀取 n 個位元組（放入 it）；二進位檔案中每個位元組是一個字元"
+
+msgctxt "reference"
+msgid "A file's bytes as a value; put <data> into|after URL \"binfile:<file>\" writes them, \"file:\" is for text"
+msgstr "檔案的位元組作為值；put <data> into|after URL \"binfile:<file>\" 寫入，\"file:\" 用於文字"
+
+msgctxt "reference"
+msgid "The nth byte of binary data (the same as char)"
+msgstr "二進位資料的第 n 個位元組（與 char 相同）"
+
+msgctxt "reference"
+msgid "How many bytes"
+msgstr "位元組數"
+
+msgctxt "reference"
+msgid "The number of a byte (0-255)"
+msgstr "位元組的數值（0-255）"
+
+msgctxt "reference"
+msgid "The byte of a number (0-255); numToChar is for text"
+msgstr "數值對應的位元組（0-255）；文字用 numToChar"
+
+msgctxt "reference"
+msgid "Binary data from values: c C 1 byte, s S i I 2/4 bytes low byte first, n m N M 2/4 bytes high byte first, f d floating point, a A text, H h hexadecimal, B b bits, x a zero byte; a count or * after a letter"
+msgstr "由值產生二進位資料：c C 1 位元組，s S i I 2/4 位元組低位在前，n m N M 2/4 位元組高位在前，f d 浮點數，a A 文字，H h 十六進位，B b 位元，x 零位元組；字母後可跟個數或 *"
+
+msgctxt "reference"
+msgid "Puts the values in binary data into variables (the letters of binaryEncode); gives how many it converted"
+msgstr "把二進位資料中的值放入變數（與 binaryEncode 相同的字母）；傳回轉換的個數"
+
+msgctxt "reference"
+msgid "Base 64 text of data (lines of 72 characters), and the data back"
+msgstr "資料的 Base64 文字（每行 72 個字元）及其還原"
+
+msgctxt "reference"
+msgid "gzip compression"
+msgstr "gzip 壓縮"
+
+msgctxt "reference"
+msgid "The hash of data as bytes (binaryDecode(\"H*\", …) gives hexadecimal)"
+msgstr "資料的雜湊值（位元組；binaryDecode(\"H*\", …) 得到十六進位）"
+
+msgctxt "reference"
+msgid "Text as the bytes of an encoding (return is CR in Mac encodings, LF in others)"
+msgstr "把文字轉為某編碼的位元組（Mac 編碼中 return 為 CR，其他為 LF）"
+
+msgctxt "reference"
+msgid "Text from the bytes of an encoding (every line end becomes return)"
+msgstr "從某編碼的位元組得到文字（所有行尾變為 return）"
+
+msgctxt "reference"
+msgid "Where bytes are in data (0 when they are not)"
+msgstr "位元組在資料中的位置（沒有則為 0）"
+
+msgctxt "reference"
+msgid "The pixels of PNG, JPEG, GIF, BMP or PICT data as rows of \"r,g,b,a\" (0-255), so px[y][x] counts from 1 at the top left"
+msgstr "把 PNG、JPEG、GIF、BMP 或 PICT 資料的像素變成 \"r,g,b,a\"（0-255）的列陣列，px[y][x] 從左上角以 1 開始計數"
+
+msgctxt "reference"
+msgid "Image file data from rows of \"r,g,b\" or \"r,g,b,a\" pixels"
+msgstr "由 \"r,g,b\" 或 \"r,g,b,a\" 像素列產生影像檔案資料"
+
+#: HyperTalkReference.java
+msgctxt "reference"
+msgid "Binary data & images"
+msgstr "二進位資料與影像"
+
+#: GHelpWindow.java
+msgctxt "help"
+msgid "Binary data and images"
+msgstr "二進位資料與影像"
+
+msgctxt "help"
+msgid ""
+"Scripts can read and write any file byte by byte, and turn a picture into an array of pixels and back. The names and the syntax are LiveCode's, so examples written for LiveCode work as they are.\n"
+"\n"
+"Binary data\n"
+"  Binary data is text with one character for each byte. byte n of data is char n of data, and byteToNum and numToByte give the number of a byte (0 to 255) and the byte of a number. Use them for binary data rather than charToNum and numToChar, which follow the stack's text encoding.\n"
+"    put URL \"binfile:photo.png\" into data\n"
+"    put the number of bytes in data into size\n"
+"    put byteToNum(byte 1 of data) into first\n"
+"    put data into URL \"binfile:copy.png\"\n"
+"  A file name without a folder is in the stack's folder. URL \"file:notes.txt\" reads and writes text instead; put … after URL adds to the end of a file. HyperZebra asks before a stack reads or writes a file outside its own places (Settings: access confirmation).\n"
+"\n"
+"Files\n"
+"    open file \"data.bin\" for binary read\n"
+"    read from file \"data.bin\" for 4 bytes\n"
+"    put it into header\n"
+"    read from file \"data.bin\" until eof\n"
+"    close file \"data.bin\"\n"
+"  The modes are read (the file is only read), write (the file is emptied first), update (read and written, nothing is cut) and append (written at the end). Without binary the file is text, as before. open file without a mode works as in HyperCard.\n"
+"\n"
+"Numbers in binary data\n"
+"    put binaryEncode(\"NnC\", 100000, 2, 255) into data\n"
+"    get binaryDecode(\"NnC\", data, a, b, c)\n"
+"  Each letter is a value: c C a byte (with or without a sign), s S i I 2 and 4 bytes with the low byte first (Intel order), n m N M 2 and 4 bytes with the high byte first (n N with a sign), f d floating-point numbers, a A text, H h hexadecimal, B b bits, x a zero byte that is skipped. A count after a letter takes that many values, * all the rest. binaryDecode puts the values into the variables and gives how many it converted.\n"
+"    get binaryDecode(\"H*\", sha1Digest(data), hex)\n"
+"  Also for binary data: base64Encode and base64Decode, compress and decompress (gzip), md5Digest, sha1Digest, messageDigest(data, \"SHA-256\"), and textEncode(text, \"UTF-8\") and textDecode(data, \"UTF-8\"), which turn text into the bytes of an encoding and back.\n"
+"\n"
+"Images as arrays of pixels\n"
+"  imageToArray turns PNG, JPEG, GIF, BMP or PICT data into an array of rows. Each pixel is \"r,g,b,a\" (red, green, blue, opacity, from 0 to 255), so px[y][x] is the pixel x from the left in row y from the top, counting from 1. arrayToImage makes PNG data from such an array, or \"jpeg\", \"gif\" or \"bmp\". A pixel may also be \"r,g,b\" (opaque) or [r, g, b, a].\n"
+"    put imageToArray(URL \"binfile:photo.png\") into px\n"
+"    put the number of items of px into h\n"
+"    put the number of items of px[1] into w\n"
+"    repeat with y = 1 to h\n"
+"      repeat with x = 1 to w\n"
+"        put px[y][x] into c\n"
+"        put 255 - item 1 of c & \",\" & 255 - item 2 of c & \",\" & 255 - item 3 of c & \",\" & item 4 of c into px[y][x]\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put arrayToImage(px) into URL \"binfile:negative.png\"\n"
+"  Changing an array one element at a time is quick: a loop over every pixel of a 640 x 480 picture takes a fraction of a second."
+msgstr ""
+"指令碼可以按位元組讀寫任何檔案，也可以把影像變成像素陣列再變回來。名稱和語法與 LiveCode 相同，所以為 LiveCode 撰寫的範例可以直接執行。\n"
+"\n"
+"二進位資料\n"
+"  二進位資料是每個位元組對應一個字元的文字。byte n of data 就是 char n of data，byteToNum 和 numToByte 給出位元組的數值（0 到 255）和數值對應的位元組。處理二進位資料請用它們，而不是遵循堆疊文字編碼的 charToNum 和 numToChar。\n"
+"    put URL \"binfile:photo.png\" into data\n"
+"    put the number of bytes in data into size\n"
+"    put byteToNum(byte 1 of data) into first\n"
+"    put data into URL \"binfile:copy.png\"\n"
+"  不帶資料夾的檔名位於堆疊所在的資料夾。URL \"file:notes.txt\" 則以文字讀寫；put … after URL 附加到檔案結尾。堆疊讀寫其自身位置之外的檔案前，HyperZebra 會先詢問（設定：存取確認）。\n"
+"\n"
+"檔案\n"
+"    open file \"data.bin\" for binary read\n"
+"    read from file \"data.bin\" for 4 bytes\n"
+"    put it into header\n"
+"    read from file \"data.bin\" until eof\n"
+"    close file \"data.bin\"\n"
+"  模式有 read（唯讀）、write（先清空檔案）、update（讀寫，不截斷）和 append（寫到結尾）。不加 binary 時檔案以文字處理，與以前相同。不帶模式的 open file 與 HyperCard 一樣運作。\n"
+"\n"
+"二進位資料中的數字\n"
+"    put binaryEncode(\"NnC\", 100000, 2, 255) into data\n"
+"    get binaryDecode(\"NnC\", data, a, b, c)\n"
+"  每個字母是一個值：c C 一個位元組（有號、無號），s S i I 2 和 4 位元組低位位元組在前（Intel 順序），n m N M 2 和 4 位元組高位位元組在前（n N 有號），f d 浮點數，a A 文字，H h 十六進位，B b 位元，x 略過的零位元組。字母後的數字表示取那麼多個值，* 表示其餘全部。binaryDecode 把值放入變數，並傳回轉換的個數。\n"
+"    get binaryDecode(\"H*\", sha1Digest(data), hex)\n"
+"  也可用於二進位資料：base64Encode 和 base64Decode，compress 和 decompress（gzip），md5Digest，sha1Digest，messageDigest(data, \"SHA-256\")，以及在文字和某種編碼的位元組之間轉換的 textEncode(text, \"UTF-8\") 和 textDecode(data, \"UTF-8\")。\n"
+"\n"
+"把影像作為像素陣列\n"
+"  imageToArray 把 PNG、JPEG、GIF、BMP 或 PICT 資料變成由列組成的陣列。每個像素是 \"r,g,b,a\"（紅、綠、藍、不透明度，0 到 255），所以 px[y][x] 是從上數第 y 列、從左數第 x 個像素，從 1 開始計數。arrayToImage 由這樣的陣列產生 PNG 資料，也可以是 \"jpeg\"、\"gif\" 或 \"bmp\"。像素也可以寫成 \"r,g,b\"（不透明）或 [r, g, b, a]。\n"
+"    put imageToArray(URL \"binfile:photo.png\") into px\n"
+"    put the number of items of px into h\n"
+"    put the number of items of px[1] into w\n"
+"    repeat with y = 1 to h\n"
+"      repeat with x = 1 to w\n"
+"        put px[y][x] into c\n"
+"        put 255 - item 1 of c & \",\" & 255 - item 2 of c & \",\" & 255 - item 3 of c & \",\" & item 4 of c into px[y][x]\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put arrayToImage(px) into URL \"binfile:negative.png\"\n"
+"  逐一修改陣列元素很快：走訪一張 640 x 480 影像的所有像素不到一秒。"
+
+#: PlayerUiHost.java TalkImage.java
+msgid "{0}: not image data (PNG, JPEG, GIF, BMP or PICT)"
+msgstr "{0}：不是影像資料（PNG、JPEG、GIF、BMP 或 PICT）"
+
+#: TalkImage.java
+msgid "{0}: the image is too large"
+msgstr "{0}：影像太大"
+
+#: TalkImage.java
+msgid "imageCombine: unknown mode {0} (normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity)"
+msgstr "imageCombine：未知的模式 {0}（normal、add、subtract、multiply、screen、darken、lighten、difference、hue、color、saturation、luminosity）"
+
+#: TalkImage.java
+msgid "imageCreate: the image is too large or empty: {0} x {1}"
+msgstr "imageCreate：影像太大或為空：{0} x {1}"
+
+#: TalkImage.java
+msgid "{0}: a number is required here: {1}"
+msgstr "{0}：此處需要數字：{1}"
+
+#: TalkImage.java
+msgid "Not a colour: {0} (a name, #RRGGBB or r,g,b)"
+msgstr "不是顏色：{0}（名稱、#RRGGBB 或 r,g,b）"
+
+msgctxt "reference"
+msgid "Draws top on base with its top left at x,y; modes normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation, luminosity; opacity 0-100"
+msgstr "把 top 畫在 base 上，左上角在 x,y；模式 normal、add、subtract、multiply、screen、darken、lighten、difference、hue、color、saturation、luminosity；不透明度 0-100"
+
+msgctxt "reference"
+msgid "A new image, clear or of one colour (a name, #RRGGBB, #RRGGBBAA or r,g,b)"
+msgstr "新影像，透明或單色（名稱、#RRGGBB、#RRGGBBAA 或 r,g,b）"
+
+msgctxt "reference"
+msgid "The width and height of image data (width,height)"
+msgstr "影像資料的寬和高（寬,高）"
+
+msgctxt "reference"
+msgid "An image shown over the card window from its top left; empty removes it"
+msgstr "從左上角疊加在卡片視窗上顯示的影像；empty 將其移除"
+
+msgctxt "reference"
+msgid "The paint picture, the card with its parts, or the card window as it looks, as PNG data"
+msgstr "繪圖影像、帶部件的卡片或目前所見的卡片視窗，作為 PNG 資料"
+
+msgctxt "reference"
+msgid "Draws image data on the card picture (the background's while editing it)"
+msgstr "把影像資料畫到卡片影像上（編輯背景時畫到背景影像上）"
+
+#: GHelpWindow.java
+msgctxt "help"
+msgid "Image effects"
+msgstr "影像效果"
+
+#: TalkPixelScript.java
+msgid "Can't understand the image script at line {0}: {1}"
+msgstr "無法理解影像指令碼第 {0} 行：{1}"
+
+#: TalkPixelScript.java
+msgid "The image script runs too long at the pixel {0},{1}"
+msgstr "影像指令碼在像素 {0},{1} 處執行太久"
+
+#: TalkPixelScript.java
+msgid "The image script was interrupted"
+msgstr "影像指令碼已中斷"
+
+msgctxt "reference"
+msgid "Runs a pixel script (HyperTalk on numbers) for every pixel: r, g, b, a are the pixel, x, y where it is, w, h the image's size; what r, g, b, a hold at the end is the new pixel"
+msgstr "為每個像素執行像素指令碼（數值的 HyperTalk）：r、g、b、a 是像素，x、y 是位置，w、h 是影像大小；結束時 r、g、b、a 的值就是新像素"
+
+msgctxt "reference"
+msgid "In imageFilter and the screenFilter: put, add, subtract, multiply, divide, if and repeat on numbers; get pixel takes another pixel, red(x, y) and the like read one"
+msgstr "用於 imageFilter 和 screenFilter：數值的 put、add、subtract、multiply、divide、if 和 repeat；get pixel 取另一個像素，red(x, y) 等讀取一個像素"
+
+msgctxt "reference"
+msgid "The card window is shown through a pixel script (as imageFilter's) until it is set to empty; the stack does not change"
+msgstr "卡片視窗透過像素指令碼（與 imageFilter 相同）顯示，直到設為 empty；堆疊不變"
+
+msgctxt "help"
+msgid ""
+"Whole images can be changed at once, far faster than pixel by pixel in a repeat loop: to touch up a picture, or for effects in a game. An image is image data as URL \"binfile:…\" gives it (PNG, JPEG, GIF, BMP or PICT); the functions give PNG data.\n"
+"\n"
+"imageFilter(data, script)\n"
+"  Runs a short script for every pixel. It is HyperTalk on numbers: r, g, b and a hold the pixel's red, green, blue and opacity (0 to 255), x and y where it is (from 0 at the top left), w and h the size of the image. What r, g, b and a hold at the end is the new pixel.\n"
+"    put \"put 255 - r into r; put 255 - g into g; put 255 - b into b\" into invert\n"
+"    put imageFilter(URL \"binfile:photo.jpg\", invert) into URL \"binfile:negative.png\"\n"
+"  Lines are separated by return or by ;. The script may use put, add, subtract, multiply, divide, if … then … else, repeat (with, times, while, until, exit repeat, next repeat), + - * / div mod ^, comparisons, and, or, not, and abs, min, max, sqrt, sin, cos, tan, atan, exp, ln, round, trunc, random and pi. Its own variables start at 0 for every pixel. red(x, y), green(x, y), blue(x, y), alpha(x, y) and lum(x, y) (brightness) read any pixel of the image, and get pixel x, y takes all of one; numbers between two pixels blend them. A script that runs too long stops with an error, and Command-period stops it too.\n"
+"\n"
+"Filters to copy\n"
+"  These are pixel scripts: keep the ones you use in a field or a variable, as in imageFilter(img, field \"Sepia\"). Values can be put in with &: \"multiply a by\" && opacity.\n"
+"  Grayscale:\n"
+"    put r * 0.3 + g * 0.59 + b * 0.11 into v; put v into r; put v into g; put v into b\n"
+"  Sepia:\n"
+"    put r * 0.39 + g * 0.77 + b * 0.19 into nr; put r * 0.35 + g * 0.69 + b * 0.17 into ng\n"
+"    put r * 0.27 + g * 0.53 + b * 0.13 into b; put nr into r; put ng into g\n"
+"  Brightness and contrast (20 lighter, 1.4 times the contrast):\n"
+"    put (r - 128) * 1.4 + 148 into r; put (g - 128) * 1.4 + 148 into g; put (b - 128) * 1.4 + 148 into b\n"
+"  Black and white:\n"
+"    if lum(x, y) > 128 then put 255 into v else put 0 into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  A red flash, half way to red:\n"
+"    put r + (255 - r) / 2 into r; multiply g by 0.5; multiply b by 0.5\n"
+"  Green screen (that green becomes clear):\n"
+"    if g > 150 and r < 120 and b < 120 then put 0 into a\n"
+"  Blur (the average of 5 by 5 pixels):\n"
+"    repeat with dy = -2 to 2\n"
+"      repeat with dx = -2 to 2\n"
+"        add red(x + dx, y + dy) to sr; add green(x + dx, y + dy) to sg; add blue(x + dx, y + dy) to sb\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put sr / 25 into r; put sg / 25 into g; put sb / 25 into b\n"
+"  Outlines of what is drawn:\n"
+"    put abs(lum(x + 1, y) - lum(x - 1, y)) + abs(lum(x, y + 1) - lum(x, y - 1)) into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  Mosaic, mirror and wave:\n"
+"    get pixel x - x mod 8, y - y mod 8\n"
+"    get pixel w - 1 - x, y\n"
+"    get pixel x + 6 * sin(y / 12), y\n"
+"  Darker corners, scan lines and noise:\n"
+"    put ((x - w / 2) ^ 2 + (y - h / 2) ^ 2) / ((w / 2) ^ 2 + (h / 2) ^ 2) * 0.8 into d\n"
+"    multiply r by 1 - d; multiply g by 1 - d; multiply b by 1 - d\n"
+"    put 1 - y mod 2 * 0.4 into k; multiply r by k; multiply g by k; multiply b by k\n"
+"    put random(41) - 21 into n; add n to r; add n to g; add n to b\n"
+"\n"
+"Other sizes\n"
+"  imageFilter(data, script, width, height) makes an image of that size: the script runs for each of its pixels (width and height hold its size) and takes the original's with get pixel.\n"
+"    put imageFilter(img, \"get pixel x * w / width, y * h / height\", 320, 240) into small\n"
+"    put imageFilter(img, \"get pixel y, h - 1 - x\", item 2 of imageSize(img), item 1 of imageSize(img)) into turned\n"
+"\n"
+"Combining and making images\n"
+"    put imageCreate(200, 40, \"#00000080\") into bar\n"
+"    put imageCombine(img, bar, 10, 300) into img\n"
+"    put imageCombine(img, sprite, x, y, \"screen\", 70) into img\n"
+"  imageCombine draws the second image on the first with its top left at x,y. The mode is normal, add, subtract, multiply, screen, darken, lighten, difference, hue, color, saturation or luminosity, and the opacity is from 0 to 100. imageSize gives width,height.\n"
+"\n"
+"Pictures of the stack\n"
+"    export card to snap\n"
+"    import paint from imageFilter(snap, field \"Sepia\")\n"
+"  export paint, export card and export screen to a variable give the paint picture, the card with its buttons and fields, or the card window as it looks now. import paint from image data draws it on the card picture (on the background's while you edit the background).\n"
+"\n"
+"Screen effects\n"
+"    set the screenFilter to field \"Grayscale\"\n"
+"    set the screenFilter to empty\n"
+"  The screenFilter shows the card window through a pixel script while the stack stays as it is: for a flashback, a pause screen or a dream. There x and y are pixels of the screen, and scale is how much it is magnified (2 when the card is shown at 200%). The screenOverlay is an image shown over the card from its top left, for a flash of colour or a status panel. Both end when the stack closes, and lock screen and visual effects show them as well.\n"
+"    repeat with i = 1 to 10\n"
+"      put 1 - i / 10 into k\n"
+"      set the screenFilter to \"multiply r by\" && k & \"; multiply g by\" && k & \"; multiply b by\" && k\n"
+"      wait 2 ticks\n"
+"    end repeat\n"
+"    set the screenOverlay to imageCreate(the width of this card, the height of this card, \"#FF000060\")\n"
+"    wait 5 ticks\n"
+"    set the screenOverlay to empty\n"
+"  A colour script costs well under a millisecond each time the card is drawn; one that reads 25 pixels for each, like the blur, about 15."
+msgstr ""
+"可以一次改變整張影像，比在 repeat 迴圈中逐一像素處理快得多：用於修飾照片，或用於遊戲中的效果。影像是 URL \"binfile:…\" 給出的影像資料（PNG、JPEG、GIF、BMP 或 PICT）；這些函式傳回 PNG 資料。\n"
+"\n"
+"imageFilter(資料, 指令碼)\n"
+"  為每個像素執行一段短指令碼。它是只處理數值的 HyperTalk：r、g、b、a 是像素的紅、綠、藍和不透明度（0 到 255），x 和 y 是位置（左上角為 0），w 和 h 是影像大小。結束時 r、g、b、a 中的值就是新像素。\n"
+"    put \"put 255 - r into r; put 255 - g into g; put 255 - b into b\" into invert\n"
+"    put imageFilter(URL \"binfile:photo.jpg\", invert) into URL \"binfile:negative.png\"\n"
+"  各行用換行或 ; 分隔。指令碼可以使用 put、add、subtract、multiply、divide、if … then … else、repeat（with、times、while、until、exit repeat、next repeat）、+ - * / div mod ^、比較、and、or、not，以及 abs、min、max、sqrt、sin、cos、tan、atan、exp、ln、round、trunc、random 和 pi。指令碼自己的變數在每個像素開始時為 0。red(x, y)、green(x, y)、blue(x, y)、alpha(x, y) 和 lum(x, y)（亮度）可讀取影像的任意像素，get pixel x, y 取得整個像素；兩個像素之間的數會混合它們。執行太久的指令碼會以錯誤停止，Command-句點也能停止它。\n"
+"\n"
+"可複製使用的濾鏡\n"
+"  這些都是像素指令碼：把要用的放在欄位或變數中，例如 imageFilter(img, field \"Sepia\")。可以用 & 加入數值：\"multiply a by\" && opacity。\n"
+"  灰階：\n"
+"    put r * 0.3 + g * 0.59 + b * 0.11 into v; put v into r; put v into g; put v into b\n"
+"  棕褐色：\n"
+"    put r * 0.39 + g * 0.77 + b * 0.19 into nr; put r * 0.35 + g * 0.69 + b * 0.17 into ng\n"
+"    put r * 0.27 + g * 0.53 + b * 0.13 into b; put nr into r; put ng into g\n"
+"  亮度與對比（亮 20，對比 1.4 倍）：\n"
+"    put (r - 128) * 1.4 + 148 into r; put (g - 128) * 1.4 + 148 into g; put (b - 128) * 1.4 + 148 into b\n"
+"  黑白：\n"
+"    if lum(x, y) > 128 then put 255 into v else put 0 into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  紅色閃光（向紅色靠近一半）：\n"
+"    put r + (255 - r) / 2 into r; multiply g by 0.5; multiply b by 0.5\n"
+"  綠幕（該綠色變透明）：\n"
+"    if g > 150 and r < 120 and b < 120 then put 0 into a\n"
+"  模糊（5×5 像素的平均）：\n"
+"    repeat with dy = -2 to 2\n"
+"      repeat with dx = -2 to 2\n"
+"        add red(x + dx, y + dy) to sr; add green(x + dx, y + dy) to sg; add blue(x + dx, y + dy) to sb\n"
+"      end repeat\n"
+"    end repeat\n"
+"    put sr / 25 into r; put sg / 25 into g; put sb / 25 into b\n"
+"  所畫內容的輪廓：\n"
+"    put abs(lum(x + 1, y) - lum(x - 1, y)) + abs(lum(x, y + 1) - lum(x, y - 1)) into v\n"
+"    put v into r; put v into g; put v into b\n"
+"  馬賽克、鏡像和波浪：\n"
+"    get pixel x - x mod 8, y - y mod 8\n"
+"    get pixel w - 1 - x, y\n"
+"    get pixel x + 6 * sin(y / 12), y\n"
+"  四角變暗、掃描線和雜訊：\n"
+"    put ((x - w / 2) ^ 2 + (y - h / 2) ^ 2) / ((w / 2) ^ 2 + (h / 2) ^ 2) * 0.8 into d\n"
+"    multiply r by 1 - d; multiply g by 1 - d; multiply b by 1 - d\n"
+"    put 1 - y mod 2 * 0.4 into k; multiply r by k; multiply g by k; multiply b by k\n"
+"    put random(41) - 21 into n; add n to r; add n to g; add n to b\n"
+"\n"
+"其他尺寸\n"
+"  imageFilter(資料, 指令碼, 寬, 高) 產生該尺寸的影像：指令碼為它的每個像素執行（width 和 height 是其尺寸），並用 get pixel 取原圖的像素。\n"
+"    put imageFilter(img, \"get pixel x * w / width, y * h / height\", 320, 240) into small\n"
+"    put imageFilter(img, \"get pixel y, h - 1 - x\", item 2 of imageSize(img), item 1 of imageSize(img)) into turned\n"
+"\n"
+"合成與建立影像\n"
+"    put imageCreate(200, 40, \"#00000080\") into bar\n"
+"    put imageCombine(img, bar, 10, 300) into img\n"
+"    put imageCombine(img, sprite, x, y, \"screen\", 70) into img\n"
+"  imageCombine 把第二張影像畫在第一張上，左上角對齊 x,y。模式為 normal、add、subtract、multiply、screen、darken、lighten、difference、hue、color、saturation 或 luminosity，不透明度為 0 到 100。imageSize 傳回 寬,高。\n"
+"\n"
+"堆疊中的影像\n"
+"    export card to snap\n"
+"    import paint from imageFilter(snap, field \"Sepia\")\n"
+"  用 export paint、export card 和 export screen 匯出到變數，可得到繪圖影像、含按鈕和欄位的卡片，或目前所見的卡片視窗。import paint from 加影像資料會把它畫到卡片影像上（編輯背景時畫到背景影像上）。\n"
+"\n"
+"螢幕效果\n"
+"    set the screenFilter to field \"Grayscale\"\n"
+"    set the screenFilter to empty\n"
+"  screenFilter 讓卡片視窗透過像素指令碼顯示，而堆疊保持不變：用於回憶場景、暫停畫面或夢境。這時 x 和 y 是螢幕像素，scale 是放大倍數（卡片以 200% 顯示時為 2）。screenOverlay 是從卡片左上角疊加顯示的影像，用於顏色閃爍或狀態面板。兩者都會在堆疊關閉時結束，lock screen 和視覺效果也會顯示它們。\n"
+"    repeat with i = 1 to 10\n"
+"      put 1 - i / 10 into k\n"
+"      set the screenFilter to \"multiply r by\" && k & \"; multiply g by\" && k & \"; multiply b by\" && k\n"
+"      wait 2 ticks\n"
+"    end repeat\n"
+"    set the screenOverlay to imageCreate(the width of this card, the height of this card, \"#FF000060\")\n"
+"    wait 5 ticks\n"
+"    set the screenOverlay to empty\n"
+"  只處理顏色的指令碼每次繪製卡片花費遠少於 1 毫秒；像模糊那樣每個像素讀取 25 個像素的約需 15 毫秒。"
+
+#: GMenu.java
+msgctxt "menu"
+msgid "Export for Web…"
+msgstr "匯出為網頁…"
+
+#: WebExport.java
+msgid "The web player is not in this copy of HyperZebra."
+msgstr "此 HyperZebra 中沒有網頁播放器。"
+
+#: WebExport.java
+msgid "It belongs in the folder Support Files/WebPlayer beside the application."
+msgstr "它應位於應用程式旁邊的 Support Files/WebPlayer 資料夾中。"
+
+#: WebExport.java
+msgid "Try in Browser"
+msgstr "在瀏覽器中測試"
+
+#: WebExport.java
+msgid "Could not start the test server."
+msgstr "無法啟動測試伺服器。"
+
+#: WebExport.java
+msgid "Test Server"
+msgstr "測試伺服器"
+
+#: WebExport.java
+msgid "The test server is running (this computer only)."
+msgstr "測試伺服器正在執行（僅限本機存取）。"
+
+#: WebExport.java
+msgid "Open in Browser"
+msgstr "在瀏覽器中開啟"
+
+#: WebExport.java
+msgid "Stop Server"
+msgstr "停止伺服器"
+
+#: WebExport.java
+msgid "Export for Web"
+msgstr "匯出為網頁"
+
+#: WebExport.java
+msgid "A file or folder with that name already exists. Choose another name."
+msgstr "已有同名的檔案或資料夾。請換一個名稱。"
+
+#: WebExport.java
+msgid "The stack was exported for the web."
+msgstr "堆疊已匯出為網頁。"
+
+#: WebExport.java
+msgid "Put the folder on a web server and open index.html there (opened as a file, it does not run)."
+msgstr "請將該資料夾放到網頁伺服器上，並在那裡開啟 index.html（以檔案開啟時無法執行）。"
+
+#: WebExport.java
+msgid "Could not export the stack for the web."
+msgstr "無法將堆疊匯出為網頁。"
+
+#: WebExport.java
+msgid "Icons not found (the buttons show none): %s"
+msgstr "找不到的圖示（按鈕上不顯示圖示）：%s"
+
+#: WebExport.java
+msgid "The stack's 68K external commands need the 68K web player, which is not in this copy of HyperZebra: they do nothing in the browser."
+msgstr "此堆疊的 68K 外部命令需要 68K 網頁播放器，但這份 HyperZebra 中沒有：它們在瀏覽器中不起作用。"
+
+#: WebExport.java
+msgid "The stack's Private Access does not apply in the browser: anyone who has the page can open the stack."
+msgstr "此堆疊的私人存取在瀏覽器中不起作用：擁有該頁面的任何人都能打開此堆疊。"
+
+#: WebExport.java
+msgid "A stack this stack uses was left out: %s"
+msgstr "未能包含此堆疊使用的堆疊：%s"
+
+#: WebExport.java
+msgid "A file this stack uses was left out: %s"
+msgstr "未能包含此堆疊使用的檔案：%s"
+
+#: WebExport.java
+msgid "These external commands need PowerPC code, which the web player does not run: %s"
+msgstr "這些外部命令需要 PowerPC 程式碼，網頁播放器無法執行：%s"
+
+#: WebExport.java
+msgid "Show the menu bar on the page"
+msgstr "在頁面上顯示選單列"
+
+#: PlayerUiHost.java
+msgid "Replace existing “{0}”?"
+msgstr "要取代現有的「{0}」嗎?"
+
+#: PlayerUiHost.java
+msgid "Upload…"
+msgstr "上傳…"
+
+#: PlayerUiHost.java
+msgid "The file is too large to open here."
+msgstr "檔案太大,無法在這裡打開。"
+
+#: WebExport.java
+msgid "Compile the scripts (faster in the browser)"
+msgstr "編譯指令碼(在瀏覽器中更快)"
+
+#: WebExport.java
+msgid "Compiling the scripts for the web…"
+msgstr "正在為網頁編譯指令碼…"
+
+#: WebExport.java
+msgid "The scripts were not compiled (they run as they are, more slowly): %s"
+msgstr "指令碼未編譯(按原樣執行,速度較慢):%s"
+
+#: WebExport.java
+msgid "Needs the script compiler, which this copy does not have"
+msgstr "需要指令碼編譯器,但此副本中沒有"
+
+#: WebExport.java
+msgid "Download the Script Compiler ({0})…"
+msgstr "下載指令碼編譯器({0})…"
+
+#: WebExport.java
+msgid "Script Compiler"
+msgstr "指令碼編譯器"
+
+#: WebExport.java
+msgid "Downloading the script compiler…"
+msgstr "正在下載指令碼編譯器…"
+
+#: WebAotBuild.java
+msgid "Downloading the script compiler ({0})…"
+msgstr "正在下載指令碼編譯器({0})…"
+
+#: WebAotBuild.java
+msgid "The downloaded script compiler is not the one of this HyperZebra (its checksum differs)."
+msgstr "下載的指令碼編譯器不是此 HyperZebra 的(校驗和不同)。"
+
+#: WebAotBuild.java
+msgid "Unpacking the script compiler…"
+msgstr "正在解壓指令碼編譯器…"
+
+#: WebAotBuild.java
+msgid "The download has no script compiler."
+msgstr "下載的內容中沒有指令碼編譯器。"
+
+#: WebAotBuild.java
+msgid "This copy of HyperZebra does not say where its script compiler is."
+msgstr "此 HyperZebra 未說明其指令碼編譯器的位置。"
+
+#: WebExport.java
+msgid "up, down, left, right, space, return, shift, option, command, control, a letter or digit; empty: no game pad"
+msgstr "up、down、left、right、space、return、shift、option、command、control、字母或數字;留空:不顯示手把"
+
+#: WebExport.java
+msgid "Press Keys…"
+msgstr "按鍵加入…"
+
+#: WebExport.java
+msgid "Press the keys to add them; click again when done"
+msgstr "按下按鍵即可加入;完成後再按一次"
+
+#: WebExport.java
+msgid "Game pad keys (phones and tablets):"
+msgstr "手把按鍵(手機和平板):"
+
+#: UiHost.java
+msgid "Images are not available here: {0}"
+msgstr "此處無法使用影像：{0}"
+
+#: UiHost.java
+msgid "Can't understand {0}"
+msgstr "無法理解{0}"
+
+#: UiHost.java
+msgid "Cannot open URL: {0}"
+msgstr "無法開啟URL：{0}"
+
+#: WebExport.java
+msgid "Done"
+msgstr "完成"
+

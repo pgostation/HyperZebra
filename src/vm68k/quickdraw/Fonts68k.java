@@ -67,6 +67,19 @@ final class Fonts68k {
 		while(font instanceof StyledFont68k)font=((StyledFont68k)font).base;
 		return font!=null&&!(font instanceof BitmapFont68k)&&romanFonts.contains(font);
 	}
+	/**
+	 * Whether {@code font} is a strike of one-byte glyphs (a program's or stack's own Roman-script 'FOND'/'NFNT', HyperCard's
+	 * palette font ...): QuickDraw draws one glyph per byte of it, a Shift-JIS lead+trail pair included. A KanjiTalk / Japanese
+	 * Mac OS 9 system lays such text out byte by byte too - FontScript says Roman for it and font force is off - so TextEdit,
+	 * the measuring calls and the Script Manager's text routines take it one byte per character. ブレイヴパーソン's maps are
+	 * centred fields in its "biru font" (FOND 132), one byte per 32-pixel tile: read in pairs, rows with a valid pair were
+	 * measured a tile short per pair and drawn half a tile right. A host font standing in for a Roman number is not one of these
+	 * ({@link #romanScript}: its Shift-JIS pairs stay Japanese).
+	 */
+	static boolean oneByteStrike(Font font){
+		while(font instanceof StyledFont68k)font=((StyledFont68k)font).base;
+		return font instanceof BitmapFont68k&&!((BitmapFont68k)font).twoByte();
+	}
 	/** SetFScaleDisable: a size without a strike takes the nearest strike's glyphs at the requested size's spacing instead of scaled pixels. */
 	static volatile boolean scaleDisabled;
 	private Fonts68k(){}

@@ -269,8 +269,8 @@ final class GAppInfoWindow extends JFrame {
 			d.add(new String[]{text("Screen size"), width+" × "+height+(app.screenSizeOverride!=null ? "  ("+text("chosen for this program")+")" : "")});
 			d.add(new String[]{text("Colors"), colors(depth)+"  ("+depth+" "+text("bits per pixel")+")"+(app.depthOverride!=null ? "  ("+text("chosen for this program")+")" : "")});
 		}
-		MacAppHost host = app.host;
-		if(host!=null) d.add(new String[]{text("Magnification"), (host.scPct%100==0 ? host.scPct/100+"×" : host.scPct+"%")});
+		VmHost host = app.host;
+		if(host!=null) d.add(new String[]{text("Magnification"), (((MacAppHost)host).scPct%100==0 ? ((MacAppHost)host).scPct/100+"×" : ((MacAppHost)host).scPct+"%")});
 		d.add(new String[]{text("Takes documents while running"), text(app.acceptsDocumentsWhileRunning() ? "Yes" : "No")});
 		if(thread!=null) d.add(new String[]{text("Thread"), thread.getName()+" - "+thread.getState()});
 		return row;

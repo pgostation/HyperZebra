@@ -18,7 +18,7 @@ import java.util.Map;
  * file (native resource fork on macOS, AppleDouble sidecar elsewhere, or the
  * resource part of a MacBinary container).
  */
-final class ResourceFile68k {
+class ResourceFile68k {
 	static final int RES_SYS_HEAP=64,RES_PURGEABLE=32,RES_LOCKED=16,RES_PROTECTED=8,RES_PRELOAD=4,RES_CHANGED=2,RES_COMPRESSED=1;
 
 	static final class Resource {
@@ -42,7 +42,7 @@ final class ResourceFile68k {
 		 *  (UxAnswer's icon 1000 and its 21573/21576 animation were blank). Dark opaque pixels are the black ones. */
 		static byte[] iconBits(File png){
 			byte[] bits=new byte[128];
-			try{java.awt.image.BufferedImage image=javax.imageio.ImageIO.read(png);if(image==null)return bits;
+			try{java.awt.image.BufferedImage image=Toolbox68k.PARTS.readImage(png);if(image==null)return bits;
 				for(int y=0;y<32&&y<image.getHeight();y++)for(int x=0;x<32&&x<image.getWidth();x++){int p=image.getRGB(x,y);
 					if((p>>>24)>=128&&((p>>16&255)*30+(p>>8&255)*59+(p&255)*11)/100<128)bits[y*4+x/8]|=(byte)(0x80>>>(x&7));}}
 			catch(IOException|RuntimeException e){}
@@ -58,9 +58,7 @@ final class ResourceFile68k {
 		/** A format 1 'snd ' of an audio file, with the base note and loop of its AIFF INST chunk (else HyperCard's own for its
 		 *  sounds by name, else middle C): PgSoundX's Harpsichord and Boing were "Not found snd resource". */
 		static byte[] sndBits(File audio,String name){
-			try{TSound.NoteInfo note=TSound.noteInfo(audio.getPath(),name);
-				return HCResourceExport.sound(SoundData.read(audio),note.baseNote,note.loopStart,note.loopEnd);}
-			catch(Exception e){System.err.println("[68K] cannot convert sound "+audio.getName()+": "+e.getMessage());return new byte[0];}
+			return UiHost.get().soundResourceBits(audio,name);
 		}
 		/** The source file is a picture or audio file whose resource bytes are made from it ({@link #iconBits}, {@link #sndBits}). */
 		private boolean convertedSource(){
@@ -74,7 +72,7 @@ final class ResourceFile68k {
 			if(data==null&&convertedSource())data=type==ICON_TYPE?iconBits(source):sndBits(source,name);
 			if(data==null&&maker!=null)data=maker.get();
 			if(data==null&&source!=null){
-				try{byte[] bytes=Files.readAllBytes(source.toPath());data=sourcePrefix>0&&bytes.length>=sourcePrefix?java.util.Arrays.copyOfRange(bytes,sourcePrefix,bytes.length):bytes;}
+				try{byte[] bytes=Files68k.read(source);data=sourcePrefix>0&&bytes.length>=sourcePrefix?java.util.Arrays.copyOfRange(bytes,sourcePrefix,bytes.length):bytes;}
 				catch(IOException e){data=new byte[0];}
 			}
 			if((attributes&RES_COMPRESSED)!=0){
@@ -153,7 +151,7 @@ final class ResourceFile68k {
 	/** A resource file kept in the data fork of {@code file} (empty when the data fork is): written back there too. */
 	static ResourceFile68k openDataFork(File file) throws IOException {
 		ResourceFile68k result=new ResourceFile68k(file);result.storage=Storage.DATA;
-		byte[] data=file.isFile()?Files.readAllBytes(file.toPath()):new byte[0];
+		byte[] data=file.isFile()?Files68k.read(file):new byte[0];
 		if(data.length>=16)result.parse(data);else if(data.length>0)throw new IOException("not a resource map");
 		return result;
 	}
@@ -170,7 +168,7 @@ final class ResourceFile68k {
 		if(mb!=null){if(target!=null)target.storage=Storage.MACBINARY;return mb.resourceFork;}
 		for(File candidate:AppleDouble.sidecarCandidates(file)){
 			if(!candidate.isFile())continue;
-			byte[] fork=HCResource.extractResourceForkFromAppleDouble(Files.readAllBytes(candidate.toPath()));
+			byte[] fork=HCResource.extractResourceForkFromAppleDouble(Files68k.read(candidate));
 			if(fork!=null){if(target!=null)target.storage=Storage.APPLEDOUBLE;return fork;}
 		}
 		return PcExchange.resourceFork(file); // a DOS disk's RESOURCE.FRK (read only: a changed fork goes where new ones go)
@@ -355,7 +353,7 @@ final class ResourceFile68k {
 	 */
 	static File nativeForkFile(File file){
 		if(file==null)return null;
-		if(GMenu.isMacOSX())return new File(file.getPath()+File.separator+"..namedfork"+File.separator+"rsrc");
+		if(HostXattr68k.macOS())return new File(file.getPath()+File.separator+"..namedfork"+File.separator+"rsrc");
 		if(WINDOWS)return ntfsStream(file,"AFP_Resource");
 		return null;
 	}
@@ -376,11 +374,11 @@ final class ResourceFile68k {
 	 * and on macOS with -Dhz.appledouble=true (for files headed to those hosts), the fork and Finder info
 	 * live in an AppleDouble "._name" sidecar next to the file, which every reader here also understands.
 	 */
-	static boolean nativeForks(){return GMenu.isMacOSX()&&!Boolean.getBoolean("hz.appledouble");}
+	static boolean nativeForks(){return HostXattr68k.macOS()&&!Boolean.getBoolean("hz.appledouble");}
 
 	static void writeForkBytes(File file,byte[] fork,Storage storage) throws IOException {
-		if(storage==Storage.DATA){Files.write(file.toPath(),fork);return;} // the map lives in the data fork
-		if(!file.exists())Files.write(file.toPath(),new byte[0]);
+		if(storage==Storage.DATA){Files68k.write(file,fork);return;} // the map lives in the data fork
+		if(!file.exists())Files68k.write(file,new byte[0]);
 		if(storage==Storage.MACBINARY){MacBinary mb=MacBinary.read(file);if(mb!=null){mb.resourceFork=fork;mb.write(file);return;}}
 		File nativeFork=storage==Storage.NATIVE||(storage==Storage.NONE&&nativeForkPreferred(file))?nativeForkFile(file):null;
 		if(nativeFork!=null){
@@ -388,7 +386,7 @@ final class ResourceFile68k {
 			catch(IOException e){if(storage==Storage.NATIVE)throw e;}
 		}
 		File sidecar=AppleDouble.sidecarOf(file),existing=AppleDouble.findSidecar(file); // Finder info of a __MACOSX sidecar carries over
-		Files.write(sidecar.toPath(),AppleDouble.build(fork,existing!=null?AppleDouble.finderInfo(Files.readAllBytes(existing.toPath())):null));
+		Files68k.write(sidecar,AppleDouble.build(fork,existing!=null?AppleDouble.finderInfo(Files68k.read(existing)):null));
 	}
 
 	private static int u2(byte[] b,int o){return (b[o]&0xff)<<8|(b[o+1]&0xff);}
@@ -406,7 +404,7 @@ final class ResourceFile68k {
 			// the 128-byte header decides first: catalog scans ask about every file in a folder, and reading a multi-gigabyte
 			// one whole to find out it is not MacBinary ran the VM out of memory
 			if(!headerLooksLikeMacBinary(file))return null;
-			byte[] all=Files.readAllBytes(file.toPath());
+			byte[] all=Files68k.read(file);
 			if(!looksLikeMacBinary(all))return null;
 			MacBinary mb=new MacBinary();System.arraycopy(all,0,mb.header,0,128);
 			int nameLength=Math.min(63,all[1]&0xff);mb.nameBytes=java.util.Arrays.copyOfRange(all,2,2+nameLength);mb.name=StackTextEncoding.ROMAN.decode(mb.nameBytes);
@@ -423,13 +421,13 @@ final class ResourceFile68k {
 		static long[] headerForkLengths(File file){
 			if(!headerLooksLikeMacBinary(file))return null;
 			byte[] header=new byte[128];
-			try(FileInputStream input=new FileInputStream(file)){if(input.readNBytes(header,0,128)!=128)return null;}catch(IOException e){return null;}
+			try(FileInputStream input=new FileInputStream(file)){if(Platform.readNBytes(input, header, 0, 128)!=128)return null;}catch(IOException e){return null;}
 			return new long[]{u4(header,83),u4(header,87)};
 		}
 		static boolean headerLooksLikeMacBinary(File file){
 			if(file==null||!file.isFile()||file.length()<128)return false;
 			byte[] header=new byte[128];
-			try(FileInputStream input=new FileInputStream(file)){if(input.readNBytes(header,0,128)!=128)return false;}catch(IOException e){return false;}
+			try(FileInputStream input=new FileInputStream(file)){if(Platform.readNBytes(input, header, 0, 128)!=128)return false;}catch(IOException e){return false;}
 			if(header[0]!=0||header[74]!=0||header[82]!=0)return false;
 			int nameLength=header[1]&0xff;if(nameLength<1||nameLength>63||!plausibleName(header,nameLength))return false;
 			int dataLength=u4(header,83),resourceLength=u4(header,87);
@@ -441,7 +439,7 @@ final class ResourceFile68k {
 		static byte[] headerNameBytes(File file){
 			if(!headerLooksLikeMacBinary(file))return null;
 			byte[] header=new byte[128];
-			try(FileInputStream input=new FileInputStream(file)){if(input.readNBytes(header,0,128)!=128)return null;}catch(IOException e){return null;}
+			try(FileInputStream input=new FileInputStream(file)){if(Platform.readNBytes(input, header, 0, 128)!=128)return null;}catch(IOException e){return null;}
 			int nameLength=Math.min(63,header[1]&0xff);return java.util.Arrays.copyOfRange(header,2,2+nameLength);
 		}
 		/** A file name holds no control characters: a document whose first bytes happen to read 0, n, ..., 0, 0 (MacWrite 2.2's 128-byte header, all zero lengths) is not a container. */
@@ -458,7 +456,7 @@ final class ResourceFile68k {
 			ByteArrayOutputStream out=new ByteArrayOutputStream();
 			putInt(header,83,dataFork.length);putInt(header,87,resourceFork.length);
 			out.write(header,0,128);out.write(dataFork,0,dataFork.length);pad(out);out.write(resourceFork,0,resourceFork.length);pad(out);
-			Files.write(file.toPath(),out.toByteArray());
+			Files68k.write(file,out.toByteArray());
 		}
 		private static void pad(ByteArrayOutputStream out){while((out.size()&127)!=0)out.write(0);}
 	}
@@ -500,7 +498,7 @@ final class ResourceFile68k {
 		static boolean moveWith(File from,File to){
 			File source=findSidecar(from);if(source==null)return true;
 			File destination=sidecarOf(to); // a __MACOSX sidecar comes to rest beside its file
-			try{Files.move(source.toPath(),destination.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING);return true;}
+			try{Files68k.move(source,destination,true);return true;}
 			catch(IOException e){return false;}
 		}
 		/** Deletes a file's sidecars (nothing to do without one). */

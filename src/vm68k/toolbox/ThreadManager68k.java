@@ -121,10 +121,10 @@ final class ThreadManager68k {
 	ThreadManager68k(Toolbox68k tb){this.tb=tb;memory=tb.memory;}
 
 	private boolean coroutines(){
-		if(coroutines==null)coroutines="coroutine".equals(MODE)||!"swap".equals(MODE)&&ppcCpu()!=null;
+		if(coroutines==null)coroutines="coroutine".equals(MODE)||!"swap".equals(MODE)&&ppcRuntime()!=null;
 		return coroutines;
 	}
-	private PpcCpu ppcCpu(){return tb.app!=null&&tb.app.ppc!=null?tb.app.ppc.cpu:null;}
+	private PpcRuntime ppcRuntime(){return tb.app!=null?tb.app.ppc:null;}
 	/** True for the Java thread of one of this program's coroutine threads (it runs the program's emulation in turn). */
 	boolean isCarrier(Thread t){return carriers.contains(t);}
 
@@ -363,10 +363,10 @@ final class ThreadManager68k {
 		throw new IllegalStateException(p);
 	}
 	private Context capture(M68kCpu cpu){
-		Context c=new Context();c.m68=cpu.saveContext();PpcCpu p=ppcCpu();if(p!=null)c.ppc=p.saveContext();c.trapDepth=tb.api.trapDepth();return c;
+		Context c=new Context();c.m68=cpu.saveContext();c.ppc=Ppc68k.saveContext(ppcRuntime());c.trapDepth=tb.api.trapDepth();return c;
 	}
 	private void install(M68kCpu cpu,Context c) throws M68kCpuException {
-		cpu.restoreContext(c.m68);PpcCpu p=ppcCpu();if(p!=null&&c.ppc!=null)p.restoreContext(c.ppc);tb.api.setTrapDepth(c.trapDepth);
+		cpu.restoreContext(c.m68);Ppc68k.restoreContext(ppcRuntime(),c.ppc);tb.api.setTrapDepth(c.trapDepth);
 	}
 
 	/** Gives the baton to {@code to} and, with {@code wait}, parks until {@code self} holds it again. */
@@ -378,7 +378,7 @@ final class ThreadManager68k {
 	private void awaitBaton(ThreadRecord self){
 		boolean interrupted=false;
 		while(holder!=self){
-			try{baton.wait();}
+			try{Platform.get().waitOn(baton,0);}
 			catch(InterruptedException e){
 				interrupted=true;
 				if(tb.cpu!=null)tb.cpu.requestAbort();
@@ -397,11 +397,11 @@ final class ThreadManager68k {
 		if(start.ppc!=null){
 			if(t.ppcStack==0){t.ppcStackSize=Math.max(Math.max(PPC_STACK_MIN,t.stackSize),t.ppcStackSize);t.ppcStack=memory.allocate(t.ppcStackSize,16);if(t.ppcStack==0)throw new M68kCpuException(cpu.pc,"no memory for a PowerPC thread stack");}
 			int sp=(t.ppcStack+t.ppcStackSize-64)&~15;memory.writeLong(sp,0); // the back chain ends here
-			start.ppc=PpcCpu.startContext(start.ppc,sp);
+			start.ppc=Ppc68k.startContext(start.ppc,sp);
 		}
 		start.trapDepth=0; // the entry is program code, outside any trap
 		Thread j=new Thread(new Runnable(){@Override public void run(){runCarrier(cpu,t,start);}},(t.mp?"MP task ":"Thread Manager thread ")+t.id+(tb.app!=null?": "+tb.app.name:""));
-		j.setDaemon(true);t.javaThread=j;t.carrier=true;carriers.add(j);j.start();
+		j.setDaemon(true);t.javaThread=j;t.carrier=true;carriers.add(j);Platform.get().start(j);
 	}
 
 	/** A carrier's life: the thread's entry from the bottom of its own stack, then the hand-off to the next thread for good. */
@@ -580,7 +580,7 @@ final class ThreadManager68k {
 		tb.runDeferred();tb.runTimers();tb.runPeriodic();
 		if(cpu.abortRequested())throw new M68kAbortException(cpu.pc);
 		long ms=wake==FOREVER?20:Math.min(20,Math.max(0,(wake-System.nanoTime()+999_999L)/1_000_000L));
-		if(ms>0)try{Thread.sleep(ms);}catch(InterruptedException e){cpu.requestAbort();throw new M68kAbortException(cpu.pc);}
+		if(ms>0)try{Platform.get().sleep(ms);}catch(InterruptedException e){cpu.requestAbort();throw new M68kAbortException(cpu.pc);}
 	}
 	/** Whether an MP task could run now (for an event wait that should end early: see {@link #nextTaskDeadline}). */
 	boolean taskRunnable(){
@@ -648,7 +648,7 @@ final class ThreadManager68k {
 			synchronized(baton){
 				t.pending=KILLED;t.killReturn=shutdownRecord;holder=t;baton.notifyAll();
 				long deadline=System.currentTimeMillis()+2000;
-				try{while(holder==t){long left=deadline-System.currentTimeMillis();if(left<=0)return;baton.wait(left);}}
+				try{while(holder==t){long left=deadline-System.currentTimeMillis();if(left<=0)return;Platform.get().waitOn(baton,left);}}
 				catch(InterruptedException e){Thread.currentThread().interrupt();return;}
 			}
 		}

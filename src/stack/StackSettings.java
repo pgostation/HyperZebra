@@ -30,7 +30,7 @@ final class StackSettings {
 	/** A stack opens in the card window: its own values apply from now on (before its window is sized). */
 	static void apply(OStack stack){
 		File f=StackTranslation.fileOf(stack);
-		current=f==null?null:LauncherStore.identity(f);
+		current=f==null?null:UiHost.get().launcherStoreIdentity(f);
 		set(of(f));
 	}
 	/** The card window shows no stack any more: the shared values apply again. */
@@ -43,7 +43,7 @@ final class StackSettings {
 		StackSpeed.set(s);
 	}
 	/** Whether {@code stack} is the stack open in the card window. */
-	static boolean isOpen(File stack){String id=stack==null?null:LauncherStore.identity(stack);return id!=null&&id.equals(current);}
+	static boolean isOpen(File stack){String id=stack==null?null:UiHost.get().launcherStoreIdentity(stack);return id!=null&&id.equals(current);}
 
 	/** The stack's settings were stored (its dialog's OK): the open stack takes them at once, the zoom too. */
 	static void changed(File stack){

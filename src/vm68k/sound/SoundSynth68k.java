@@ -17,7 +17,7 @@ import javax.sound.sampled.SourceDataLine;
  * pauseCmd/resumeCmd hold the line, ampCmd/volumeCmd scale the output; callBackCmds queued behind notes run when the
  * notes are done. The line is stereo: volumeCmd's left and right levels place the notes (PgSoundX sweeps them).
  */
-final class SoundSynth68k implements Runnable {
+class SoundSynth68k implements Runnable {
 	private static final int RATE=22050,BLOCK=256;
 	private static final class Entry {final double note;final int samples;final Runnable callback;int[] level;Entry(double note,int samples,Runnable callback){this.note=note;this.samples=samples;this.callback=callback;}}
 
@@ -73,8 +73,8 @@ final class SoundSynth68k implements Runnable {
 	Instrument instrument(){return instrument;}
 	/** quietCmd/flushCmd: everything queued is dropped and the current note ends. */
 	void flush(){synchronized(queue){queue.clear();cut=true;queue.notifyAll();}}
-	void pause(boolean on){paused=on;}
-	void stop(){stopped=true;flush();}
+	void pause(boolean on){paused=on;SoundMixer68k.Voice v=voice;if(v!=null)v.paused=on;}
+	void stop(){stopped=true;flush();SoundMixer68k.Voice v=voice;if(v!=null)SoundMixer68k.get().stop(v);}
 	/** Whether a note is sounding or waiting (SndChannelStatus' scChannelBusy). */
 	boolean busy(){synchronized(queue){return playing||!queue.isEmpty();}}
 
@@ -86,15 +86,73 @@ final class SoundSynth68k implements Runnable {
 	private static int samplesFor(int halfMilliseconds){return (int)Math.max(0,Math.min(RATE*60L,(long)halfMilliseconds*RATE/2000));}
 	private void enqueue(Entry e){synchronized(queue){queue.add(e);queue.notifyAll();}start();}
 	private synchronized void start(){
-		if(thread!=null&&thread.isAlive())return;if(!TSound.use){drainSilently();return;}
+		if(SoundMixer68k.driven){if(UiHost.get().soundOn())startDriven();else drainSilently();return;} // the browser player: a voice of its mixer
+		if(thread!=null&&thread.isAlive())return;if(!UiHost.get().soundOn()){drainSilently();return;}
 		// each player is a thread with its own line: past this many at once (all programs together) the notes go unheard, as with no
 		// audio, rather than the host running out of threads
 		if(PLAYERS.incrementAndGet()>MAX_PLAYERS){PLAYERS.decrementAndGet();drainSilently();return;}
 		thread=new Thread(this,"68K synthesizer");thread.setDaemon(true);
-		try{thread.start();}catch(OutOfMemoryError|RuntimeException e){PLAYERS.decrementAndGet();thread=null;drainSilently();}
+		try{Platform.get().start(thread);}catch(OutOfMemoryError|RuntimeException e){PLAYERS.decrementAndGet();thread=null;drainSilently();}
 	}
 	private static final int MAX_PLAYERS=64;
 	private static final java.util.concurrent.atomic.AtomicInteger PLAYERS=new java.util.concurrent.atomic.AtomicInteger();
+	// ---- the browser player (SoundMixer68k.driven): no thread and no line; the queue is played as a voice its mixing pulls from,
+	// the samples made as run() makes them (the output volume is the mixer's own there)
+	private volatile SoundMixer68k.Voice voice;
+	private Entry current;private int remaining,played;private double phase,position,step,frequency;private Instrument sound;private boolean sampled;
+	private synchronized void startDriven(){
+		SoundMixer68k.Voice v=voice;
+		if(v!=null&&!v.ended)return;
+		short[] l=new short[BLOCK*4],r=new short[BLOCK*4];
+		v=new SoundMixer68k.Voice(l,r,RATE,1,this::fill);v.paused=paused;voice=v;
+		final SoundMixer68k.Voice made=v;
+		v.onEnd(()->{synchronized(this){if(voice==made)voice=null;}playing=false;synchronized(queue){if(!queue.isEmpty()&&!stopped)start();}});
+		SoundMixer68k.get().start(v);
+	}
+	/** The next samples of the queue: the note sounding, then the ones queued (callbacks run as they are reached); 0: the queue is
+	 *  empty, the voice ends (a later note starts another) */
+	private int fill(short[] left,short[] right){
+		int n=0;
+		while(n<left.length&&!stopped){
+			if(current==null){
+				Entry e;synchronized(queue){e=queue.poll();cut=false;playing=e!=null&&e.samples!=0;}
+				if(e==null)break;
+				if(e.callback==FLUSH_MARK){synchronized(queue){queue.clear();}phase=0;continue;}
+				if(e.callback==LEVEL_MARK){amplitude=e.level[0];volume=e.level[1];continue;}
+				if(e.callback!=null){e.callback.run();continue;}
+				current=e;remaining=e.samples;played=0;position=0;
+				frequency=e.note<0?0:440.0*Math.pow(2,(e.note-69)/12.0);
+				sound=e.note<0?null:instrument;step=sound==null?0:sound.rate/RATE*Math.pow(2,(e.note-sound.baseNote)/12.0);sampled=sound!=null&&step>0;
+			}
+			if(cut){current=null;phase=0;continue;}
+			int levels=volume;double gain=(amplitude/255.0)*(sampled?1:0.5),gainLeft=gain*(levels&0xffff)/256.0,gainRight=gain*(levels>>>16)/256.0;
+			byte[] table=waveTable;int shape=timbre;double speed=rate>0?rate:1;
+			int room=left.length-n,count=remaining<0?room:Math.min(room,remaining);boolean done=false;
+			Entry e=current;
+			for(int i=0;i<count;i++){
+				double sample;
+				if(frequency==0)sample=0;
+				else if(sampled){
+					if(sound.loops()&&position>=sound.loopEnd)position-=sound.loopEnd-sound.loopStart;
+					int index=(int)position;
+					if(index>=sound.samples.length){sample=0;done=true;}
+					else{double next=index+1<sound.samples.length?sound.samples[index+1]:sound.samples[index],frac=position-index;sample=(sound.samples[index]+(next-sound.samples[index])*frac)/32768.0;}
+					position+=step*speed;}
+				else if(table!=null){int index=(int)(phase*table.length)%table.length;sample=((table[index]&0xff)-128)/128.0;}
+				else{double sine=Math.sin(phase*2*Math.PI),square=phase<0.5?1:-1;sample=sine+(square-sine)*shape/255.0;}
+				int at=played+i;if(at<64)sample*=at/64.0;if(remaining>=0&&remaining-i<64)sample*=(remaining-i)/64.0; // no clicks at the ends
+				left[n+i]=(short)Math.max(-32768,Math.min(32767,Math.round(sample*gainLeft*32767)));
+				right[n+i]=(short)Math.max(-32768,Math.min(32767,Math.round(sample*gainRight*32767)));
+				if(!sampled){phase+=frequency/RATE;if(phase>=1)phase-=Math.floor(phase);}
+			}
+			n+=count;played+=count;
+			if(remaining>0)remaining-=count;
+			if(remaining==0||done&&remaining<0||e.samples==0)current=null;
+		}
+		if(n==0)playing=false;
+		return n;
+	}
+
 	/** No audio: callbacks still run, notes take no time. */
 	private void drainSilently(){Entry e;while((e=poll())!=null){if(e.level!=null){amplitude=e.level[0];volume=e.level[1];}else if(e.callback!=null)e.callback.run();}}
 	private Entry poll(){synchronized(queue){Entry e=queue.poll();playing=e!=null&&e.samples!=0;return e;}}
@@ -106,7 +164,7 @@ final class SoundSynth68k implements Runnable {
 			byte[] block=new byte[BLOCK*4];double phase=0;long idleSince=0;
 			while(!stopped){
 				Entry e;synchronized(queue){e=queue.poll();playing=e!=null&&e.samples!=0;cut=false;
-					if(e==null){if(idleSince==0)idleSince=System.nanoTime();try{queue.wait(20);}catch(InterruptedException x){return;}
+					if(e==null){if(idleSince==0)idleSince=System.nanoTime();try{Platform.get().waitOn(queue,20);}catch(InterruptedException x){return;}
 						if(System.nanoTime()-idleSince>3_000_000_000L)break;continue;}}
 				idleSince=0;
 				if(e.callback==FLUSH_MARK){synchronized(queue){queue.clear();}line.flush();phase=0;continue;}
@@ -116,7 +174,7 @@ final class SoundSynth68k implements Runnable {
 				Instrument sound=e.note<0?null:instrument;double position=0,step=sound==null?0:sound.rate/RATE*Math.pow(2,(e.note-sound.baseNote)/12.0);
 				boolean sampled=sound!=null&&step>0;
 				while(!stopped&&!cut&&remaining!=0){
-					while(paused&&!stopped&&!cut)try{Thread.sleep(5);}catch(InterruptedException x){return;}
+					while(paused&&!stopped&&!cut)try{Platform.get().sleep(5);}catch(InterruptedException x){return;}
 					if(paused)continue;
 					int n=remaining<0?BLOCK:Math.min(BLOCK,remaining);
 					// ampCmd, volumeCmd and the output volume (SetSoundVol / SetDefaultOutputVolume, SoundMixer68k.outputVolume) - this line is not mixed there

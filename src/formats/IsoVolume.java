@@ -203,8 +203,7 @@ final class IsoVolume extends DiskImage.Volume {
 	}
 	private static int macDate(int year,int month,int day,int hour,int minute,int second,int quarterHours){
 		try{
-			java.time.ZoneOffset zone=java.time.ZoneOffset.ofTotalSeconds(Math.max(-48,Math.min(52,quarterHours))*900);
-			long unix=java.time.LocalDateTime.of(year,month,day,hour,minute,second).toEpochSecond(zone);
+			long unix=LocalTime68k.epochSecond(year,month,day,hour,minute,second,Math.max(-48,Math.min(52,quarterHours))*900);
 			return (int)(unix+2_082_844_800L+Toolbox68k.localOffsetSeconds());
 		}catch(RuntimeException e){return 0;}
 	}

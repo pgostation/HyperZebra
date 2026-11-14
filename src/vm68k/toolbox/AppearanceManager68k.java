@@ -122,7 +122,7 @@ final class AppearanceManager68k {
 					tb.controls.setPopupMenu(a[0],menu,menu==0?0:(short)memory.readWord(memory.readLong(menu)));}
 				else if(a[4]!=0&&a[3]>=2&&a[2]==TAG_POPUP_MENU_ID){int id=(short)memory.readWord(a[4]); // kControlPopupButtonMenuIDTag: the menu of that ID
 					int menu=trapResult(0xa949,4,id,2);if(menu!=0)tb.controls.setPopupMenu(a[0],menu,id);}
-				if(PpcRuntime.TRACE)System.err.println("[ppc]   control data "+Integer.toHexString(a[0])+" '"+AppleEvents68k.fourcc(a[2])+"' = "+java.util.Arrays.toString(controlData.get(dataKey(a[0],a[1],a[2]))));
+				if(Ppc68k.trace())System.err.println("[ppc]   control data "+Integer.toHexString(a[0])+" '"+AppleEvents68k.fourcc(a[2])+"' = "+java.util.Arrays.toString(controlData.get(dataKey(a[0],a[1],a[2]))));
 				result(cpu,2,NO_ERR);return true;}
 			case 0x13:{int[] a=pop(cpu,4,2,4,4,4,4);byte[] v=popupMenuData(a[0],a[2]);if(v==null)v=controlData.get(dataKey(a[0],a[1],a[2]));if(v==null&&tb.controls.data(a[0])!=0)v=standardTagDefault(a[2]); // GetControlData(control, part, tag, bufferSize, buffer, *actualSize)
 				if(v==null){result(cpu,2,ERR_DATA_NOT_SUPPORTED);return true;}

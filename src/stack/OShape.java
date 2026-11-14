@@ -13,16 +13,10 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Base64;
-import javax.imageio.ImageIO;
 import javax.swing.JComponent;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 
 /** 編集可能なベクター部品。座標はカードの論理ピクセル。 */
 public class OShape extends OObject {
@@ -130,10 +124,7 @@ public class OShape extends OObject {
 		Font font=OObject.stackFont(fontFamily,bold?Font.BOLD:Font.PLAIN,Math.max(1,fontSize));
 		return font.createGlyphVector(new FontRenderContext(null,true,true),text).getOutline().getBounds2D();
 	}
-	void convertTextToBezier(){
-		if(!kind.equals("text")) return;
-		pathData=ShapePath.serialize(ShapePath.cubic(geometry()));kind="bezier";changed();repaintView();
-	}
+	void convertTextToBezier(){ UiHost.get().convertTextToBezier(this); }
 	void setPath(Shape path){pathData=ShapePath.serialize(path);kind="bezier";changed();repaintView();}
 	void setTexture(byte[] png){texturePng=png;textureCache=null;changed();repaintView();}
 	void setTopLeft(int x,int y){int dx=x-left,dy=y-top;if(dx==0&&dy==0)return;left=x;top=y;changed();moveView();if(parent instanceof OCardBase)((OCardBase)parent).movePanelPeers(this,dx,dy);}
@@ -142,19 +133,17 @@ public class OShape extends OObject {
 		float v=Math.max(0,Math.min(1,value));if(v==opacity)return;
 		boolean visibleBefore=opacity<1;opacity=v;changed();
 		if(view==null)return;
-		if(visibleBefore!=(opacity<1)||!view.fadeOnly())view.cache=null;
-		view.repaint();
+		UiHost.get().shapeViewFaded(this, visibleBefore);
 	}
 	void setSize(int w,int h){
 		w=Math.max(1,w);h=Math.max(1,h);
-		if(!pathData.isEmpty()&&width>0&&height>0&&(w!=width||h!=height))
-			pathData=ShapePath.serialize(AffineTransform.getScaleInstance((double)w/width,(double)h/height).createTransformedShape(ShapePath.parse(pathData)));
+		UiHost.get().scalePath(this, w, h);
 		width=w;height=h;changed();updateView();
 	}
-	@Override public void setVisible(boolean visible){super.setVisible(visible);if(view!=null)view.setVisible(isShown());}
+	@Override public void setVisible(boolean visible){super.setVisible(visible);if(view!=null)UiHost.get().shapeViewVisible(this);}
 	/** Its panel was shown or hidden, or it joined or left one. */
-	@Override void applyShown(){if(view!=null)PCARD.runOnEDTWhenShown(()->{if(view!=null){view.setVisible(isShown());view.repaint();}});}
-	private void changed(){if(parent instanceof OCardBase)((OCardBase)parent).changed=true;}
+	@Override void applyShown(){ UiHost.get().applyShown(this); }
+	void changed(){if(parent instanceof OCardBase)((OCardBase)parent).changed=true;}
 	/** An angle in degrees as -180 (exclusive) to 180. */
 	static float normalizeAngle(double degrees){double a=degrees%360;if(a<=-180)a+=360;if(a>180)a-=360;return (float)a;}
 	/** Shape coordinates to the rotated drawing (identity when not rotated). */
@@ -163,20 +152,15 @@ public class OShape extends OObject {
 	Shape frame(){AffineTransform t=AffineTransform.getTranslateInstance(left,top);t.concatenate(rotationTransform());return t.createTransformedShape(new Rectangle2D.Double(0,0,width,height));}
 	int padding(){float pad=Math.max(8,strokeWidth);
 		// A rotated shape reaches beyond its rectangle by up to half the diagonal less half the shorter side.
-		if(rotation%360!=0)pad+=(float)((Math.hypot(width,height)-Math.min(width,height))/2);for(Outline o:outlines)pad=Math.max(pad,o.width);for(Shadow s:shadows)pad=Math.max(pad,Math.max(Math.abs(s.dx),Math.abs(s.dy))+Math.max(0,s.spread)+s.blur*3+8);if(svgFilter!=null)pad+=svgFilter.padding();return Math.max(12,(int)Math.ceil(pad));}
-	void build(){
-		if(PCARD.pc==null||PCARD.pc.mainPane==null)return;
-		if(view!=null&&view.getParent()!=null)view.getParent().remove(view);
-		// OCardBase.buidParts adds the parts front to back, so each one goes to the end (behind those already there).
-		view=new ShapeView(this);updateView();PCARD.pc.mainPane.add(view);view.setVisible(isShown());
-	}
+		if(rotation%360!=0)pad+=(float)((Math.hypot(width,height)-Math.min(width,height))/2);for(Outline o:outlines)pad=Math.max(pad,o.width);for(Shadow s:shadows)pad=Math.max(pad,Math.max(Math.abs(s.dx),Math.abs(s.dy))+Math.max(0,s.spread)+s.blur*3+8);pad+=UiHost.get().svgFilterPadding(svgFilter);return Math.max(12,(int)Math.ceil(pad));}
+	void build(){ UiHost.get().build(this); }
 	/** After a change of the drawing: the view's bounds and its cached picture. */
-	void updateView(){if(view==null)return;view.cache=null;moveView();view.repaint();}
-	private void moveView(){if(view==null)return;int pad=padding();view.setBounds(PCARD.toPhysical(left-pad,top-pad,width+2*pad,height+2*pad));}
+	void updateView(){if(view==null)return;UiHost.get().shapeViewUpdated(this);}
+	void moveView(){ UiHost.get().moveView(this); }
 	void repaintView(){updateView();}
 	private Paint fillPaint(){
 		if(texturePng!=null){
-			try{if(textureCache==null)textureCache=ImageIO.read(new ByteArrayInputStream(texturePng));
+			try{if(textureCache==null)textureCache=UiHost.get().shapeTexture(texturePng);
 				if(textureCache!=null)return new TexturePaint(textureCache,new Rectangle2D.Double(0,0,textureCache.getWidth(),textureCache.getHeight()));}
 			catch(Exception ignored){}
 		}
@@ -190,7 +174,7 @@ public class OShape extends OObject {
 	}
 	/** Filters, blurred shadows and translucency are slow to draw: the view keeps such a shape's picture until it changes. */
 	boolean costly(){
-		if(opacity<1||svgFilter!=null&&!svgFilter.primitives.isEmpty())return true;
+		if(opacity<1||UiHost.get().svgFilterActive(svgFilter))return true;
 		for(Shadow s:shadows)if(s.blur>0)return true;
 		return false;
 	}
@@ -208,14 +192,14 @@ public class OShape extends OObject {
 		fg.translate(-pad,-pad);fg.scale(1/scale,1/scale);fg.drawImage(faded,0,0,null);fg.dispose();
 	}
 	void renderOpaque(Graphics2D g){
-		if(svgFilter!=null&&!svgFilter.primitives.isEmpty()){
+		if(UiHost.get().svgFilterActive(svgFilter)){
 			// Rotated before filtering, so filter shadows and offsets keep their direction on the card.
 			Rectangle2D bounds=rotationTransform().createTransformedShape(geometry().getBounds2D()).getBounds2D();int pad=padding();
 			int x=Math.min(0,(int)Math.floor(bounds.getX()))-pad,y=Math.min(0,(int)Math.floor(bounds.getY()))-pad;
 			int w=Math.max(width,(int)Math.ceil(bounds.getMaxX()))-x+pad,h=Math.max(height,(int)Math.ceil(bounds.getMaxY()))-y+pad;
 			if(w>0&&h>0&&(long)w*h<=12_000_000){
 				BufferedImage source=new BufferedImage(w,h,BufferedImage.TYPE_INT_ARGB);Graphics2D local=source.createGraphics();local.translate(-x,-y);local.transform(rotationTransform());renderPlain(local);local.dispose();
-				g.drawImage(svgFilter.apply(source),x,y,null);return;
+				g.drawImage(UiHost.get().applySvgFilter(svgFilter,source),x,y,null);return;
 			}
 		}
 		Graphics2D rotated=(Graphics2D)g.create();rotated.transform(rotationTransform());renderPlain(rotated);rotated.dispose();
@@ -257,20 +241,7 @@ public class OShape extends OObject {
 	 * lets clicks through), its stroke and outlines, at least 6 px wide so thin lines can be clicked. A text shape takes its whole
 	 * rectangle, so the gaps between the letters count.
 	 */
-	boolean hits(double x,double y){
-		if(rotation%360!=0){
-			java.awt.geom.Point2D p=new java.awt.geom.Point2D.Double(x,y);
-			try{rotationTransform().inverseTransform(p,p);}catch(java.awt.geom.NoninvertibleTransformException e){return false;}
-			x=p.getX();y=p.getY();
-		}
-		if(kind.equals("text"))return x>=0&&y>=0&&x<width&&y<height;
-		Shape shape=geometry();
-		boolean filled=fillColor!=null||texturePng!=null||gradientStart!=null&&gradientEnd!=null;
-		if(filled&&shape.contains(x,y))return true;
-		float line=strokeColor!=null&&strokeWidth>0?strokeWidth:0;
-		for(Outline o:outlines)if(o.color!=null&&o.width>0)line=Math.max(line,o.width*2);
-		return line>0&&new BasicStroke(Math.max(6,line),BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND).createStrokedShape(shape).contains(x,y);
-	}
+	boolean hits(double x,double y){ return UiHost.get().hits(this, x, y); }
 	/** {@link #hits} for a visible shape, in card coordinates. */
 	boolean hitsCard(int x,int y){return isShown()&&hits(x-left,y-top);}
 	static final class ShapeView extends JComponent {
@@ -280,7 +251,7 @@ public class OShape extends OObject {
 		// tool a shape is a part that takes the clicks on what it paints; elsewhere they reach the card and parts beneath it.
 		@Override public boolean contains(int x,int y){
 			if(!GShape.receivesMouse())return false;
-			double scale=PCARD.scale();int pad=shape.padding();
+			double scale=Host.get().scale();int pad=shape.padding();
 			return shape.hits(x/scale-pad,y/scale-pad);
 		}
 		/** The drawn shape for costly() shapes; OShape.updateView drops it. */
@@ -304,7 +275,7 @@ public class OShape extends OObject {
 			Graphics2D fg=(Graphics2D)g.create();fg.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER,shape.opacity));
 			fg.drawImage(cache,0,0,null);fg.dispose();
 		}
-		private void paintShape(Graphics2D g,boolean unfaded){Graphics2D g2=(Graphics2D)g.create();double scale=PCARD.scale();int pad=shape.padding();g2.scale(scale,scale);g2.translate(pad,pad);if(unfaded)shape.renderOpaque(g2);else shape.render(g2);g2.dispose();}
+		private void paintShape(Graphics2D g,boolean unfaded){Graphics2D g2=(Graphics2D)g.create();double scale=Host.get().scale();int pad=shape.padding();g2.scale(scale,scale);g2.translate(pad,pad);if(unfaded)shape.renderOpaque(g2);else shape.render(g2);g2.dispose();}
 	}
 	private static String hex(Color c){return c==null?"none":String.format("#%08X",c.getRGB());}
 	static Color color(String s){if(s==null||s.isBlank()||s.equalsIgnoreCase("none"))return null;try{
@@ -350,7 +321,7 @@ public class OShape extends OObject {
 			case "shadowwidth"->s==null?"0":num(s.spread);
 			case "shadowblur"->s==null?"0":num(s.blur);
 			case "shadowcolor"->s==null?"none":hex(s.color);
-			case "filter"->svgFilter==null||svgFilter.primitives.isEmpty()?"":svgFilter.toSvg();
+			case "filter"->UiHost.get().svgFilterText(svgFilter);
 			default->null;
 		};
 	}
@@ -383,8 +354,8 @@ public class OShape extends OObject {
 			case "gradientpoints"->{float[] n=numbers(p,v,4,4);gradientX1=n[0];gradientY1=n[1];gradientX2=n[2];gradientY2=n[3];}
 			case "texture"->{
 				if(v.isEmpty()||v.equalsIgnoreCase("none")){setTexture(null);break;}
-				byte[] png;try{png=Base64.getMimeDecoder().decode(v);}catch(IllegalArgumentException e){throw new xTalkException("texture requires a Base64 image such as PNG");}
-				try{if(ImageIO.read(new ByteArrayInputStream(png))==null)throw new java.io.IOException();}catch(java.io.IOException e){throw new xTalkException("Cannot read the texture image");}
+				byte[] png;try{png=Platform.get().decodeMimeBase64(v);}catch(IllegalArgumentException e){throw new xTalkException("texture requires a Base64 image such as PNG");}
+				try{if(!UiHost.get().readableImage(png))throw new java.io.IOException();}catch(java.io.IOException e){throw new xTalkException("Cannot read the texture image");}
 				setTexture(png);
 			}
 			case "stretchtexture"->{if(!v.equalsIgnoreCase("true")&&!v.equalsIgnoreCase("false"))throw new xTalkException("stretchTexture requires true or false");stretchTexture=Boolean.parseBoolean(v);}
@@ -397,7 +368,7 @@ public class OShape extends OObject {
 			case "shadowwidth"->firstShadow().spread=Math.max(0,number(p,v));
 			case "shadowblur"->firstShadow().blur=Math.max(0,number(p,v));
 			case "shadowcolor"->firstShadow().color=color(v);
-			case "filter"->svgFilter=v.isEmpty()||v.equalsIgnoreCase("none")?null:SvgFilter.fromSvgText(v);
+			case "filter"->svgFilter=v.isEmpty()||v.equalsIgnoreCase("none")?null:UiHost.get().svgFilterFromText(v);
 			default->{return false;}
 		}
 		changed();updateView();return true;
@@ -405,7 +376,7 @@ public class OShape extends OObject {
 	private Outline firstOutline(){if(outlines.isEmpty())outlines.add(new Outline(0,Color.BLACK));return outlines.get(0);}
 	private Shadow firstShadow(){if(shadows.isEmpty())shadows.add(new Shadow(0,0,0,0,new Color(0,0,0,160)));return shadows.get(0);}
 	/** A text shape takes its new lettering's natural size, as when its text is set. */
-	private void fitText(){if(!kind.equals("text"))return;Rectangle2D b=naturalTextBounds();if(!b.isEmpty())setSize(Math.max(1,(int)Math.ceil(b.getWidth())),Math.max(1,(int)Math.ceil(b.getHeight())));}
+	private void fitText(){ UiHost.get().fitText(this); }
 	private void setKind(String value) throws xTalkException {
 		String k=null;for(String known:new String[]{"rectangle","line","ellipse","regularPolygon","polygon","freehand","bezier","text"})if(known.equalsIgnoreCase(value))k=known;
 		if(k==null)throw new xTalkException("Shape type must be rectangle, line, ellipse, regularPolygon, polygon, freehand or bezier");
@@ -413,10 +384,10 @@ public class OShape extends OObject {
 		if(k.equals("text"))throw new xTalkException("Cannot change to a text shape");
 		if(k.equals("rectangle")||k.equals("ellipse")||k.equals("regularPolygon")){pathData="";kind=k;return;}
 		// The path kinds keep what is drawn: a shape without a path gets its outline as one (curves for bezier).
-		if(pathData.isEmpty()||kind.equals("text"))pathData=ShapePath.serialize(k.equals("bezier")?ShapePath.cubic(geometry()):geometry());
+		UiHost.get().outlineAsPath(this, value, k);
 		kind=k;
 	}
-	private static String num(double v){return ShapeFilterPanel.num(v);}
+	static String num(double v){ return UiHost.get().num(v); }
 	private static float number(String property,String text) throws xTalkException {
 		try{float v=Float.parseFloat(text.trim());if(Float.isFinite(v))return v;}catch(NumberFormatException ignored){}
 		throw new xTalkException("{0} requires a number", property);
@@ -427,7 +398,7 @@ public class OShape extends OObject {
 	}
 	private static String[] items(String line){String[] parts=line.split(",",-1);for(int i=0;i<parts.length;i++)parts[i]=parts[i].trim();return parts;}
 	private static ArrayList<String> lines(String text){ArrayList<String> out=new ArrayList<>();for(String line:text.split("\r\n|\r|\n"))if(!line.isBlank())out.add(line);return out;}
-	void writeXML(XMLStreamWriter w) throws XMLStreamException {
+	void writeXML(XmlOut w) throws XmlException {
 		w.writeStartElement("shape");
 		attr(w,"id",id);attr(w,"name",name);if(panelId!=0)attr(w,"panel",panelId);attr(w,"kind",kind);attr(w,"x",left);attr(w,"y",top);attr(w,"width",width);attr(w,"height",height);
 		attr(w,"visible",getVisible());attr(w,"path",pathData);attr(w,"text",text);attr(w,"font",fontFamily);attr(w,"fontSize",fontSize);attr(w,"bold",bold);attr(w,"sides",sides);
@@ -440,12 +411,12 @@ public class OShape extends OObject {
 		if(texturePng!=null){w.writeStartElement("texture");w.writeCharacters(Base64.getEncoder().encodeToString(texturePng));w.writeEndElement();}
 		for(Outline o:outlines){w.writeEmptyElement("outline");attr(w,"width",o.width);attr(w,"color",hex(o.color));}
 		for(Shadow s:shadows){w.writeEmptyElement("shadow");attr(w,"dx",s.dx);attr(w,"dy",s.dy);attr(w,"blur",s.blur);if(s.spread!=0)attr(w,"spread",s.spread);attr(w,"color",hex(s.color));}
-		if(svgFilter!=null)svgFilter.writeXML(w);
+		if(svgFilter!=null)UiHost.get().writeSvgFilter(svgFilter,w);
 		if(scriptList!=null&&!String.join("",scriptList).isEmpty()){w.writeStartElement("script");w.writeCharacters(String.join("\n",scriptList));w.writeEndElement();}
 		w.writeEndElement();
 	}
-	private static void attr(XMLStreamWriter w,String key,Object value) throws XMLStreamException {w.writeAttribute(key,String.valueOf(value==null?"":value));}
-	static OShape readXML(XMLStreamReader r,OCardBase owner){
+	private static void attr(XmlOut w,String key,Object value) throws XmlException {w.writeAttribute(key,String.valueOf(value==null?"":value));}
+	static OShape readXML(XmlIn r,OCardBase owner){
 		OShape s=new OShape(owner,integer(r,"id",0));s.name=string(r,"name","");s.panelId=XMLRead.panelId(string(r,"panel","0"));s.kind=string(r,"kind","line");
 		s.left=integer(r,"x",0);s.top=integer(r,"y",0);s.width=integer(r,"width",100);s.height=integer(r,"height",100);
 		s.pathData=string(r,"path","");s.text=string(r,"text","");s.fontFamily=string(r,"font","SansSerif");s.fontSize=integer(r,"fontSize",64);s.bold=Boolean.parseBoolean(string(r,"bold","true"));s.sides=integer(r,"sides",5);
@@ -455,13 +426,13 @@ public class OShape extends OObject {
 		s.gradientStart=color(string(r,"gradientStart","none"));s.gradientEnd=color(string(r,"gradientEnd","none"));s.radialGradient=Boolean.parseBoolean(string(r,"gradientRadial","false"));
 		s.gradientX1=decimal(r,"gradientX1",0);s.gradientY1=decimal(r,"gradientY1",0);s.gradientX2=decimal(r,"gradientX2",1);s.gradientY2=decimal(r,"gradientY2",0);
 		boolean visible=Boolean.parseBoolean(string(r,"visible","true"));
-		try{while(r.hasNext()){int event=r.next();if(event==XMLStreamConstants.START_ELEMENT){
+		try{while(r.hasNext()){int event=r.next();if(event==XmlIn.START_ELEMENT){
 			if(r.getLocalName().equals("texture"))s.texturePng=Base64.getDecoder().decode(r.getElementText());
 			else if(r.getLocalName().equals("outline"))s.outlines.add(new Outline(decimal(r,"width",2),color(string(r,"color","#FF000000"))));
 			else if(r.getLocalName().equals("shadow"))s.shadows.add(new Shadow(decimal(r,"dx",2),decimal(r,"dy",2),decimal(r,"blur",0),decimal(r,"spread",0),color(string(r,"color","#80000000"))));
-			else if(r.getLocalName().equals("svgFilter"))s.svgFilter=SvgFilter.readXML(r);
+			else if(r.getLocalName().equals("svgFilter"))s.svgFilter=UiHost.get().readSvgFilter(r);
 			else if(r.getLocalName().equals("script"))s.readScript(r.getElementText());
-		}else if(event==XMLStreamConstants.END_ELEMENT&&r.getLocalName().equals("shape"))break;}}
+		}else if(event==XmlIn.END_ELEMENT&&r.getLocalName().equals("shape"))break;}}
 		catch(Exception ignored){}
 		s.setVisible(visible);return s;
 	}
@@ -470,9 +441,9 @@ public class OShape extends OObject {
 		// Keep trailing empty lines, as buttons and fields do.
 		scriptList.clear();for(String line:script.split("\n",-1))scriptList.add(line);
 		stringList=new ArrayList[scriptList.size()];typeList=new ArrayList[scriptList.size()];
-		handlerList=null;handlerLineList=null;wrapFlag=false;jit=null;TalkJit.scriptEpoch++;
+		handlerList=null;handlerLineList=null;wrapFlag=false;jit=null;HZ.scriptEpoch++;
 	}
-	private static String string(XMLStreamReader r,String key,String fallback){String v=r.getAttributeValue(null,key);return v==null?fallback:v;}
-	private static int integer(XMLStreamReader r,String key,int fallback){try{return Integer.parseInt(string(r,key,""));}catch(Exception e){return fallback;}}
-	private static float decimal(XMLStreamReader r,String key,float fallback){try{return Float.parseFloat(string(r,key,""));}catch(Exception e){return fallback;}}
+	private static String string(XmlIn r,String key,String fallback){String v=r.getAttributeValue(null,key);return v==null?fallback:v;}
+	private static int integer(XmlIn r,String key,int fallback){try{return Integer.parseInt(string(r,key,""));}catch(Exception e){return fallback;}}
+	private static float decimal(XmlIn r,String key,float fallback){try{return Float.parseFloat(string(r,key,""));}catch(Exception e){return fallback;}}
 }
